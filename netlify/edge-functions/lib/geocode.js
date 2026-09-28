@@ -98,3 +98,91 @@ export async function reverseGeocode(lat, lng, apiKey) {
     suburb: find("sublocality", "sublocality_level_1", "neighborhood"),
   };
 }
+
+// The other direction: turns free text (a district/area name, a resort
+// name, anything a human would type into a search box) into a coordinate +
+// the same four-level breakdown reverseGeocode() returns, using Google's
+// same Geocoding API endpoint with `address=` instead of `latlng=`. Used by
+// map-api.js's suggestPropertyCoordinates action to turn a property's
+// StockNetwork "Area"/"District" text (e.g. "Amed", "Walvis Bay") into a
+// suggested country + coordinate for an admin to review and copy into
+// StockNetwork — this function only ever LOOKS UP a suggestion, it never
+// writes anything anywhere, so a wrong or ambiguous match here can't corrupt
+// any stored data.
+//
+// No region bias is applied (no `region=` or `components=country:ZA` param)
+// because the whole point is to find properties that AREN'T in South
+// Africa — biasing toward SA would defeat that. This does mean a genuinely
+// ambiguous place name (there's more than one "Amed" or "Claremont" in the
+// world) can resolve to the wrong one; `locationType` on the result says
+// how precise Google considers its own answer, so a caller can flag a
+// broad/approximate match as needing extra scrutiny before anyone trusts it.
+export async function forwardGeocode(address, apiKey) {
+  if (!apiKey) return { ok: false, reason: "no_api_key", message: "" };
+  const q = (address || "").trim();
+  if (!q) return { ok: false, reason: "empty_address", message: "" };
+  const url =
+    "https://maps.googleapis.com/maps/api/geocode/json?address=" +
+    encodeURIComponent(q) + "&key=" + encodeURIComponent(apiKey);
+
+  let res;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    try {
+      res = await fetch(url, { signal: controller.signal });
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch (e) {
+    const timedOut = e && (e.name === "AbortError");
+    return { ok: false, reason: timedOut ? "timeout" : "network", message: String((e && e.message) || e) };
+  }
+  if (!res.ok) return { ok: false, reason: "bad_response", message: "HTTP " + res.status };
+
+  let data;
+  try {
+    data = await res.json();
+  } catch (e) {
+    return { ok: false, reason: "bad_response", message: "Response wasn't valid JSON" };
+  }
+  if (!data || data.status !== "OK" || !Array.isArray(data.results) || !data.results.length) {
+    return {
+      ok: false,
+      reason: (data && data.status) || "unknown",
+      message: (data && data.error_message) || "",
+    };
+  }
+
+  const top = data.results[0];
+  const comps = top.address_components || [];
+  function find(...types) {
+    for (const type of types) {
+      const c = comps.find((c) => Array.isArray(c.types) && c.types.includes(type));
+      if (c) return c.long_name || "";
+    }
+    return "";
+  }
+  let town = "";
+  let townType = "";
+  for (const type of ["locality", "postal_town", "administrative_area_level_2"]) {
+    const c = comps.find((c) => Array.isArray(c.types) && c.types.includes(type));
+    if (c && c.long_name) { town = c.long_name; townType = type; break; }
+  }
+  const loc = top.geometry && top.geometry.location;
+  const lat = loc && typeof loc.lat === "number" ? loc.lat : null;
+  const lng = loc && typeof loc.lng === "number" ? loc.lng : null;
+
+  return {
+    ok: true,
+    country: find("country"),
+    province: find("administrative_area_level_1"),
+    town,
+    townType,
+    suburb: find("sublocality", "sublocality_level_1", "neighborhood"),
+    lat,
+    lng,
+    formattedAddress: top.formatted_address || "",
+    locationType: (top.geometry && top.geometry.location_type) || "",
+  };
+}
