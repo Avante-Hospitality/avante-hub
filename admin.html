@@ -218,6 +218,23 @@
   .status.show{ display:block; }
   .status.ok{ background:var(--mint); color:var(--teal-dark); border-color:#bfe6e2; }
 
+  /* "How it works" — a small toggle button next to a section heading that
+     reveals a short explanation panel, instead of a paragraph that's always
+     on screen. Standard pattern for any new admin tool going forward
+     (2026-09-28) — see initHowItWorksToggles() near the bottom of the page. */
+  .how-it-works-btn{
+    width:auto; flex:none; margin-top:0; padding:5px 12px; font-size:11.5px;
+    background:#fff; color:var(--muted); border:1.5px solid var(--line); border-radius:20px;
+    font-weight:700; cursor:pointer; white-space:nowrap;
+  }
+  .how-it-works-btn:hover{ background:var(--mint); color:var(--teal-dark); border-color:var(--teal); }
+  .how-it-works-btn[aria-expanded="true"]{ background:var(--mint); color:var(--teal-dark); border-color:var(--teal); }
+  .how-it-works-panel{
+    display:none; margin:0 0 14px; padding:12px 14px; font-size:12.5px; line-height:1.5;
+    background:#f6faf9; border:1px solid var(--line); border-radius:10px; color:#3c5a57;
+  }
+  .how-it-works-panel.show{ display:block; }
+
   .btn-row{ display:flex; gap:10px; flex-wrap:wrap; margin-top:12px; }
   .btn-secondary{
     width:auto; margin-top:0; padding:9px 18px; font-size:12.5px;
@@ -1265,9 +1282,16 @@
       <div class="card" style="margin-top:20px;">
         <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap;">
           <h3 style="margin-top:0;">Properties with no zone</h3>
-          <button class="btn-outline" id="downloadNoZonePropsBtn" style="flex:none;">Download CSV</button>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button class="how-it-works-btn" type="button" aria-expanded="false" data-panel="noZonePropsHowItWorks">How it works</button>
+            <button class="btn-outline" id="downloadNoZonePropsBtn" style="flex:none;">Download CSV</button>
+          </div>
         </div>
-        <p style="margin-top:0;">Properties and resort rows that already have coordinates but never got a zone &mdash; usually a coordinate that's offshore, right on a zone border, or otherwise not something Google or the zone map can place precisely. Re-running "Start geocoding" or "Re-check all zones" won't change this list on its own; each one is worth a look (double-check the coordinate itself first). "Source" shows where the row comes from: <strong>resort-list</strong> rows are fixed by correcting your StockNetwork export and re-uploading it; <strong>onboarded</strong> rows are fixed directly in Property Listings.</p>
+        <div class="how-it-works-panel" id="noZonePropsHowItWorks">Properties and resort rows that already have coordinates but never got a zone &mdash; usually a coordinate that's offshore, right on a zone border, or otherwise not something Google or the zone map can place precisely. Re-running "Start geocoding" or "Re-check all zones" won't change this list on its own. "Source" shows where the row comes from: <strong>resort-list</strong> rows are fixed by correcting your StockNetwork export and re-uploading it; <strong>onboarded</strong> rows are fixed directly in Property Listings. The "Fix countries with a real coordinate" button below handles the rows that already have a usable Latitude/Longitude &mdash; it works out the true country straight from that coordinate and fixes it immediately, no CSV needed. Rows with no usable coordinate at all aren't something this can fix on its own; see "Suggested coordinates" further down for those.</div>
+        <div class="btn-row" style="margin-top:0; margin-bottom:14px;">
+          <button class="btn-outline" id="fixPropertyCountryBtn">Fix countries with a real coordinate</button>
+        </div>
+        <div class="status" id="fixPropertyCountryStatus"></div>
         <div class="table-wrap">
           <table class="data-table">
             <thead>
@@ -1282,6 +1306,36 @@
           </table>
         </div>
         <div class="empty-state" id="noZonePropsEmpty" style="display:none;">Every property and resort row with coordinates has a zone.</div>
+      </div>
+
+      <div class="card" style="margin-top:20px;">
+        <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+          <h3 style="margin-top:0;">Suggested coordinates</h3>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button class="how-it-works-btn" type="button" aria-expanded="false" data-panel="suggestCoordsHowItWorks">How it works</button>
+            <button class="btn-outline" id="downloadSuggestedCoordsBtn" style="flex:none;">Download CSV</button>
+          </div>
+        </div>
+        <div class="how-it-works-panel" id="suggestCoordsHowItWorks">For properties with no usable coordinate at all (still sitting at StockNetwork's blank/0,0 default), there's nothing to calculate a country from &mdash; so instead this looks up the property's own Area/District text with Google and shows a suggested country, latitude and longitude. <strong>Nothing here is ever written into your live data automatically</strong> &mdash; it's a starting point for you (or whoever's on data duty) to double-check and then type into the StockNetwork export yourself before re-uploading, exactly like any other StockNetwork correction. A place name can be ambiguous, so treat every row as worth a quick sanity check, not a certainty &mdash; rows Google itself marks as only an approximate match are flagged as such.</div>
+        <div class="btn-row" style="margin-top:0; margin-bottom:14px;">
+          <button class="btn-outline" id="suggestCoordsBtn">Look up suggestions</button>
+        </div>
+        <div class="status" id="suggestCoordsStatus"></div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Property</th>
+                <th>Area</th>
+                <th>Suggested country</th>
+                <th>Suggested coordinates</th>
+                <th>Confidence</th>
+              </tr>
+            </thead>
+            <tbody id="suggestCoordsTableBody"></tbody>
+          </table>
+        </div>
+        <div class="empty-state" id="suggestCoordsEmpty" style="display:block;">Click "Look up suggestions" to generate this list.</div>
       </div>
 
       <div class="card" style="margin-top:20px;">
@@ -1509,6 +1563,50 @@
           </div>
           <div class="status" id="dupStatus"></div>
           <div id="dupList" style="margin-top:10px; font-size:13px;"></div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:20px;">
+        <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+          <h3 style="margin-top:0;">Location tree audit</h3>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button class="how-it-works-btn" type="button" aria-expanded="false" data-panel="locationAuditHowItWorks">How it works</button>
+            <button class="btn-outline" id="downloadLocationAuditBtn" style="flex:none;">Download CSV</button>
+          </div>
+        </div>
+        <div class="how-it-works-panel" id="locationAuditHowItWorks">"Merge duplicate towns" above only catches two Town records with the <em>exact same</em> name, country and zone &mdash; that's deliberately narrow so it's safe to auto-merge. This audit looks for two patterns it can't see: (1) the same real place recorded under names that differ by a word, like "Inhambane" and "Inhambane Province" &mdash; caught by treating one name as the other plus a qualifier word; (2) a place that exists as its own standalone Town <em>and</em> as a Suburb nested under a different Town, like "Brenton-on-Sea" and "Brenton" (a suburb of Knysna). It also checks that every property, resort row and activity is actually nested under a Town/Suburb that still exists, and flags anything tagged with an area/zone but never linked down to a Town at all. <strong>Nothing here is fixed automatically</strong> &mdash; a name match can occasionally be two genuinely different places that happen to share a word, so every result is for you to check and then fix by hand with the Edit / Delete / Merge tools above.</div>
+        <div class="btn-row" style="margin-top:0;">
+          <button class="btn-outline" id="locationAuditBtn">Run audit</button>
+        </div>
+        <div class="status" id="locationAuditStatus"></div>
+
+        <div id="locationAuditResults" style="display:none; margin-top:14px;">
+          <p style="margin:0 0 6px; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--muted);">Possible duplicate towns</p>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead><tr><th>Town</th><th>Also recorded as</th><th>Distance apart</th></tr></thead>
+              <tbody id="dupTownsTableBody"></tbody>
+            </table>
+          </div>
+          <div class="empty-state" id="dupTownsEmpty" style="display:none;">No likely duplicate town names found.</div>
+
+          <p style="margin:16px 0 6px; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--muted);">Towns that look like a suburb of another town</p>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead><tr><th>Standalone town</th><th>Matches suburb</th><th>Of town</th><th>Distance apart</th></tr></thead>
+              <tbody id="townSuburbOverlapTableBody"></tbody>
+            </table>
+          </div>
+          <div class="empty-state" id="townSuburbOverlapEmpty" style="display:none;">No towns that look like a suburb of another town found.</div>
+
+          <p style="margin:16px 0 6px; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--muted);">Properties not correctly nested under a Town/Suburb</p>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead><tr><th>Property</th><th>Source</th><th>Issue</th></tr></thead>
+              <tbody id="nestingIssuesTableBody"></tbody>
+            </table>
+          </div>
+          <div class="empty-state" id="nestingIssuesEmpty" style="display:none;">Every property, resort row and activity is correctly nested.</div>
         </div>
       </div>
 
@@ -8172,6 +8270,272 @@
         runBatch();
       });
 
+      // ---- Fix countries with a real coordinate ----
+      // Companion to "Fix towns with no zone" above, but for individual
+      // property/resort rows rather than Town records. "Re-check all
+      // zones" can't reach these because it only tags a coordinate when it
+      // can match/create a Town near it, and every Town in this system is
+      // South African — a real coordinate in Namibia, Botswana, or
+      // Zimbabwe has no nearby Town to match, so it's reported as a
+      // geocode failure and left completely blank, country included. This
+      // instead reverse-geocodes the record's own coordinate directly and
+      // writes country + zone onto that one record, without needing a
+      // Town match at all. Only ever touches a record that currently has
+      // no zone AND a real (non 0,0) coordinate — see the towns-layer-
+      // implementation project doc, 2026-09-28 entry, for the full
+      // diagnosis.
+      var fixPropertyCountryBtn = document.getElementById('fixPropertyCountryBtn');
+      var fixPropertyCountryStatusEl = document.getElementById('fixPropertyCountryStatus');
+
+      if(fixPropertyCountryBtn){
+        fixPropertyCountryBtn.addEventListener('click', function(){
+          if(!confirm('This looks at every property/resort row that already has a real coordinate but no zone, works out its true country straight from that coordinate, and saves it. It never touches a row with no usable coordinate. Continue?')){
+            return;
+          }
+          var OFFSET_KEY = 'avante-fix-property-country-offset';
+          var offset = 0;
+          try {
+            var savedOffset = parseInt(localStorage.getItem(OFFSET_KEY), 10) || 0;
+            if(savedOffset > 0 && confirm('A previous run stopped part-way, after ' + savedOffset + '. OK = resume from there. Cancel = start again from the beginning.')){
+              offset = savedOffset;
+            }
+          } catch(e){}
+
+          fixPropertyCountryBtn.disabled = true;
+          if(fixTownZonesBtn) fixTownZonesBtn.disabled = true;
+          recheckZonesBtn.disabled = true;
+          startGeocodeBtn.disabled = true;
+          checkGeocodeBtn.disabled = true;
+
+          var totalFixed = 0, totalUnresolved = 0, totalTargets = 0, iterations = 0;
+          var MAX_ITERATIONS = 300;
+          var batchRetries = 0, MAX_BATCH_RETRIES = 4;
+          var exampleFixes = [];
+
+          function saveOffset(v){ try { if(v > 0) localStorage.setItem(OFFSET_KEY, String(v)); else localStorage.removeItem(OFFSET_KEY); } catch(e){} }
+          function progressText(){ return totalTargets ? (' — ' + Math.min(offset, totalTargets) + ' of ' + totalTargets) : ''; }
+          function finish(summary){
+            fixPropertyCountryBtn.disabled = false;
+            if(fixTownZonesBtn) fixTownZonesBtn.disabled = false;
+            recheckZonesBtn.disabled = false;
+            startGeocodeBtn.disabled = false;
+            checkGeocodeBtn.disabled = false;
+            fixPropertyCountryStatusEl.textContent = summary;
+            fixPropertyCountryStatusEl.className = 'status show' + (/^Done/.test(summary) ? ' ok' : '');
+            loadActivities();
+          }
+          function stopWith(msg){ saveOffset(offset); finish(msg); }
+
+          function runBatch(){
+            iterations++;
+            if(iterations > MAX_ITERATIONS){
+              stopWith('Stopped after ' + MAX_ITERATIONS + ' batches (fixed ' + totalFixed + ' so far' + progressText() + ') — click the button again to continue.');
+              return;
+            }
+            fixPropertyCountryStatusEl.textContent = 'Checking properties…' + (totalFixed || totalUnresolved ? (' (' + totalFixed + ' fixed so far' + progressText() + ')') : '');
+            fixPropertyCountryStatusEl.className = 'status show ok';
+            mapAdminPost('fixPropertyCountry', { dryRun: false, limit: 15, offset: offset }).then(function(res){
+              if(!(res.data && res.data.ok)){
+                var serverMsg = res.data && res.data.error;
+                if(serverMsg){
+                  stopWith('Could not fix property countries — ' + serverMsg + progressText() + '.');
+                  return;
+                }
+                batchRetries++;
+                if(batchRetries <= MAX_BATCH_RETRIES){
+                  fixPropertyCountryStatusEl.textContent = 'That request timed out — retrying (' + batchRetries + '/' + MAX_BATCH_RETRIES + ')… (' + totalFixed + ' fixed so far' + progressText() + ')';
+                  fixPropertyCountryStatusEl.className = 'status show';
+                  setTimeout(runBatch, 1500);
+                  return;
+                }
+                stopWith('Fixed ' + totalFixed + ' so far, then that request kept timing out after ' + MAX_BATCH_RETRIES + ' retries — click the button again to continue with what’s left.');
+                return;
+              }
+
+              batchRetries = 0;
+              totalTargets = res.data.totalTargets || totalTargets;
+              totalFixed += res.data.fixed || 0;
+              totalUnresolved += res.data.stillUnresolved || 0;
+              if(res.data.exampleFixes) exampleFixes = exampleFixes.concat(res.data.exampleFixes).slice(0, 10);
+              offset = (typeof res.data.nextOffset === 'number') ? res.data.nextOffset : (offset + (res.data.processed || 0));
+
+              if(res.data.remaining > 0){
+                saveOffset(offset);
+                setTimeout(runBatch, 200);
+                return;
+              }
+
+              saveOffset(0);
+              var summary = 'Done — fixed ' + totalFixed + ' propert' + (totalFixed === 1 ? 'y' : 'ies') + '.';
+              if(totalUnresolved){
+                summary += ' ' + totalUnresolved + ' still couldn’t be placed (Google had no answer for that exact coordinate) — worth a manual look.';
+              }
+              if(exampleFixes.length){
+                summary += ' Examples: ' + exampleFixes.map(function(f){ return f.name + ' → ' + f.country; }).join('; ') + '.';
+              }
+              finish(summary);
+            }, function(err){
+              batchRetries++;
+              if(batchRetries <= MAX_BATCH_RETRIES){
+                fixPropertyCountryStatusEl.textContent = 'That request timed out — retrying (' + batchRetries + '/' + MAX_BATCH_RETRIES + ')… (' + totalFixed + ' fixed so far' + progressText() + ')';
+                fixPropertyCountryStatusEl.className = 'status show';
+                setTimeout(runBatch, 1500);
+                return;
+              }
+              stopWith('Fixed ' + totalFixed + ' so far, then that request kept timing out after ' + MAX_BATCH_RETRIES + ' retries — click the button again to continue with what’s left.');
+            });
+          }
+          runBatch();
+        });
+      }
+
+      // ---- Suggested coordinates (for properties with no usable coordinate at all) ----
+      // Read-only: looks each property's Area/District text up on Google
+      // and shows a suggested country + coordinate, for a person to check
+      // and enter into StockNetwork directly — never written to this
+      // system automatically. See the "How it works" panel above the
+      // table for the full explanation.
+      var lastSuggestedCoords = [];
+      (function(){
+        var btn = document.getElementById('suggestCoordsBtn');
+        var statusEl = document.getElementById('suggestCoordsStatus');
+        var bodyEl = document.getElementById('suggestCoordsTableBody');
+        var emptyEl = document.getElementById('suggestCoordsEmpty');
+        var dlBtn = document.getElementById('downloadSuggestedCoordsBtn');
+        if(!btn || !statusEl || !bodyEl) return;
+
+        function render(){
+          bodyEl.innerHTML = '';
+          if(!lastSuggestedCoords.length){
+            emptyEl.style.display = 'block';
+            return;
+          }
+          emptyEl.style.display = 'none';
+          lastSuggestedCoords.forEach(function(s){
+            var tr = document.createElement('tr');
+            var tdName = document.createElement('td'); tdName.textContent = s.name || '—';
+            var tdArea = document.createElement('td'); tdArea.textContent = s.area || '—';
+            var tdCountry = document.createElement('td'); tdCountry.textContent = s.suggestedCountry + (s.suggestedProvince ? (' (' + s.suggestedProvince + ')') : '');
+            var tdCoords = document.createElement('td');
+            tdCoords.textContent = s.suggestedLat.toFixed(5) + ', ' + s.suggestedLng.toFixed(5);
+            tdCoords.style.fontSize = '11px'; tdCoords.style.color = 'var(--muted)';
+            var tdConf = document.createElement('td');
+            tdConf.textContent = s.approximate ? 'Approximate — double-check' : 'Precise match';
+            tdConf.style.fontSize = '11px'; tdConf.style.color = s.approximate ? '#c0453a' : 'var(--muted)';
+            tr.appendChild(tdName); tr.appendChild(tdArea); tr.appendChild(tdCountry); tr.appendChild(tdCoords); tr.appendChild(tdConf);
+            bodyEl.appendChild(tr);
+          });
+        }
+
+        btn.addEventListener('click', function(){
+          if(!confirm('This looks up every property with no usable coordinate by its Area/District text on Google, and shows a suggested country and coordinate for you to check. Nothing is written to your live data — you\'d copy anything useful into StockNetwork yourself. Continue?')){
+            return;
+          }
+          btn.disabled = true;
+          lastSuggestedCoords = [];
+          var offset = 0, totalTargets = 0, totalNotFound = 0, iterations = 0;
+          var MAX_ITERATIONS = 300;
+          var batchRetries = 0, MAX_BATCH_RETRIES = 4;
+
+          function progressText(){ return totalTargets ? (' — ' + Math.min(offset, totalTargets) + ' of ' + totalTargets) : ''; }
+          function finish(summary, isError){
+            btn.disabled = false;
+            statusEl.textContent = summary;
+            statusEl.className = 'status show' + (isError ? '' : ' ok');
+            render();
+          }
+
+          function runBatch(){
+            iterations++;
+            if(iterations > MAX_ITERATIONS){
+              finish('Stopped after ' + MAX_ITERATIONS + ' batches (' + lastSuggestedCoords.length + ' suggestions found so far' + progressText() + ') — click Look up suggestions again to continue.');
+              return;
+            }
+            statusEl.textContent = 'Looking up suggestions…' + (lastSuggestedCoords.length ? (' (' + lastSuggestedCoords.length + ' found so far' + progressText() + ')') : '');
+            statusEl.className = 'status show ok';
+            mapAdminPost('suggestPropertyCoordinates', { dryRun: false, limit: 15, offset: offset }).then(function(res){
+              if(!(res.data && res.data.ok)){
+                var serverMsg = res.data && res.data.error;
+                if(serverMsg){ finish('Could not look up suggestions — ' + serverMsg + progressText() + '.', true); return; }
+                batchRetries++;
+                if(batchRetries <= MAX_BATCH_RETRIES){
+                  statusEl.textContent = 'That request timed out — retrying (' + batchRetries + '/' + MAX_BATCH_RETRIES + ')…';
+                  statusEl.className = 'status show';
+                  setTimeout(runBatch, 1500);
+                  return;
+                }
+                finish('Found ' + lastSuggestedCoords.length + ' so far, then that request kept timing out after ' + MAX_BATCH_RETRIES + ' retries — click Look up suggestions again to continue with what’s left.', true);
+                return;
+              }
+              batchRetries = 0;
+              totalTargets = res.data.totalTargets || totalTargets;
+              totalNotFound += res.data.notFound || 0;
+              if(res.data.suggestions) lastSuggestedCoords = lastSuggestedCoords.concat(res.data.suggestions);
+              offset = (typeof res.data.nextOffset === 'number') ? res.data.nextOffset : (offset + (res.data.processed || 0));
+
+              if(res.data.remaining > 0){
+                render();
+                setTimeout(runBatch, 200);
+                return;
+              }
+
+              var summary = 'Done — ' + lastSuggestedCoords.length + ' suggestion' + (lastSuggestedCoords.length === 1 ? '' : 's') + ' found.';
+              if(totalNotFound) summary += ' ' + totalNotFound + ' couldn’t be matched to anywhere by that text alone.';
+              finish(summary);
+            }, function(err){
+              batchRetries++;
+              if(batchRetries <= MAX_BATCH_RETRIES){
+                statusEl.textContent = 'That request timed out — retrying (' + batchRetries + '/' + MAX_BATCH_RETRIES + ')…';
+                statusEl.className = 'status show';
+                setTimeout(runBatch, 1500);
+                return;
+              }
+              finish('Found ' + lastSuggestedCoords.length + ' so far, then that request kept timing out after ' + MAX_BATCH_RETRIES + ' retries — click Look up suggestions again to continue with what’s left.', true);
+            });
+          }
+          runBatch();
+        });
+
+        if(dlBtn){
+          dlBtn.addEventListener('click', function(){
+            if(!lastSuggestedCoords.length) return;
+            var header = ['Property', 'Area', 'Suggested country', 'Suggested province', 'Suggested latitude', 'Suggested longitude', 'Confidence'];
+            var lines = [header.map(csvEscape).join(',')];
+            lastSuggestedCoords.forEach(function(s){
+              lines.push([
+                s.name || '', s.area || '', s.suggestedCountry || '', s.suggestedProvince || '',
+                s.suggestedLat, s.suggestedLng, s.approximate ? 'Approximate' : 'Precise'
+              ].map(csvEscape).join(','));
+            });
+            var blob = new Blob([lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            var stamp = new Date().toISOString().slice(0, 10);
+            a.href = url; a.download = 'suggested-coordinates-' + stamp + '.csv';
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+          });
+        }
+      })();
+
+      // ---- "How it works" toggles — generic, applies to every button with
+      // this class going forward (2026-09-28 standing convention). Each
+      // button's data-panel names the id of the panel it shows/hides. ----
+      (function initHowItWorksToggles(){
+        var btns = document.querySelectorAll('.how-it-works-btn');
+        for(var i = 0; i < btns.length; i++){
+          (function(btn){
+            var panel = document.getElementById(btn.getAttribute('data-panel'));
+            if(!panel) return;
+            btn.addEventListener('click', function(){
+              var show = !panel.classList.contains('show');
+              panel.classList.toggle('show', show);
+              btn.setAttribute('aria-expanded', show ? 'true' : 'false');
+            });
+          })(btns[i]);
+        }
+      })();
+
       // ---- Improve property coordinates (from a StockNetwork export) ----
       // Reads the admin's own StockNetwork resort export in the browser,
       // asks map-api.js's read-only suggestCoordinates action to look each
@@ -8504,6 +8868,129 @@
           }
           runKind(0).catch(function(e){ setStatus('Stopped: ' + e.message + ' — nothing was deleted; press Find duplicates and Merge to continue.', false); })
             .then(function(){ busy = false; findBtn.disabled = false; mergeBtn.disabled = false; });
+        });
+      })();
+
+      // ---- Location tree audit ----
+      // Read-only report (auditLocationTree) covering what "Merge duplicate
+      // towns" above can't see: near-duplicate town names that differ by a
+      // qualifier word (Inhambane / Inhambane Province), a town that's really
+      // a suburb of a different town recorded twice (Brenton-on-Sea / Brenton,
+      // a suburb of Knysna), and properties whose townId/suburbId no longer
+      // resolves to anything, or that carry a zone but were never linked down
+      // to a Town at all. One request, no batching — see map-api.js's comment
+      // on why this doesn't need pagination. Nothing here writes anything;
+      // every result is a pointer back to the existing Edit/Delete/Merge tools.
+      (function(){
+        var btn = document.getElementById('locationAuditBtn');
+        var statusEl = document.getElementById('locationAuditStatus');
+        var resultsEl = document.getElementById('locationAuditResults');
+        var dlBtn = document.getElementById('downloadLocationAuditBtn');
+        var dupBody = document.getElementById('dupTownsTableBody');
+        var dupEmpty = document.getElementById('dupTownsEmpty');
+        var overlapBody = document.getElementById('townSuburbOverlapTableBody');
+        var overlapEmpty = document.getElementById('townSuburbOverlapEmpty');
+        var nestingBody = document.getElementById('nestingIssuesTableBody');
+        var nestingEmpty = document.getElementById('nestingIssuesEmpty');
+        if(!btn || !statusEl || !resultsEl) return;
+
+        var lastAudit = null; // the raw auditLocationTree response, for CSV export
+
+        function fmtKm(km){ return (km === null || km === undefined) ? 'coordinates missing' : (km < 1 ? Math.round(km * 1000) + ' m' : km.toFixed(1) + ' km'); }
+        function td(text){ var el = document.createElement('td'); el.textContent = text; return el; }
+
+        function render(){
+          resultsEl.style.display = '';
+          var d = lastAudit;
+
+          dupBody.innerHTML = '';
+          (d.nearDuplicateTowns || []).forEach(function(pair){
+            var tr = document.createElement('tr');
+            tr.appendChild(td(pair.a.name + ' (' + (pair.a.zone || 'no zone') + ', ' + pair.a.country + ')'));
+            tr.appendChild(td(pair.b.name + ' (' + (pair.b.zone || 'no zone') + ', ' + pair.b.country + ')'));
+            tr.appendChild(td(fmtKm(pair.distanceKm)));
+            dupBody.appendChild(tr);
+          });
+          dupEmpty.style.display = (d.nearDuplicateTowns || []).length ? 'none' : 'block';
+
+          overlapBody.innerHTML = '';
+          (d.townSuburbOverlaps || []).forEach(function(o){
+            var tr = document.createElement('tr');
+            tr.appendChild(td(o.standaloneTown.name + ' (' + (o.standaloneTown.zone || 'no zone') + ')'));
+            tr.appendChild(td(o.suburb.name));
+            tr.appendChild(td(o.suburb.parentTownName));
+            tr.appendChild(td(fmtKm(o.distanceKm)));
+            overlapBody.appendChild(tr);
+          });
+          overlapEmpty.style.display = (d.townSuburbOverlaps || []).length ? 'none' : 'block';
+
+          nestingBody.innerHTML = '';
+          (d.orphanRefs || []).forEach(function(o){
+            var tr = document.createElement('tr');
+            tr.appendChild(td(o.name || '—'));
+            tr.appendChild(td(o.source));
+            tr.appendChild(td(o.issue));
+            nestingBody.appendChild(tr);
+          });
+          (d.zoneOnlyNoTown || []).forEach(function(o){
+            var tr = document.createElement('tr');
+            tr.appendChild(td(o.name || '—'));
+            tr.appendChild(td(o.source));
+            tr.appendChild(td('tagged "' + o.zone + '" but not linked down to a Town'));
+            nestingBody.appendChild(tr);
+          });
+          var nestingCount = (d.orphanRefs || []).length + (d.zoneOnlyNoTown || []).length;
+          nestingEmpty.style.display = nestingCount ? 'none' : 'block';
+        }
+
+        btn.addEventListener('click', function(){
+          btn.disabled = true;
+          statusEl.textContent = 'Auditing the location tree…';
+          statusEl.className = 'status show ok';
+          mapAdminPost('auditLocationTree', {}).then(function(res){
+            btn.disabled = false;
+            if(!(res.data && res.data.ok)){
+              statusEl.textContent = 'Could not run the audit — ' + ((res.data && res.data.error) || 'unknown error') + '.';
+              statusEl.className = 'status show';
+              return;
+            }
+            lastAudit = res.data;
+            var dupCount = (lastAudit.nearDuplicateTowns || []).length;
+            var overlapCount = (lastAudit.townSuburbOverlaps || []).length;
+            var nestingCount = (lastAudit.orphanRefs || []).length + (lastAudit.zoneOnlyNoTown || []).length;
+            statusEl.textContent = 'Checked ' + lastAudit.totalTowns + ' towns — ' + dupCount + ' possible duplicate town name' + (dupCount === 1 ? '' : 's') +
+              ', ' + overlapCount + ' town/suburb overlap' + (overlapCount === 1 ? '' : 's') + ', ' + nestingCount + ' nesting issue' + (nestingCount === 1 ? '' : 's') + '.';
+            statusEl.className = 'status show ok';
+            render();
+          }).catch(function(e){
+            btn.disabled = false;
+            statusEl.textContent = 'Could not run the audit — ' + e.message + '.';
+            statusEl.className = 'status show';
+          });
+        });
+
+        if(dlBtn) dlBtn.addEventListener('click', function(){
+          if(!lastAudit){ return; }
+          var rows = [['Category', 'Item A', 'Item B', 'Detail']];
+          (lastAudit.nearDuplicateTowns || []).forEach(function(p){
+            rows.push(['Possible duplicate town', p.a.name, p.b.name, fmtKm(p.distanceKm)]);
+          });
+          (lastAudit.townSuburbOverlaps || []).forEach(function(o){
+            rows.push(['Town looks like a suburb', o.standaloneTown.name, o.suburb.name + ' (suburb of ' + o.suburb.parentTownName + ')', fmtKm(o.distanceKm)]);
+          });
+          (lastAudit.orphanRefs || []).forEach(function(o){
+            rows.push(['Nesting issue', o.name || '', o.source, o.issue]);
+          });
+          (lastAudit.zoneOnlyNoTown || []).forEach(function(o){
+            rows.push(['Nesting issue', o.name || '', o.source, 'tagged "' + o.zone + '" but not linked down to a Town']);
+          });
+          var csv = rows.map(function(r){ return r.map(csvEscape).join(','); }).join('\r\n');
+          var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+          var url = URL.createObjectURL(blob);
+          var a = document.createElement('a');
+          a.href = url; a.download = 'location-tree-audit-' + new Date().toISOString().slice(0, 10) + '.csv';
+          document.body.appendChild(a); a.click(); document.body.removeChild(a);
+          URL.revokeObjectURL(url);
         });
       })();
 
