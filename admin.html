@@ -1263,13 +1263,17 @@
       </div>
 
       <div class="card" style="margin-top:20px;">
-        <h3 style="margin-top:0;">Properties with no zone</h3>
-        <p style="margin-top:0;">Properties and resort rows that already have coordinates but never got a zone &mdash; usually a coordinate that's offshore, right on a zone border, or otherwise not something Google or the zone map can place precisely. Re-running "Start geocoding" or "Re-check all zones" won't change this list on its own; each one is worth a look (double-check the coordinate itself first).</p>
+        <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+          <h3 style="margin-top:0;">Properties with no zone</h3>
+          <button class="btn-outline" id="downloadNoZonePropsBtn" style="flex:none;">Download CSV</button>
+        </div>
+        <p style="margin-top:0;">Properties and resort rows that already have coordinates but never got a zone &mdash; usually a coordinate that's offshore, right on a zone border, or otherwise not something Google or the zone map can place precisely. Re-running "Start geocoding" or "Re-check all zones" won't change this list on its own; each one is worth a look (double-check the coordinate itself first). "Source" shows where the row comes from: <strong>resort-list</strong> rows are fixed by correcting your StockNetwork export and re-uploading it; <strong>onboarded</strong> rows are fixed directly in Property Listings.</p>
         <div class="table-wrap">
           <table class="data-table">
             <thead>
               <tr>
                 <th>Property</th>
+                <th>Source</th>
                 <th>Area / City / Country</th>
                 <th>Coordinates</th>
               </tr>
@@ -9409,6 +9413,10 @@
           var tr = document.createElement('tr');
           var tdName = document.createElement('td');
           tdName.textContent = p.name || p.listingId || '—';
+          var tdSource = document.createElement('td');
+          tdSource.textContent = p.source === 'resort-list' ? 'resort-list' : (p.source === 'onboarded' ? 'onboarded' : '—');
+          tdSource.style.fontSize = '11px';
+          tdSource.style.color = 'var(--muted)';
           var tdLoc = document.createElement('td');
           tdLoc.textContent = [p.area, p.city, p.country].filter(Boolean).join(', ') || '—';
           var tdCoords = document.createElement('td');
@@ -9416,10 +9424,52 @@
           tdCoords.style.fontSize = '11px';
           tdCoords.style.color = 'var(--muted)';
           tr.appendChild(tdName);
+          tr.appendChild(tdSource);
           tr.appendChild(tdLoc);
           tr.appendChild(tdCoords);
           body.appendChild(tr);
         });
+      }
+
+      function csvEscape(val){
+        var s = (val === undefined || val === null) ? '' : String(val);
+        if(/[",\n]/.test(s)) s = '"' + s.replace(/"/g, '""') + '"';
+        return s;
+      }
+
+      function downloadNoZonePropsCsv(){
+        var rows = (lastMapProperties || []).filter(function(p){
+          return typeof p.latitude === 'number' && typeof p.longitude === 'number' && !p.zone;
+        });
+        var header = ['Property', 'Source', 'Area', 'City', 'Country', 'Latitude', 'Longitude'];
+        var lines = [header.map(csvEscape).join(',')];
+        rows.forEach(function(p){
+          lines.push([
+            p.name || p.listingId || '',
+            p.source || '',
+            p.area || '',
+            p.city || '',
+            p.country || '',
+            p.latitude,
+            p.longitude
+          ].map(csvEscape).join(','));
+        });
+        var csvContent = lines.join('\r\n');
+        var blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        var stamp = new Date().toISOString().slice(0, 10);
+        a.href = url;
+        a.download = 'properties-with-no-zone-' + stamp + '.csv';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+
+      var downloadNoZonePropsBtn = document.getElementById('downloadNoZonePropsBtn');
+      if(downloadNoZonePropsBtn){
+        downloadNoZonePropsBtn.addEventListener('click', downloadNoZonePropsCsv);
       }
 
       var mapLocTree = null;
