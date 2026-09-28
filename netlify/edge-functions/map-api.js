@@ -1819,6 +1819,119 @@ export default async (request, context) => {
       });
     }
 
+    if (action === "fixTownZones") {
+      // A gap "Re-check all zones" can't close on its own: that action only
+      // ever visits a coordinate that belongs to a CURRENT property, resort
+      // row, or activity — it finds/creates a Town by matching the name
+      // Google returns for that coordinate. A Town created by "Discover &
+      // add new locations" (built from text district/city/province columns,
+      // not coordinates) can end up with a blank zone if that text didn't
+      // clearly match a zone, and if no property/resort/activity with real
+      // coordinates currently points at that same town by name, nothing
+      // ever revisits it — "Re-check all zones" can run a hundred times and
+      // it stays blank. Confirmed against the live "No zone set" count on
+      // Jean's Master map (2026-09-28): those towns DO have coordinates
+      // (the legend only counts ones that do) but no zone.
+      //
+      // This action instead works from the TOWN records themselves: for
+      // every town that has coordinates of its own but no zone yet, it
+      // resolves a zone straight from those coordinates, using the exact
+      // same resolveLocationForCoordinate() step (zone-shape lookup first,
+      // Google reverse-geocode only as a fallback) every other geocoding
+      // action in this file uses, with force:true so it's allowed to set
+      // the town's own zone. When Google's town name for that point matches
+      // this town's own name (the normal case — it's the same place), it
+      // self-heals. When Google returns a different name for that exact
+      // point (a data/spelling mismatch between this town's name and what's
+      // really there), a different town record gets matched or created
+      // instead, and this one is left unresolved — "Merge duplicate towns"
+      // below is the tool for cleaning up anything that creates.
+      //
+      // Same "never overwrite what's already set" rule as everywhere else:
+      // only a town with a genuinely BLANK zone is ever touched. Only South
+      // African towns have a zone to derive (places outside SA are coloured
+      // by country on the map instead, not by zone). See the
+      // towns-layer-implementation project doc, 2026-09-28 entry, for the
+      // full diagnosis this was built for.
+      const apiKey = Deno.env.get("GOOGLE_GEOCODING_API_KEY") || "";
+      if (!apiKey) {
+        return json({ error: "GOOGLE_GEOCODING_API_KEY isn't set in this site's environment variables yet." }, 400);
+      }
+      const actionStartedAt = Date.now();
+
+      const allTowns = await loadTowns(townsStore);
+      const existingIds = new Set(allTowns.map((t) => t.id));
+
+      function needsZoneFix(t) {
+        if (t.zone) return false;
+        const lat = parseFloat(t.latitude);
+        const lng = parseFloat(t.longitude);
+        if (!isFinite(lat) || !isFinite(lng)) return false;
+        return townCountry(t) === SA_NAME;
+      }
+      const targets = allTowns.filter(needsZoneFix).sort((a, b) => String(a.id || "").localeCompare(String(b.id || "")));
+      const totalTowns = targets.length;
+
+      if (body.dryRun) {
+        return json({ ok: true, dryRun: true, totalTowns });
+      }
+
+      const limit = Math.max(1, Math.min(parseInt(body.limit, 10) || 15, 25));
+      const offset = Math.max(0, parseInt(body.offset, 10) || 0);
+      const page = targets.slice(offset, offset + limit);
+
+      // Same time-budget pattern as recheckZones above — stop starting new
+      // lookups once this is spent, so a slow batch reports what it really
+      // finished instead of risking the whole function getting killed.
+      const LOOKUP_START_BUDGET_MS = 11000;
+      const lookupsBeganAt = Date.now();
+      let skippedForTime = 0, fixed = 0, stillUnresolved = 0;
+      const exampleFixes = [];
+      const exampleUnresolved = [];
+      const geoCacheStore = getStore({ name: "map-geocache", consistency: "strong" });
+
+      await mapWithConcurrency(page, 8, async (t) => {
+        if (Date.now() - lookupsBeganAt > LOOKUP_START_BUDGET_MS) {
+          skippedForTime++;
+          return;
+        }
+        const lat = parseFloat(t.latitude);
+        const lng = parseFloat(t.longitude);
+        await resolveLocationForCoordinate(lat, lng, apiKey, allTowns, existingIds, true, geoCacheStore);
+        // resolveLocationForCoordinate mutates allTowns in place via
+        // ensureTownAndSuburb — re-read this same town record to see
+        // whether it matched itself and got its zone filled in.
+        if (t.zone) {
+          fixed++;
+          if (exampleFixes.length < 10) exampleFixes.push({ town: t.name, to: t.zone });
+        } else {
+          stillUnresolved++;
+          if (exampleUnresolved.length < 10) exampleUnresolved.push(t.name);
+        }
+      });
+
+      await saveTowns(townsStore, allTowns);
+
+      const processed = page.length - skippedForTime;
+      const nextOffset = offset + processed;
+      const remaining = Math.max(0, totalTowns - nextOffset);
+
+      return json({
+        ok: true,
+        dryRun: false,
+        totalTowns,
+        processed,
+        skippedForTime,
+        timings: { totalMs: Date.now() - actionStartedAt },
+        remaining,
+        nextOffset,
+        fixed,
+        stillUnresolved,
+        exampleFixes,
+        exampleUnresolved,
+      });
+    }
+
     if (action === "exportLocations") {
       // Backs the "Corrected StockNetwork file" tool. Given a batch of rows
       // from a StockNetwork resort export ({ i, name, resortId, siteId,
