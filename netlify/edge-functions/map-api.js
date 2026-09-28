@@ -1,6 +1,13 @@
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
 import { ZONES, LEGACY_ZONES, provinceToZone, districtToZone, normalizeZone, isValidZone, locateZone, zoneShapes } from "./lib/zones.js";
-import { reverseGeocode, forwardGeocode } from "./lib/geocode.js";
+// Aliased on import: this file already has its own local forwardGeocode()
+// (used by the pre-existing "Improve property coordinates" tool's
+// suggestCoordinates action, further down) — importing the same bare name
+// from lib/geocode.js collides with it (a real SyntaxError: "Identifier
+// 'forwardGeocode' has already been declared", caught by Netlify's Edge
+// Function bundler on deploy, 2026-09-28). Aliasing avoids touching that
+// older, unrelated function and its existing call sites at all.
+import { reverseGeocode, forwardGeocode as forwardGeocodeAddress } from "./lib/geocode.js";
 // Same Google Places photo search admin-api.js's Event hook "Find area
 // photo"/"Find theme photo" pickers use (see lib/places-images.js) — reused
 // here for the Map & Activities form's own "Find photo" button, so Jean
@@ -1192,7 +1199,7 @@ async function cachedForwardGeocode(geoCache, text, apiKey) {
       if (hit && typeof hit.ok === "boolean") return Object.assign({}, hit, { cached: true });
     } catch (e) { /* cache trouble must never block a lookup */ }
   }
-  const geo = await forwardGeocode(text, apiKey);
+  const geo = await forwardGeocodeAddress(text, apiKey);
   if (geoCache && geo && (geo.ok || geo.reason === "ZERO_RESULTS")) {
     try { await geoCache.setJSON(key, geo); } catch (e) { /* best effort */ }
   }
