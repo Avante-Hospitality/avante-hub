@@ -1263,6 +1263,24 @@
       </div>
 
       <div class="card" style="margin-top:20px;">
+        <h3 style="margin-top:0;">Properties with no zone</h3>
+        <p style="margin-top:0;">Properties and resort rows that already have coordinates but never got a zone &mdash; usually a coordinate that's offshore, right on a zone border, or otherwise not something Google or the zone map can place precisely. Re-running "Start geocoding" or "Re-check all zones" won't change this list on its own; each one is worth a look (double-check the coordinate itself first).</p>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Property</th>
+                <th>Area / City / Country</th>
+                <th>Coordinates</th>
+              </tr>
+            </thead>
+            <tbody id="noZonePropsTableBody"></tbody>
+          </table>
+        </div>
+        <div class="empty-state" id="noZonePropsEmpty" style="display:none;">Every property and resort row with coordinates has a zone.</div>
+      </div>
+
+      <div class="card" style="margin-top:20px;">
         <h3 style="margin-top:0;">StockNetwork resort list</h3>
         <p style="margin-top:0;">The full StockNetwork inventory (used by the Accommodation Link Builder in the Hub too, and by "Discover locations" below). The town/city column can be named <code>District</code>, <code>Town</code>, or <code>City</code> — any of those is picked up automatically. Also optional, if your export has them: <code>Suburb</code> (or <code>Area</code>) for suburb-level detail, <code>Zone</code>/<code>Province</code>/<code>State</code> for a more exact area than we can guess from the town name alone, and <code>Latitude</code>/<code>Longitude</code> to get resorts pinned on the map. Re-upload any time your export changes — everything else about how this list is used stays the same.</p>
         <div class="btn-row" style="margin-top:0;">
@@ -1467,6 +1485,15 @@
             <button class="btn-outline" id="recheckZonesBtn">Re-check all zones</button>
           </div>
           <div class="status" id="recheckZonesStatus"></div>
+        </div>
+
+        <div style="margin-top:18px; padding-top:16px; border-top:1.5px solid var(--line);">
+          <h4 style="margin:0 0 6px; font-size:13.5px;">Fix towns with no zone</h4>
+          <p style="margin:0 0 12px; font-size:13px; color:var(--muted);">"Re-check all zones" above only revisits a coordinate that belongs to a current property, resort row, or activity &mdash; a Town added via "Discover &amp; add new locations" with no matching property can be left with a blank zone forever, no matter how many times that runs. This instead looks at every town that already has coordinates but no zone, and works out its zone directly from those coordinates (the zone map first, a Google lookup only as a fallback). Never touches a town that already has a zone set.</p>
+          <div class="btn-row" style="margin-top:0;">
+            <button class="btn-outline" id="fixTownZonesBtn">Fix towns with no zone</button>
+          </div>
+          <div class="status" id="fixTownZonesStatus"></div>
         </div>
 
         <div style="margin-top:18px; padding-top:16px; border-top:1.5px solid var(--line);">
@@ -8025,6 +8052,122 @@
         runBatch();
       });
 
+      // ---- Fix towns with no zone ----
+      // Companion to "Re-check all zones" above, for the gap that one can't
+      // close on its own: a Town added by "Discover & add new locations"
+      // (built from text columns, not coordinates) that no current
+      // property/resort/activity happens to point at by name never gets
+      // revisited by that pass, no matter how many times it's run. This
+      // button calls the new fixTownZones server action, which instead
+      // walks every town that already has coordinates but no zone and
+      // resolves one straight from those coordinates. Much smaller and
+      // cheaper than a full re-check (only ever touches towns, and only
+      // ones genuinely blank), so this uses the same offset-cursor-plus-
+      // retry pattern as the buttons above without their extra adaptive-
+      // batch-size machinery — see the towns-layer-implementation project
+      // doc, 2026-09-28 entry, for why this was needed.
+      var fixTownZonesBtn = document.getElementById('fixTownZonesBtn');
+      var fixTownZonesStatusEl = document.getElementById('fixTownZonesStatus');
+
+      fixTownZonesBtn.addEventListener('click', function(){
+        if(!confirm('This looks at every town that already has coordinates but no zone, and works out its zone from those coordinates (the zone map first, a Google lookup only if needed). It never touches a town that already has a zone. Continue?')){
+          return;
+        }
+        var FIX_TOWN_OFFSET_KEY = 'avante-fix-town-zones-offset';
+        var offset = 0;
+        try {
+          var savedOffset = parseInt(localStorage.getItem(FIX_TOWN_OFFSET_KEY), 10) || 0;
+          if(savedOffset > 0 && confirm('A previous run stopped part-way, after ' + savedOffset + ' towns. OK = resume from there. Cancel = start again from the beginning.')){
+            offset = savedOffset;
+          }
+        } catch(e){}
+
+        fixTownZonesBtn.disabled = true;
+        recheckZonesBtn.disabled = true;
+        startGeocodeBtn.disabled = true;
+        checkGeocodeBtn.disabled = true;
+
+        var totalFixed = 0, totalUnresolved = 0, totalTowns = 0, iterations = 0;
+        var MAX_ITERATIONS = 300;
+        var batchRetries = 0, MAX_BATCH_RETRIES = 4;
+        var exampleFixes = [], exampleUnresolved = [];
+
+        function saveOffset(v){ try { if(v > 0) localStorage.setItem(FIX_TOWN_OFFSET_KEY, String(v)); else localStorage.removeItem(FIX_TOWN_OFFSET_KEY); } catch(e){} }
+        function progressText(){ return totalTowns ? (' — town ' + Math.min(offset, totalTowns) + ' of ' + totalTowns) : ''; }
+        function finish(summary){
+          fixTownZonesBtn.disabled = false;
+          recheckZonesBtn.disabled = false;
+          startGeocodeBtn.disabled = false;
+          checkGeocodeBtn.disabled = false;
+          fixTownZonesStatusEl.textContent = summary;
+          fixTownZonesStatusEl.className = 'status show' + (/^Done/.test(summary) ? ' ok' : '');
+          loadActivities();
+        }
+        function stopWith(msg){ saveOffset(offset); finish(msg); }
+
+        function runBatch(){
+          iterations++;
+          if(iterations > MAX_ITERATIONS){
+            stopWith('Stopped after ' + MAX_ITERATIONS + ' batches (fixed ' + totalFixed + ' so far' + progressText() + ') — click Fix towns with no zone again to continue.');
+            return;
+          }
+          fixTownZonesStatusEl.textContent = 'Checking towns…' + (totalFixed || totalUnresolved ? (' (' + totalFixed + ' fixed so far' + progressText() + ')') : '');
+          fixTownZonesStatusEl.className = 'status show ok';
+          mapAdminPost('fixTownZones', { dryRun: false, limit: 15, offset: offset }).then(function(res){
+            if(!(res.data && res.data.ok)){
+              var serverMsg = res.data && res.data.error;
+              if(serverMsg){
+                stopWith('Could not fix town zones — ' + serverMsg + progressText() + '.');
+                return;
+              }
+              batchRetries++;
+              if(batchRetries <= MAX_BATCH_RETRIES){
+                fixTownZonesStatusEl.textContent = 'That request timed out — retrying (' + batchRetries + '/' + MAX_BATCH_RETRIES + ')… (' + totalFixed + ' fixed so far' + progressText() + ')';
+                fixTownZonesStatusEl.className = 'status show';
+                setTimeout(runBatch, 1500);
+                return;
+              }
+              stopWith('Fixed ' + totalFixed + ' so far, then that request kept timing out after ' + MAX_BATCH_RETRIES + ' retries — click Fix towns with no zone again to continue with what’s left.');
+              return;
+            }
+
+            batchRetries = 0;
+            totalTowns = res.data.totalTowns || totalTowns;
+            totalFixed += res.data.fixed || 0;
+            totalUnresolved += res.data.stillUnresolved || 0;
+            if(res.data.exampleFixes) exampleFixes = exampleFixes.concat(res.data.exampleFixes).slice(0, 10);
+            if(res.data.exampleUnresolved) exampleUnresolved = exampleUnresolved.concat(res.data.exampleUnresolved).slice(0, 10);
+            offset = (typeof res.data.nextOffset === 'number') ? res.data.nextOffset : (offset + (res.data.processed || 0));
+
+            if(res.data.remaining > 0){
+              saveOffset(offset);
+              setTimeout(runBatch, 200);
+              return;
+            }
+
+            saveOffset(0);
+            var summary = 'Done — fixed ' + totalFixed + ' town' + (totalFixed === 1 ? '' : 's') + '.';
+            if(totalUnresolved){
+              summary += ' ' + totalUnresolved + ' still couldn’t be placed (no usable town at that exact point, even from Google) — worth a manual look.';
+            }
+            if(exampleFixes.length){
+              summary += ' Examples: ' + exampleFixes.map(function(f){ return f.town + ' → ' + f.to; }).join('; ') + '.';
+            }
+            finish(summary);
+          }, function(err){
+            batchRetries++;
+            if(batchRetries <= MAX_BATCH_RETRIES){
+              fixTownZonesStatusEl.textContent = 'That request timed out — retrying (' + batchRetries + '/' + MAX_BATCH_RETRIES + ')… (' + totalFixed + ' fixed so far' + progressText() + ')';
+              fixTownZonesStatusEl.className = 'status show';
+              setTimeout(runBatch, 1500);
+              return;
+            }
+            stopWith('Fixed ' + totalFixed + ' so far, then that request kept timing out after ' + MAX_BATCH_RETRIES + ' retries — click Fix towns with no zone again to continue with what’s left.');
+          });
+        }
+        runBatch();
+      });
+
       // ---- Improve property coordinates (from a StockNetwork export) ----
       // Reads the admin's own StockNetwork resort export in the browser,
       // asks map-api.js's read-only suggestCoordinates action to look each
@@ -9242,6 +9385,43 @@
         });
       }
 
+      // Properties/resort rows that already have coordinates but no zone —
+      // computed client-side from the same pins the Master map and its zone
+      // legend already have (see renderZoneLegend's own '' bucket above),
+      // not a separate network call. A property only lands here if it has
+      // real, parseable latitude/longitude; see the "Properties with no
+      // coordinates" section above for the (usually much smaller) list of
+      // ones missing a coordinate altogether — that's a different problem.
+      function renderNoZonePropsTable(properties){
+        var body = document.getElementById('noZonePropsTableBody');
+        var empty = document.getElementById('noZonePropsEmpty');
+        if(!body || !empty) return;
+        var rows = (properties || []).filter(function(p){
+          return typeof p.latitude === 'number' && typeof p.longitude === 'number' && !p.zone;
+        });
+        body.innerHTML = '';
+        if(!rows.length){
+          empty.style.display = 'block';
+          return;
+        }
+        empty.style.display = 'none';
+        rows.forEach(function(p){
+          var tr = document.createElement('tr');
+          var tdName = document.createElement('td');
+          tdName.textContent = p.name || p.listingId || '—';
+          var tdLoc = document.createElement('td');
+          tdLoc.textContent = [p.area, p.city, p.country].filter(Boolean).join(', ') || '—';
+          var tdCoords = document.createElement('td');
+          tdCoords.textContent = p.latitude.toFixed(5) + ', ' + p.longitude.toFixed(5);
+          tdCoords.style.fontSize = '11px';
+          tdCoords.style.color = 'var(--muted)';
+          tr.appendChild(tdName);
+          tr.appendChild(tdLoc);
+          tr.appendChild(tdCoords);
+          body.appendChild(tr);
+        });
+      }
+
       var mapLocTree = null;
       var lastMapProperties = [];
       var lastMapActivities = [];
@@ -9297,6 +9477,7 @@
 
             renderMissingCoordsTable(res.data.missingCoordinates || []);
             renderMissingCoordsSummary(res.data.missingCoordinates || [], res.data.activities || []);
+            renderNoZonePropsTable(res.data.properties || []);
             renderResortListStatus(res.data.resortStats || null);
           } else {
             actStatusEl.textContent = (res.data && res.data.error) || 'Could not load map data.';
