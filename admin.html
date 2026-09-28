@@ -1254,6 +1254,20 @@
         .loc-tree-empty{ padding:6px 4px; color:var(--muted); font-size:13px; }
         .loc-tree-label{ font-size:14px; }
         .loc-tree-summary{ font-size:12.5px; color:var(--muted); margin-bottom:8px; }
+        /* Properties nested one level below their Town/Suburb — collapsed by
+           default (the resort list alone can be thousands of rows, so only
+           the row itself is built up front; the name list is built lazily
+           on first expand, same lazy-build approach the affiliate picker's
+           own "Properties (N)" rows already use). Informational only: no
+           checkbox, since selection in this tree stays at region/town/suburb
+           granularity — this is here so a property's place in the tree is
+           actually visible, not to add a new filter level. */
+        .loc-tree-props-toggle{ display:flex; align-items:center; gap:6px; padding:4px 4px 4px 56px; cursor:pointer; border-radius:6px; font-size:12.5px; color:var(--muted); }
+        .loc-tree-props-toggle:hover{ background:var(--mint); }
+        .loc-tree-props-chevron{ font-size:11px; width:12px; display:inline-block; }
+        .loc-tree-props-list{ padding-left:80px; display:flex; flex-direction:column; gap:2px; margin-bottom:2px; }
+        .loc-tree-prop-item{ font-size:13px; color:var(--navy); padding:3px 4px; }
+        .loc-tree-prop-item .loc-tree-prop-hidden{ color:var(--muted); font-size:11px; margin-left:6px; }
       </style>
 
       <div class="card">
@@ -2817,8 +2831,14 @@
     // record, so it needs its own checkbox-tree renderer instead of an
     // <option> list. Kept top-level for the same cross-IIFE reason as the
     // rest of this block. `towns` is the same {id,name,zone,suburbs:[...]}
-    // shape _locationTreeTowns already uses.
-    function createLocationBrowseTree(containerEl, towns){
+    // shape _locationTreeTowns already uses. `properties` is the same
+    // {name,townId,suburbId,hidden,...} pin list the master map below is
+    // built from (see toPropertyPin/toResortPin in map-api.js) — passed in
+    // so every property can be listed directly under its Town/Suburb, one
+    // level down, confirming it's actually nested where it belongs rather
+    // than just filtered invisibly.
+    function createLocationBrowseTree(containerEl, towns, properties){
+      properties = properties || [];
       var checkedLeaves = new Set(); // 'suburb:<townId>:<suburbId>' or 'town:<townId>' (towns with no suburbs)
       var listeners = [];
 
@@ -2864,6 +2884,59 @@
       function toggleSuburb(town, sub){ toggleKeys(['suburb:' + town.id + ':' + sub.id]); }
 
       function fire(){ listeners.forEach(function(fn){ fn(); }); }
+
+      function propsForTown(town){
+        return properties.filter(function(p){ return (p.townId || '') === town.id; });
+      }
+      function propsForSuburb(town, sub){
+        return properties.filter(function(p){ return (p.townId || '') === town.id && (p.suburbId || '') === sub.id; });
+      }
+
+      // Appends a collapsed "Properties (N)" row to parentEl, one level
+      // below whatever Town/Suburb row it follows — names only, built lazily
+      // on first expand (matches the affiliate picker's own Properties rows,
+      // minus the checkbox: this tree's selection stops at Town/Suburb).
+      function appendPropertiesRow(parentEl, matchingProps, labelText){
+        if(!matchingProps.length) return;
+        var row = document.createElement('div');
+        row.className = 'loc-tree-props-toggle';
+        var chevron = document.createElement('span');
+        chevron.className = 'loc-tree-props-chevron';
+        chevron.textContent = '▸';
+        var label = document.createElement('span');
+        label.textContent = labelText || ('Properties (' + matchingProps.length + ')');
+        row.appendChild(chevron);
+        row.appendChild(label);
+        parentEl.appendChild(row);
+
+        var list = document.createElement('div');
+        list.className = 'loc-tree-props-list';
+        list.style.display = 'none';
+        var built = false;
+        function build(){
+          if(built) return;
+          built = true;
+          matchingProps.slice().sort(function(a, b){ return (a.name || '').localeCompare(b.name || ''); }).forEach(function(p){
+            var item = document.createElement('div');
+            item.className = 'loc-tree-prop-item';
+            item.textContent = p.name || '(unnamed property)';
+            if(p.hidden){
+              var tag = document.createElement('span');
+              tag.className = 'loc-tree-prop-hidden';
+              tag.textContent = 'hidden';
+              item.appendChild(tag);
+            }
+            list.appendChild(item);
+          });
+        }
+        row.addEventListener('click', function(){
+          build();
+          var collapsed = list.style.display === 'none';
+          list.style.display = collapsed ? 'flex' : 'none';
+          chevron.textContent = collapsed ? '▾' : '▸';
+        });
+        parentEl.appendChild(list);
+      }
 
       function render(){
         var openZones = Array.prototype.map.call(containerEl.querySelectorAll('details.loc-tree-node[data-zone][open]'), function(d){ return d.dataset.zone; });
@@ -2920,6 +2993,7 @@
               trow.appendChild(tcb);
               trow.appendChild(tlabel);
               body.appendChild(trow);
+              appendPropertiesRow(body, propsForTown(town), null);
               return;
             }
 
@@ -2957,7 +3031,17 @@
               srow.appendChild(scb);
               srow.appendChild(slabel);
               tbody.appendChild(srow);
+              appendPropertiesRow(tbody, propsForSuburb(town, sub), null);
             });
+            // Properties geocoded to this town whose own suburbId isn't one
+            // of this town's known suburbs (not yet assigned one, or
+            // assigned one that's since been merged/removed) — listed once
+            // directly under the town rather than silently left out of the
+            // tree, same "Other properties in <town>" fallback the
+            // affiliate picker's location tree already uses.
+            var subIds = subs.map(function(s){ return s.id; });
+            var otherTownProps = propsForTown(town).filter(function(p){ return subIds.indexOf(p.suburbId || '') === -1; });
+            appendPropertiesRow(tbody, otherTownProps, 'Other properties in ' + town.name + ' (' + otherTownProps.length + ')');
             tdet.appendChild(tbody);
             body.appendChild(tdet);
           });
@@ -2991,7 +3075,8 @@
         onChange: function(fn){ listeners.push(fn); },
         matches: matches,
         selectionCount: function(){ return checkedLeaves.size; },
-        setTowns: function(newTowns){ towns = newTowns || []; render(); }
+        setTowns: function(newTowns){ towns = newTowns || []; render(); },
+        setProperties: function(newProps){ properties = newProps || []; render(); }
       };
     }
 
@@ -10004,10 +10089,11 @@
             var treeEl = document.getElementById('mapLocationTree');
             if(treeEl){
               if(!mapLocTree){
-                mapLocTree = createLocationBrowseTree(treeEl, lastMapTowns);
+                mapLocTree = createLocationBrowseTree(treeEl, lastMapTowns, lastMapProperties);
                 mapLocTree.onChange(applyMapLocationFilter);
               } else {
                 mapLocTree.setTowns(lastMapTowns);
+                mapLocTree.setProperties(lastMapProperties);
               }
             }
             applyMapLocationFilter();
