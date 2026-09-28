@@ -27,14 +27,48 @@ export function resortKey(r) {
   return resortId + "|" + siteId;
 }
 
-// Carries an existing row's admin-set fields (currently just affId) forward
-// onto the freshly-parsed row with the same resortKey, so a StockNetwork
-// CSV re-import updates each property's own listing details (name,
-// district, suburb, zoneHint, lat/lng — all authoritative from the new
-// file) without silently wiping which affiliate it was assigned to. A
-// property that no longer appears in the new file simply drops out (and
-// its old affId with it) — same as any other row that's gone from the new
-// list. A brand-new property not seen before just gets the default "".
+// Fields map-api.js's applyLocationTag writes onto a resort row once its
+// coordinate has been resolved to a specific Town/Suburb via geocodeLocations
+// (or the equivalent "Re-check all zones" pass) — see map-api.js for where
+// these are set. None of these come from the CSV/StockNetwork API at all,
+// so mergeResorts is the only thing standing between them and being wiped
+// on every re-import.
+const LOCATION_TAG_FIELDS = [
+  "zone", "townId", "suburbId", "locationLabel", "country", "nearby", "offshoreKm", "locV",
+];
+
+// Same coordinate-match tolerance map-api.js itself already uses (see its
+// dryRun/apply handlers for the geocodeLocations action) before trusting a
+// stored location tag — kept identical here so a re-import doesn't apply a
+// looser or stricter rule than the rest of the app does.
+const COORD_MATCH_TOLERANCE = 0.00002;
+
+function sameCoordinate(a, b) {
+  const aLat = parseFloat(a && a.latitude);
+  const aLng = parseFloat(a && a.longitude);
+  const bLat = parseFloat(b && b.latitude);
+  const bLng = parseFloat(b && b.longitude);
+  if (!isFinite(aLat) || !isFinite(aLng) || !isFinite(bLat) || !isFinite(bLng)) return false;
+  return Math.abs(aLat - bLat) < COORD_MATCH_TOLERANCE && Math.abs(aLng - bLng) < COORD_MATCH_TOLERANCE;
+}
+
+// Carries an existing row's admin-set/admin-computed fields forward onto the
+// freshly-parsed row with the same resortKey, so a StockNetwork CSV
+// re-import updates each property's own listing details (name, district,
+// suburb, zoneHint, lat/lng — all authoritative from the new file) without
+// silently wiping:
+//   - which affiliate it was assigned to (affId), and
+//   - which Town/Suburb the map has it geocoded to (LOCATION_TAG_FIELDS
+//     above) — but ONLY when the property's coordinate hasn't actually
+//     moved since that geocoding ran (see sameCoordinate). If StockNetwork's
+//     own lat/lng for a row has shifted, the old town/suburb tie could now
+//     be wrong, so it's dropped instead of carried forward — the next
+//     geocodeLocations/"Re-check all zones" pass will re-resolve it fresh,
+//     same as it would for a brand-new row.
+// A property that no longer appears in the new file simply drops out (and
+// its old affId/location tag with it) — same as any other row that's gone
+// from the new list. A brand-new property not seen before just gets the
+// default "" affId and no location tag, same as before this file existed.
 export function mergeResorts(oldResorts, newResorts) {
   const oldByKey = new Map();
   for (const r of Array.isArray(oldResorts) ? oldResorts : []) {
@@ -44,6 +78,12 @@ export function mergeResorts(oldResorts, newResorts) {
   return (Array.isArray(newResorts) ? newResorts : []).map((r) => {
     const key = resortKey(r);
     const old = key ? oldByKey.get(key) : null;
-    return { ...r, affId: old && typeof old.affId === "string" ? old.affId : "" };
+    const merged = { ...r, affId: old && typeof old.affId === "string" ? old.affId : "" };
+    if (old && sameCoordinate(old, r)) {
+      for (const field of LOCATION_TAG_FIELDS) {
+        if (Object.prototype.hasOwnProperty.call(old, field)) merged[field] = old[field];
+      }
+    }
+    return merged;
   });
 }
