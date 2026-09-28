@@ -1,6 +1,6 @@
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
 import { ZONES, LEGACY_ZONES, provinceToZone, districtToZone, normalizeZone, isValidZone, locateZone, zoneShapes } from "./lib/zones.js";
-import { reverseGeocode } from "./lib/geocode.js";
+import { reverseGeocode, forwardGeocode } from "./lib/geocode.js";
 // Same Google Places photo search admin-api.js's Event hook "Find area
 // photo"/"Find theme photo" pickers use (see lib/places-images.js) — reused
 // here for the Map & Activities form's own "Find photo" button, so Jean
@@ -831,6 +831,142 @@ function remapTownRefs(rec, townMap, subMap) {
   return changed;
 }
 
+// ---- Location tree audit (read-only) -------------------------------------
+// "Merge duplicate towns" above only ever catches an EXACT (case/whitespace-
+// insensitive) name match within the SAME country+zone — that's deliberately
+// narrow so it can safely auto-merge. It never catches two other real
+// patterns Jean spotted by eye in the live tree (2026-09-28):
+//   1. "Inhambane" vs "Inhambane Province" — the same real place recorded
+//      twice under names that differ by a qualifier word, which planTownMerges
+//      treats as two unrelated names.
+//   2. "Brenton-on-Sea" existing as BOTH its own standalone Town AND (as
+//      "Brenton") a Suburb entry nested under Knysna — a cross-level
+//      duplicate planTownMerges was never designed to look for at all, since
+//      it only ever compares towns against other towns.
+// This section is a REPORT ONLY — nothing here writes anything. Per Jean's
+// standing rule (see suggestPropertyCoordinates above), a fuzzy name/distance
+// match can be wrong (two genuinely different places that happen to share a
+// qualifier-stripped name), so every result here is for a human to look at
+// and act on by hand — via the existing Edit/Delete/Merge tools — never
+// auto-applied.
+//
+// namesLikelySamePlace: true when two place names are identical once
+// normalized, OR when the shorter one is a whole-word prefix of the longer
+// one ("brenton" is a prefix of "brenton on sea"; "inhambane" is a prefix of
+// "inhambane province"). Deliberately does NOT do general fuzzy/edit-distance
+// matching — that produces too many unrelated false positives (misspellings
+// aside, this codebase has no evidence of any); a qualifier-word SUFFIX is
+// the specific, real pattern being targeted here.
+function namesLikelySamePlace(nameA, nameB) {
+  const a = townNameKey(nameA);
+  const b = townNameKey(nameB);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const shorter = a.length <= b.length ? a : b;
+  const longer = a.length <= b.length ? b : a;
+  return longer.indexOf(shorter + " ") === 0;
+}
+
+// Every pair of Towns that are plausibly the same real place recorded twice,
+// but which planTownMerges' exact-match grouping would never bucket together
+// (different qualifier wording, and/or a different zone/country recorded on
+// one of the two — itself often a symptom of the same underlying mix-up).
+// Filtered to pairs within SAME_ZONE_TOWN_MAX_KM of each other (or missing
+// coordinates on either side, in which case distance can't rule it out, so
+// it's still surfaced for a human to check). Excludes the exact-match case
+// "Merge duplicate towns" already finds and can fix on its own.
+function auditNearDuplicateTowns(allTowns) {
+  const results = [];
+  for (let i = 0; i < allTowns.length; i++) {
+    const a = allTowns[i];
+    if (!a || !a.id || !a.name) continue;
+    for (let j = i + 1; j < allTowns.length; j++) {
+      const b = allTowns[j];
+      if (!b || !b.id || !b.name) continue;
+      if (!namesLikelySamePlace(a.name, b.name)) continue;
+      const exactMatch = townNameKey(a.name) === townNameKey(b.name) &&
+        townCountry(a).toLowerCase() === townCountry(b).toLowerCase() && townZone(a) === townZone(b);
+      if (exactMatch) continue; // already covered by "Merge duplicate towns"
+      const aLat = parseFloat(a.latitude), aLng = parseFloat(a.longitude);
+      const bLat = parseFloat(b.latitude), bLng = parseFloat(b.longitude);
+      const hasCoords = isFinite(aLat) && isFinite(aLng) && isFinite(bLat) && isFinite(bLng);
+      const km = hasCoords ? haversineKm(aLat, aLng, bLat, bLng) : null;
+      if (hasCoords && km > SAME_ZONE_TOWN_MAX_KM) continue;
+      results.push({
+        a: { id: a.id, name: a.name || "", zone: townZone(a), country: townCountry(a), latitude: a.latitude || "", longitude: a.longitude || "", suburbs: Array.isArray(a.suburbs) ? a.suburbs.length : 0 },
+        b: { id: b.id, name: b.name || "", zone: townZone(b), country: townCountry(b), latitude: b.latitude || "", longitude: b.longitude || "", suburbs: Array.isArray(b.suburbs) ? b.suburbs.length : 0 },
+        distanceKm: km,
+      });
+    }
+  }
+  return results;
+}
+
+// Every Town whose name plausibly matches a Suburb nested under a DIFFERENT
+// town — the Brenton-on-Sea/Knysna pattern. Filtered to within
+// SAME_TOWN_MAX_KM (tighter than the town-vs-town check above, since a
+// suburb is expected to sit close to its own parent town) or missing
+// coordinates on either side.
+function auditTownSuburbOverlaps(allTowns) {
+  const results = [];
+  allTowns.forEach((town) => {
+    if (!town || !town.id || !town.name) return;
+    allTowns.forEach((parent) => {
+      if (!parent || !parent.id || parent.id === town.id) return;
+      (Array.isArray(parent.suburbs) ? parent.suburbs : []).forEach((sub) => {
+        if (!sub || !sub.id || !sub.name) return;
+        if (!namesLikelySamePlace(town.name, sub.name)) return;
+        const tLat = parseFloat(town.latitude), tLng = parseFloat(town.longitude);
+        const sLat = parseFloat(sub.latitude), sLng = parseFloat(sub.longitude);
+        const hasCoords = isFinite(tLat) && isFinite(tLng) && isFinite(sLat) && isFinite(sLng);
+        const km = hasCoords ? haversineKm(tLat, tLng, sLat, sLng) : null;
+        if (hasCoords && km > SAME_TOWN_MAX_KM) return;
+        results.push({
+          standaloneTown: { id: town.id, name: town.name || "", zone: townZone(town), country: townCountry(town), latitude: town.latitude || "", longitude: town.longitude || "" },
+          suburb: { id: sub.id, name: sub.name || "", parentTownId: parent.id, parentTownName: parent.name || "", latitude: sub.latitude || "", longitude: sub.longitude || "" },
+          distanceKm: km,
+        });
+      });
+    });
+  });
+  return results;
+}
+
+// A property/resort/activity should sit one level below its Town/Suburb in
+// the tree, not floating free of it. Two ways that breaks: (a) a stored
+// townId/suburbId that points at a Town/Suburb which no longer exists (left
+// behind by a hand delete, or a merge whose remap step didn't reach this
+// record); (b) a record with a zone but no townId at all — tagged only at
+// the Region level, never actually nested under a Town. Read-only, same as
+// the rest of this audit.
+function auditOrphanRefs(allTowns, listings, resortList, activities) {
+  const townIds = new Set(allTowns.filter((t) => t && t.id).map((t) => t.id));
+  const subIdsByTown = new Map(allTowns.filter((t) => t && t.id).map((t) => [t.id, new Set((Array.isArray(t.suburbs) ? t.suburbs : []).map((s) => s && s.id).filter(Boolean))]));
+  const orphans = [];
+  const zoneOnly = [];
+  function check(source, r, label) {
+    if (!r) return;
+    const tid = typeof r.townId === "string" ? r.townId : "";
+    const sid = typeof r.suburbId === "string" ? r.suburbId : "";
+    if (tid && !townIds.has(tid)) {
+      orphans.push({ source, name: label, issue: "townId " + tid + " no longer exists", townId: tid, suburbId: sid });
+      return;
+    }
+    if (sid) {
+      if (!tid) {
+        orphans.push({ source, name: label, issue: "has a suburbId but no townId", townId: "", suburbId: sid });
+      } else {
+        const subs = subIdsByTown.get(tid);
+        if (subs && !subs.has(sid)) orphans.push({ source, name: label, issue: "suburbId " + sid + " is not a suburb of town " + tid, townId: tid, suburbId: sid });
+      }
+    }
+    if (r.zone && !tid) zoneOnly.push({ source, name: label, zone: r.zone });
+  }
+  (listings || []).forEach((r) => { if (r && r.status === "Listed") check("listing", r, r.propertyName || r.listingId || ""); });
+  (resortList || []).forEach((r, i) => { if (r) check("resort", r, r.name || ("resort row " + i)); });
+  (activities || []).forEach((r) => { if (r) check("activity", r, r.name || r.id || ""); });
+  return { orphans, zoneOnly };
+}
 
 // A point this close to a zone edge still counts as land — the zone polygons
 // are simplified (~400 m) so a beach property can sit just outside them.
@@ -1036,6 +1172,27 @@ async function cachedReverseGeocode(geoCache, lat, lng, apiKey) {
     } catch (e) { /* cache trouble must never block a lookup */ }
   }
   const geo = await reverseGeocode(lat, lng, apiKey);
+  if (geoCache && geo && (geo.ok || geo.reason === "ZERO_RESULTS")) {
+    try { await geoCache.setJSON(key, geo); } catch (e) { /* best effort */ }
+  }
+  return geo;
+}
+
+// Forward-geocode cache key, in its own "fwd:" namespace so it can never
+// collide with a reverse-lookup's "g:lat,lng" key in the same blob store.
+function forwardGeoCacheKey(text) {
+  return "fwd:" + String(text || "").trim().toLowerCase().slice(0, 200);
+}
+
+async function cachedForwardGeocode(geoCache, text, apiKey) {
+  const key = forwardGeoCacheKey(text);
+  if (geoCache) {
+    try {
+      const hit = await geoCache.get(key, { type: "json" });
+      if (hit && typeof hit.ok === "boolean") return Object.assign({}, hit, { cached: true });
+    } catch (e) { /* cache trouble must never block a lookup */ }
+  }
+  const geo = await forwardGeocode(text, apiKey);
   if (geoCache && geo && (geo.ok || geo.reason === "ZERO_RESULTS")) {
     try { await geoCache.setJSON(key, geo); } catch (e) { /* best effort */ }
   }
@@ -1932,6 +2089,233 @@ export default async (request, context) => {
       });
     }
 
+    if (action === "fixPropertyCountry") {
+      // Closes a gap "Re-check all zones" can't reach: resolveLocationForCoordinate()
+      // only ever tags a property/resort row when it can either match a real
+      // town name Google returns, or find an EXISTING town in this system
+      // within NEAREST_TOWN_MAX_KM of the coordinate — and every town in
+      // this system is South African. A resort with a real coordinate in
+      // the Okavango Delta or NamibRand (hundreds of km from the nearest
+      // South African town) fails both of those, so "Re-check all zones"
+      // counts it as a geocode failure and leaves it completely untouched —
+      // not even the country gets recorded, even though Google answers it
+      // plainly. Confirmed against Jean's live "Properties with no zone"
+      // table (2026-09-28): every one of these had a real Namibia/Botswana/
+      // Zimbabwe coordinate already, just no zone or country.
+      //
+      // Deliberately narrower than resolveLocationForCoordinate: it never
+      // tries to find or create a Town, it only reverse-geocodes the
+      // record's own coordinate and writes country + a zone value (the
+      // province Google returns, or the country itself if there's no
+      // province) straight onto that ONE record — sidestepping the "no SA
+      // town nearby" dead end entirely. Only ever touches a record that
+      // currently has NO zone, and only when it has a real (non-placeholder)
+      // coordinate to work from — a property sitting at 0,0 is a different
+      // problem (see suggestPropertyCoordinates below, which handles that
+      // case by suggestion instead of writing anything).
+      const apiKey = Deno.env.get("GOOGLE_GEOCODING_API_KEY") || "";
+      if (!apiKey) {
+        return json({ error: "GOOGLE_GEOCODING_API_KEY isn't set in this site's environment variables yet." }, 400);
+      }
+      const actionStartedAt = Date.now();
+
+      const { blobs: listingBlobs } = await listingsStore.list();
+      const listings = await mapWithConcurrency(listingBlobs, 25, (b) => listingsStore.get(b.key, { type: "json" }));
+      const resortRecord = await resortListStore.get("current", { type: "json" });
+      const resortList = (resortRecord && Array.isArray(resortRecord.resorts)) ? resortRecord.resorts : [];
+
+      function hasRealCoord(r) {
+        const lat = parseFloat(r.latitude);
+        const lng = parseFloat(r.longitude);
+        if (!isFinite(lat) || !isFinite(lng)) return false;
+        return !(lat === 0 && lng === 0); // 0,0 is the CSV/import placeholder, not a real point
+      }
+
+      const targets = [];
+      listings.forEach((r) => {
+        if (r && r.status === "Listed" && !r.zone && hasRealCoord(r)) {
+          targets.push({ source: "listing", key: r.listingId, name: r.propertyName || r.listingId, lat: parseFloat(r.latitude), lng: parseFloat(r.longitude) });
+        }
+      });
+      resortList.forEach((r, i) => {
+        if (r && !r.zone && hasRealCoord(r)) {
+          targets.push({ source: "resort", key: i, name: r.name || ("resort row " + i), lat: parseFloat(r.latitude), lng: parseFloat(r.longitude) });
+        }
+      });
+      targets.sort((a, b) => (a.source + "|" + a.key).localeCompare(b.source + "|" + b.key));
+
+      const totalTargets = targets.length;
+      if (body.dryRun) {
+        return json({ ok: true, dryRun: true, totalTargets });
+      }
+
+      const limit = Math.max(1, Math.min(parseInt(body.limit, 10) || 15, 25));
+      const offset = Math.max(0, parseInt(body.offset, 10) || 0);
+      const page = targets.slice(offset, offset + limit);
+
+      const LOOKUP_START_BUDGET_MS = 11000;
+      const lookupsBeganAt = Date.now();
+      let skippedForTime = 0, fixed = 0, stillUnresolved = 0;
+      const exampleFixes = [];
+      const exampleUnresolved = [];
+      let resortListChanged = false;
+      const listingUpdates = [];
+
+      await mapWithConcurrency(page, 8, async (t) => {
+        if (Date.now() - lookupsBeganAt > LOOKUP_START_BUDGET_MS) {
+          skippedForTime++;
+          return;
+        }
+        const geo = await cachedReverseGeocode(geoCacheStore, t.lat, t.lng, apiKey);
+        let rec = null;
+        if (t.source === "listing") rec = listings.find((r) => r.listingId === t.key);
+        else if (t.source === "resort") rec = resortList[t.key];
+        if (!rec) return;
+
+        if (geo && geo.ok && geo.country) {
+          rec.country = geo.country;
+          rec.zone = clean(geo.province || geo.country, 120);
+          fixed++;
+          if (exampleFixes.length < 10) exampleFixes.push({ name: t.name, country: rec.country, zone: rec.zone });
+          if (t.source === "listing") listingUpdates.push(rec);
+          else resortListChanged = true;
+        } else {
+          stillUnresolved++;
+          if (exampleUnresolved.length < 10) exampleUnresolved.push(t.name);
+        }
+      });
+
+      if (listingUpdates.length) {
+        await mapWithConcurrency(listingUpdates, 10, (rec) => listingsStore.setJSON(rec.listingId, rec));
+      }
+      if (resortListChanged) {
+        await resortListStore.setJSON("current", Object.assign({}, resortRecord, { resorts: resortList }));
+      }
+
+      const processed = page.length - skippedForTime;
+      const nextOffset = offset + processed;
+      const remaining = Math.max(0, totalTargets - nextOffset);
+
+      return json({
+        ok: true,
+        dryRun: false,
+        totalTargets,
+        processed,
+        skippedForTime,
+        timings: { totalMs: Date.now() - actionStartedAt },
+        remaining,
+        nextOffset,
+        fixed,
+        stillUnresolved,
+        exampleFixes,
+        exampleUnresolved,
+      });
+    }
+
+    if (action === "suggestPropertyCoordinates") {
+      // For a property/resort row with no usable coordinate at all (still
+      // sitting at the CSV's blank/0,0 default), there's nothing to
+      // reverse-geocode — fixPropertyCountry above needs a real coordinate
+      // to work from. This goes the other way: it takes the property's own
+      // Area/District text (the same text in your StockNetwork export) and
+      // looks THAT up with Google, returning a suggested country and
+      // coordinate.
+      //
+      // This is a suggestion only — nothing it finds is ever written back
+      // to any stored record. Per Jean's rule (2026-09-28): a suggested
+      // coordinate always goes back to a person to check and enter into
+      // StockNetwork directly, never straight into this system, because a
+      // short place name can be ambiguous (more than one "Amed" or
+      // "Claremont" exists in the world) and a silent wrong write into live
+      // data is worse than a blank someone has to fill in by hand.
+      const apiKey = Deno.env.get("GOOGLE_GEOCODING_API_KEY") || "";
+      if (!apiKey) {
+        return json({ error: "GOOGLE_GEOCODING_API_KEY isn't set in this site's environment variables yet." }, 400);
+      }
+      const actionStartedAt = Date.now();
+
+      const { blobs: listingBlobs } = await listingsStore.list();
+      const listings = await mapWithConcurrency(listingBlobs, 25, (b) => listingsStore.get(b.key, { type: "json" }));
+      const resortRecord = await resortListStore.get("current", { type: "json" });
+      const resortList = (resortRecord && Array.isArray(resortRecord.resorts)) ? resortRecord.resorts : [];
+
+      function isPlaceholderOrMissing(r) {
+        const lat = parseFloat(r.latitude);
+        const lng = parseFloat(r.longitude);
+        if (!isFinite(lat) || !isFinite(lng)) return true;
+        return lat === 0 && lng === 0;
+      }
+
+      const targets = [];
+      listings.forEach((r) => {
+        if (r && r.status === "Listed" && !r.zone && isPlaceholderOrMissing(r)) {
+          const area = r.area || r.district || "";
+          if (area) targets.push({ source: "listing", key: r.listingId, name: r.propertyName || r.listingId, area, searchText: area });
+        }
+      });
+      resortList.forEach((r, i) => {
+        if (r && !r.zone && isPlaceholderOrMissing(r)) {
+          const area = r.suburb || r.district || "";
+          if (area) targets.push({ source: "resort", key: i, name: r.name || ("resort row " + i), area, searchText: area });
+        }
+      });
+      targets.sort((a, b) => (a.source + "|" + a.key).localeCompare(b.source + "|" + b.key));
+
+      const totalTargets = targets.length;
+      if (body.dryRun) {
+        return json({ ok: true, dryRun: true, totalTargets });
+      }
+
+      const limit = Math.max(1, Math.min(parseInt(body.limit, 10) || 15, 25));
+      const offset = Math.max(0, parseInt(body.offset, 10) || 0);
+      const page = targets.slice(offset, offset + limit);
+
+      const LOOKUP_START_BUDGET_MS = 11000;
+      const lookupsBeganAt = Date.now();
+      let skippedForTime = 0;
+      const suggestions = [];
+      let notFound = 0;
+
+      await mapWithConcurrency(page, 8, async (t) => {
+        if (Date.now() - lookupsBeganAt > LOOKUP_START_BUDGET_MS) {
+          skippedForTime++;
+          return;
+        }
+        const geo = await cachedForwardGeocode(geoCacheStore, t.searchText, apiKey);
+        if (geo && geo.ok && geo.country && typeof geo.lat === "number" && typeof geo.lng === "number") {
+          suggestions.push({
+            source: t.source,
+            name: t.name,
+            area: t.area,
+            suggestedCountry: geo.country,
+            suggestedProvince: geo.province || "",
+            suggestedLat: geo.lat,
+            suggestedLng: geo.lng,
+            approximate: geo.locationType !== "ROOFTOP" && geo.locationType !== "GEOMETRIC_CENTER",
+          });
+        } else {
+          notFound++;
+        }
+      });
+
+      const processed = page.length - skippedForTime;
+      const nextOffset = offset + processed;
+      const remaining = Math.max(0, totalTargets - nextOffset);
+
+      return json({
+        ok: true,
+        dryRun: false,
+        totalTargets,
+        processed,
+        skippedForTime,
+        timings: { totalMs: Date.now() - actionStartedAt },
+        remaining,
+        nextOffset,
+        notFound,
+        suggestions,
+      });
+    }
+
     if (action === "exportLocations") {
       // Backs the "Corrected StockNetwork file" tool. Given a batch of rows
       // from a StockNetwork resort export ({ i, name, resortId, siteId,
@@ -2406,6 +2790,32 @@ export default async (request, context) => {
       const next = all.filter((t) => byId.get(t.id) === t);
       await saveTowns(townsStore, next);
       return json({ ok: true, merged, movedSuburbs, joinedSuburbs, townsNow: next.length });
+    }
+
+    // Read-only report covering the gaps "Merge duplicate towns" doesn't
+    // reach — see the comment above auditNearDuplicateTowns for why. Single
+    // request, no pagination: even a full ~1,000-town tree is a trivial
+    // number of comparisons (well under the Edge Function's time budget).
+    if (action === "auditLocationTree") {
+      const allTowns = await loadTowns(townsStore);
+      const { blobs: listingBlobs } = await listingsStore.list();
+      const listings = await mapWithConcurrency(listingBlobs, 25, (b) => listingsStore.get(b.key, { type: "json" }));
+      const resortRecord = await resortListStore.get("current", { type: "json" });
+      const resortList = (resortRecord && Array.isArray(resortRecord.resorts)) ? resortRecord.resorts : [];
+      const activities = await loadActivities(activitiesStore);
+
+      const nearDuplicateTowns = auditNearDuplicateTowns(allTowns);
+      const townSuburbOverlaps = auditTownSuburbOverlaps(allTowns);
+      const orphanReport = auditOrphanRefs(allTowns, listings, resortList, activities);
+
+      return json({
+        ok: true,
+        totalTowns: allTowns.length,
+        nearDuplicateTowns,
+        townSuburbOverlaps,
+        orphanRefs: orphanReport.orphans,
+        zoneOnlyNoTown: orphanReport.zoneOnly,
+      });
     }
 
     if (action === "addTown") {
