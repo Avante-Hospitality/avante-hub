@@ -1,5 +1,20 @@
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
 import { mergeResorts } from "./lib/resort-key.js";
+// Case A of the full-hub-coordinate-geocoding-scope build (2026-09-29):
+// after this sync lands a new/changed coordinate from StockNetwork, place
+// that property in the hub's own Zone/Town/Suburb/Nearby tree right away —
+// using the exact same resolveLocationForCoordinate/applyLocationTag engine
+// map-api.js's "Start geocoding" button already uses — instead of leaving
+// it untagged until someone notices and presses that button by hand. See
+// lib/geolocate.js's own header comment for why this lives in a shared lib
+// rather than being duplicated here.
+//
+// Case B (same scope, same date): checkNameAgainstCoordinate — for the
+// same set of just-changed coordinates, also check the property's own NAME
+// against the new pin, so a StockNetwork coordinate that's plainly wrong
+// (a resort tagged to the wrong town, a data-entry slip) gets flagged for
+// Jean right when it happens rather than silently placed into the tree.
+import { resolveLocationForCoordinate, applyLocationTag, checkNameAgainstCoordinate } from "./lib/geolocate.js";
 
 // Minimal CSV field-splitter (handles quoted fields, embedded commas, and
 // "" escaped quotes) — we only need the first column (the resort name), but
@@ -158,11 +173,14 @@ function parseResortsFromCsv(text) {
 // Fields map-api.js's geocoding pipeline writes onto a resort row once its
 // coordinate is resolved to a Town/Suburb (see lib/resort-key.js's
 // LOCATION_TAG_FIELDS, kept in sync with that list by hand — small and
-// stable, not worth an extra cross-file import for one array). Cleared here
-// whenever this sync sees a property's coordinate actually move, so a stale
-// tag tied to the OLD point never lingers — the next geocoding pass (nightly
-// "Re-check all zones", or the map's own auto-tagging) resolves it fresh.
-const API_SYNC_CLEAR_ON_MOVE = ["zone", "townId", "suburbId", "locationLabel", "country", "nearby", "offshoreKm", "locV"];
+// stable, not worth an extra cross-file import for one array), plus the
+// Case B name-vs-coordinate flag fields set by the auto-place pass just
+// below (coordSuspicious/coordSuspiciousNote/coordSuggested — 2026-09-29).
+// Cleared here whenever this sync sees a property's coordinate actually
+// move, so a stale tag OR a stale suspicion flag tied to the OLD point
+// never lingers — the auto-place pass right after this loop re-derives
+// both fresh for the new coordinate.
+const API_SYNC_CLEAR_ON_MOVE = ["zone", "townId", "suburbId", "locationLabel", "country", "nearby", "offshoreKm", "locV", "coordSuspicious", "coordSuspiciousNote", "coordSuggested"];
 
 // Maps one raw StockNetwork /api/1.0/resort row onto the same raw,
 // informational field names parseResortsFromCsv() above captures from a CSV
@@ -173,6 +191,25 @@ const API_SYNC_CLEAR_ON_MOVE = ["zone", "townId", "suburbId", "locationLabel", "
 // not the readable "Guest house"/"Lodge" text the CSV's Property Type column
 // carries, so it's deliberately NOT mapped to `propertyType` here — only a
 // CSV upload can set that field correctly.
+// Same small helper map-api.js defines for itself — duplicated here rather
+// than imported across the two routed functions (this file's own
+// parseCsvLine below is duplicated from map-api.js's copy for the same
+// reason: neither routed function should import the other), since it's
+// generic and only a few lines.
+async function mapWithConcurrency(items, limit, fn) {
+  const results = new Array(items.length);
+  let idx = 0;
+  async function worker() {
+    while (idx < items.length) {
+      const i = idx++;
+      results[i] = await fn(items[i], i);
+    }
+  }
+  const workers = Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, () => worker());
+  await Promise.all(workers);
+  return results;
+}
+
 function mapApiRowToRawFields(r) {
   const s = (v) => (v === null || v === undefined ? "" : String(v).trim());
   return {
@@ -224,6 +261,10 @@ async function handleApiSync(request, store, cors) {
     matchedRows = 0,
     unmatchedApiRows = 0,
     coordinatesChanged = 0;
+  // Indices into `resorts` whose coordinate moved this sync — collected so
+  // the auto-place pass below (Case A) only ever looks at rows that
+  // genuinely need it, not the whole ~5,900-row list.
+  const changedIdxs = [];
 
   for (const apiRow of rows) {
     const resortId = String(apiRow.iExchangeResortFileID || "").trim();
@@ -259,9 +300,117 @@ async function handleApiSync(request, store, cors) {
           API_SYNC_CLEAR_ON_MOVE.forEach((f) => {
             delete rec[f];
           });
+          changedIdxs.push(i);
         }
       }
     });
+  }
+
+  // Case A (full-hub-coordinate-geocoding-scope, 2026-09-29): place every
+  // property whose coordinate just changed straight into the hub's own
+  // Zone/Town/Suburb/Nearby tree, instead of leaving it untagged until
+  // someone presses "Re-check all zones" in admin. Deliberately the SAME
+  // safe rule geocodeLocations already uses — only ever fills in a row with
+  // no locationLabel yet (checked again here, not just assumed from
+  // `moved`, in case something else tagged it in between) — never the
+  // force:true behaviour recheckZones uses, so this can never silently
+  // revert a Town an admin corrected by hand. A skipped/failed row here
+  // just stays untagged, exactly like any other geocodeLocations backlog
+  // item — Jean's existing "Properties with no zone" tooling still sees it.
+  let autoPlaced = 0,
+    autoPlaceFailed = 0,
+    autoPlaceSkippedForTime = 0,
+    autoPlaceNoApiKey = false,
+    // Case B counters (full-hub-coordinate-geocoding-scope, 2026-09-29) —
+    // see the checkNameAgainstCoordinate call inside the loop below.
+    coordFlaggedSuspicious = 0,
+    coordFlagCleared = 0;
+
+  if (changedIdxs.length) {
+    const apiKey = Deno.env.get("GOOGLE_GEOCODING_API_KEY") || "";
+    if (!apiKey) {
+      autoPlaceNoApiKey = true;
+    } else {
+      const targets = changedIdxs.filter((i) => {
+        const rec = resorts[i];
+        if (!rec || rec.locationLabel) return false;
+        const lat = parseFloat(rec.latitude);
+        const lng = parseFloat(rec.longitude);
+        return isFinite(lat) && isFinite(lng) && !(lat === 0 && lng === 0);
+      });
+
+      if (targets.length) {
+        const townsStore = getStore({ name: "map-towns", consistency: "strong" });
+        const geoCacheStore = getStore({ name: "map-geocache", consistency: "strong" });
+        const allTowns = (await townsStore.get("all", { type: "json" })) || [];
+        const existingIds = new Set(allTowns.map((t) => t.id));
+
+        // Same time-budget pattern map-api.js's own batch geocoding actions
+        // use: stop STARTING new lookups once spent, so a large night's
+        // worth of coordinate changes can never blow this function's own
+        // execution limit on top of the ~5,900-row match already done
+        // above. Anything skipped here stays untagged and is picked up by
+        // the next night's sync (still no locationLabel) or a manual
+        // "Re-check all zones" / "Load flagged properties" in the meantime.
+        const LOOKUP_START_BUDGET_MS = 11000;
+        const lookupsBeganAt = Date.now();
+
+        await mapWithConcurrency(targets, 8, async (i) => {
+          if (Date.now() - lookupsBeganAt > LOOKUP_START_BUDGET_MS) {
+            autoPlaceSkippedForTime++;
+            return;
+          }
+          const rec = resorts[i];
+          const lat = parseFloat(rec.latitude);
+          const lng = parseFloat(rec.longitude);
+          // Case A and Case B run together, in parallel, for each
+          // just-changed coordinate — one reverse-geocodes the point (where
+          // is this?), the other forward-geocodes the property's own name
+          // (does Google's answer for that name land near this point?).
+          const [placeResult, nameCheck] = await Promise.all([
+            resolveLocationForCoordinate(lat, lng, apiKey, allTowns, existingIds, false, geoCacheStore),
+            checkNameAgainstCoordinate(rec.name, lat, lng, apiKey),
+          ]);
+          if (placeResult.result) {
+            applyLocationTag(rec, placeResult.result);
+            autoPlaced++;
+          } else {
+            autoPlaceFailed++;
+          }
+          // Case B (full-hub-coordinate-geocoding-scope, 2026-09-29): flag a
+          // StockNetwork coordinate that doesn't look like it belongs to
+          // this property's own name, right when that coordinate just
+          // changed — so Jean doesn't have to re-check the whole resort
+          // list by hand. Stored directly on the record so stocknetworkReview
+          // can surface it with no live Google calls of its own.
+          //   "high"   — Google's own name match lands near this point ->
+          //              clear any earlier flag, nothing to review.
+          //   "review" — Google matched the name but it's far from this
+          //              point (or nothing to compare against) -> flag it,
+          //              with the alternate coordinate Google suggests.
+          //   "none"/failed — Google couldn't confidently match the name at
+          //              all (an obscure listing, a network hiccup, a name
+          //              too generic to search) -> inconclusive, leave
+          //              untouched rather than false-flag or false-clear.
+          if (nameCheck.confidence === "high") {
+            if (rec.coordSuspicious) coordFlagCleared++;
+            delete rec.coordSuspicious;
+            delete rec.coordSuspiciousNote;
+            delete rec.coordSuggested;
+          } else if (nameCheck.confidence === "review") {
+            rec.coordSuspicious = true;
+            rec.coordSuspiciousNote = nameCheck.note || "";
+            rec.coordSuggested =
+              nameCheck.lat != null && nameCheck.lng != null
+                ? { lat: nameCheck.lat, lng: nameCheck.lng, formatted: nameCheck.formatted || "" }
+                : null;
+            coordFlaggedSuspicious++;
+          }
+        });
+
+        await townsStore.setJSON("all", allTowns);
+      }
+    }
   }
 
   await store.setJSON(
@@ -277,6 +426,12 @@ async function handleApiSync(request, store, cors) {
       matchedRows,
       unmatchedApiRows,
       coordinatesChanged,
+      autoPlaced,
+      autoPlaceFailed,
+      autoPlaceSkippedForTime,
+      autoPlaceNoApiKey,
+      coordFlaggedSuspicious,
+      coordFlagCleared,
     }),
     { headers: { "content-type": "application/json", ...cors } }
   );
