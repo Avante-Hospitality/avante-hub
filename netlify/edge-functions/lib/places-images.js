@@ -175,3 +175,76 @@ export async function searchPlacePhotos(query, apiKey, limit) {
     images: images,
   };
 }
+
+// Worldwide name search returning several candidate PLACES (not photos) —
+// backs Case C of full-hub-coordinate-geocoding-scope (2026-09-29): a
+// property with no coordinate on file at all gets searched by its own
+// name, and an admin picks the right match from a short list rather than
+// Claude/Google guessing which of several same-named results is correct.
+// Deliberately no country/region restriction on the request — Jean's
+// explicit decision (2026-09-29) was worldwide search, not South
+// Africa-only, since the hub already carries properties outside SA.
+//
+// Returns, on success: { ok: true, candidates: [{ placeId, name,
+// formattedAddress, lat, lng }] } (possibly empty — a real zero-result
+// search, not a failure). On failure: { ok: false, reason, message } —
+// same reason vocabulary as searchPlacePhotos above (including the
+// ZERO_RESULTS normalization), since admin.html's existing error-message
+// handling for that action already knows how to show these.
+export async function searchPlaceCandidates(query, apiKey, limit) {
+  const q = typeof query === "string" ? query.trim() : "";
+  const cap = Math.max(1, Math.min(10, Number(limit) || 5));
+  if (!apiKey) return { ok: false, reason: "no_api_key", message: "" };
+  if (!q) return { ok: false, reason: "empty_query", message: "" };
+
+  let searchRes;
+  try {
+    searchRes = await fetchWithTimeout("https://places.googleapis.com/v1/places:searchText", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "X-Goog-Api-Key": apiKey,
+        // Wider field mask than searchPlacePhotos above: this needs each
+        // candidate's own id/location, not just the top match's photos.
+        "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.location",
+      },
+      body: JSON.stringify({ textQuery: q, maxResultCount: cap }),
+    });
+  } catch (e) {
+    const timedOut = e && e.name === "AbortError";
+    return { ok: false, reason: timedOut ? "timeout" : "network", message: String((e && e.message) || e) };
+  }
+
+  let searchData;
+  try {
+    searchData = await searchRes.json();
+  } catch (e) {
+    return { ok: false, reason: "bad_response", message: "Response wasn't valid JSON" };
+  }
+
+  if (!searchRes.ok) {
+    const err = searchData && searchData.error;
+    return { ok: false, reason: (err && err.status) || "bad_response", message: (err && err.message) || "HTTP " + searchRes.status };
+  }
+
+  if (!searchData || !Array.isArray(searchData.places) || !searchData.places.length) {
+    return { ok: true, candidates: [] };
+  }
+
+  const candidates = searchData.places
+    .slice(0, cap)
+    .map((p) => {
+      const loc = p.location;
+      if (!loc || !isFinite(loc.latitude) || !isFinite(loc.longitude)) return null;
+      return {
+        placeId: p.id || "",
+        name: (p.displayName && p.displayName.text) || "",
+        formattedAddress: p.formattedAddress || "",
+        lat: loc.latitude,
+        lng: loc.longitude,
+      };
+    })
+    .filter((c) => c);
+
+  return { ok: true, candidates };
+}
