@@ -1650,7 +1650,7 @@
             <button class="how-it-works-btn" type="button" aria-expanded="false" data-panel="snReviewHowItWorks">How it works</button>
           </div>
         </div>
-        <div class="how-it-works-panel" id="snReviewHowItWorks">Every night, StockNetwork's own API refreshes each property's Country, Area, District, City, City2, State, Suburb, ratings and a few other fields directly in the hub &mdash; informational only, alongside (never replacing) the hub's own Zone &gt; Town &gt; Suburb tree, which stays driven purely by the property's coordinates. This tool compares the two: any property where StockNetwork's Country/Area/City/Suburb disagrees with the hub's tree, or is blank, shows up below. The hub is the master &mdash; for each flagged property, either accept StockNetwork's country as correct, or pick the right Town/Suburb from the tree yourself if the hub's own placement needs fixing, then save. Nothing changes until you save a row. Once you've worked through the list, use "Corrected StockNetwork file" below to download a file with the hub's (now-corrected) values, ready to load back into StockNetwork.</div>
+        <div class="how-it-works-panel" id="snReviewHowItWorks">Every night, StockNetwork's own API refreshes each property's Country, Area, District, City, City2, State, Suburb, ratings and a few other fields directly in the hub &mdash; informational only, alongside (never replacing) the hub's own Zone &gt; Town &gt; Suburb tree, which stays driven purely by the property's coordinates. Whenever StockNetwork sends a new coordinate for a property, the hub also checks that property's own name against Google right then, and flags it here — "coordinate may be wrong" — if the name doesn't look like it belongs near that point; District, City2 and State are shown for reference (they're never used to place a property). This tool compares the rest the same way it always has: any property where StockNetwork's Country/Area/City/Suburb disagrees with the hub's tree, or is blank, shows up below. The hub is the master &mdash; for each flagged property, either accept StockNetwork's country as correct, accept a suggested coordinate when one is offered, or pick the right Town/Suburb from the tree yourself if the hub's own placement needs fixing, then save. Nothing changes until you save a row. Once you've worked through the list, use "Corrected StockNetwork file" below to download a file with the hub's (now-corrected) values, ready to load back into StockNetwork.</div>
         <div class="btn-row" style="margin-top:0;">
           <button class="btn-outline" id="snReviewLoadBtn">Load flagged properties</button>
         </div>
@@ -1671,6 +1671,40 @@
         </div>
         <div class="btn-row" id="snReviewMoreRow" style="display:none; margin-top:10px;">
           <button class="btn-outline" id="snReviewLoadMoreBtn">Load more</button>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:20px;">
+        <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+          <h3 style="margin-top:0;">Find &amp; fix missing coordinates</h3>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button class="how-it-works-btn" type="button" aria-expanded="false" data-panel="missingCoordHowItWorks">How it works</button>
+          </div>
+        </div>
+        <div class="how-it-works-panel" id="missingCoordHowItWorks">Some properties have no latitude/longitude at all &mdash; StockNetwork never sent one, or a manually-onboarded listing was never geocoded &mdash; so they never show up on the map and the hub has no way to place them in Country/Zone/Town/Suburb. Load the list below, then search a property by name (worldwide &mdash; add the area, city or country to the search box if the name alone is too common) and pick the right match from what Google finds. Picking a match sets that property's coordinate and immediately places it in the hub's tree, the same way the nightly sync places a property whose coordinate just changed. Nothing is searched or saved until you click.</div>
+        <div class="btn-row" style="margin-top:0; align-items:center;">
+          <label for="missingCoordSourceSelect" style="font-size:13px; color:var(--muted);">List:</label>
+          <select id="missingCoordSourceSelect" style="max-width:260px;">
+            <option value="resort">StockNetwork resort list</option>
+            <option value="listing">Onboarded property listings</option>
+          </select>
+          <button class="btn-outline" id="missingCoordLoadBtn">Load properties with no coordinate</button>
+        </div>
+        <div class="status" id="missingCoordStatus"></div>
+        <div class="table-wrap" id="missingCoordTableWrap" style="display:none; margin-top:12px;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Property</th>
+                <th>Area / City / Country</th>
+                <th>Search &amp; pick</th>
+              </tr>
+            </thead>
+            <tbody id="missingCoordTableBody"></tbody>
+          </table>
+        </div>
+        <div class="btn-row" id="missingCoordMoreRow" style="display:none; margin-top:10px;">
+          <button class="btn-outline" id="missingCoordLoadMoreBtn">Load more</button>
         </div>
       </div>
 
@@ -9141,7 +9175,8 @@
           'country': 'country differs', 'country-blank': 'country blank on SN',
           'zone': 'area/zone differs', 'zone-blank': 'area blank on SN',
           'town': 'town/city differs', 'town-blank': 'city blank on SN',
-          'suburb': 'suburb differs'
+          'suburb': 'suburb differs',
+          'coordinate': 'coordinate may be wrong'
         };
 
         function selectIdFor(index){ return 'snReviewSel_' + index; }
@@ -9149,16 +9184,36 @@
         function renderRow(f){
           var tr = document.createElement('tr');
           tr.dataset.index = f.index;
-          var flagsHtml = (f.reasons || []).map(function(r){ return '<span class="badge inactive" style="margin:0 4px 4px 0; display:inline-block;">' + escapeHtml(FLAG_LABEL[r] || r) + '</span>'; }).join('');
-          var snHtml = '<div>' + escapeHtml(f.snCountry || '—') + ' / ' + escapeHtml(f.snArea || '—') + ' / ' + escapeHtml(f.snCity || '—') + ' / ' + escapeHtml(f.snSuburb || '—') + '</div>';
+          var flagsHtml = (f.reasons || []).map(function(r){
+            var cls = r === 'coordinate' ? 'badge requested' : 'badge inactive';
+            return '<span class="' + cls + '" style="margin:0 4px 4px 0; display:inline-block;">' + escapeHtml(FLAG_LABEL[r] || r) + '</span>';
+          }).join('');
+          var snHtml = '<div>' + escapeHtml(f.snCountry || '—') + ' / ' + escapeHtml(f.snArea || '—') + ' / ' + escapeHtml(f.snCity || '—') + ' / ' + escapeHtml(f.snSuburb || '—') + '</div>' +
+            '<div style="margin-top:4px; font-size:12px; color:var(--muted);">District: ' + escapeHtml(f.snDistrict || '—') + ' &middot; City2: ' + escapeHtml(f.snCity2 || '—') + ' &middot; State: ' + escapeHtml(f.snState || '—') + '</div>';
           var hubHtml = '<div>' + escapeHtml(f.hubCountry || '—') + ' / ' + escapeHtml(f.hubZone || '—') + ' / ' + escapeHtml(f.hubTown || '—') + ' / ' + escapeHtml(f.hubSuburb || '—') + '</div>';
           var acceptCountryBtn = f.snCountry ? '<button type="button" class="btn-outline btn-small" data-act="country">Use SN’s country (' + escapeHtml(f.snCountry) + ')</button>' : '';
+          // Case B (full-hub-coordinate-geocoding-scope, 2026-09-29): a
+          // coordinate the nightly sync's name-check couldn't confirm — show
+          // why, and, when Google offered an alternate point, an explicit
+          // "Accept" button (applyPropertyCoordinate) so it's always a
+          // human decision, never automatic.
+          var coordBlockHtml = '';
+          if(f.coordSuspicious){
+            coordBlockHtml = '<div style="margin:0 0 8px; padding:8px; border:1px solid var(--border); border-radius:8px; background:rgba(255,180,0,0.08);">' +
+              '<div style="font-size:12px;">' + escapeHtml(f.coordSuspiciousNote || 'This coordinate may not match the property name.') + '</div>' +
+              (f.coordSuggested ? (
+                '<div style="font-size:12px; margin-top:4px;">Google suggests: ' + escapeHtml(f.coordSuggested.formatted || (f.coordSuggested.lat + ', ' + f.coordSuggested.lng)) + '</div>' +
+                '<button type="button" class="btn-outline btn-small" data-act="acceptCoord" style="margin-top:6px;">Accept suggested coordinate</button>'
+              ) : '') +
+            '</div>';
+          }
           tr.innerHTML =
             '<td>' + escapeHtml(f.name || '(unnamed)') + '</td>' +
             '<td>' + flagsHtml + '</td>' +
             '<td>' + snHtml + '</td>' +
             '<td>' + hubHtml + '</td>' +
             '<td>' +
+              coordBlockHtml +
               '<div class="btn-row" style="margin:0 0 6px;">' + acceptCountryBtn + '</div>' +
               '<select id="' + selectIdFor(f.index) + '" style="width:100%; max-width:260px;"></select> ' +
               '<button type="button" class="primary btn-small" data-act="save" style="margin-top:6px;">Save</button>' +
@@ -9177,6 +9232,17 @@
                 if(res.data && res.data.ok){ setRowStatus('Saved — country set to ' + f.snCountry + '.'); tr.style.opacity = '0.55'; }
                 else { setRowStatus((res.data && res.data.error) || 'Could not save.', true); acceptBtn.disabled = false; }
               }).catch(function(){ setRowStatus('Request failed.', true); acceptBtn.disabled = false; });
+            });
+          }
+
+          var acceptCoordBtn = tr.querySelector('[data-act="acceptCoord"]');
+          if(acceptCoordBtn && f.coordSuggested){
+            acceptCoordBtn.addEventListener('click', function(){
+              acceptCoordBtn.disabled = true;
+              mapAdminPost('applyPropertyCoordinate', { source: 'resort', index: f.index, lat: f.coordSuggested.lat, lng: f.coordSuggested.lng }).then(function(res){
+                if(res.data && res.data.ok){ setRowStatus('Saved — coordinate updated' + (res.data.locationLabel ? ' (' + res.data.locationLabel + ').' : '.')); tr.style.opacity = '0.55'; }
+                else { setRowStatus((res.data && res.data.error) || 'Could not save.', true); acceptCoordBtn.disabled = false; }
+              }).catch(function(){ setRowStatus('Request failed.', true); acceptCoordBtn.disabled = false; });
             });
           }
 
@@ -9219,6 +9285,127 @@
         }
 
         loadBtn.addEventListener('click', function(){ offset = 0; rowsShown = 0; tbody.innerHTML = ''; loadPage(); });
+        moreBtn.addEventListener('click', loadPage);
+      })();
+
+      // ---- Find & fix missing coordinates ----
+      // Case C (full-hub-coordinate-geocoding-scope, 2026-09-29): properties
+      // with no latitude/longitude at all — Case A/B above only ever run
+      // once StockNetwork has already sent a real coordinate, so these
+      // never get a chance to be checked. Loads the list (map-api.js's
+      // listMissingCoordinateProperties, read-only), lets a person search
+      // each one by name worldwide (searchPropertyPlaces, read-only — no
+      // country/region restriction, per Jean's explicit decision) and pick
+      // the right match (applyPropertyCoordinate — the only write here,
+      // and only on an explicit "Use this" click).
+      (function(){
+        var sourceSelect = document.getElementById('missingCoordSourceSelect');
+        var loadBtn = document.getElementById('missingCoordLoadBtn');
+        var moreBtn = document.getElementById('missingCoordLoadMoreBtn');
+        var moreRow = document.getElementById('missingCoordMoreRow');
+        var statusEl = document.getElementById('missingCoordStatus');
+        var tableWrap = document.getElementById('missingCoordTableWrap');
+        var tbody = document.getElementById('missingCoordTableBody');
+        if(!loadBtn || !tbody) return;
+
+        var offset = 0;
+        var PAGE = 100;
+        var rowsShown = 0;
+        var currentSource = 'resort';
+
+        function setStatus(t, isError){ statusEl.textContent = t; statusEl.className = 'status show' + (isError ? '' : ' ok'); }
+
+        function rowKey(item){ return currentSource === 'listing' ? item.listingId : item.index; }
+
+        function renderRow(item){
+          var tr = document.createElement('tr');
+          var hint = [item.area, item.city, item.country].filter(function(x){ return x; }).join(' / ') || '—';
+          var defaultQuery = [item.name, item.area, item.city, item.country].filter(function(x){ return x; }).join(', ');
+          tr.innerHTML =
+            '<td>' + escapeHtml(item.name || '(unnamed)') + '</td>' +
+            '<td>' + escapeHtml(hint) + '</td>' +
+            '<td>' +
+              '<div class="btn-row" style="margin:0 0 6px; flex-wrap:wrap;">' +
+                '<input type="text" class="mc-query" style="flex:1; min-width:220px;" value="' + escapeHtml(defaultQuery) + '">' +
+                '<button type="button" class="btn-outline btn-small" data-act="search">Search</button>' +
+              '</div>' +
+              '<div class="mc-results"></div>' +
+              '<div class="status" style="margin-top:6px;"></div>' +
+            '</td>';
+          tbody.appendChild(tr);
+
+          var rowStatusEl = tr.querySelector('.status');
+          function setRowStatus(t, isError){ rowStatusEl.textContent = t; rowStatusEl.className = 'status show' + (isError ? '' : ' ok'); }
+
+          var resultsBox = tr.querySelector('.mc-results');
+          var queryInput = tr.querySelector('.mc-query');
+          var searchBtn = tr.querySelector('[data-act="search"]');
+
+          function renderCandidates(candidates){
+            resultsBox.innerHTML = '';
+            if(!candidates.length){ resultsBox.innerHTML = '<div style="font-size:12px; color:var(--muted);">No matches — try a more specific search.</div>'; return; }
+            candidates.forEach(function(c){
+              var row = document.createElement('div');
+              row.style.cssText = 'display:flex; align-items:center; gap:8px; justify-content:space-between; padding:6px 0; border-top:1px solid var(--border);';
+              row.innerHTML =
+                '<div style="font-size:12px;"><strong>' + escapeHtml(c.name || '(unnamed)') + '</strong><br>' + escapeHtml(c.formattedAddress || '') + '</div>' +
+                '<button type="button" class="primary btn-small" style="flex-shrink:0;">Use this</button>';
+              row.querySelector('button').addEventListener('click', function(){
+                var btn = row.querySelector('button');
+                btn.disabled = true;
+                var payload = { source: currentSource, lat: c.lat, lng: c.lng };
+                if(currentSource === 'listing') payload.listingId = item.listingId; else payload.index = item.index;
+                mapAdminPost('applyPropertyCoordinate', payload).then(function(res){
+                  if(res.data && res.data.ok){ setRowStatus('Saved — coordinate set' + (res.data.locationLabel ? ' (' + res.data.locationLabel + ').' : '.')); tr.style.opacity = '0.55'; }
+                  else { setRowStatus((res.data && res.data.error) || 'Could not save.', true); btn.disabled = false; }
+                }).catch(function(){ setRowStatus('Request failed.', true); btn.disabled = false; });
+              });
+              resultsBox.appendChild(row);
+            });
+          }
+
+          searchBtn.addEventListener('click', function(){
+            var q = queryInput.value.trim();
+            if(!q){ setRowStatus('Type something to search for first.', true); return; }
+            searchBtn.disabled = true;
+            setRowStatus('Searching…');
+            mapAdminPost('searchPropertyPlaces', { query: q }).then(function(res){
+              searchBtn.disabled = false;
+              if(!(res.data && res.data.ok)){ setRowStatus((res.data && res.data.error) || 'Search failed.', true); return; }
+              setRowStatus('');
+              renderCandidates(res.data.candidates || []);
+            }).catch(function(){ searchBtn.disabled = false; setRowStatus('Request failed.', true); });
+          });
+        }
+
+        function loadPage(){
+          var btn = rowsShown === 0 ? loadBtn : moreBtn;
+          btn.disabled = true;
+          setStatus(rowsShown === 0 ? 'Loading properties with no coordinate…' : 'Loading more…');
+          mapAdminPost('listMissingCoordinateProperties', { source: currentSource, offset: offset, limit: PAGE }).then(function(res){
+            btn.disabled = false;
+            if(!(res.data && res.data.ok)){ setStatus((res.data && res.data.error) || 'Could not load the list.', true); return; }
+            var d = res.data;
+            var newRows = d.items || [];
+            if(rowsShown === 0 && !newRows.length){
+              setStatus('Nothing to do — every property in this list already has a coordinate.');
+              tableWrap.style.display = 'none';
+              return;
+            }
+            tableWrap.style.display = 'block';
+            newRows.forEach(renderRow);
+            rowsShown += newRows.length;
+            offset = d.offset + newRows.length;
+            moreRow.style.display = d.remaining > 0 ? 'flex' : 'none';
+            setStatus('Showing ' + rowsShown + ' of ' + d.total + ' properties with no coordinate.');
+          }).catch(function(){ btn.disabled = false; setStatus('Request failed.', true); });
+        }
+
+        loadBtn.addEventListener('click', function(){
+          currentSource = sourceSelect.value === 'listing' ? 'listing' : 'resort';
+          offset = 0; rowsShown = 0; tbody.innerHTML = ''; moreRow.style.display = 'none';
+          loadPage();
+        });
         moreBtn.addEventListener('click', loadPage);
       })();
 
