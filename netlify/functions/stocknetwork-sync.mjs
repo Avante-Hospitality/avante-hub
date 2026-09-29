@@ -125,6 +125,24 @@ export default async (request) => {
       matchedRows: importResult.matchedRows,
       unmatchedApiRows: importResult.unmatchedApiRows,
       coordinatesChanged: importResult.coordinatesChanged,
+      // Case A (full-hub-coordinate-geocoding-scope, 2026-09-29): of the
+      // properties whose coordinate just changed, how many resorts-api.js's
+      // handleApiSync managed to place into the hub's own
+      // Zone/Town/Suburb/Nearby tree right away -- see that file for the
+      // full logic. autoPlaceNoApiKey true means GOOGLE_GEOCODING_API_KEY
+      // isn't set, so nothing was attempted at all this run.
+      autoPlaced: importResult.autoPlaced,
+      autoPlaceFailed: importResult.autoPlaceFailed,
+      autoPlaceSkippedForTime: importResult.autoPlaceSkippedForTime,
+      autoPlaceNoApiKey: importResult.autoPlaceNoApiKey,
+      // Case B (full-hub-coordinate-geocoding-scope, 2026-09-29): of those
+      // same just-changed coordinates, how many didn't look like they
+      // matched the property's own name and got flagged for review in
+      // admin.html's "StockNetwork location review" card (coordFlagCleared
+      // is the reverse -- a coordinate that WAS flagged before and now
+      // checks out again).
+      coordFlaggedSuspicious: importResult.coordFlaggedSuspicious,
+      coordFlagCleared: importResult.coordFlagCleared,
     },
     200
   );
