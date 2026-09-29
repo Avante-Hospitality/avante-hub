@@ -2323,15 +2323,139 @@ export default async (request, context) => {
       });
     }
 
+    if (action === "stocknetworkReview") {
+      // Backs the "StockNetwork location review" card. Compares each
+      // resort-list property's raw StockNetwork fields — landed by the
+      // nightly API sync (resorts-api.js's handleApiSync) or a StockNetwork
+      // CSV upload — against the hub's own Zone > Town > Suburb tree, and
+      // flags where they disagree or StockNetwork's side is blank. The hub
+      // is the master (per Jean's explicit 2026-09-29 instruction): this
+      // never writes anything, it only lists what to look at. A property
+      // with no StockNetwork field landed yet (never synced/uploaded) has
+      // nothing to compare and is skipped, not flagged.
+      const resortRecord = await resortListStore.get("current", { type: "json" });
+      const resortList = (resortRecord && Array.isArray(resortRecord.resorts)) ? resortRecord.resorts : [];
+      const allTowns = await loadTowns(townsStore);
+      const townById = new Map(allTowns.map((t) => [t.id, t]));
+
+      function norm(v) {
+        return String(v || "").trim().toLowerCase();
+      }
+      // Deliberately loose — a whole-string containment match, not exact —
+      // since "Garden Route" (hub zone) vs "Garden Route Area" (SN's own
+      // text) or "Cape Town" vs "Cape Town Central" are the same place
+      // written slightly differently on each side, and this tool's job is
+      // to surface genuine disagreements for a person to judge, not to
+      // silently auto-match variants. False positives just mean an extra
+      // row to glance at and dismiss; a missed real mismatch is the worse
+      // failure this tool exists to avoid.
+      function likelyMatch(a, b) {
+        const x = norm(a), y = norm(b);
+        if (!x || !y) return false;
+        return x === y || x.indexOf(y) > -1 || y.indexOf(x) > -1;
+      }
+
+      const flags = [];
+      resortList.forEach((r, i) => {
+        if (!r || !r.resortId) return;
+        const hasSnData = r.snCountry || r.area || r.city || r.suburb;
+        if (!hasSnData) return;
+
+        const town = r.townId ? townById.get(r.townId) : null;
+        const suburb = town && r.suburbId && Array.isArray(town.suburbs) ? town.suburbs.find((s) => s.id === r.suburbId) : null;
+        const hubCountry = r.country || "";
+        const hubZone = (town ? townZone(town) : "") || r.zone || "";
+        const hubTownName = town ? town.name : (r.locationLabel || "");
+        const hubSuburbName = suburb ? suburb.name : "";
+
+        const reasons = [];
+        if (!r.snCountry) reasons.push("country-blank");
+        else if (!likelyMatch(r.snCountry, hubCountry)) reasons.push("country");
+        if (!r.area) reasons.push("zone-blank");
+        else if (!likelyMatch(r.area, hubZone)) reasons.push("zone");
+        if (!r.city) reasons.push("town-blank");
+        else if (!likelyMatch(r.city, hubTownName)) reasons.push("town");
+        if (r.suburb && hubSuburbName && !likelyMatch(r.suburb, hubSuburbName)) reasons.push("suburb");
+
+        if (!reasons.length) return;
+        flags.push({
+          index: i,
+          resortId: r.resortId,
+          siteId: r.siteId || "",
+          name: r.name || "",
+          snCountry: r.snCountry || "", hubCountry,
+          snArea: r.area || "", hubZone,
+          snCity: r.city || "", hubTown: hubTownName,
+          snSuburb: r.suburb || "", hubSuburb: hubSuburbName,
+          reasons,
+        });
+      });
+
+      flags.sort((a, b) => a.name.localeCompare(b.name));
+      const limit = Math.max(1, Math.min(parseInt(body.limit, 10) || 100, 500));
+      const offset = Math.max(0, parseInt(body.offset, 10) || 0);
+      return json({
+        ok: true,
+        totalProperties: resortList.length,
+        totalFlagged: flags.length,
+        offset,
+        limit,
+        remaining: Math.max(0, flags.length - (offset + limit)),
+        flags: flags.slice(offset, offset + limit),
+      });
+    }
+
+    if (action === "resolveStocknetworkLocation") {
+      // The only action that writes a hub correction prompted by the
+      // StockNetwork review above — per the standing project rule, nothing
+      // from StockNetwork is ever applied automatically. A person reviews a
+      // flag and either accepts the suggested country, or picks the correct
+      // Town/Suburb/Zone from the tree (same encoding readLocationSelect/
+      // applyLocationSelect use in admin.html), and only this action, on
+      // that explicit save, writes it onto the resort-list row.
+      const index = parseInt(body.index, 10);
+      if (!isFinite(index) || index < 0) return json({ error: "Missing or invalid index." }, 400);
+
+      const resortRecord = await resortListStore.get("current", { type: "json" });
+      const resortList = (resortRecord && Array.isArray(resortRecord.resorts)) ? resortRecord.resorts : [];
+      const rec = resortList[index];
+      if (!rec) return json({ error: "Property not found — the list may have changed, refresh and try again." }, 404);
+
+      let changed = false;
+      if (typeof body.country === "string" && body.country.trim()) {
+        rec.country = clean(body.country, 120);
+        changed = true;
+      }
+      if (body.clearLocation) {
+        rec.zone = ""; rec.townId = ""; rec.suburbId = ""; rec.locationLabel = ""; rec.nearby = false;
+        changed = true;
+      } else if (body.townId || body.suburbId || body.zone) {
+        rec.zone = body.zone ? okZone(body.zone) : "";
+        rec.townId = typeof body.townId === "string" ? body.townId : "";
+        rec.suburbId = typeof body.suburbId === "string" ? body.suburbId : "";
+        rec.locationLabel = typeof body.locationLabel === "string" ? clean(body.locationLabel, 200) : "";
+        rec.nearby = false;
+        rec.locV = LOCATION_TAG_VERSION;
+        changed = true;
+      }
+      if (!changed) return json({ error: "Nothing to save." }, 400);
+
+      await resortListStore.setJSON("current", Object.assign({}, resortRecord, { resorts: resortList }));
+      return json({ ok: true, country: rec.country || "", zone: rec.zone || "", townId: rec.townId || "", suburbId: rec.suburbId || "", locationLabel: rec.locationLabel || "" });
+    }
+
     if (action === "exportLocations") {
       // Backs the "Corrected StockNetwork file" tool. Given a batch of rows
       // from a StockNetwork resort export ({ i, name, resortId, siteId,
-      // lat, lng, csvCountry }), returns what Country / State / City /
+      // lat, lng, csvCountry }), returns what Country / Area / City /
       // Suburb each should be according to the HUB's own location tree, so
       // the file that goes back to StockNetwork matches the hub exactly.
       //
-      //  * State = the hub ZONE (e.g. "Garden Route", "Eastern Cape",
-      //    "Erongo Region"), per Jean's rule — not the province.
+      //  * Area = the hub ZONE (e.g. "Garden Route", "Eastern Cape",
+      //    "Erongo Region"), per Jean's rule (2026-09-29, corrected from an
+      //    earlier "State = hub zone" assumption — State is StockNetwork's
+      //    own separate province/region column and is never written here) —
+      //    not the province.
       //  * City = the hub Town. Suburb = the hub Suburb; when the place has
       //    no suburb the town name is repeated; when it has no town of its
       //    own and was placed with the nearest town, "Nearby <Town>".
@@ -2384,7 +2508,7 @@ export default async (request, context) => {
         const cityName = town.name || "";
         return {
           country,
-          state: townZone(town),
+          area: townZone(town),
           city: cityName,
           suburb: suburbName || (nearby ? "Nearby " + cityName : cityName),
         };
