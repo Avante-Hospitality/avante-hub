@@ -1644,8 +1644,39 @@
       </div>
 
       <div class="card" style="margin-top:20px;">
-        <h3 style="margin-top:0;">Corrected StockNetwork file (Country / State / City / Suburb from the hub)</h3>
-        <p style="margin-top:0;">Makes the file you send to StockNetwork match this hub. Choose your StockNetwork resort export and you get a copy in exactly the same format where, for every property, <strong>Country</strong>, <strong>State</strong>, <strong>City</strong> and <strong>Suburb</strong> are filled in from the hub's Zone &gt; Town &gt; Suburb, worked out from the property's coordinates. <strong>State is the hub zone</strong> (for example Garden Route, Eastern Cape, or the province/region for places outside South Africa). When a place has no suburb, the town name is repeated; when it has no town of its own but is close to one, the Suburb reads <em>Nearby &lt;Town&gt;</em>. Every other column is left exactly as it was.</p>
+        <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+          <h3 style="margin-top:0;">StockNetwork location review</h3>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button class="how-it-works-btn" type="button" aria-expanded="false" data-panel="snReviewHowItWorks">How it works</button>
+          </div>
+        </div>
+        <div class="how-it-works-panel" id="snReviewHowItWorks">Every night, StockNetwork's own API refreshes each property's Country, Area, District, City, City2, State, Suburb, ratings and a few other fields directly in the hub &mdash; informational only, alongside (never replacing) the hub's own Zone &gt; Town &gt; Suburb tree, which stays driven purely by the property's coordinates. This tool compares the two: any property where StockNetwork's Country/Area/City/Suburb disagrees with the hub's tree, or is blank, shows up below. The hub is the master &mdash; for each flagged property, either accept StockNetwork's country as correct, or pick the right Town/Suburb from the tree yourself if the hub's own placement needs fixing, then save. Nothing changes until you save a row. Once you've worked through the list, use "Corrected StockNetwork file" below to download a file with the hub's (now-corrected) values, ready to load back into StockNetwork.</div>
+        <div class="btn-row" style="margin-top:0;">
+          <button class="btn-outline" id="snReviewLoadBtn">Load flagged properties</button>
+        </div>
+        <div class="status" id="snReviewStatus"></div>
+        <div class="table-wrap" id="snReviewTableWrap" style="display:none; margin-top:12px;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Property</th>
+                <th>Flags</th>
+                <th>StockNetwork says</th>
+                <th>Hub has</th>
+                <th>Fix</th>
+              </tr>
+            </thead>
+            <tbody id="snReviewTableBody"></tbody>
+          </table>
+        </div>
+        <div class="btn-row" id="snReviewMoreRow" style="display:none; margin-top:10px;">
+          <button class="btn-outline" id="snReviewLoadMoreBtn">Load more</button>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:20px;">
+        <h3 style="margin-top:0;">Corrected StockNetwork file (Country / Area / City / Suburb from the hub)</h3>
+        <p style="margin-top:0;">Makes the file you send to StockNetwork match this hub. Choose your StockNetwork resort export and you get a copy in exactly the same format where, for every property, <strong>Country</strong>, <strong>Area</strong>, <strong>City</strong> and <strong>Suburb</strong> are filled in from the hub's Zone &gt; Town &gt; Suburb, worked out from the property's coordinates. <strong>Area is the hub zone</strong> (for example Garden Route, Eastern Cape, or the province/region for places outside South Africa) — StockNetwork's own State column is left exactly as it was, untouched. When a place has no suburb, the town name is repeated; when it has no town of its own but is close to one, the Suburb reads <em>Nearby &lt;Town&gt;</em>. Every other column is left exactly as it was.</p>
         <p style="margin-top:0; font-size:13px; color:var(--muted);">Run <strong>Re-check all zones</strong> (above) first so the hub is up to date &mdash; then this is quick and needs no new Google lookups. Rows the hub can't settle (coordinates missing or in the sea, or the country in the file disagreeing with where the coordinates are) are left as they were and listed in the report for you to decide. Nothing is sent to StockNetwork from here.</p>
         <div class="btn-row" style="margin-top:0; align-items:center;">
           <button class="btn-outline" id="fixFileBtn">Choose StockNetwork export (.csv)…</button>
@@ -9079,9 +9110,123 @@
         });
       })();
 
-      // ---- Corrected StockNetwork file (Country / State / City / Suburb from the hub) ----
+      // ---- StockNetwork location review ----
+      // Loads properties where the nightly StockNetwork sync's raw fields
+      // (Country/Area/City/Suburb) disagree with, or are blank against, the
+      // hub's own Zone > Town > Suburb tree (map-api.js's stocknetworkReview
+      // action — read-only). For each flagged row: "Use SN's country" is a
+      // one-click accept of StockNetwork's own value; the location <select>
+      // (same shared tree used by Default Hooks/Activities/Property
+      // Listings) lets a person pick the correct Town/Suburb if the hub's
+      // own placement is actually what's wrong. Either way, nothing changes
+      // until "Save" is clicked (resolveStocknetworkLocation) — per the
+      // standing rule, StockNetwork's data never overwrites the hub
+      // automatically.
+      (function(){
+        var loadBtn = document.getElementById('snReviewLoadBtn');
+        var moreBtn = document.getElementById('snReviewLoadMoreBtn');
+        var moreRow = document.getElementById('snReviewMoreRow');
+        var statusEl = document.getElementById('snReviewStatus');
+        var tableWrap = document.getElementById('snReviewTableWrap');
+        var tbody = document.getElementById('snReviewTableBody');
+        if(!loadBtn || !tbody) return;
+
+        var offset = 0;
+        var PAGE = 100;
+        var rowsShown = 0;
+
+        function setStatus(t, isError){ statusEl.textContent = t; statusEl.className = 'status show' + (isError ? '' : ' ok'); }
+
+        var FLAG_LABEL = {
+          'country': 'country differs', 'country-blank': 'country blank on SN',
+          'zone': 'area/zone differs', 'zone-blank': 'area blank on SN',
+          'town': 'town/city differs', 'town-blank': 'city blank on SN',
+          'suburb': 'suburb differs'
+        };
+
+        function selectIdFor(index){ return 'snReviewSel_' + index; }
+
+        function renderRow(f){
+          var tr = document.createElement('tr');
+          tr.dataset.index = f.index;
+          var flagsHtml = (f.reasons || []).map(function(r){ return '<span class="badge inactive" style="margin:0 4px 4px 0; display:inline-block;">' + escapeHtml(FLAG_LABEL[r] || r) + '</span>'; }).join('');
+          var snHtml = '<div>' + escapeHtml(f.snCountry || '—') + ' / ' + escapeHtml(f.snArea || '—') + ' / ' + escapeHtml(f.snCity || '—') + ' / ' + escapeHtml(f.snSuburb || '—') + '</div>';
+          var hubHtml = '<div>' + escapeHtml(f.hubCountry || '—') + ' / ' + escapeHtml(f.hubZone || '—') + ' / ' + escapeHtml(f.hubTown || '—') + ' / ' + escapeHtml(f.hubSuburb || '—') + '</div>';
+          var acceptCountryBtn = f.snCountry ? '<button type="button" class="btn-outline btn-small" data-act="country">Use SN’s country (' + escapeHtml(f.snCountry) + ')</button>' : '';
+          tr.innerHTML =
+            '<td>' + escapeHtml(f.name || '(unnamed)') + '</td>' +
+            '<td>' + flagsHtml + '</td>' +
+            '<td>' + snHtml + '</td>' +
+            '<td>' + hubHtml + '</td>' +
+            '<td>' +
+              '<div class="btn-row" style="margin:0 0 6px;">' + acceptCountryBtn + '</div>' +
+              '<select id="' + selectIdFor(f.index) + '" style="width:100%; max-width:260px;"></select> ' +
+              '<button type="button" class="primary btn-small" data-act="save" style="margin-top:6px;">Save</button>' +
+              '<div class="status" style="margin-top:6px;"></div>' +
+            '</td>';
+          tbody.appendChild(tr);
+
+          var rowStatusEl = tr.querySelector('.status');
+          function setRowStatus(t, isError){ rowStatusEl.textContent = t; rowStatusEl.className = 'status show' + (isError ? '' : ' ok'); }
+
+          var acceptBtn = tr.querySelector('[data-act="country"]');
+          if(acceptBtn){
+            acceptBtn.addEventListener('click', function(){
+              acceptBtn.disabled = true;
+              mapAdminPost('resolveStocknetworkLocation', { index: f.index, country: f.snCountry }).then(function(res){
+                if(res.data && res.data.ok){ setRowStatus('Saved — country set to ' + f.snCountry + '.'); tr.style.opacity = '0.55'; }
+                else { setRowStatus((res.data && res.data.error) || 'Could not save.', true); acceptBtn.disabled = false; }
+              }).catch(function(){ setRowStatus('Request failed.', true); acceptBtn.disabled = false; });
+            });
+          }
+
+          var saveBtn = tr.querySelector('[data-act="save"]');
+          saveBtn.addEventListener('click', function(){
+            var sel = document.getElementById(selectIdFor(f.index));
+            var loc = readLocationSelect(sel);
+            if(!loc.zone && !loc.townId && !loc.suburbId){ setRowStatus('Pick a Town, Suburb or Area first.', true); return; }
+            saveBtn.disabled = true;
+            mapAdminPost('resolveStocknetworkLocation', { index: f.index, zone: loc.zone, townId: loc.townId, suburbId: loc.suburbId, locationLabel: loc.locationLabel }).then(function(res){
+              if(res.data && res.data.ok){ setRowStatus('Saved — hub location updated.'); tr.style.opacity = '0.55'; }
+              else { setRowStatus((res.data && res.data.error) || 'Could not save.', true); saveBtn.disabled = false; }
+            }).catch(function(){ setRowStatus('Request failed.', true); saveBtn.disabled = false; });
+          });
+        }
+
+        function loadPage(){
+          var btn = rowsShown === 0 ? loadBtn : moreBtn;
+          btn.disabled = true;
+          setStatus(rowsShown === 0 ? 'Checking StockNetwork data against the hub…' : 'Loading more…');
+          mapAdminPost('stocknetworkReview', { offset: offset, limit: PAGE }).then(function(res){
+            btn.disabled = false;
+            if(!(res.data && res.data.ok)){ setStatus((res.data && res.data.error) || 'Could not load the review.', true); return; }
+            var d = res.data;
+            var newRows = d.flags || [];
+            if(rowsShown === 0 && !newRows.length){
+              setStatus(d.totalProperties ? ('Nothing flagged — checked ' + d.totalProperties + ' properties, StockNetwork agrees with the hub (or has no data yet) for all of them.') : 'No properties with StockNetwork data yet — this fills in once the nightly sync has run.');
+              tableWrap.style.display = 'none';
+              return;
+            }
+            tableWrap.style.display = 'block';
+            newRows.forEach(renderRow);
+            rowsShown += newRows.length;
+            offset = d.offset + newRows.length;
+            var pendingSelectIds = newRows.map(function(f){ return selectIdFor(f.index); });
+            populateLocationSelects(pendingSelectIds);
+            moreRow.style.display = d.remaining > 0 ? 'flex' : 'none';
+            setStatus('Showing ' + rowsShown + ' of ' + d.totalFlagged + ' flagged properties (out of ' + d.totalProperties + ' checked).');
+          }).catch(function(){ btn.disabled = false; setStatus('Request failed.', true); });
+        }
+
+        loadBtn.addEventListener('click', function(){ offset = 0; rowsShown = 0; tbody.innerHTML = ''; loadPage(); });
+        moreBtn.addEventListener('click', loadPage);
+      })();
+
+      // ---- Corrected StockNetwork file (Country / Area / City / Suburb from the hub) ----
       // Reads the admin's StockNetwork resort export in the browser, asks
-      // map-api.js's exportLocations action what Country / State (= hub zone) /
+      // map-api.js's exportLocations action what Country / Area (= hub zone,
+      // corrected 2026-09-29 from an earlier State-based mapping — StockNetwork's
+      // own State column is a different field and is never touched here) /
       // City / Suburb each row should have (hub-tagged rows are free; anything
       // else is looked up through the same cached resolver Re-check uses), then
       // builds the corrected CSV and a change report entirely client-side.
@@ -9173,9 +9318,9 @@
             var header = rows.shift();
             var lower = header.map(function(h){ return h.trim().toLowerCase(); });
             function ix(){ for(var a = 0; a < arguments.length; a++){ var j = lower.indexOf(arguments[a]); if(j > -1) return j; } return -1; }
-            var col = { name: ix('resort','name'), country: ix('country'), state: ix('state'), city: ix('city'), suburb: ix('suburb'), lat: ix('latitude'), lng: ix('longitude'), resortId: ix('resortid'), siteId: ix('siteid') };
+            var col = { name: ix('resort','name'), country: ix('country'), area: ix('area'), city: ix('city'), suburb: ix('suburb'), lat: ix('latitude'), lng: ix('longitude'), resortId: ix('resortid'), siteId: ix('siteid') };
             if(col.name < 0 || col.lat < 0 || col.lng < 0){ setStatus('This doesn’t look like the StockNetwork resort export — I need "Resort", "Latitude" and "Longitude" columns.', true); return; }
-            if(col.country < 0 || col.state < 0 || col.city < 0 || col.suburb < 0){ setStatus('This export is missing one of the Country, State, City or Suburb columns, so there is nothing for me to fill in.', true); return; }
+            if(col.country < 0 || col.area < 0 || col.city < 0 || col.suburb < 0){ setStatus('This export is missing one of the Country, Area, City or Suburb columns, so there is nothing for me to fill in.', true); return; }
             rows = rows.filter(function(r){ return r.length > 1 || (r[0] || '').trim() !== ''; });
             state = { header: header, rows: rows, col: col, results: {}, fileName: f.name };
             dlBox.style.display = 'none';
@@ -9270,24 +9415,24 @@
             var it = state.results[i];
             if(it && APPLY[it.status]){
               var nr = r.slice();
-              nr[c.country] = it.country; nr[c.state] = it.state; nr[c.city] = it.city; nr[c.suburb] = it.suburb;
-              if(nr[c.country] !== r[c.country] || nr[c.state] !== r[c.state] || nr[c.city] !== r[c.city] || nr[c.suburb] !== r[c.suburb]) changed++;
+              nr[c.country] = it.country; nr[c.area] = it.area; nr[c.city] = it.city; nr[c.suburb] = it.suburb;
+              if(nr[c.country] !== r[c.country] || nr[c.area] !== r[c.area] || nr[c.city] !== r[c.city] || nr[c.suburb] !== r[c.suburb]) changed++;
               r = nr;
             }
             out.push(r);
           });
           download('Resort Information - hub corrected.csv', toStockNetworkCsv(out));
-          setStatus('Downloaded the corrected file: ' + changed + ' of ' + state.rows.length + ' rows had Country, State, City or Suburb changed; every other column and row is exactly as it was. Have a look through the change report before loading it into StockNetwork.');
+          setStatus('Downloaded the corrected file: ' + changed + ' of ' + state.rows.length + ' rows had Country, Area, City or Suburb changed; every other column and row is exactly as it was. Have a look through the change report before loading it into StockNetwork.');
         });
 
         dlReportBtn.addEventListener('click', function(){
           var c = state.col;
-          var out = [['Status','Changed','Resort','ResortID','SiteID','Latitude','Longitude','Old Country','New Country','Old State','New State','Old City','New City','Old Suburb','New Suburb','Note','Suggested Latitude','Suggested Longitude','Check on Google Maps']];
+          var out = [['Status','Changed','Resort','ResortID','SiteID','Latitude','Longitude','Old Country','New Country','Old Area','New Area','Old City','New City','Old Suburb','New Suburb','Note','Suggested Latitude','Suggested Longitude','Check on Google Maps']];
           var idx = [];
           state.rows.forEach(function(r, i){ if(state.results[i]) idx.push(i); });
           function didChange(i){
             var it = state.results[i], r = state.rows[i];
-            return !!(APPLY[it.status] && (it.country !== g(r, c.country) || it.state !== g(r, c.state) || it.city !== g(r, c.city) || it.suburb !== g(r, c.suburb)));
+            return !!(APPLY[it.status] && (it.country !== g(r, c.country) || it.area !== g(r, c.area) || it.city !== g(r, c.city) || it.suburb !== g(r, c.suburb)));
           }
           idx.sort(function(a, b){
             var d = ORDER[state.results[a].status] - ORDER[state.results[b].status];
@@ -9302,7 +9447,7 @@
             var link = (sug ? 'https://www.google.com/maps/search/?api=1&query=' + sug.lat + ',' + sug.lng : (la && ln ? 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(la + ',' + ln) : ''));
             out.push([
               LABEL[it.status] || it.status, didChange(i) ? 'Yes' : 'No', g(r, c.name), g(r, c.resortId), g(r, c.siteId), la, ln,
-              g(r, c.country), apply ? it.country : '', g(r, c.state), apply ? it.state : '', g(r, c.city), apply ? it.city : '', g(r, c.suburb), apply ? it.suburb : '',
+              g(r, c.country), apply ? it.country : '', g(r, c.area), apply ? it.area : '', g(r, c.city), apply ? it.city : '', g(r, c.suburb), apply ? it.suburb : '',
               it.note || '', sug ? sug.lat : '', sug ? sug.lng : '', link
             ]);
           });
