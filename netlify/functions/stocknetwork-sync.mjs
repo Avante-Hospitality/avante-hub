@@ -1,23 +1,38 @@
 // Daily StockNetwork -> avante-hub resort-list sync.
 //
-// Confirmed via netlify/functions/stocknetwork-diagnostic.mjs (2026-09-28)
-// that api.stocknetwork.co.za accepts these credentials fine from Netlify's
-// own network (the earlier 403s were specific to a Claude sandbox's IP, not
-// a real block) and that /api/1.0/resort rows carry real latitude/longitude
-// on every row -- so this can populate the Map tab's coordinates directly,
-// no separate geocoding step needed.
+// Confirmed via netlify/functions/stocknetwork-diagnostic.mjs (2026-09-28,
+// since removed -- its job was done) that api.stocknetwork.co.za accepts
+// these credentials fine from Netlify's own network, and that /api/1.0/resort
+// rows carry real latitude/longitude on every row.
 //
 // Runs once a day, before reviewapp's own 03:00 UTC avante-hub-sync cron
 // (see reviewapp/render.yaml) so reviewapp always pulls a same-day-fresh
-// property list. Reuses the SAME POST /api/resorts endpoint the manual CSV
-// upload in admin.html already calls -- so the existing merge-on-import
-// logic (lib/resort-key.js: an admin-assigned affId survives this import,
-// same as it survives a manual CSV re-upload) applies here automatically,
-// with no separate code path to keep in sync.
+// property list.
+//
+// 2026-09-29 rewrite: previously this converted the API's rows into the same
+// 8-column CSV shape the manual upload produces, then POSTed that as CSV
+// text to /api/resorts -- lossy, since the API actually returns a much
+// richer field set (Country, Area, District, Suburb, City, City2, State,
+// ratings, resort code) than that 8-column shape kept. Per Jean's explicit
+// instruction (2026-09-29): the API's fields should land in the hub as their
+// own new raw fields, without ever touching the hub's own Zone/Town/Suburb
+// tree (the hub is the master there -- driven purely by coordinate
+// geocoding). Now posts the RAW API rows as JSON to the same /api/resorts
+// endpoint, which resorts-api.js's new handleApiSync() routes to distinctly
+// from a CSV upload (by Content-Type) -- it only UPDATES informational
+// fields on properties that already exist in the hub (matched by
+// StockNetwork's own ResortID), never creates a new resort-list row. A
+// brand-new StockNetwork property only appears in the hub once a manual CSV
+// upload (admin.html's existing "Choose file" flow) creates the row -- this
+// nightly sync then keeps its informational fields current from there on.
 //
 // You can still use the manual CSV upload in admin.html any time -- this
-// doesn't replace it, it just means you don't have to remember to run it
-// for routine new-property updates.
+// doesn't replace it. A CSV upload is still the only way to bring in
+// brand-new properties, SiteID, and the amenity/policy columns the API
+// doesn't return at all (WiFi, Parking, Pet Allowance, Allow Same Day
+// Booking, Smoking Allowed, Checkin/Checkout Time, and the human-readable
+// Property Type text) -- see resorts-api.js's parseResortsFromCsv for the
+// full list.
 //
 // Manual test: hit this function's own URL with
 // ?secret=<STOCKNETWORK_DIAG_SECRET> to run it on demand instead of
@@ -83,19 +98,16 @@ export default async (request) => {
     return json({ ok: false, step: "resort-shape", error: "No resort rows in the response", received: resortData }, 502);
   }
 
-  // Step 3: turn it into the same CSV shape the manual upload in admin.html
-  // produces, and feed it into the SAME /api/resorts endpoint that upload
-  // calls -- see netlify/edge-functions/resorts-api.js's parseResortsFromCsv
-  // for exactly which header names it looks for.
-  const csv = toResortsCsv(rows);
-
+  // Step 3: post the RAW rows as JSON -- see resorts-api.js's handleApiSync
+  // for exactly which fields it reads off each row and how it matches them
+  // to existing hub properties.
   const siteBase = process.env.URL || "https://go.avantetravel.co.za";
   let importResp;
   try {
     importResp = await fetch(`${siteBase}/api/resorts`, {
       method: "POST",
-      headers: { "Content-Type": "text/csv" },
-      body: csv,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "syncStockNetworkApi", rows }),
     });
   } catch (err) {
     return json({ ok: false, step: "import-post", error: String((err && err.message) || err) }, 502);
@@ -109,41 +121,14 @@ export default async (request) => {
     {
       ok: true,
       fetchedFromStockNetwork: rows.length,
-      importedCount: importResult.count,
-      updatedAt: importResult.updatedAt,
+      matchedProperties: importResult.matchedProperties,
+      matchedRows: importResult.matchedRows,
+      unmatchedApiRows: importResult.unmatchedApiRows,
+      coordinatesChanged: importResult.coordinatesChanged,
     },
     200
   );
 };
-
-function toResortsCsv(rows) {
-  const header = ["Resort", "District", "Suburb", "State", "SiteID", "ResortID", "Latitude", "Longitude"];
-  const lines = [header.join(",")];
-
-  for (const r of rows) {
-    const name = (r.resort_Name || r.resort_Name2 || "").trim();
-    if (!name) continue; // parseResortsFromCsv skips nameless rows too -- matching that here
-
-    const district = (r.district || r.area || "").trim();
-    const suburb = (r.suburb || "").trim();
-    const state = (r.state || "").trim();
-    const siteId = ""; // not present on this StockNetwork endpoint -- resortId alone still uniquely keys each row
-    const resortId = (r.iExchangeResortFileID || "").trim();
-    const latitude = typeof r.latitude === "number" ? String(r.latitude) : "";
-    const longitude = typeof r.longitude === "number" ? String(r.longitude) : "";
-
-    lines.push(
-      [name, district, suburb, state, siteId, resortId, latitude, longitude].map(csvField).join(",")
-    );
-  }
-
-  return lines.join("\n");
-}
-
-function csvField(value) {
-  const s = String(value ?? "");
-  return `"${s.replace(/"/g, '""')}"`;
-}
 
 function json(body, status) {
   return new Response(JSON.stringify(body, null, 2), {
