@@ -9394,7 +9394,17 @@
         function renderRow(item){
           var tr = document.createElement('tr');
           var hint = [item.area, item.city, item.country].filter(function(x){ return x; }).join(' / ') || '—';
-          var defaultQuery = [item.name, item.area, item.city, item.country].filter(function(x){ return x; }).join(', ');
+          // hub-is-master-for-location (2026-09-30): default the search box
+          // to the property's own NAME ONLY, not StockNetwork's Area/City/
+          // Country text -- that text has repeatedly turned out wrong (a
+          // property tagged with the wrong town steers this search to a
+          // same-named but different business in the wrong place, as
+          // happened live with "Garden Route Chalets"). The hint column
+          // still shows StockNetwork's Area/City/Country alongside the
+          // property name for reference, and Jean can still type any of it
+          // into the box herself when a name-only search is too broad --
+          // just never pre-filled in by default now.
+          var defaultQuery = item.name || '';
           tr.innerHTML =
             '<td>' + escapeHtml(item.name || '(unnamed)') + '</td>' +
             '<td>' + escapeHtml(hint) + '</td>' +
