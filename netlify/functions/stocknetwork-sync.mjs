@@ -117,35 +117,50 @@ export default async (request) => {
     return json({ ok: false, step: "import-post", status: importResp.status, received: importResult }, 502);
   }
 
-  return json(
-    {
-      ok: true,
-      fetchedFromStockNetwork: rows.length,
-      matchedProperties: importResult.matchedProperties,
-      matchedRows: importResult.matchedRows,
-      unmatchedApiRows: importResult.unmatchedApiRows,
-      coordinatesChanged: importResult.coordinatesChanged,
-      // Case A (full-hub-coordinate-geocoding-scope, 2026-09-29): of the
-      // properties whose coordinate just changed, how many resorts-api.js's
-      // handleApiSync managed to place into the hub's own
-      // Zone/Town/Suburb/Nearby tree right away -- see that file for the
-      // full logic. autoPlaceNoApiKey true means GOOGLE_GEOCODING_API_KEY
-      // isn't set, so nothing was attempted at all this run.
-      autoPlaced: importResult.autoPlaced,
-      autoPlaceFailed: importResult.autoPlaceFailed,
-      autoPlaceSkippedForTime: importResult.autoPlaceSkippedForTime,
-      autoPlaceNoApiKey: importResult.autoPlaceNoApiKey,
-      // Case B (full-hub-coordinate-geocoding-scope, 2026-09-29): of those
-      // same just-changed coordinates, how many didn't look like they
-      // matched the property's own name and got flagged for review in
-      // admin.html's "StockNetwork location review" card (coordFlagCleared
-      // is the reverse -- a coordinate that WAS flagged before and now
-      // checks out again).
-      coordFlaggedSuspicious: importResult.coordFlaggedSuspicious,
-      coordFlagCleared: importResult.coordFlagCleared,
-    },
-    200
-  );
+  const summary = {
+    ok: true,
+    fetchedFromStockNetwork: rows.length,
+    matchedProperties: importResult.matchedProperties,
+    matchedRows: importResult.matchedRows,
+    unmatchedApiRows: importResult.unmatchedApiRows,
+    coordinatesChanged: importResult.coordinatesChanged,
+    // Case A (full-hub-coordinate-geocoding-scope, 2026-09-29): of the
+    // properties whose coordinate just changed, how many resorts-api.js's
+    // handleApiSync managed to place into the hub's own
+    // Zone/Town/Suburb/Nearby tree right away -- see that file for the
+    // full logic. autoPlaceNoApiKey true means GOOGLE_GEOCODING_API_KEY
+    // isn't set, so nothing was attempted at all this run.
+    autoPlaced: importResult.autoPlaced,
+    autoPlaceFailed: importResult.autoPlaceFailed,
+    autoPlaceSkippedForTime: importResult.autoPlaceSkippedForTime,
+    autoPlaceNoApiKey: importResult.autoPlaceNoApiKey,
+    // Case B (full-hub-coordinate-geocoding-scope, 2026-09-29): of those
+    // same just-changed coordinates, how many didn't look like they
+    // matched the property's own name and got flagged for review in
+    // admin.html's "StockNetwork location review" card (coordFlagCleared
+    // is the reverse -- a coordinate that WAS flagged before and now
+    // checks out again).
+    coordFlaggedSuspicious: importResult.coordFlaggedSuspicious,
+    coordFlagCleared: importResult.coordFlagCleared,
+    // hub-is-master-for-location (2026-09-30): the hub is master for
+    // Coordinates/Country/Zone/Town/Suburb once a property has ANY of
+    // them -- StockNetwork only ever fills those in on a property's first
+    // coordinate. This counts properties where the hub already had a
+    // coordinate and StockNetwork's freshly-fetched one disagreed -- the
+    // hub's own value was kept as-is and the property was flagged in
+    // "StockNetwork location review" (same Accept-suggested-coordinate
+    // flow as coordFlaggedSuspicious above) rather than overwritten.
+    coordProtectedFromOverwrite: importResult.coordProtectedFromOverwrite,
+  };
+
+  // 2026-09-30: print the result to the function's own log too -- Netlify's
+  // scheduled-function log view only shows a duration/memory footer for each
+  // run, not the HTTP response body, so without this line there was no way
+  // for Jean to see what a nightly run actually did short of asking here.
+  // console.log output on Netlify Functions IS captured in that log view.
+  console.log("stocknetwork-sync result: " + JSON.stringify(summary));
+
+  return json(summary, 200);
 };
 
 function json(body, status) {
