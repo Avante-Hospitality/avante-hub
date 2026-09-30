@@ -260,10 +260,18 @@ async function handleApiSync(request, store, cors) {
   let matchedProperties = 0,
     matchedRows = 0,
     unmatchedApiRows = 0,
-    coordinatesChanged = 0;
-  // Indices into `resorts` whose coordinate moved this sync — collected so
-  // the auto-place pass below (Case A) only ever looks at rows that
-  // genuinely need it, not the whole ~5,900-row list.
+    coordinatesChanged = 0,
+    // hub-is-master-for-location (2026-09-30): counters for the two new
+    // outcomes below, alongside coordFlaggedSuspicious/coordFlagCleared
+    // which Case B further down also increments/decrements.
+    coordFlaggedSuspicious = 0,
+    coordFlagCleared = 0,
+    coordProtectedFromOverwrite = 0;
+  // Indices into `resorts` whose coordinate was newly ACCEPTED this sync —
+  // collected so the auto-place pass below (Case A) only ever looks at rows
+  // that genuinely need it, not the whole ~5,900-row list. A row where the
+  // hub already had a coordinate never lands here, whether StockNetwork's
+  // value matched or was flagged as a mismatch -- see the per-row loop.
   const changedIdxs = [];
 
   for (const apiRow of rows) {
@@ -288,19 +296,65 @@ async function handleApiSync(request, store, cors) {
       if (hasNewCoord) {
         const oldLat = parseFloat(rec.latitude);
         const oldLng = parseFloat(rec.longitude);
-        const moved =
-          !isFinite(oldLat) ||
-          !isFinite(oldLng) ||
-          Math.abs(oldLat - apiRow.latitude) >= 0.00002 ||
-          Math.abs(oldLng - apiRow.longitude) >= 0.00002;
-        rec.latitude = String(apiRow.latitude);
-        rec.longitude = String(apiRow.longitude);
-        if (moved) {
+        const hubHasCoord = isFinite(oldLat) && isFinite(oldLng) && !(oldLat === 0 && oldLng === 0);
+
+        if (!hubHasCoord) {
+          // hub-is-master-for-location (2026-09-30, extending
+          // full-hub-coordinate-geocoding-scope): first real coordinate
+          // this property has ever had in the hub -- nothing of the hub's
+          // own to protect yet, so accept it and run it through the usual
+          // Case A/B placement pass below exactly as before. From this
+          // point on the hub owns this property's own
+          // Coordinates/Country/Zone/Town/Suburb -- see the two branches
+          // below for what happens on every sync after this one.
+          rec.latitude = String(apiRow.latitude);
+          rec.longitude = String(apiRow.longitude);
           coordinatesChanged++;
           API_SYNC_CLEAR_ON_MOVE.forEach((f) => {
             delete rec[f];
           });
           changedIdxs.push(i);
+          return;
+        }
+
+        const matches =
+          Math.abs(oldLat - apiRow.latitude) < 0.00002 &&
+          Math.abs(oldLng - apiRow.longitude) < 0.00002;
+
+        if (matches) {
+          // StockNetwork has caught up to what the hub already has (within
+          // ~2m, same tolerance the old "moved" check used) -- nothing to
+          // change. Clear a stale mismatch flag left over from an earlier
+          // night, if this property still has one.
+          if (rec.coordSuspicious) {
+            delete rec.coordSuspicious;
+            delete rec.coordSuspiciousNote;
+            delete rec.coordSuggested;
+            coordFlagCleared++;
+          }
+        } else {
+          // The hub already has a coordinate for this property and
+          // StockNetwork just sent a DIFFERENT one. Per Jean's explicit
+          // rule (2026-09-30): once a property has a hub coordinate, the
+          // hub is master and StockNetwork never overwrites it
+          // automatically -- this only ever gets flagged for a person to
+          // review. Reuses the exact same coordSuspicious/coordSuggested/
+          // coordSuspiciousNote fields (and the existing "Accept suggested
+          // coordinate" button in stocknetworkReview) Case B below already
+          // uses, so no new UI is needed -- accepting it calls the same
+          // applyPropertyCoordinate action either way.
+          //
+          // rec.latitude/longitude are deliberately left untouched, and
+          // API_SYNC_CLEAR_ON_MOVE deliberately does NOT run here, so
+          // Country/Zone/Town/Suburb stay exactly as the hub has them too.
+          // This row is also deliberately never added to changedIdxs, so
+          // Case A/B below never re-places it off a coordinate the hub
+          // hasn't accepted.
+          rec.coordSuspicious = true;
+          rec.coordSuggested = { lat: apiRow.latitude, lng: apiRow.longitude };
+          rec.coordSuspiciousNote =
+            "StockNetwork sent a different coordinate than the hub's current one for this property \u2014 the hub's coordinate was kept. Review and accept below if StockNetwork's is correct.";
+          coordProtectedFromOverwrite++;
         }
       }
     });
@@ -320,11 +374,13 @@ async function handleApiSync(request, store, cors) {
   let autoPlaced = 0,
     autoPlaceFailed = 0,
     autoPlaceSkippedForTime = 0,
-    autoPlaceNoApiKey = false,
-    // Case B counters (full-hub-coordinate-geocoding-scope, 2026-09-29) —
-    // see the checkNameAgainstCoordinate call inside the loop below.
-    coordFlaggedSuspicious = 0,
-    coordFlagCleared = 0;
+    autoPlaceNoApiKey = false;
+  // coordFlaggedSuspicious/coordFlagCleared are now declared above, next to
+  // coordProtectedFromOverwrite, since the per-row loop above can also
+  // increment/decrement them (hub-is-master-for-location, 2026-09-30) --
+  // Case B just below is a second place that touches the same two
+  // counters, for a different reason (a brand-new placement whose name
+  // doesn't match), not a first place.
 
   if (changedIdxs.length) {
     const apiKey = Deno.env.get("GOOGLE_GEOCODING_API_KEY") || "";
@@ -432,6 +488,7 @@ async function handleApiSync(request, store, cors) {
       autoPlaceNoApiKey,
       coordFlaggedSuspicious,
       coordFlagCleared,
+      coordProtectedFromOverwrite,
     }),
     { headers: { "content-type": "application/json", ...cors } }
   );
