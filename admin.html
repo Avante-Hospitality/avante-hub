@@ -9276,7 +9276,7 @@
             coordBlockHtml = '<div style="margin:0 0 8px; padding:8px; border:1px solid var(--border); border-radius:8px; background:rgba(255,180,0,0.08);">' +
               '<div style="font-size:12px;">' + escapeHtml(f.coordSuspiciousNote || 'This coordinate may not match the property name.') + '</div>' +
               (f.coordSuggested ? (
-                '<div style="font-size:12px; margin-top:4px;">Google suggests: ' + escapeHtml(f.coordSuggested.formatted || (f.coordSuggested.lat + ', ' + f.coordSuggested.lng)) + '</div>' +
+                '<div style="font-size:12px; margin-top:4px;">Suggested coordinate: ' + escapeHtml(f.coordSuggested.formatted || (f.coordSuggested.lat + ', ' + f.coordSuggested.lng)) + '</div>' +
                 '<button type="button" class="btn-outline btn-small" data-act="acceptCoord" style="margin-top:6px;">Accept suggested coordinate</button>'
               ) : '') +
             '</div>';
