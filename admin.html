@@ -1268,9 +1268,83 @@
         .loc-tree-props-list{ padding-left:80px; display:flex; flex-direction:column; gap:2px; margin-bottom:2px; }
         .loc-tree-prop-item{ font-size:13px; color:var(--navy); padding:3px 4px; }
         .loc-tree-prop-item .loc-tree-prop-hidden{ color:var(--muted); font-size:11px; margin-left:6px; }
+
+        /* 2026-09-30: this tab has grown to ~20 stacked cards -- Jean kept
+           losing the specific button she needed (e.g. "Fix countries with a
+           real coordinate", buried inside "Properties with no zone"). This
+           jump bar sticks under the header once you scroll past it and lets
+           you pick a section by name instead of scrolling blind. Purely a
+           navigation aid -- it doesn't touch any existing card, button, or
+           data flow. */
+        .map-jump-bar{
+          position:sticky; top:0; z-index:5;
+          background:#fff; border-bottom:1.5px solid var(--line);
+          padding:12px 0; margin-bottom:20px;
+          display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+        }
+        .map-jump-bar label{
+          display:inline; margin:0; font-size:12px; font-weight:700;
+          text-transform:uppercase; letter-spacing:.03em; color:var(--muted);
+        }
+        .map-jump-bar select{
+          width:auto; flex:1; min-width:220px; max-width:420px;
+          padding:9px 12px; font-size:13.5px;
+        }
+        /* Offsets the scroll target so a jumped-to card's top isn't hidden
+           under the sticky bar above. */
+        .map-jump-target{ scroll-margin-top:66px; }
       </style>
 
-      <div class="card">
+      <div class="map-jump-bar">
+        <label for="mapJumpSelect">Jump to:</label>
+        <select id="mapJumpSelect">
+          <option value="" selected>Choose a section&hellip;</option>
+          <optgroup label="Map">
+            <option value="map-jump-browse">Browse by location</option>
+            <option value="map-jump-master">Master map</option>
+            <option value="map-jump-properties-on-map">Properties on the map</option>
+          </optgroup>
+          <optgroup label="Zones &amp; coordinates">
+            <option value="map-jump-no-zone">Properties with no zone (incl. "Fix countries with a real coordinate")</option>
+            <option value="map-jump-suggested-coords">Suggested coordinates</option>
+            <option value="map-jump-discover">Discover locations from properties &amp; activities</option>
+            <option value="map-jump-geocode">Geocode locations from coordinates ("Start geocoding")</option>
+            <option value="map-jump-tree-audit">Location tree audit</option>
+            <option value="map-jump-improve-coords">Improve property coordinates</option>
+            <option value="map-jump-find-fix-coords">Find &amp; fix missing coordinates</option>
+          </optgroup>
+          <optgroup label="StockNetwork sync">
+            <option value="map-jump-sn-resort-list">StockNetwork resort list (upload CSV)</option>
+            <option value="map-jump-sn-review">StockNetwork location review</option>
+            <option value="map-jump-corrected-file">Corrected StockNetwork file</option>
+            <option value="map-jump-bulk-fill-csv">Bulk-fill property coordinates from CSV</option>
+          </optgroup>
+          <optgroup label="Activities">
+            <option value="map-jump-bulk-activities">Bulk import activities from CSV</option>
+            <option value="map-jump-add-activity">Add an activity</option>
+            <option value="map-jump-activities-table">Existing activities</option>
+          </optgroup>
+          <optgroup label="Towns">
+            <option value="map-jump-bulk-towns">Bulk import towns from CSV</option>
+            <option value="map-jump-add-town">Add a popular tourist town</option>
+            <option value="map-jump-towns-table">Towns table</option>
+          </optgroup>
+        </select>
+      </div>
+      <script>
+        (function(){
+          var sel = document.getElementById('mapJumpSelect');
+          if (!sel) return;
+          sel.addEventListener('change', function(){
+            var id = sel.value;
+            if (!id) return;
+            var target = document.getElementById(id);
+            if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          });
+        })();
+      </script>
+
+      <div class="card map-jump-target" id="map-jump-browse">
         <h3 style="margin-top:0;">Browse by location</h3>
         <p style="margin-top:0;">Tick a region, town, or suburb to narrow the master map below to just that area — cascades down (ticking a region ticks everything under it) the same way the affiliate allocation picker does. Leave nothing ticked to see everything.</p>
         <div class="loc-tree-country">South Africa</div>
@@ -1278,7 +1352,7 @@
         <div id="mapLocationTree"></div>
       </div>
 
-      <div class="card" style="margin-top:20px;">
+      <div class="card map-jump-target" id="map-jump-master" style="margin-top:20px;">
         <h3 style="margin-top:0;">Master map</h3>
         <p style="margin-top:0;">Every property and activity, including hidden ones (shown dimmed). Zone areas are shaded in the zone colours, and town and property pins take the colour of their zone (places outside South Africa are coloured per country) — click a pin to show/hide it on the affiliate-facing map, or to see its exact zone and jump to Edit if it looks wrong.</p>
         <div class="status" id="missingCoordsSummary" style="margin-top:0;"></div>
@@ -1293,7 +1367,7 @@
         <div id="adminMapEl" style="width:100%; height:460px; border-radius:10px;"></div>
       </div>
 
-      <div class="card" style="margin-top:20px;">
+      <div class="card map-jump-target" id="map-jump-no-zone" style="margin-top:20px;">
         <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap;">
           <h3 style="margin-top:0;">Properties with no zone</h3>
           <div style="display:flex; gap:8px; flex-wrap:wrap;">
@@ -1322,7 +1396,7 @@
         <div class="empty-state" id="noZonePropsEmpty" style="display:none;">Every property and resort row with coordinates has a zone.</div>
       </div>
 
-      <div class="card" style="margin-top:20px;">
+      <div class="card map-jump-target" id="map-jump-suggested-coords" style="margin-top:20px;">
         <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap;">
           <h3 style="margin-top:0;">Suggested coordinates</h3>
           <div style="display:flex; gap:8px; flex-wrap:wrap;">
@@ -1352,7 +1426,7 @@
         <div class="empty-state" id="suggestCoordsEmpty" style="display:block;">Click "Look up suggestions" to generate this list.</div>
       </div>
 
-      <div class="card" style="margin-top:20px;">
+      <div class="card map-jump-target" id="map-jump-sn-resort-list" style="margin-top:20px;">
         <h3 style="margin-top:0;">StockNetwork resort list</h3>
         <p style="margin-top:0;">The full StockNetwork inventory (used by the Accommodation Link Builder in the Hub too, and by "Discover locations" below). The town/city column can be named <code>District</code>, <code>Town</code>, or <code>City</code> — any of those is picked up automatically. Also optional, if your export has them: <code>Suburb</code> (or <code>Area</code>) for suburb-level detail, <code>Zone</code>/<code>Province</code>/<code>State</code> for a more exact area than we can guess from the town name alone, and <code>Latitude</code>/<code>Longitude</code> to get resorts pinned on the map. Re-upload any time your export changes — everything else about how this list is used stays the same.</p>
         <div class="btn-row" style="margin-top:0;">
@@ -1363,7 +1437,7 @@
         <p id="resortListStatusText" style="margin:10px 0 0; font-size:13px; color:var(--muted);"></p>
       </div>
 
-      <div class="card" style="margin-top:20px;">
+      <div class="card map-jump-target" id="map-jump-bulk-fill-csv" style="margin-top:20px;">
         <h3 style="margin-top:0;">Bulk-fill property coordinates from CSV</h3>
         <p style="margin-top:0;">Only touches <code>latitude</code>/<code>longitude</code> on existing "Listed" properties — nothing else about the listing changes. Columns: <code>id</code> (the listingId, e.g. P-123456) or <code>propertyName</code>, plus <code>latitude, longitude</code>. Prefer <code>id</code> when two properties share a name.</p>
         <div class="btn-row" style="margin-top:0;">
@@ -1390,7 +1464,7 @@
         </div>
       </div>
 
-      <div class="card" style="margin-top:20px;">
+      <div class="card map-jump-target" id="map-jump-bulk-activities" style="margin-top:20px;">
         <h3 style="margin-top:0;">Bulk import activities from CSV</h3>
         <p style="margin-top:0;">Columns: <code>name, area, zone, price, contactLink, description, latitude, longitude</code>. Matches existing activities by name (case-insensitive) and updates them; anything new is added. An optional <code>id</code> column forces an exact match instead.</p>
         <div class="btn-row" style="margin-top:0;">
@@ -1402,7 +1476,7 @@
         <div class="status" id="importActivitiesStatus"></div>
       </div>
 
-      <div class="card" style="margin-top:20px;">
+      <div class="card map-jump-target" id="map-jump-add-activity" style="margin-top:20px;">
         <h3 id="activityFormTitle" style="margin-top:0;">Add an activity</h3>
         <input type="hidden" id="activityIdInput">
         <div class="btn-row" style="flex-wrap:wrap; gap:10px;">
@@ -1445,7 +1519,7 @@
         <div class="status" id="activityFormStatus"></div>
       </div>
 
-      <div class="card" style="margin-top:20px;">
+      <div class="card map-jump-target" id="map-jump-activities-table" style="margin-top:20px;">
         <div class="btn-row" style="margin-top:0;">
           <button class="btn-outline" id="refreshActivitiesBtn">Refresh</button>
         </div>
@@ -1473,7 +1547,7 @@
         </div>
       </div>
 
-      <div class="card" style="margin-top:20px;">
+      <div class="card map-jump-target" id="map-jump-bulk-towns" style="margin-top:20px;">
         <h3 style="margin-top:0;">Bulk import towns from CSV</h3>
         <p style="margin-top:0;">Columns: <code>name, area, zone, description, latitude, longitude, affiliateId</code>. <code>affiliateId</code> is optional — leave it blank to make the town available to every affiliate's Explore Map and area hooks; set it to one affiliate's ID to allocate that town to them specifically. Matches existing towns by name (case-insensitive) and updates them; anything new is added. An optional <code>id</code> column forces an exact match instead.</p>
         <div class="btn-row" style="margin-top:0;">
@@ -1485,7 +1559,7 @@
         <div class="status" id="importTownsStatus"></div>
       </div>
 
-      <div class="card" style="margin-top:20px;">
+      <div class="card map-jump-target" id="map-jump-add-town" style="margin-top:20px;">
         <h3 id="townFormTitle" style="margin-top:0;">Add a popular tourist town</h3>
         <p style="margin-top:0;">These are the destinations shown as their own pin on the Explore Map and offered as the destination picker for area hooks — separate from bookable properties and activities.</p>
         <input type="hidden" id="townIdInput">
@@ -1532,7 +1606,7 @@
         <div class="status" id="townFormStatus"></div>
       </div>
 
-      <div class="card" style="margin-top:20px;">
+      <div class="card map-jump-target" id="map-jump-discover" style="margin-top:20px;">
         <h3 style="margin-top:0;">Discover locations from properties &amp; activities</h3>
         <p style="margin-top:0;">Scans every onboarded property, the full StockNetwork resort list, and all activities for the areas, towns and suburbs already on file, and adds any that aren't yet a Town or Suburb here — auto-suggesting a zone and coordinates from the source records. Never touches or overwrites a town/suburb you've already added or edited.</p>
         <div class="btn-row" style="margin-top:0;">
@@ -1541,7 +1615,7 @@
         <div class="status" id="discoverLocationsStatus"></div>
       </div>
 
-      <div class="card" style="margin-top:20px;">
+      <div class="card map-jump-target" id="map-jump-geocode" style="margin-top:20px;">
         <h3 style="margin-top:0;">Geocode locations from coordinates</h3>
         <p style="margin-top:0;">Automatically places every property, StockNetwork resort-list row, and activity that has a latitude/longitude but no location tag yet, using Google's Geocoding API &mdash; no manual entry needed. Never touches anything already tagged, whether that was set by hand or by an earlier run of this.</p>
         <div class="btn-row" style="margin-top:0;">
@@ -1580,7 +1654,7 @@
         </div>
       </div>
 
-      <div class="card" style="margin-top:20px;">
+      <div class="card map-jump-target" id="map-jump-tree-audit" style="margin-top:20px;">
         <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap;">
           <h3 style="margin-top:0;">Location tree audit</h3>
           <div style="display:flex; gap:8px; flex-wrap:wrap;">
@@ -1624,7 +1698,7 @@
         </div>
       </div>
 
-      <div class="card" style="margin-top:20px;">
+      <div class="card map-jump-target" id="map-jump-improve-coords" style="margin-top:20px;">
         <h3 style="margin-top:0;">Improve property coordinates (from your StockNetwork export)</h3>
         <p style="margin-top:0;">Most StockNetwork coordinates are rounded to about 1 km, so map pins can sit a kilometre out. Choose your StockNetwork resort export (the .csv you upload to the resort list) and this looks each property up by name on Google, then gives you two files: a <strong>review report</strong> (every property with a confidence rating and the suggested latitude/longitude), and a <strong>copy of your export</strong> with only the high-confidence coordinates swapped in, ready to load back into StockNetwork. It changes nothing in the hub itself. Each property looked up is one Google lookup.</p>
         <div class="btn-row" style="margin-top:0; align-items:center;">
@@ -1643,7 +1717,7 @@
         </div>
       </div>
 
-      <div class="card" style="margin-top:20px;">
+      <div class="card map-jump-target" id="map-jump-sn-review" style="margin-top:20px;">
         <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap;">
           <h3 style="margin-top:0;">StockNetwork location review</h3>
           <div style="display:flex; gap:8px; flex-wrap:wrap;">
@@ -1674,7 +1748,7 @@
         </div>
       </div>
 
-      <div class="card" style="margin-top:20px;">
+      <div class="card map-jump-target" id="map-jump-find-fix-coords" style="margin-top:20px;">
         <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap;">
           <h3 style="margin-top:0;">Find &amp; fix missing coordinates</h3>
           <div style="display:flex; gap:8px; flex-wrap:wrap;">
@@ -1708,7 +1782,7 @@
         </div>
       </div>
 
-      <div class="card" style="margin-top:20px;">
+      <div class="card map-jump-target" id="map-jump-corrected-file" style="margin-top:20px;">
         <h3 style="margin-top:0;">Corrected StockNetwork file (Country / Area / City / Suburb from the hub)</h3>
         <p style="margin-top:0;">Makes the file you send to StockNetwork match this hub. Choose your StockNetwork resort export and you get a copy in exactly the same format where, for every property, <strong>Country</strong>, <strong>Area</strong>, <strong>City</strong> and <strong>Suburb</strong> are filled in from the hub's Zone &gt; Town &gt; Suburb, worked out from the property's coordinates. <strong>Area is the hub zone</strong> (for example Garden Route, Eastern Cape, or the province/region for places outside South Africa) — StockNetwork's own State column is left exactly as it was, untouched. When a place has no suburb, the town name is repeated; when it has no town of its own but is close to one, the Suburb reads <em>Nearby &lt;Town&gt;</em>. Every other column is left exactly as it was.</p>
         <p style="margin-top:0; font-size:13px; color:var(--muted);">Run <strong>Re-check all zones</strong> (above) first so the hub is up to date &mdash; then this is quick and needs no new Google lookups. Rows the hub can't settle (coordinates missing or in the sea, or the country in the file disagreeing with where the coordinates are) are left as they were and listed in the report for you to decide. Nothing is sent to StockNetwork from here.</p>
@@ -1724,7 +1798,7 @@
         </div>
       </div>
 
-      <div class="card" style="margin-top:20px;">
+      <div class="card map-jump-target" id="map-jump-towns-table" style="margin-top:20px;">
         <div class="btn-row" style="margin-top:0;">
           <button class="btn-outline" id="refreshTownsBtn">Refresh</button>
         </div>
@@ -1771,7 +1845,7 @@
         </details>
       </div>
 
-      <div class="card" style="margin-top:20px;">
+      <div class="card map-jump-target" id="map-jump-properties-on-map" style="margin-top:20px;">
         <h3 style="margin-top:0;">Properties on the map</h3>
         <p style="margin-top:0;">Every "Listed" property with a latitude/longitude on file appears on the Explore Map by default. Untick to hide a specific one.</p>
         <div class="table-wrap">
