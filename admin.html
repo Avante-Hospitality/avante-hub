@@ -1344,6 +1344,75 @@
         })();
       </script>
 
+      <!-- Step-result popup: shown when a workflow step (Start geocoding,
+           Re-check all zones, etc.) finishes, explaining in plain language
+           what the result means and offering a "Next step" button that
+           jumps straight to the next card/button in the cleanup workflow.
+           Reuses the same .modal-overlay/.modal-card styling as the other
+           modals in this file (see pwModalOverlay) for visual consistency,
+           and the same Jump-to scrollIntoView mechanism as mapJumpSelect
+           above. Jean asked for this 2026-10-01 while re-walking the
+           8-step audit workflow from scratch. -->
+      <div class="modal-overlay" id="stepResultModalOverlay">
+        <div class="modal-card" style="max-width:480px;">
+          <h2 id="stepResultModalTitle">Step done</h2>
+          <p class="modal-sub" id="stepResultModalMsg" style="margin-bottom:0;"></p>
+          <div class="modal-actions">
+            <button type="button" class="modal-btn-secondary" id="stepResultModalCloseBtn">Close</button>
+            <button type="button" class="modal-btn-primary" id="stepResultModalNextBtn" style="display:none;">Next step</button>
+          </div>
+        </div>
+      </div>
+      <script>
+        (function(){
+          var overlay = document.getElementById('stepResultModalOverlay');
+          var titleEl = document.getElementById('stepResultModalTitle');
+          var msgEl = document.getElementById('stepResultModalMsg');
+          var nextBtn = document.getElementById('stepResultModalNextBtn');
+          var closeBtn = document.getElementById('stepResultModalCloseBtn');
+          if (!overlay) return;
+          var pendingNextId = null;
+
+          function closeStepResultModal(){
+            overlay.classList.remove('show');
+            pendingNextId = null;
+          }
+
+          // opts: { title, message, nextId, nextLabel }
+          // nextId is any element id on the page (a card like
+          // "map-jump-find-fix-coords" or a button like "recheckZonesBtn")
+          // — omit it to show a plain explanation with no Next button.
+          window.showStepResultModal = function(opts){
+            opts = opts || {};
+            titleEl.textContent = opts.title || 'Step done';
+            msgEl.textContent = opts.message || '';
+            pendingNextId = opts.nextId || null;
+            if (pendingNextId) {
+              nextBtn.style.display = '';
+              nextBtn.textContent = 'Next: ' + (opts.nextLabel || 'next step');
+            } else {
+              nextBtn.style.display = 'none';
+            }
+            overlay.classList.add('show');
+          };
+
+          closeBtn.addEventListener('click', closeStepResultModal);
+          overlay.addEventListener('click', function(e){ if (e.target === overlay) closeStepResultModal(); });
+          nextBtn.addEventListener('click', function(){
+            var id = pendingNextId;
+            closeStepResultModal();
+            if (!id) return;
+            var target = document.getElementById(id);
+            if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            // Keep the "Jump to" dropdown in sync with where Next just took
+            // them, same as if they'd picked it from that dropdown directly.
+            var sel = document.getElementById('mapJumpSelect');
+            var card = target && target.closest ? target.closest('.map-jump-target') : null;
+            if (sel && card && card.id) sel.value = card.id;
+          });
+        })();
+      </script>
+
       <div class="card map-jump-target" id="map-jump-browse">
         <h3 style="margin-top:0;">Browse by location</h3>
         <p style="margin-top:0;">Tick a region, town, or suburb to narrow the master map below to just that area — cascades down (ticking a region ticks everything under it) the same way the affiliate allocation picker does. Leave nothing ticked to see everything.</p>
@@ -8109,6 +8178,22 @@
                 }
                 summary += ' — run this again to retry them.';
               }
+              if(!opts.auto){
+                var explain = (totalTagged === 0 && totalFailed === 0)
+                  ? 'Every property, resort row, and activity that has coordinates already had a location tag — there was nothing new to geocode. That’s expected, not an error: it just means this step is already up to date.'
+                  : ('Tagged ' + totalTagged + ' record' + (totalTagged === 1 ? '' : 's') + ' with a Country/Zone/Town'
+                     + (totalFallback ? (' (' + totalPrecise + ' with an exact address, ' + totalFallback + ' placed in their nearest existing town since Google couldn’t pin an exact one)') : '')
+                     + ', adding ' + totalTowns + ' new town' + (totalTowns === 1 ? '' : 's') + ' and ' + totalSuburbs + ' new suburb' + (totalSuburbs === 1 ? '' : 's') + ' along the way.'
+                     + (totalFailed ? (' ' + totalFailed + ' location' + (totalFailed === 1 ? '' : 's') + ' couldn’t be resolved — see the status message above for why.') : ''));
+                if (typeof showStepResultModal === 'function') {
+                  showStepResultModal({
+                    title: 'Start geocoding — done',
+                    message: explain,
+                    nextId: 'recheckZonesBtn',
+                    nextLabel: 'Re-check all zones'
+                  });
+                }
+              }
               finish(summary);
             }
           }).catch(function(){
@@ -8367,6 +8452,20 @@
                   summary += ' — Google said: ' + googleFailureReason + (googleFailureMessage ? (' (' + googleFailureMessage + ')') : '') + '.';
                 } else {
                   summary += ' (often a sign the API key or billing needs checking).';
+                }
+              }
+              if(!noProgress){
+                var rzExplain = (totalChanged === 0)
+                  ? 'Nothing needed changing — every zone already matched where its coordinates actually fall. That’s a good sign this part of the hub is already clean.'
+                  : ('Checked ' + totalChecked + ' record' + (totalChecked === 1 ? '' : 's') + ' and corrected ' + totalChanged + ' zone' + (totalChanged === 1 ? '' : 's') + ' that didn’t match where its coordinates actually fall'
+                     + (totalTownsFixed ? (' (' + totalTownsFixed + ' of those were town records themselves)') : '') + '.');
+                if (typeof showStepResultModal === 'function') {
+                  showStepResultModal({
+                    title: 'Re-check all zones — done',
+                    message: rzExplain,
+                    nextId: 'map-jump-find-fix-coords',
+                    nextLabel: 'Find & fix missing coordinates'
+                  });
                 }
               }
               finish(summary);
