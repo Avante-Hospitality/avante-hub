@@ -9069,6 +9069,16 @@
             if(pos >= pending.length){
               var c = counts();
               finish('Done — looked up ' + c.done + ' properties: ' + c.hi + ' high-confidence, ' + c.rv + ' to review, ' + c.no + ' where Google could only find the town (no better than what you have). Download your files below.');
+              if (typeof showStepResultModal === 'function') {
+                var icExplain = 'Looked up ' + c.done + ' propert' + (c.done === 1 ? 'y' : 'ies') + ': ' + c.hi + ' high-confidence (already swapped into the updated file below, ready to re-upload to StockNetwork), ' + c.rv + ' worth a manual look in the review report before trusting them, and ' + c.no + ' where Google could only confirm the town — no improvement over what you already have.'
+                  + (c.fail ? (' ' + c.fail + ' failed outright and were skipped.') : '');
+                showStepResultModal({
+                  title: 'Improve property coordinates — done',
+                  message: icExplain,
+                  nextId: 'map-jump-bulk-fill-csv',
+                  nextLabel: 'Bulk-fill property coordinates from CSV'
+                });
+              }
               return;
             }
             var slice = pending.slice(pos, pos + BATCH);
