@@ -1849,6 +1849,30 @@
         <div class="btn-row" id="missingCoordMoreRow" style="display:none; margin-top:10px;">
           <button class="btn-outline" id="missingCoordLoadMoreBtn">Load more</button>
         </div>
+
+        <div style="margin-top:18px; padding-top:16px; border-top:1.5px solid var(--line);">
+          <h4 style="margin:0 0 6px; font-size:13.5px;">Flagged as possibly inactive</h4>
+          <p style="margin:0 0 12px; font-size:13px; color:var(--muted);">StockNetwork resort properties you couldn't find a match for above and flagged instead — Google has no listing for them under any name you tried, which often means the business has closed. Nothing changes in StockNetwork itself; download the list below and forward it to StockNetwork's team to confirm and mark inactive on their side. Kept as its own file, separate from "Corrected StockNetwork file" below, so that file's exact column format for StockNetwork's importer is never touched.</p>
+          <div class="btn-row" style="margin-top:0;">
+            <button class="btn-outline" id="flaggedInactiveLoadBtn">Refresh flagged list</button>
+            <button class="btn-outline" id="flaggedInactiveDownloadBtn" style="display:none;">Download CSV</button>
+          </div>
+          <div class="status" id="flaggedInactiveStatus"></div>
+          <div class="table-wrap" id="flaggedInactiveTableWrap" style="display:none; margin-top:12px;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Property</th>
+                  <th>Area / City / Country</th>
+                  <th>Note</th>
+                  <th>Flagged</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="flaggedInactiveTableBody"></tbody>
+            </table>
+          </div>
+        </div>
       </div>
 
       <div class="card map-jump-target" id="map-jump-corrected-file" style="margin-top:20px;">
@@ -9504,6 +9528,16 @@
           // into the box herself when a name-only search is too broad --
           // just never pre-filled in by default now.
           var defaultQuery = item.name || '';
+          // "Flag as possibly inactive" (2026-10-01, Jean's request):
+          // StockNetwork resort rows only -- a hub-only listing has no
+          // StockNetwork team to action it, so onboarded property listings
+          // (currentSource === 'listing') never get this control.
+          var flagRowHtml = currentSource === 'resort'
+            ? ('<div class="btn-row mc-flag-row" style="margin:8px 0 0; flex-wrap:wrap;">' +
+                 '<input type="text" class="mc-flag-note" placeholder="Optional note for StockNetwork (why you think it’s gone)" style="flex:1; min-width:220px; font-size:12.5px; padding:7px 9px;">' +
+                 '<button type="button" class="btn-outline btn-small" data-act="flag">Can’t find it — flag as possibly inactive</button>' +
+               '</div>')
+            : '';
           tr.innerHTML =
             '<td>' + escapeHtml(item.name || '(unnamed)') + '</td>' +
             '<td>' + escapeHtml(hint) + '</td>' +
@@ -9514,11 +9548,34 @@
               '</div>' +
               '<div class="mc-results"></div>' +
               '<div class="status" style="margin-top:6px;"></div>' +
+              flagRowHtml +
             '</td>';
           tbody.appendChild(tr);
 
           var rowStatusEl = tr.querySelector('.status');
           function setRowStatus(t, isError){ rowStatusEl.textContent = t; rowStatusEl.className = 'status show' + (isError ? '' : ' ok'); }
+
+          var flagBtn = tr.querySelector('[data-act="flag"]');
+          if(flagBtn){
+            flagBtn.addEventListener('click', function(){
+              var noteInput = tr.querySelector('.mc-flag-note');
+              flagBtn.disabled = true;
+              setRowStatus('Flagging…');
+              mapAdminPost('flagPropertyInactive', { index: item.index, flag: true, note: noteInput ? noteInput.value : '' }).then(function(res){
+                if(res.data && res.data.ok){
+                  setRowStatus('Flagged — moved to "Flagged as possibly inactive" below.');
+                  tr.style.opacity = '0.55';
+                  flagBtn.disabled = true;
+                  var searchBtnEl = tr.querySelector('[data-act="search"]');
+                  if(searchBtnEl) searchBtnEl.disabled = true;
+                  if(typeof window.refreshFlaggedInactiveList === 'function') window.refreshFlaggedInactiveList();
+                } else {
+                  setRowStatus((res.data && res.data.error) || 'Could not flag.', true);
+                  flagBtn.disabled = false;
+                }
+              }).catch(function(){ setRowStatus('Request failed.', true); flagBtn.disabled = false; });
+            });
+          }
 
           var resultsBox = tr.querySelector('.mc-results');
           var queryInput = tr.querySelector('.mc-query');
@@ -9590,6 +9647,95 @@
           loadPage();
         });
         moreBtn.addEventListener('click', loadPage);
+      })();
+
+      // ---- Flagged as possibly inactive ----
+      // Lists StockNetwork resort properties flagged via the "Can't find
+      // it" button above (2026-10-01, Jean's request) and offers a CSV
+      // download to forward to StockNetwork's team, plus a way to undo a
+      // flag set by mistake. Deliberately its own small export rather than
+      // a column added to "Corrected StockNetwork file" below, so that
+      // file's exact format for StockNetwork's own importer stays
+      // untouched — see flagPropertyInactive/listFlaggedInactiveProperties
+      // in map-api.js.
+      (function(){
+        var loadBtn = document.getElementById('flaggedInactiveLoadBtn');
+        var downloadBtn = document.getElementById('flaggedInactiveDownloadBtn');
+        var statusEl = document.getElementById('flaggedInactiveStatus');
+        var tableWrap = document.getElementById('flaggedInactiveTableWrap');
+        var tbody = document.getElementById('flaggedInactiveTableBody');
+        if(!loadBtn || !tbody) return;
+
+        var currentItems = [];
+
+        function setStatus(t, isError){ statusEl.textContent = t; statusEl.className = 'status show' + (isError ? '' : ' ok'); }
+
+        function csvCell(v){
+          v = (v === null || v === undefined) ? '' : String(v);
+          return /[",\r\n]|^\s|\s$/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+        }
+        function downloadFlaggedCsv(){
+          var rows = [['Property', 'Resort ID', 'Site ID', 'Area', 'City', 'Country', 'Note', 'Flagged at']];
+          currentItems.forEach(function(it){
+            rows.push([it.name, it.resortId, it.siteId, it.area, it.city, it.country, it.note, it.flaggedAt]);
+          });
+          var text = '\ufeff' + rows.map(function(r){ return r.map(csvCell).join(','); }).join('\r\n') + '\r\n';
+          var blob = new Blob([text], { type: 'text/csv;charset=utf-8' });
+          var a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = 'flagged-possibly-inactive-' + new Date().toISOString().slice(0, 10) + '.csv';
+          document.body.appendChild(a); a.click();
+          setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+        }
+
+        function renderFlaggedRow(item){
+          var tr = document.createElement('tr');
+          var hint = [item.area, item.city, item.country].filter(function(x){ return x; }).join(' / ') || '—';
+          tr.innerHTML =
+            '<td>' + escapeHtml(item.name || '(unnamed)') + '</td>' +
+            '<td>' + escapeHtml(hint) + '</td>' +
+            '<td style="max-width:220px;">' + (item.note ? escapeHtml(item.note) : '<span style="color:var(--muted);">—</span>') + '</td>' +
+            '<td>' + (item.flaggedAt ? escapeHtml(new Date(item.flaggedAt).toLocaleDateString()) : '—') + '</td>' +
+            '<td><button type="button" class="btn-outline btn-small" data-act="unflag">Unflag</button></td>';
+          tbody.appendChild(tr);
+          tr.querySelector('[data-act="unflag"]').addEventListener('click', function(){
+            var btn = tr.querySelector('[data-act="unflag"]');
+            btn.disabled = true;
+            mapAdminPost('flagPropertyInactive', { index: item.index, flag: false }).then(function(res){
+              if(res.data && res.data.ok){ tr.remove(); }
+              else { btn.disabled = false; alert((res.data && res.data.error) || 'Could not unflag.'); }
+            }).catch(function(){ btn.disabled = false; alert('Request failed.'); });
+          });
+        }
+
+        function load(){
+          loadBtn.disabled = true;
+          setStatus('Loading flagged properties…');
+          mapAdminPost('listFlaggedInactiveProperties', {}).then(function(res){
+            loadBtn.disabled = false;
+            if(!(res.data && res.data.ok)){ setStatus((res.data && res.data.error) || 'Could not load the list.', true); return; }
+            currentItems = res.data.items || [];
+            tbody.innerHTML = '';
+            if(!currentItems.length){
+              setStatus('Nothing flagged right now.');
+              tableWrap.style.display = 'none';
+              downloadBtn.style.display = 'none';
+              return;
+            }
+            currentItems.forEach(renderFlaggedRow);
+            tableWrap.style.display = 'block';
+            downloadBtn.style.display = '';
+            setStatus(currentItems.length + ' propert' + (currentItems.length === 1 ? 'y' : 'ies') + ' flagged as possibly inactive.');
+          }).catch(function(){ loadBtn.disabled = false; setStatus('Request failed.', true); });
+        }
+
+        loadBtn.addEventListener('click', load);
+        downloadBtn.addEventListener('click', downloadFlaggedCsv);
+        // Exposed so the "Can't find it — flag as possibly inactive" button
+        // above (defined earlier in this file, but only ever clicked after
+        // both IIFEs have run) can refresh this list right after a flag,
+        // instead of making Jean click "Refresh flagged list" herself.
+        window.refreshFlaggedInactiveList = load;
       })();
 
       // ---- Corrected StockNetwork file (Country / Area / City / Suburb from the hub) ----
