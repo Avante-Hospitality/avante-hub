@@ -2107,7 +2107,12 @@ export default async (request, context) => {
       const resortList = (resortRecord && Array.isArray(resortRecord.resorts)) ? resortRecord.resorts : [];
       const missing = [];
       resortList.forEach((r, i) => {
-        if (r && noCoord(r)) {
+        // flaggedInactive (2026-10-01): once a property's been flagged as
+        // possibly no longer existing, via "flagPropertyInactive" below,
+        // it drops out of this list so it's not re-checked every run —
+        // it instead shows in "listFlaggedInactiveProperties" for
+        // forwarding to StockNetwork's team.
+        if (r && noCoord(r) && !r.flaggedInactive) {
           missing.push({
             index: i,
             resortId: r.resortId || "",
@@ -2125,6 +2130,63 @@ export default async (request, context) => {
         remaining: Math.max(0, missing.length - (offset + limit)),
         items: missing.slice(offset, offset + limit),
       });
+    }
+
+    if (action === "flagPropertyInactive") {
+      // "Flag as possibly inactive" on Case C's "Find & fix missing
+      // coordinates" card (2026-10-01, Jean's request) — StockNetwork
+      // resort rows only, since a hub-only listing has no StockNetwork
+      // team to action it (the admin page only ever sends source:"resort"
+      // here). Doesn't touch the property's own coordinate or placement —
+      // just marks it so "listMissingCoordinateProperties" above stops
+      // showing it, and "listFlaggedInactiveProperties" below picks it up
+      // instead, ready to forward to StockNetwork as its own export, kept
+      // deliberately separate from "Corrected StockNetwork file" so that
+      // file's exact column format for StockNetwork's own importer is
+      // never touched. Pass flag:false to undo a flag set by mistake.
+      const index = parseInt(body.index, 10);
+      if (!isFinite(index) || index < 0) return json({ error: "Missing or invalid index." }, 400);
+      const resortRecord = await resortListStore.get("current", { type: "json" });
+      const resortList = (resortRecord && Array.isArray(resortRecord.resorts)) ? resortRecord.resorts : [];
+      const rec = resortList[index];
+      if (!rec) return json({ error: "Property not found — the list may have changed, refresh and try again." }, 404);
+      const flag = body.flag !== false;
+      if (flag) {
+        rec.flaggedInactive = true;
+        rec.flaggedInactiveNote = clean(body.note, 300);
+        rec.flaggedInactiveAt = new Date().toISOString();
+      } else {
+        delete rec.flaggedInactive;
+        delete rec.flaggedInactiveNote;
+        delete rec.flaggedInactiveAt;
+      }
+      await resortListStore.setJSON("current", Object.assign({}, resortRecord, { resorts: resortList }));
+      return json({ ok: true, flagged: flag });
+    }
+
+    if (action === "listFlaggedInactiveProperties") {
+      // Backs the "Flagged as possibly inactive" list next to "Find & fix
+      // missing coordinates" — StockNetwork resort rows only. Read-only.
+      const resortRecord = await resortListStore.get("current", { type: "json" });
+      const resortList = (resortRecord && Array.isArray(resortRecord.resorts)) ? resortRecord.resorts : [];
+      const flagged = [];
+      resortList.forEach((r, i) => {
+        if (r && r.flaggedInactive) {
+          flagged.push({
+            index: i,
+            resortId: r.resortId || "",
+            siteId: r.siteId || "",
+            name: r.name || "",
+            area: r.area || r.district || "",
+            city: r.city || "",
+            country: r.snCountry || "",
+            note: r.flaggedInactiveNote || "",
+            flaggedAt: r.flaggedInactiveAt || "",
+          });
+        }
+      });
+      flagged.sort((a, b) => a.name.localeCompare(b.name));
+      return json({ ok: true, items: flagged });
     }
 
     if (action === "searchPropertyPlaces") {
