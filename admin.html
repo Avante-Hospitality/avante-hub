@@ -8730,6 +8730,18 @@
               if(exampleFixes.length){
                 summary += ' Examples: ' + exampleFixes.map(function(f){ return f.name + ' → ' + f.country; }).join('; ') + '.';
               }
+              if (typeof showStepResultModal === 'function') {
+                var fpcExplain = (totalFixed === 0 && totalUnresolved === 0)
+                  ? 'Nothing needed fixing — every property with a real coordinate already has the right country.'
+                  : ('Fixed ' + totalFixed + ' propert' + (totalFixed === 1 ? 'y' : 'ies') + ' by working out the true country straight from its coordinate.'
+                     + (totalUnresolved ? (' ' + totalUnresolved + ' still couldn’t be placed — Google had no answer for that exact coordinate, worth a manual look (the table below lists them).') : ''));
+                showStepResultModal({
+                  title: 'Fix countries with a real coordinate — done',
+                  message: fpcExplain,
+                  nextId: 'map-jump-improve-coords',
+                  nextLabel: 'Improve property coordinates'
+                });
+              }
               finish(summary);
             }, function(err){
               batchRetries++;
