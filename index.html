@@ -2,304 +2,187 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Affiliate Link Builder — StockNetwork</title>
-<style>
-  :root{
-    --navy:#0e2f44;
-    --teal:#1c7c74;
-    --sand:#e8d9b5;
-    --cream:#faf6ec;
-    --coral:#e8734a;
-    --green:#2f8f5b;
-  }
-  *{box-sizing:border-box;}
-  body{
-    margin:0;
-    font-family:'Jost', Arial, sans-serif;
-    background:var(--cream);
-    color:var(--navy);
-    display:flex;
-    justify-content:center;
-    padding:40px 16px;
-  }
-  .card{
-    width:100%;
-    max-width:640px;
-    background:#fff;
-    border-radius:14px;
-    box-shadow:0 10px 40px rgba(14,47,68,0.12);
-    overflow:hidden;
-  }
-  .header{
-    background:linear-gradient(135deg,var(--navy),var(--teal));
-    color:var(--cream);
-    padding:26px 30px;
-  }
-  .header h1{
-    margin:0 0 4px;
-    font-family:Georgia, 'Fraunces', serif;
-    font-size:22px;
-  }
-  .header p{
-    margin:0;
-    font-size:12.5px;
-    opacity:0.85;
-  }
-  .body{padding:26px 30px 30px;}
-  label{
-    display:block;
-    font-size:11.5px;
-    font-weight:600;
-    text-transform:uppercase;
-    letter-spacing:0.06em;
-    color:var(--teal);
-    margin:16px 0 6px;
-  }
-  label:first-child{margin-top:0;}
-  input{
-    width:100%;
-    padding:10px 12px;
-    border:1.5px solid #dcd3bd;
-    border-radius:8px;
-    font-size:14px;
-    font-family:inherit;
-    color:var(--navy);
-    background:var(--cream);
-  }
-  input:focus{outline:none; border-color:var(--coral);}
-  .row{display:flex; gap:12px;}
-  .row > div{flex:1;}
-  .hint{font-size:11.5px; color:#8a8071; margin-top:5px;}
-  button{
-    margin-top:22px;
-    width:100%;
-    padding:12px;
-    background:var(--coral);
-    color:#fff;
-    border:none;
-    border-radius:8px;
-    font-size:14.5px;
-    font-weight:600;
-    cursor:pointer;
-    transition:background 0.15s ease;
-  }
-  button:hover{background:#d5613a;}
-  button:disabled{background:#d9cfba; cursor:not-allowed;}
-  .status{
-    margin-top:12px;
-    padding:10px 13px;
-    border-radius:8px;
-    font-size:12.5px;
-    display:none;
-    background:#fbeae8;
-    color:#c0453a;
-    border:1px solid #f0c8c2;
-  }
-  .status.show{display:block;}
-  .link-box{
-    margin-top:18px;
-    padding:16px;
-    background:var(--cream);
-    border:1.5px dashed var(--sand);
-    border-radius:10px;
-    display:none;
-  }
-  .link-box.show{display:block;}
-  .link-box .label{font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:var(--teal); font-weight:600; margin-bottom:6px;}
-  .link-box .url{font-size:12.5px; word-break:break-all; line-height:1.5;}
-  .copy-btn{margin-top:12px; width:auto; padding:8px 16px; font-size:12.5px; background:var(--navy);}
-  .copy-btn:hover{background:#0a2333;}
-  .preview-toggle{margin-top:8px; width:auto; padding:8px 16px; font-size:12.5px; background:#fff; color:var(--teal); border:1.5px solid var(--teal);}
-  .preview-toggle:hover{background:#eef6f5;}
-  iframe{
-    width:100%;
-    height:900px;
-    border:none;
-    display:none;
-    margin-top:16px;
-    border-radius:10px;
-    border:1.5px solid #eee3cc;
-  }
-  iframe.show{display:block;}
-  .toast{
-    position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(20px);
-    background:var(--navy); color:#fff; padding:10px 20px; border-radius:8px; font-size:13px;
-    opacity:0; transition:all 0.25s ease; pointer-events:none;
-  }
-  .toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
-
-  @media (max-width: 480px){
-    body{ padding:20px 10px; }
-    .header{ padding:20px 20px; }
-    .header h1{ font-size:19px; }
-    .body{ padding:20px 20px 24px; }
-    .row{ flex-direction:column; }
-    iframe{ height:420px; }
-  }
-</style>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Avante Hospitality — Your Partner That Reaches Further</title>
+<link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div class="card">
-    <div class="header">
-      <h1>Affiliate Link Builder</h1>
-      <p>No login required — build a shareable booking link for social media, in seconds</p>
-    </div>
-    <div class="body">
-      <label for="baseUrl">Your booking link URL</label>
-      <input id="baseUrl" placeholder="e.g. https://stock.stocknetwork.co.za/ui/your-own-guid-here">
-      <div class="hint">Your own personal StockNetwork booking link — the one issued to you, not anyone else's. Paste it here once; every link this builds will use it.</div>
 
-      <label for="area">Destination or property name</label>
-      <input id="area" placeholder="e.g. Plettenberg Bay, or a specific resort name">
-      <div class="hint">Leave blank for a link showing everything available for these dates.</div>
-
-      <div class="row">
-        <div>
-          <label for="checkIn">Check-in date</label>
-          <input type="date" id="checkIn">
-        </div>
-        <div>
-          <label for="checkOut">Check-out date</label>
-          <input type="date" id="checkOut">
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="index.html"><img src="img/logo-icon.png" alt="Avante Hospitality">Avante Hospitality</a>
+    <nav class="main-nav">
+      <a class="nav-link active" href="index.html">Home</a>
+      <a class="nav-link" href="platforms.html">Platforms</a>
+      <a class="nav-link" href="partners.html">Partners</a>
+      <a class="nav-link" href="avante-loyalty-program.html">Loyalty Program</a>
+      <a class="nav-link" href="team.html">Team</a>
+      <div class="nav-dropdown" tabindex="0">
+        <span class="nav-dropdown-toggle">Legal <span class="caret">&#9662;</span></span>
+        <div class="nav-dropdown-menu">
+          <a href="terms-and-conditions.html">Terms &amp; Conditions</a>
         </div>
       </div>
+    </nav>
+    <a class="btn btn-primary" href="avante-channel-manager-listing.html">List your property</a>
+  </div>
+</header>
 
-      <button onclick="buildLink()">Generate link</button>
-      <div class="status" id="errorStatus"></div>
-
-      <div class="link-box" id="linkBox">
-        <div class="label">Your shareable link</div>
-        <div class="url" id="finalUrl"></div>
-        <button class="copy-btn" onclick="copyLink()">Copy link</button>
-        <button class="preview-toggle" onclick="togglePreview()" id="previewBtn">Show preview</button>
-        <iframe id="previewFrame" title="Booking preview"></iframe>
+<section class="page-hero">
+  <div class="wrap">
+    <div class="hero-inner">
+      <div>
+        <div class="eyebrow">OUR VISION</div>
+        <h1>Your partner that reaches further — bringing you more of the right clients.</h1>
+        <p class="lead">Avante showcases your property to niche platforms, NPOs, and travel clubs, giving you full exposure to the right clientele. We market and promote your property for you, and handle the back-end — payments, calendars, all of it. List once with Avante, and we do the rest.</p>
+      </div>
+      <div class="hero-photo">
+        <img src="img/intro-photo.png" alt="Working from a coastal property listed with Avante Hospitality">
       </div>
     </div>
   </div>
+</section>
 
-  <div class="toast" id="toast">Link copied to your clipboard</div>
+<section class="intro">
+  <div class="wrap">
+    <div class="intro-inner">
+      <div>
+        <div class="eyebrow">SINCE 2004</div>
+        <h2>Two decades of getting South African properties noticed.</h2>
+        <p>Avante Hospitality was founded in 2004 by Jean Labuschagne, who's been developing and managing properties across South Africa and the rest of Africa since 1988. What started as a hands-on, personal way of getting properties into the right hands has grown into a booking platform of its own &mdash; without losing the personal touch that built it. Every property that lists with Avante is looked after by a small, dynamic team who know the local market, not a call centre. That's the difference between being one more listing on the open market, and being placed exactly where the right guests are already looking.</p>
+      </div>
+      <div class="intro-side">
+        <img src="img/team-photo.png" alt="The Avante team on-site at a listed property">
+        <div class="intro-badge">
+          <div class="year">2004</div>
+          <div class="year-label">Founded &mdash; still owner-run today</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
 
-  <script>
-    // No credentials, no API calls — this only ever builds a URL to
-    // StockNetwork's public booking widget page, using whichever base URL
-    // the person using this tool enters below (their own personal link).
+<section class="how" id="how-it-works">
+  <div class="wrap">
+    <h2>Three ways your property gets in front of the right guests</h2>
+    <p class="sub">All included the moment you list — no extra work on your side.</p>
 
-    // Default check-in to tomorrow, check-out to 2 nights later.
-    const today = new Date();
-    const tomorrow = new Date(today.getTime() + 86400000);
-    const checkoutDefault = new Date(today.getTime() + 3 * 86400000);
-    function fmt(d){ return d.toISOString().slice(0, 10); }
-    document.getElementById('checkIn').min = fmt(tomorrow);
-    document.getElementById('checkIn').value = fmt(tomorrow);
-    document.getElementById('checkOut').value = fmt(checkoutDefault);
+    <div class="step-row">
+      <div class="step-col">
+        <span class="step-num">01</span>
+        <h3>Our own booking platform</h3>
+        <p>Every property is listed on our own booking platform, focused on Africa, built for a global market.</p>
+      </div>
+      <div class="step-col">
+        <span class="step-num">02</span>
+        <h3>Channel managers and niche platforms</h3>
+        <p>Already with a channel manager? Great — we link up with them. If not, we'll push your property out to existing <a href="platforms.html" style="color:var(--orange); text-decoration:underline;">platforms</a> and channels.</p>
+      </div>
+      <div class="step-col">
+        <span class="step-num">03</span>
+        <h3>Our affiliate network</h3>
+        <p>A network of affiliates and platforms promotes your property to the audiences most likely to book it — putting you on the map, not just online.</p>
+      </div>
+    </div>
+  </div>
+</section>
 
-    let currentLink = '';
-    let previewLoaded = false;
+<section class="network-band">
+  <img src="img/network-diagram.png" alt="One property listed once, distributed to affiliate laptops, and booked by the right guest">
+</section>
 
-    function buildLink(){
-      const baseUrl = document.getElementById('baseUrl').value.trim().replace(/\/$/, '');
-      const area = document.getElementById('area').value.trim();
-      const checkIn = document.getElementById('checkIn').value;
-      const checkOut = document.getElementById('checkOut').value;
-      const errorEl = document.getElementById('errorStatus');
-      errorEl.style.display = 'none';
+<section class="split">
+  <div class="wrap">
+    <div class="split-inner">
+      <img class="split-photo" src="https://images.unsplash.com/photo-1597475681177-809cfdc76cd2?fm=jpg&amp;q=80&amp;w=600&amp;auto=format&amp;fit=crop" alt="A small wooden beach house">
+      <div>
+        <h2>A quieter option: closed properties</h2>
+        <p>Not every owner wants their home on the open market. Avante also hosts closed properties — a private, niche listing option for owners who, for example, only want to rent their house out over the holidays. It's still distributed to the right affiliates and marketed to the right clientele, just without sitting on public search.</p>
+      </div>
+    </div>
+  </div>
+</section>
 
-      if(!baseUrl){
-        errorEl.textContent = 'Paste your booking link URL first (the one issued to you by StockNetwork).';
-        errorEl.style.display = 'block';
-        return;
-      }
-      if(!checkIn || !checkOut){
-        errorEl.textContent = 'Please choose check-in and check-out dates.';
-        errorEl.style.display = 'block';
-        return;
-      }
-      if(checkOut <= checkIn){
-        errorEl.textContent = 'Check-out must be after check-in.';
-        errorEl.style.display = 'block';
-        return;
-      }
+<section class="pricing">
+  <div class="wrap">
+    <div>
+      <div class="fee-num">15% <span style="font-size:0.32em; font-weight:600; vertical-align:middle;">ex VAT</span></div>
+      <div class="fee-label">Commission &mdash; only when your property is rented</div>
+    </div>
+    <ul>
+      <li>
+        <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="9" fill="#ED8B00"/><path d="M5 9.5 L7.5 12 L13 6" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        No sign-up fee
+      </li>
+      <li>
+        <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="9" fill="#ED8B00"/><path d="M5 9.5 L7.5 12 L13 6" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        No monthly fees
+      </li>
+      <li>
+        <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="9" fill="#ED8B00"/><path d="M5 9.5 L7.5 12 L13 6" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        No hidden costs
+      </li>
+      <li>
+        <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="9" fill="#ED8B00"/><path d="M5 9.5 L7.5 12 L13 6" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Includes marketing done by affiliates on social media
+      </li>
+      <li>
+        <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="9" fill="#ED8B00"/><path d="M5 9.5 L7.5 12 L13 6" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Includes access to our channel managers
+      </li>
+      <li>
+        <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="9" fill="#ED8B00"/><path d="M5 9.5 L7.5 12 L13 6" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Includes a guest loyalty program &mdash; discounts on activities, flights, car rental and more
+      </li>
+    </ul>
+    <p class="pricing-note">For your guests, that discount feels like it's coming straight from you, not a travel agency &mdash; which is exactly what brings them back to your front door, time and again.</p>
+  </div>
+</section>
 
-      const params = new URLSearchParams({ CheckInDT: checkIn, CheckOutDT: checkOut });
-      if(area) params.set('Filter', area);
-      currentLink = `${baseUrl}?${params.toString()}`;
+<section class="affiliate-blurb">
+  <div class="wrap">
+    <div class="affiliate-inner">
+      <div>
+        <h2>Get promoted by people who already have the audience</h2>
+        <p>Once your property is listed and distributed, Avante opens it up to a network of affiliates — bloggers, agencies, community organisers and loyalty programs — who bring the right guests to your door. Whether you want to do the promoting yourself or you're a property owner looking to plug into that same affiliate network, there's a path in for both, already set up and ready to join.</p>
+        <div class="affiliate-ctas">
+          <a class="btn btn-ghost" href="avante-affiliate-landing.html">Become an affiliate</a>
+          <a class="btn btn-ghost" href="avante-property-owner-landing.html">Property affiliate</a>
+        </div>
+      </div>
+      <div class="affiliate-photo">
+        <img src="img/affiliate-boardroom.jpg" alt="An Avante Hospitality presentation showing the affiliate network to a team">
+      </div>
+    </div>
+  </div>
+</section>
 
-      document.getElementById('finalUrl').textContent = currentLink;
-      document.getElementById('linkBox').classList.add('show');
+<section class="cta-band">
+  <div class="wrap">
+    <h2>Ready to get your property on the map?</h2>
+    <p>List once with Avante — we handle the distribution and the promotion from there.</p>
+    <a class="btn btn-primary" href="avante-channel-manager-listing.html">List your property</a>
+  </div>
+</section>
 
-      // Reset preview each time a new link is built. Note: setting src='' on
-      // an iframe does NOT leave frame.src reading back as empty — the
-      // browser resolves it to the current page's own URL, which used to
-      // fool the "already loaded?" check in togglePreview() below. Using
-      // removeAttribute + a separate previewLoaded flag avoids that trap.
-      const frame = document.getElementById('previewFrame');
-      frame.classList.remove('show');
-      frame.removeAttribute('src');
-      previewLoaded = false;
-      document.getElementById('previewBtn').textContent = 'Show preview';
-    }
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div class="foot-brand"><img src="img/logo-icon.png" alt="Avante Hospitality">Avante Hospitality</div>
+      <nav>
+        <a href="platforms.html">Platforms</a>
+        <a href="partners.html">Partners</a>
+        <a href="team.html">Team</a>
+        <a href="terms-and-conditions.html">Terms &amp; Conditions</a>
+        <a href="avante-affiliate-landing.html">Become an affiliate</a>
+        <a href="avante-property-owner-landing.html">Property affiliate</a>
+      </nav>
+    </div>
+    <div class="foot-bottom">
+      <span>© 2026 Avante Hospitality. Founded 2004.</span>
+    </div>
+  </div>
+</footer>
 
-    function togglePreview(){
-      const frame = document.getElementById('previewFrame');
-      const btn = document.getElementById('previewBtn');
-      if(frame.classList.contains('show')){
-        frame.classList.remove('show');
-        btn.textContent = 'Show preview';
-      }else{
-        if(!previewLoaded){
-          frame.src = currentLink;
-          previewLoaded = true;
-        }
-        frame.classList.add('show');
-        btn.textContent = 'Hide preview';
-      }
-    }
-
-    function copyLink(){
-      if(!currentLink) return;
-      const toast = document.getElementById('toast');
-
-      function showToast(msg){
-        toast.textContent = msg;
-        toast.classList.add('show');
-        setTimeout(() => toast.classList.remove('show'), 2200);
-      }
-
-      // Fallback for when the async Clipboard API is blocked — this happens
-      // when the page is embedded in an iframe on another site without
-      // allow="clipboard-write" on that <iframe> tag. Select the link text
-      // and use the older copy command instead, which works in more
-      // embedded contexts. If even that fails, the text is left selected so
-      // the person can copy it manually with Ctrl/Cmd+C.
-      function fallbackCopy(){
-        const el = document.getElementById('finalUrl');
-        const range = document.createRange();
-        range.selectNodeContents(el);
-        const sel = window.getSelection();
-        sel.removeAllRanges();
-        sel.addRange(range);
-        let ok = false;
-        try { ok = document.execCommand('copy'); } catch(e) { ok = false; }
-        showToast(ok ? 'Link copied to your clipboard' : 'Link selected — press Ctrl/Cmd+C to copy');
-      }
-
-      if(navigator.clipboard && navigator.clipboard.writeText){
-        let settled = false;
-        // The blocked-clipboard case hangs rather than rejecting, so don't
-        // wait indefinitely — fall back after a short timeout.
-        const timer = setTimeout(() => {
-          if(!settled){ settled = true; fallbackCopy(); }
-        }, 1200);
-        navigator.clipboard.writeText(currentLink).then(() => {
-          if(!settled){ settled = true; clearTimeout(timer); showToast('Link copied to your clipboard'); }
-        }).catch(() => {
-          if(!settled){ settled = true; clearTimeout(timer); fallbackCopy(); }
-        });
-      }else{
-        fallbackCopy();
-      }
-    }
-  </script>
 </body>
 </html>
