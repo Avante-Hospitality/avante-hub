@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Avante Hospitality — List Your Property (Channel Manager)</title>
+
+<!--
+  ============================================================================
+  BEFORE THIS GOES LIVE — Jean:
+
+  1. FORMSPREE ENDPOINT (search "FORMSPREE_ENDPOINT" below):
+     Create a Formspree form registered to admin@avantehospitality.co.za, add
+     info@avantehospitality.co.za as a verified CC recipient, then paste the
+     real endpoint URL over the placeholder.
+
+  2. TERMS & CONDITIONS TEXT (search "PLACEHOLDER T&C TEXT" below):
+     Replace the draft placeholder in the modal with the final wording.
+
+  3. This is intended to be the quick campaign-email link for the ~3,500+
+     NightsBridge/eRes-NebulaCRS properties you're inviting to list. Its
+     thank-you screen links to avante-loyalty-program.html so a property can
+     opt into the Loyalty Program right after submitting — update that link
+     if the two files end up hosted at different paths.
+  ============================================================================
+-->
+
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+    :root{ --navy:#2C3E50; --logo-navy:#273A85; --indigo:#1425BE; --orange:#ED8B00; }
+    body{ font-family:'Source Sans 3', sans-serif; color:var(--navy); }
+    h1,h2,h3,h4,.font-display{ font-family:'Playfair Display', serif; }
+    .form-input:focus, .form-checkbox:focus, .form-radio:focus{
+        outline:2px solid transparent; outline-offset:2px;
+        box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--indigo);
+    }
+    #success-message{ transition:opacity .5s ease-in-out; }
+    .hidden-section{ display:none; }
+    .brand-btn{ background:var(--indigo); }
+    .brand-btn:hover{ background:#0f1c93; }
+    .accent{ color:var(--orange); }
+    .step-badge{ background:var(--indigo); }
+</style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen p-4 sm:p-6 lg:p-8">
+<div class="w-full max-w-2xl mx-auto bg-white p-8 sm:p-10 lg:p-12 rounded-2xl shadow-lg border border-gray-100">
+
+    <header class="text-center mb-8">
+        <img src="img/logo-full.png" alt="Avante Hospitality" style="height:64px; width:auto; margin:0 auto 18px;">
+        <span class="step-badge inline-block text-white text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full mb-4">NightsBridge &amp; eRes/NebulaCRS Properties</span>
+        <h1 class="text-3xl sm:text-4xl font-bold tracking-tight" style="color:var(--navy)">List Your Property with Avante Hospitality</h1>
+        <p class="mt-3 text-base text-gray-600">
+            Your property already runs on a channel manager that Avante integrates with — so we only
+            need a few details to get you listed. No setup or rate-chart fields required; your existing
+            channel manager handles that.
+        </p>
+        <p class="mt-2 text-sm text-gray-600">
+            Learn more at <a href="http://www.avantehospitality.co.za" target="_blank" rel="noopener noreferrer" class="font-medium hover:underline" style="color:var(--indigo)">www.avantehospitality.co.za</a>.
+        </p>
+    </header>
+
+    <form id="listing-form" class="space-y-6">
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+                <label for="property-name" class="block text-sm font-medium text-gray-700 mb-1">Property Name</label>
+                <input type="text" id="property-name" name="property_name" required class="form-input w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm">
+            </div>
+            <div>
+                <label for="contact-person" class="block text-sm font-medium text-gray-700 mb-1">Contact Person</label>
+                <input type="text" id="contact-person" name="contact_person" required class="form-input w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm">
+            </div>
+            <div>
+                <label for="phone" class="block text-sm font-medium text-gray-700 mb-1">Contact Number</label>
+                <input type="tel" id="phone" name="phone" required class="form-input w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm">
+            </div>
+            <div>
+                <label for="email" class="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
+                <input type="email" id="email" name="email" required class="form-input w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm">
+            </div>
+            <div class="md:col-span-2">
+                <label for="cm-number" class="block text-sm font-medium text-gray-700 mb-1">Channel Manager Number</label>
+                <input type="text" id="cm-number" name="channel_manager_number" class="form-input w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm">
+            </div>
+        </div>
+
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">Which system does your property use?</label>
+            <div class="flex flex-wrap gap-6">
+                <label class="flex items-center cursor-pointer">
+                    <input type="radio" name="channel_manager" value="NightsBridge" required id="cm-nightsbridge" class="form-radio h-4 w-4 channel-manager-radio" style="accent-color:var(--indigo)">
+                    <span class="ml-2 text-sm text-gray-800 font-medium">NightsBridge</span>
+                </label>
+                <label class="flex items-center cursor-pointer">
+                    <input type="radio" name="channel_manager" value="eRes/NebulaCRS" id="cm-eres" class="form-radio h-4 w-4 channel-manager-radio" style="accent-color:var(--indigo)">
+                    <span class="ml-2 text-sm text-gray-800 font-medium">eRes/NebulaCRS</span>
+                </label>
+                <label class="flex items-center cursor-pointer">
+                    <input type="radio" name="channel_manager" value="None yet" id="cm-none" class="form-radio h-4 w-4 channel-manager-radio" style="accent-color:var(--indigo)">
+                    <span class="ml-2 text-sm text-gray-800 font-medium">Not on a platform yet</span>
+                </label>
+            </div>
+
+            <div id="none-wrap" class="hidden-section mt-3 p-3 rounded-lg text-sm" style="background:#EEF0FC; color:var(--navy)">
+                No problem — submit your details below and our team will reach out to help get your property set up on a channel manager.
+            </div>
+            <div id="bbid-wrap" class="hidden-section mt-3">
+                <label for="bbid" class="block text-sm font-medium text-gray-700 mb-1">NightsBridge BBID Number</label>
+                <input type="text" id="bbid" name="bbid" class="form-input w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm">
+            </div>
+            <div id="eres-ref-wrap" class="hidden-section mt-3">
+                <label for="eres-ref" class="block text-sm font-medium text-gray-700 mb-1">eRes/NebulaCRS Property Reference</label>
+                <input type="text" id="eres-ref" name="eres_reference" class="form-input w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm">
+            </div>
+        </div>
+
+        <div class="relative flex items-start p-4 rounded-xl border border-gray-200 bg-gray-50">
+            <div class="flex h-6 items-center">
+                <input id="accept-terms" name="accept_terms" type="checkbox" checked required class="form-checkbox h-5 w-5 rounded border-gray-300" style="accent-color:var(--indigo)">
+            </div>
+            <div class="ml-3 text-sm leading-6">
+                <label for="accept-terms" class="font-medium text-gray-900 cursor-pointer">
+                    I accept the Avante Hospitality Terms &amp; Conditions.
+                </label>
+                <button type="button" id="open-terms" class="block mt-1 underline font-semibold text-sm" style="color:var(--indigo)">View Terms &amp; Conditions</button>
+            </div>
+        </div>
+
+        <div class="pt-4 border-t border-gray-200 text-center">
+            <button type="submit" id="submit-btn" class="brand-btn w-full sm:w-auto text-white font-bold py-3 px-12 rounded-lg shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 transition-transform transform hover:scale-105 active:scale-95">Submit</button>
+            <p id="error-message" class="hidden mt-4 text-sm text-red-600"></p>
+            <p class="mt-6 text-sm text-gray-500">Questions? Email <a href="mailto:info@avantehospitality.co.za" class="font-medium hover:underline" style="color:var(--indigo)">info@avantehospitality.co.za</a></p>
+        </div>
+    </form>
+
+    <div id="success-message" class="hidden opacity-0 mt-8 space-y-4">
+        <div class="p-6 rounded-xl text-center space-y-2" style="background:#eef7f0; border:1px solid #b7ddc0; color:#1e4b2b">
+            <h3 class="font-bold text-xl font-display">Thank you!</h3>
+            <p class="text-sm">Your details have been sent to our office. We'll upload your property to Avante shortly.</p>
+        </div>
+        <div class="p-6 rounded-xl text-center space-y-3" style="background:#EEF0FC; border:1px solid #c9cff5">
+            <h4 class="font-bold text-lg font-display" style="color:var(--navy)">Want to be a Featured Resort?</h4>
+            <p class="text-sm text-gray-700">Join the Avante Loyalty Program to feature your property across all our platforms and offer members a rate discount.</p>
+            <a href="avante-loyalty-program.html" class="brand-btn inline-block text-white font-semibold py-2 px-6 rounded-lg hover:opacity-90 transition">Join the Loyalty Program</a>
+        </div>
+    </div>
+</div>
+
+<!-- Terms & Conditions Modal -->
+<div id="terms-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-xl max-w-2xl w-full max-h-[80vh] flex flex-col">
+        <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+            <h3 class="text-xl font-semibold font-display" style="color:var(--navy)">Property Listing Terms &amp; Conditions</h3>
+            <button type="button" id="close-terms" class="text-gray-400 hover:text-gray-600 text-2xl leading-none" aria-label="Close">&times;</button>
+        </div>
+        <div class="px-6 py-4 overflow-y-auto text-sm text-gray-700 space-y-3">
+            <!-- PLACEHOLDER T&C TEXT — Jean to replace with the final, approved wording. -->
+            <p class="text-xs font-semibold uppercase tracking-wide accent">Draft placeholder — not final legal text</p>
+            <p>By listing your property with Avante Hospitality, you agree to make your availability and
+            rates accessible for booking through the Avante platform via your existing channel
+            manager, and authorise Avante Hospitality to activate and maintain this listing on your behalf
+            based on the details you submit here.</p>
+            <p>Commission, payout terms, and cancellation policies are governed by your separate Avante
+            Hospitality property agreement. This form confirms your intent to list and does not replace
+            that agreement.</p>
+            <p><em>[Final Terms &amp; Conditions text to be supplied by Avante Hospitality.]</em></p>
+        </div>
+        <div class="px-6 py-4 border-t border-gray-200 text-right">
+            <button type="button" id="acknowledge-terms" class="brand-btn text-white font-semibold py-2 px-6 rounded-lg">Close</button>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const FORMSPREE_ENDPOINT = 'https://formspree.io/f/FORMSPREE_ENDPOINT';
+
+    const form = document.getElementById('listing-form');
+    const submitBtn = document.getElementById('submit-btn');
+    const errorMessage = document.getElementById('error-message');
+    const successMessage = document.getElementById('success-message');
+
+    // Terms modal
+    const termsModal = document.getElementById('terms-modal');
+    document.getElementById('open-terms').addEventListener('click', () => termsModal.classList.remove('hidden'));
+    document.getElementById('close-terms').addEventListener('click', () => termsModal.classList.add('hidden'));
+    document.getElementById('acknowledge-terms').addEventListener('click', () => termsModal.classList.add('hidden'));
+
+    // Channel manager toggle
+    const bbidWrap = document.getElementById('bbid-wrap');
+    const bbidInput = document.getElementById('bbid');
+    const eresWrap = document.getElementById('eres-ref-wrap');
+    const eresInput = document.getElementById('eres-ref');
+    const noneWrap = document.getElementById('none-wrap');
+
+    document.querySelectorAll('.channel-manager-radio').forEach((radio) => {
+        radio.addEventListener('change', () => {
+            if (radio.value === 'NightsBridge' && radio.checked) {
+                bbidWrap.classList.remove('hidden-section');
+                bbidInput.required = true;
+                eresWrap.classList.add('hidden-section');
+                eresInput.required = false;
+                eresInput.value = '';
+                noneWrap.classList.add('hidden-section');
+            } else if (radio.value === 'eRes/NebulaCRS' && radio.checked) {
+                eresWrap.classList.remove('hidden-section');
+                eresInput.required = true;
+                bbidWrap.classList.add('hidden-section');
+                bbidInput.required = false;
+                bbidInput.value = '';
+                noneWrap.classList.add('hidden-section');
+            } else if (radio.value === 'None yet' && radio.checked) {
+                noneWrap.classList.remove('hidden-section');
+                bbidWrap.classList.add('hidden-section');
+                bbidInput.required = false;
+                bbidInput.value = '';
+                eresWrap.classList.add('hidden-section');
+                eresInput.required = false;
+                eresInput.value = '';
+            }
+        });
+    });
+
+    form.addEventListener('submit', async function (event) {
+        event.preventDefault();
+        errorMessage.classList.add('hidden');
+
+        if (FORMSPREE_ENDPOINT.indexOf('FORMSPREE_ENDPOINT') !== -1) {
+            errorMessage.textContent = 'Form is not fully set up yet — the Formspree endpoint still needs to be added by Avante Hospitality.';
+            errorMessage.classList.remove('hidden');
+            return;
+        }
+
+        const propertyName = document.getElementById('property-name').value;
+        const channelManager = document.querySelector('.channel-manager-radio:checked')?.value || '';
+        const reference = channelManager === 'NightsBridge' ? bbidInput.value : (channelManager === 'eRes/NebulaCRS' ? eresInput.value : 'N/A');
+
+        const payload = {
+            property_name: propertyName,
+            contact_person: document.getElementById('contact-person').value,
+            phone: document.getElementById('phone').value,
+            email: document.getElementById('email').value,
+            channel_manager_number: document.getElementById('cm-number').value,
+            channel_manager: channelManager,
+            bbid: channelManager === 'NightsBridge' ? bbidInput.value : '',
+            eres_reference: channelManager === 'eRes/NebulaCRS' ? eresInput.value : '',
+            accept_terms: document.getElementById('accept-terms').checked,
+            _subject: `New Listing Request — ${propertyName} (${channelManager} — ${reference})`,
+            _cc: 'info@avantehospitality.co.za',
+            _replyto: document.getElementById('email').value
+        };
+
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Submitting…';
+
+        try {
+            const response = await fetch(FORMSPREE_ENDPOINT, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (response.ok) {
+                form.style.display = 'none';
+                successMessage.classList.remove('hidden');
+                setTimeout(() => successMessage.classList.remove('opacity-0'), 10);
+            } else {
+                throw new Error('Submission failed');
+            }
+        } catch (err) {
+            errorMessage.textContent = 'Something went wrong sending your submission. Please try again or email info@avantehospitality.co.za directly.';
+            errorMessage.classList.remove('hidden');
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Submit';
+        }
+    });
+});
+</script>
+</body>
+</html>

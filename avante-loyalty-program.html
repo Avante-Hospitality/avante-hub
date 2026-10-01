@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Avante Hospitality — Loyalty Program Sign-Up</title>
+
+<!--
+  ============================================================================
+  BEFORE THIS GOES LIVE — Jean:
+
+  1. FORMSPREE ENDPOINT (search "FORMSPREE_ENDPOINT" below):
+     Create a Formspree form (can be the same one as avante-channel-manager-
+     listing.html, or a separate one) registered to admin@avantehospitality.co.za
+     with info@avantehospitality.co.za as a verified CC recipient.
+
+  2. This page is meant to be reached only AFTER a property has already
+     submitted a listing request (Type 1's thank-you screen links here).
+     It intentionally does NOT repeat Terms & Conditions acceptance — that
+     already happened on the listing form.
+  ============================================================================
+-->
+
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+    :root{ --navy:#2C3E50; --logo-navy:#273A85; --indigo:#1425BE; --orange:#ED8B00; }
+    body{ font-family:'Source Sans 3', sans-serif; color:var(--navy); }
+    h1,h2,h3,h4,.font-display{ font-family:'Playfair Display', serif; }
+    .form-input:focus, .form-checkbox:focus, .form-radio:focus{
+        outline:2px solid transparent; outline-offset:2px;
+        box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--indigo);
+    }
+    #success-message{ transition:opacity .5s ease-in-out; }
+    .hidden-section{ display:none; }
+    .brand-btn{ background:var(--indigo); }
+    .brand-btn:hover{ background:#0f1c93; }
+    .accent{ color:var(--orange); }
+    .step-badge{ background:var(--indigo); }
+</style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen p-4 sm:p-6 lg:p-8">
+<div class="w-full max-w-4xl mx-auto bg-white p-8 sm:p-10 lg:p-12 rounded-2xl shadow-lg border border-gray-100">
+
+    <a href="avante-channel-manager-listing.html" class="inline-flex items-center text-sm font-semibold mb-6 hover:underline" style="color:var(--indigo)">&larr; Back to Listing Form</a>
+
+    <header class="text-center mb-10">
+        <img src="img/logo-full.png" alt="Avante Hospitality" style="height:64px; width:auto; margin:0 auto 18px;">
+        <span class="step-badge inline-block text-white text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full mb-4">Loyalty Program</span>
+        <h1 class="text-3xl sm:text-4xl font-bold tracking-tight" style="color:var(--navy)">Join the Avante Loyalty Program</h1>
+        <p class="mt-3 text-base text-gray-600 max-w-2xl mx-auto">
+            Joining makes your property a <strong>Featured Resort</strong> across all of Avante's platforms,
+            and adds a discount layer on top of your standard rates — managed entirely within Avante.
+            Complete this once your property listing request has been submitted.
+        </p>
+        <p class="mt-2 text-sm text-gray-600">
+            Learn more at <a href="http://www.avantetravel.co.za" target="_blank" rel="noopener noreferrer" class="font-medium hover:underline" style="color:var(--indigo)">www.avantetravel.co.za</a>.
+        </p>
+    </header>
+
+    <form id="loyalty-form" class="space-y-10">
+
+        <!-- Section 1: Property Identification -->
+        <fieldset class="space-y-6">
+            <legend class="text-2xl font-semibold border-b border-gray-200 pb-2 w-full font-display" style="color:var(--navy)">1. Property Details</legend>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label for="property-name" class="block text-sm font-medium text-gray-700 mb-1">Property Name</label>
+                    <input type="text" id="property-name" name="property_name" required class="form-input w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm">
+                </div>
+                <div>
+                    <label for="property-ref" class="block text-sm font-medium text-gray-700 mb-1">BBID / eRes-NebulaCRS Reference <span class="text-gray-400 font-normal">(from your listing request)</span></label>
+                    <input type="text" id="property-ref" name="property_reference" class="form-input w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm">
+                </div>
+                <div>
+                    <label for="contact-person" class="block text-sm font-medium text-gray-700 mb-1">Contact Person</label>
+                    <input type="text" id="contact-person" name="contact_person" required class="form-input w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm">
+                </div>
+                <div>
+                    <label for="email" class="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
+                    <input type="email" id="email" name="email" required class="form-input w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm">
+                </div>
+                <div>
+                    <label for="phone" class="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
+                    <input type="tel" id="phone" name="phone" required class="form-input w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm">
+                </div>
+            </div>
+        </fieldset>
+
+        <!-- Section 2: Loyalty Discount Periods -->
+        <fieldset class="space-y-6">
+            <legend class="text-2xl font-semibold border-b border-gray-200 pb-2 w-full font-display" style="color:var(--navy)">2. Loyalty Rate Periods</legend>
+            <p class="text-sm text-gray-600">
+                Define one or more discount periods below — our team sets these up as a separate rate plan
+                in Avante on your behalf.
+            </p>
+            <div id="discount-rules-container" class="space-y-6"></div>
+            <button type="button" id="add-rule-btn" class="inline-flex items-center text-sm font-semibold hover:underline transition-colors" style="color:var(--indigo)">+ Add Discount Period</button>
+        </fieldset>
+
+        <!-- Section 3: Additional Offers -->
+        <fieldset class="space-y-6">
+            <legend class="text-2xl font-semibold border-b border-gray-200 pb-2 w-full font-display" style="color:var(--navy)">3. Additional Offers <span class="text-base font-normal text-gray-500">(optional)</span></legend>
+            <div>
+                <p class="text-sm font-medium text-gray-700">Would you like to offer any extra perks to Loyalty Members? (Tick all that apply)</p>
+                <div class="mt-3 grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <label class="flex items-center space-x-2 text-sm text-gray-700 bg-gray-50 p-3 rounded-lg border border-gray-200 hover:bg-gray-100 cursor-pointer transition">
+                        <input type="checkbox" name="perks" value="early-checkin" class="form-checkbox h-4 w-4 rounded" style="accent-color:var(--indigo)"><span>Early check-in</span>
+                    </label>
+                    <label class="flex items-center space-x-2 text-sm text-gray-700 bg-gray-50 p-3 rounded-lg border border-gray-200 hover:bg-gray-100 cursor-pointer transition">
+                        <input type="checkbox" name="perks" value="late-checkout" class="form-checkbox h-4 w-4 rounded" style="accent-color:var(--indigo)"><span>Late check-out</span>
+                    </label>
+                    <label class="flex items-center space-x-2 text-sm text-gray-700 bg-gray-50 p-3 rounded-lg border border-gray-200 hover:bg-gray-100 cursor-pointer transition">
+                        <input type="checkbox" name="perks" value="free-breakfast" class="form-checkbox h-4 w-4 rounded" style="accent-color:var(--indigo)"><span>Free breakfast</span>
+                    </label>
+                    <label class="flex items-center space-x-2 text-sm text-gray-700 bg-gray-50 p-3 rounded-lg border border-gray-200 hover:bg-gray-100 cursor-pointer transition">
+                        <input type="checkbox" name="perks" value="welcome-drink" class="form-checkbox h-4 w-4 rounded" style="accent-color:var(--indigo)"><span>Welcome drink</span>
+                    </label>
+                </div>
+                <div class="mt-4">
+                    <label for="other-perks" class="block text-sm font-medium text-gray-700 mb-1">Other</label>
+                    <input type="text" id="other-perks" name="other_perks" placeholder="e.g. Complimentary spa voucher, fruit basket..." class="form-input w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm">
+                </div>
+            </div>
+        </fieldset>
+
+        <!-- Submit -->
+        <div class="pt-6 border-t border-gray-200 text-center">
+            <button type="submit" id="submit-btn" class="brand-btn w-full sm:w-auto text-white font-bold py-3 px-12 rounded-lg shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 transition-transform transform hover:scale-105 active:scale-95">Submit</button>
+            <p id="error-message" class="hidden mt-4 text-sm text-red-600"></p>
+            <p class="mt-6 text-sm text-gray-500">Questions? Email <a href="mailto:info@avantehospitality.co.za" class="font-medium hover:underline" style="color:var(--indigo)">info@avantehospitality.co.za</a></p>
+        </div>
+    </form>
+
+    <div id="success-message" class="hidden opacity-0 mt-8 p-6 rounded-xl text-center space-y-2" style="background:#eef7f0; border:1px solid #b7ddc0; color:#1e4b2b">
+        <h3 class="font-bold text-xl font-display">Thank you!</h3>
+        <p class="text-sm">Your Loyalty Program details have been sent to our team — we'll set up your rate plan and feature your property once your listing is live.</p>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const FORMSPREE_ENDPOINT = 'https://formspree.io/f/FORMSPREE_ENDPOINT';
+
+    const form = document.getElementById('loyalty-form');
+    const submitBtn = document.getElementById('submit-btn');
+    const errorMessage = document.getElementById('error-message');
+    const successMessage = document.getElementById('success-message');
+
+    const rulesContainer = document.getElementById('discount-rules-container');
+    const addRuleBtn = document.getElementById('add-rule-btn');
+    let ruleCounter = 0;
+
+    const createRuleBlock = () => {
+        ruleCounter++;
+        const ruleId = `rule-${ruleCounter}`;
+        const block = document.createElement('div');
+        block.className = 'discount-rule-block p-5 border border-gray-200 rounded-xl bg-gray-50 space-y-4 shadow-sm';
+        block.id = ruleId;
+        block.innerHTML = `
+            <div class="flex justify-between items-center border-b border-gray-200 pb-2">
+                <h4 class="font-semibold text-base text-gray-800">Discount Period ${ruleCounter}</h4>
+                <button type="button" class="remove-rule-btn text-red-500 hover:text-red-700 text-sm font-semibold transition" aria-label="Remove this period">Remove</button>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div><label class="block text-xs font-medium text-gray-700 mb-1">Start Date</label><input type="date" name="${ruleId}_start_date" class="form-input w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm"></div>
+                <div><label class="block text-xs font-medium text-gray-700 mb-1">End Date</label><input type="date" name="${ruleId}_end_date" class="form-input w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm"></div>
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-gray-700">Which rooms apply for this period?</label>
+                <div class="mt-2 flex items-center space-x-6">
+                    <label class="flex items-center cursor-pointer"><input type="radio" name="${ruleId}_room_scope" value="all" required class="form-radio h-4 w-4 room-scope-radio" style="accent-color:var(--indigo)"><span class="ml-2 text-sm text-gray-700">All rooms</span></label>
+                    <label class="flex items-center cursor-pointer"><input type="radio" name="${ruleId}_room_scope" value="selected" class="form-radio h-4 w-4 room-scope-radio" style="accent-color:var(--indigo)"><span class="ml-2 text-sm text-gray-700">Selected rooms</span></label>
+                </div>
+                <textarea name="${ruleId}_selected_rooms" placeholder="List selected room types (e.g., Deluxe Suite, Ocean View Room)..." rows="2" class="selected-rooms-textarea hidden-section mt-2 form-input w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm"></textarea>
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-gray-700">Discount Percentage for this period</label>
+                <div class="mt-2 flex flex-wrap items-center gap-x-6 gap-y-2">
+                    <label class="flex items-center cursor-pointer"><input type="radio" name="${ruleId}_discount_type" value="10" required class="form-radio h-4 w-4 discount-type-radio" style="accent-color:var(--indigo)"><span class="ml-2 text-sm text-gray-700">10%</span></label>
+                    <label class="flex items-center cursor-pointer"><input type="radio" name="${ruleId}_discount_type" value="15" class="form-radio h-4 w-4 discount-type-radio" style="accent-color:var(--indigo)"><span class="ml-2 text-sm text-gray-700">15%</span></label>
+                    <label class="flex items-center cursor-pointer">
+                        <input type="radio" name="${ruleId}_discount_type" value="other" class="form-radio h-4 w-4 discount-type-radio" style="accent-color:var(--indigo)">
+                        <span class="ml-2 text-sm text-gray-700">Other:</span>
+                        <input type="number" name="${ruleId}_discount_other" min="1" max="100" placeholder="%" class="other-discount-input hidden-section form-input w-20 ml-2 px-2 py-1 border border-gray-300 rounded-md shadow-sm text-sm">
+                        <span class="other-discount-input hidden-section ml-1 text-sm text-gray-700">%</span>
+                    </label>
+                </div>
+            </div>
+        `;
+        rulesContainer.appendChild(block);
+    };
+
+    addRuleBtn.addEventListener('click', createRuleBlock);
+    createRuleBlock(); // start with one
+
+    rulesContainer.addEventListener('click', (event) => {
+        if (event.target.classList.contains('remove-rule-btn')) event.target.closest('.discount-rule-block').remove();
+    });
+
+    rulesContainer.addEventListener('change', (event) => {
+        const target = event.target;
+        const parentBlock = target.closest('.discount-rule-block');
+        if (!parentBlock) return;
+        if (target.classList.contains('room-scope-radio')) {
+            const textarea = parentBlock.querySelector('.selected-rooms-textarea');
+            if (target.value === 'selected') { textarea.classList.remove('hidden-section'); textarea.required = true; }
+            else { textarea.classList.add('hidden-section'); textarea.required = false; }
+        }
+        if (target.classList.contains('discount-type-radio')) {
+            const otherInputs = parentBlock.querySelectorAll('.other-discount-input');
+            const otherNumberInput = parentBlock.querySelector('input[name*="_discount_other"]');
+            if (target.value === 'other') { otherInputs.forEach(i => i.classList.remove('hidden-section')); if (otherNumberInput) otherNumberInput.required = true; }
+            else { otherInputs.forEach(i => i.classList.add('hidden-section')); if (otherNumberInput) otherNumberInput.required = false; }
+        }
+    });
+
+    function collectDiscountPeriods() {
+        const periods = [];
+        rulesContainer.querySelectorAll('.discount-rule-block').forEach((block) => {
+            const get = (suffix) => block.querySelector(`[name$="${suffix}"]`);
+            const roomScope = block.querySelector('.room-scope-radio:checked')?.value || '';
+            const discountTypeEl = block.querySelector('.discount-type-radio:checked');
+            let discount = discountTypeEl ? discountTypeEl.value : '';
+            if (discount === 'other') discount = (get('_discount_other')?.value || '') + '%';
+            else if (discount) discount = discount + '%';
+            periods.push({
+                start_date: get('_start_date')?.value || '',
+                end_date: get('_end_date')?.value || '',
+                room_scope: roomScope,
+                selected_rooms: roomScope === 'selected' ? (get('_selected_rooms')?.value || '') : 'All rooms',
+                discount: discount
+            });
+        });
+        return periods;
+    }
+
+    form.addEventListener('submit', async function (event) {
+        event.preventDefault();
+        errorMessage.classList.add('hidden');
+
+        if (FORMSPREE_ENDPOINT.indexOf('FORMSPREE_ENDPOINT') !== -1) {
+            errorMessage.textContent = 'Form is not fully set up yet — the Formspree endpoint still needs to be added by Avante Hospitality.';
+            errorMessage.classList.remove('hidden');
+            return;
+        }
+
+        const propertyName = document.getElementById('property-name').value;
+        const perks = Array.from(document.querySelectorAll('input[name="perks"]:checked')).map(el => el.value);
+
+        const payload = {
+            property_name: propertyName,
+            property_reference: document.getElementById('property-ref').value,
+            contact_person: document.getElementById('contact-person').value,
+            email: document.getElementById('email').value,
+            phone: document.getElementById('phone').value,
+            loyalty_discount_periods: collectDiscountPeriods(),
+            additional_perks: perks,
+            other_perks: document.getElementById('other-perks').value,
+            _subject: `Loyalty Program Sign-Up — ${propertyName}`,
+            _cc: 'info@avantehospitality.co.za',
+            _replyto: document.getElementById('email').value
+        };
+
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Submitting…';
+
+        try {
+            const response = await fetch(FORMSPREE_ENDPOINT, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (response.ok) {
+                form.style.display = 'none';
+                successMessage.classList.remove('hidden');
+                setTimeout(() => successMessage.classList.remove('opacity-0'), 10);
+            } else {
+                throw new Error('Submission failed');
+            }
+        } catch (err) {
+            errorMessage.textContent = 'Something went wrong sending your submission. Please try again or email info@avantehospitality.co.za directly.';
+            errorMessage.classList.remove('hidden');
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Submit';
+        }
+    });
+});
+</script>
+</body>
+</html>
