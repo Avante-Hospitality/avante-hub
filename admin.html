@@ -1396,19 +1396,25 @@
             overlay.classList.add('show');
           };
 
+          // Shared by the Next button below and by any plain "Skip to next
+          // step" button elsewhere on the page (e.g. Find & fix missing
+          // coordinates' Skip button) that wants the same scroll + Jump-to
+          // sync without going through the popup at all.
+          window.jumpToStep = function(id){
+            if (!id) return;
+            var target = document.getElementById(id);
+            if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            var sel = document.getElementById('mapJumpSelect');
+            var card = target && target.closest ? target.closest('.map-jump-target') : null;
+            if (sel && card && card.id) sel.value = card.id;
+          };
+
           closeBtn.addEventListener('click', closeStepResultModal);
           overlay.addEventListener('click', function(e){ if (e.target === overlay) closeStepResultModal(); });
           nextBtn.addEventListener('click', function(){
             var id = pendingNextId;
             closeStepResultModal();
-            if (!id) return;
-            var target = document.getElementById(id);
-            if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            // Keep the "Jump to" dropdown in sync with where Next just took
-            // them, same as if they'd picked it from that dropdown directly.
-            var sel = document.getElementById('mapJumpSelect');
-            var card = target && target.closest ? target.closest('.map-jump-target') : null;
-            if (sel && card && card.id) sel.value = card.id;
+            window.jumpToStep(id);
           });
         })();
       </script>
@@ -1872,6 +1878,10 @@
               <tbody id="flaggedInactiveTableBody"></tbody>
             </table>
           </div>
+        </div>
+
+        <div class="btn-row" style="margin-top:18px; padding-top:16px; border-top:1.5px solid var(--line);">
+          <button class="btn-outline" id="missingCoordSkipBtn">Skip — nothing to send, continue</button>
         </div>
       </div>
 
@@ -9647,6 +9657,17 @@
           loadPage();
         });
         moreBtn.addEventListener('click', loadPage);
+
+        // "Skip — nothing to send, continue" (2026-10-01, Jean's request):
+        // the plain way to move to the next step when there's nothing
+        // flagged to download — no popup, just the same jump the Next
+        // button on the download popup gives.
+        var skipBtn = document.getElementById('missingCoordSkipBtn');
+        if (skipBtn) {
+          skipBtn.addEventListener('click', function(){
+            if (typeof window.jumpToStep === 'function') window.jumpToStep('map-jump-no-zone');
+          });
+        }
       })();
 
       // ---- Flagged as possibly inactive ----
@@ -9686,6 +9707,19 @@
           a.download = 'flagged-possibly-inactive-' + new Date().toISOString().slice(0, 10) + '.csv';
           document.body.appendChild(a); a.click();
           setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+          // The natural "done with this step" moment for Find & fix missing
+          // coordinates isn't one batch finishing (unlike Start geocoding /
+          // Re-check all zones) -- it's downloading this file to send on.
+          // So the step-result popup fires from here instead (Jean's
+          // 2026-10-01 request), not from a single "run" completing.
+          if (typeof showStepResultModal === 'function') {
+            showStepResultModal({
+              title: 'Flagged properties — downloaded',
+              message: 'Forward this CSV to StockNetwork’s support team so they can confirm these ' + currentItems.length + ' propert' + (currentItems.length === 1 ? 'y' : 'ies') + ' and mark ' + (currentItems.length === 1 ? 'it' : 'them') + ' inactive on their side. Nothing changes in the hub or in StockNetwork until they do.',
+              nextId: 'map-jump-no-zone',
+              nextLabel: 'Fix countries with a real coordinate'
+            });
+          }
         }
 
         function renderFlaggedRow(item){
