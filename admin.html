@@ -1537,6 +1537,9 @@
           </div>
           <div class="empty-state" id="missingCoordsEmpty" style="display:none;">Every "Listed" property has coordinates.</div>
         </div>
+        <div class="btn-row" style="margin-top:18px; padding-top:16px; border-top:1.5px solid var(--line);">
+          <button class="btn-outline" id="bulkFillCoordsContinueBtn">Continue</button>
+        </div>
       </div>
 
       <div class="card map-jump-target" id="map-jump-bulk-activities" style="margin-top:20px;">
@@ -10998,6 +11001,11 @@
               importCoordsStatusEl.textContent = 'Updated ' + res.data.updated + ' propert' + (res.data.updated === 1 ? 'y' : 'ies') +
                 '. Skipped ' + res.data.skippedNoMatch + ' with no match, ' + res.data.skippedAmbiguous + ' with an ambiguous name match.';
               loadActivities();
+              if (typeof showStepResultModal === 'function') {
+                var bfExplain = 'Updated ' + res.data.updated + ' propert' + (res.data.updated === 1 ? 'y' : 'ies') + ' with the coordinates from your CSV.'
+                  + ((res.data.skippedNoMatch || res.data.skippedAmbiguous) ? (' Skipped ' + res.data.skippedNoMatch + ' row' + (res.data.skippedNoMatch === 1 ? '' : 's') + ' that didn’t match any Listed property, and ' + res.data.skippedAmbiguous + ' where the name matched more than one property (use the id column for those).') : ' Every row in the file matched a Listed property.');
+                showStepResultModal({ title: 'Bulk-fill property coordinates — done', message: bfExplain, nextId: 'map-jump-no-zone', nextLabel: 'Properties with no zone (recheck)' });
+              }
             } else {
               importCoordsStatusEl.textContent = (res.data && res.data.error) || 'Could not import CSV.';
             }
@@ -11010,6 +11018,21 @@
         reader.readAsText(file);
         importCoordsFileInput.value = '';
       });
+
+      var bulkFillCoordsContinueBtn = document.getElementById('bulkFillCoordsContinueBtn');
+      if (bulkFillCoordsContinueBtn) {
+        bulkFillCoordsContinueBtn.addEventListener('click', function(){
+          var rowCount = document.getElementById('missingCoordsTableBody').children.length;
+          var msg = rowCount
+            ? (rowCount + ' Listed propert' + (rowCount === 1 ? 'y is' : 'ies are') + ' still missing coordinates (see the table above) — upload a CSV above to fill them in, or come back to this later; it’s fine to carry on for now.')
+            : 'Every Listed property already has coordinates — nothing to bulk-fill here.';
+          if (typeof showStepResultModal === 'function') {
+            showStepResultModal({ title: 'Bulk-fill property coordinates', message: msg, nextId: 'map-jump-no-zone', nextLabel: 'Properties with no zone (recheck)' });
+          } else if (typeof window.jumpToStep === 'function') {
+            window.jumpToStep('map-jump-no-zone');
+          }
+        });
+      }
 
       var importBtn = document.getElementById('importActivitiesBtn');
       var importFileInput = document.getElementById('importActivitiesFileInput');
