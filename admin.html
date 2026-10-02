@@ -1824,6 +1824,9 @@
         <div class="btn-row" id="snReviewMoreRow" style="display:none; margin-top:10px;">
           <button class="btn-outline" id="snReviewLoadMoreBtn">Load more</button>
         </div>
+        <div class="btn-row" style="margin-top:18px; padding-top:16px; border-top:1.5px solid var(--line);">
+          <button class="btn-outline" id="snReviewContinueBtn">Continue — review the rest later</button>
+        </div>
       </div>
 
       <div class="card map-jump-target" id="map-jump-find-fix-coords" style="margin-top:20px;">
@@ -9424,11 +9427,14 @@
         var statusEl = document.getElementById('snReviewStatus');
         var tableWrap = document.getElementById('snReviewTableWrap');
         var tbody = document.getElementById('snReviewTableBody');
+        var continueBtn = document.getElementById('snReviewContinueBtn');
         if(!loadBtn || !tbody) return;
 
         var offset = 0;
         var PAGE = 100;
         var rowsShown = 0;
+        var savedCount = 0;
+        var lastTotalFlagged = 0, lastTotalProperties = 0;
 
         function setStatus(t, isError){ statusEl.textContent = t; statusEl.className = 'status show' + (isError ? '' : ' ok'); }
 
@@ -9490,7 +9496,7 @@
             acceptBtn.addEventListener('click', function(){
               acceptBtn.disabled = true;
               mapAdminPost('resolveStocknetworkLocation', { index: f.index, country: f.snCountry }).then(function(res){
-                if(res.data && res.data.ok){ setRowStatus('Saved — country set to ' + f.snCountry + '.'); tr.style.opacity = '0.55'; }
+                if(res.data && res.data.ok){ setRowStatus('Saved — country set to ' + f.snCountry + '.'); tr.style.opacity = '0.55'; savedCount++; }
                 else { setRowStatus((res.data && res.data.error) || 'Could not save.', true); acceptBtn.disabled = false; }
               }).catch(function(){ setRowStatus('Request failed.', true); acceptBtn.disabled = false; });
             });
@@ -9501,7 +9507,7 @@
             acceptCoordBtn.addEventListener('click', function(){
               acceptCoordBtn.disabled = true;
               mapAdminPost('applyPropertyCoordinate', { source: 'resort', index: f.index, lat: f.coordSuggested.lat, lng: f.coordSuggested.lng }).then(function(res){
-                if(res.data && res.data.ok){ setRowStatus('Saved — coordinate updated' + (res.data.locationLabel ? ' (' + res.data.locationLabel + ').' : '.')); tr.style.opacity = '0.55'; }
+                if(res.data && res.data.ok){ setRowStatus('Saved — coordinate updated' + (res.data.locationLabel ? ' (' + res.data.locationLabel + ').' : '.')); tr.style.opacity = '0.55'; savedCount++; }
                 else { setRowStatus((res.data && res.data.error) || 'Could not save.', true); acceptCoordBtn.disabled = false; }
               }).catch(function(){ setRowStatus('Request failed.', true); acceptCoordBtn.disabled = false; });
             });
@@ -9514,7 +9520,7 @@
             if(!loc.zone && !loc.townId && !loc.suburbId){ setRowStatus('Pick a Town, Suburb or Area first.', true); return; }
             saveBtn.disabled = true;
             mapAdminPost('resolveStocknetworkLocation', { index: f.index, zone: loc.zone, townId: loc.townId, suburbId: loc.suburbId, locationLabel: loc.locationLabel }).then(function(res){
-              if(res.data && res.data.ok){ setRowStatus('Saved — hub location updated.'); tr.style.opacity = '0.55'; }
+              if(res.data && res.data.ok){ setRowStatus('Saved — hub location updated.'); tr.style.opacity = '0.55'; savedCount++; }
               else { setRowStatus((res.data && res.data.error) || 'Could not save.', true); saveBtn.disabled = false; }
             }).catch(function(){ setRowStatus('Request failed.', true); saveBtn.disabled = false; });
           });
@@ -9541,12 +9547,35 @@
             var pendingSelectIds = newRows.map(function(f){ return selectIdFor(f.index); });
             populateLocationSelects(pendingSelectIds);
             moreRow.style.display = d.remaining > 0 ? 'flex' : 'none';
+            lastTotalFlagged = d.totalFlagged || 0;
+            lastTotalProperties = d.totalProperties || 0;
             setStatus('Showing ' + rowsShown + ' of ' + d.totalFlagged + ' flagged properties (out of ' + d.totalProperties + ' checked).');
           }).catch(function(){ btn.disabled = false; setStatus('Request failed.', true); });
         }
 
         loadBtn.addEventListener('click', function(){ offset = 0; rowsShown = 0; tbody.innerHTML = ''; loadPage(); });
         moreBtn.addEventListener('click', loadPage);
+
+        // This list is reviewed one property at a time and routinely runs
+        // into the thousands, so unlike the other steps there's no single
+        // "done" moment to hang a popup on. "Continue" instead reports
+        // whatever progress was made THIS visit and moves on — coming back
+        // later to work through more is expected, not a step left unfinished.
+        if (continueBtn) {
+          continueBtn.addEventListener('click', function(){
+            var msg = lastTotalFlagged
+              ? (savedCount
+                 ? ('Saved ' + savedCount + ' propert' + (savedCount === 1 ? 'y' : 'ies') + ' this visit. '
+                    + (lastTotalFlagged - savedCount) + ' of ' + lastTotalFlagged + ' flagged properties are still waiting (out of ' + lastTotalProperties + ' checked) — this list is worked through a bit at a time, so it’s fine to come back to the rest later.')
+                 : (lastTotalFlagged + ' flagged properties are waiting (out of ' + lastTotalProperties + ' checked). This list is worked through a bit at a time — come back to it whenever suits; nothing here blocks the next step.'))
+              : 'Click "Load flagged properties" above to see what StockNetwork disagrees with the hub on, whenever you’re ready — it’s fine to move on for now.';
+            if (typeof showStepResultModal === 'function') {
+              showStepResultModal({ title: 'StockNetwork location review', message: msg, nextId: 'map-jump-corrected-file', nextLabel: 'Corrected StockNetwork file export' });
+            } else if (typeof window.jumpToStep === 'function') {
+              window.jumpToStep('map-jump-corrected-file');
+            }
+          });
+        }
       })();
 
       // ---- Find & fix missing coordinates ----
