@@ -9488,6 +9488,19 @@
         };
 
         function selectIdFor(index){ return 'snReviewSel_' + index; }
+        function snFixTreeSelectIdFor(index){ return 'snFixTreeSel_' + index; }
+
+        // Turns a location <select>'s reading (from readLocationSelect) into
+        // the bare name to drop into City2 — strips the "— " suburb prefix
+        // and the " (entire area)" zone suffix that the shared tree-options
+        // HTML adds for display, neither of which belongs in a value typed
+        // for StockNetwork.
+        function cleanTreeLabelForFix(loc){
+          var label = loc.locationLabel || '';
+          if(loc.suburbId && label.indexOf('— ') === 0) label = label.slice(2);
+          if(loc.zone) label = label.replace(/ \(entire area\)$/, '');
+          return label;
+        }
 
         function renderRow(f){
           var tr = document.createElement('tr');
@@ -9515,15 +9528,20 @@
               ) : '') +
             '</div>';
           }
-          // Fields that District/City2/State "should be" — never auto-filled
-          // from the hub's tree (a Zone doesn't map cleanly onto a province,
-          // and a town can have more than one valid search name), so these
-          // stay blank until Jean types something; left blank, nothing is
-          // flagged for StockNetwork when Save is clicked (see below).
+          // Fields that District/City2/State "should be". District and
+          // State stay free-text only — the hub's tree has no municipality
+          // or province level to pick from. City2 is the one field that
+          // does line up with the tree (it's a town/suburb-level name), so
+          // it gets an optional "pick from tree" dropdown next to it
+          // (Jean's request, 2026-10-02): picking an entry fills the City2
+          // box with that name, still as plain editable text — if the name
+          // she needs isn't in the tree (e.g. an alternate town name like
+          // "Bela Bela" for "Warmbaths"), she types it in directly instead.
           var snFixHtml = '<div class="sn-fix-fields" style="margin-top:8px; padding-top:8px; border-top:1px dashed var(--border);">' +
             '<div style="font-size:11px; color:var(--muted); margin-bottom:4px;">Tell StockNetwork to fix (optional):</div>' +
             '<input type="text" class="sn-fix-district" placeholder="District should be (SN has: ' + escapeHtml(f.snDistrict || '—') + ')" style="width:100%; max-width:260px; margin-bottom:4px; font-size:12px;"> ' +
             '<input type="text" class="sn-fix-city2" placeholder="City2 should be (SN has: ' + escapeHtml(f.snCity2 || '—') + ')" style="width:100%; max-width:260px; margin-bottom:4px; font-size:12px;"> ' +
+            '<select id="' + snFixTreeSelectIdFor(f.index) + '" style="width:100%; max-width:260px; margin-bottom:4px; font-size:12px; color:var(--muted);"><option value="">— or pick from tree, fills City2 —</option></select> ' +
             '<input type="text" class="sn-fix-state" placeholder="State should be (SN has: ' + escapeHtml(f.snState || '—') + ')" style="width:100%; max-width:260px; margin-bottom:4px; font-size:12px;"> ' +
             '<input type="text" class="sn-fix-note" placeholder="Note for StockNetwork (optional)" style="width:100%; max-width:260px; font-size:12px;">' +
           '</div>';
@@ -9545,31 +9563,57 @@
           var rowStatusEl = tr.querySelector('.status');
           function setRowStatus(t, isError){ rowStatusEl.textContent = t; rowStatusEl.className = 'status show' + (isError ? '' : ' ok'); }
 
+          var snFixTreeSel = document.getElementById(snFixTreeSelectIdFor(f.index));
+          if(snFixTreeSel){
+            snFixTreeSel.addEventListener('change', function(){
+              var loc = readLocationSelect(snFixTreeSel);
+              var name = cleanTreeLabelForFix(loc);
+              if(name){
+                var city2Input = tr.querySelector('.sn-fix-city2');
+                if(city2Input) city2Input.value = name;
+              }
+              snFixTreeSel.value = ''; // one-shot fill, not a persistent selection like the hub-location picker above
+            });
+          }
+
+          // Every Save-type button below follows the same pattern: change
+          // the BUTTON'S OWN LABEL for "working"/"done", not just the small
+          // status line underneath it. A disabled grey button with no label
+          // change looks identical whether it's mid-request or finished, and
+          // since the button is exactly where the eye is right after a
+          // click, that's what read as a hang (Jean hit this live,
+          // 2026-10-02) — a status line a few pixels below wasn't enough on
+          // its own.
           var acceptBtn = tr.querySelector('[data-act="country"]');
           if(acceptBtn){
+            var acceptBtnLabel = acceptBtn.textContent;
             acceptBtn.addEventListener('click', function(){
               acceptBtn.disabled = true;
+              acceptBtn.textContent = 'Saving…';
               setRowStatus('Saving…');
               mapAdminPost('resolveStocknetworkLocation', { index: f.index, country: f.snCountry }).then(function(res){
-                if(res.data && res.data.ok){ setRowStatus('Saved — country set to ' + f.snCountry + '.'); tr.style.opacity = '0.55'; savedCount++; }
-                else { setRowStatus((res.data && res.data.error) || 'Could not save.', true); acceptBtn.disabled = false; }
-              }).catch(function(){ setRowStatus('Request failed.', true); acceptBtn.disabled = false; });
+                if(res.data && res.data.ok){ acceptBtn.textContent = 'Saved ✓'; setRowStatus('Saved — country set to ' + f.snCountry + '.'); tr.style.opacity = '0.55'; savedCount++; }
+                else { acceptBtn.textContent = acceptBtnLabel; setRowStatus((res.data && res.data.error) || 'Could not save.', true); acceptBtn.disabled = false; }
+              }).catch(function(){ acceptBtn.textContent = acceptBtnLabel; setRowStatus('Request failed.', true); acceptBtn.disabled = false; });
             });
           }
 
           var acceptCoordBtn = tr.querySelector('[data-act="acceptCoord"]');
           if(acceptCoordBtn && f.coordSuggested){
+            var acceptCoordBtnLabel = acceptCoordBtn.textContent;
             acceptCoordBtn.addEventListener('click', function(){
               acceptCoordBtn.disabled = true;
+              acceptCoordBtn.textContent = 'Saving…';
               setRowStatus('Saving…');
               mapAdminPost('applyPropertyCoordinate', { source: 'resort', index: f.index, lat: f.coordSuggested.lat, lng: f.coordSuggested.lng }).then(function(res){
-                if(res.data && res.data.ok){ setRowStatus('Saved — coordinate updated' + (res.data.locationLabel ? ' (' + res.data.locationLabel + ').' : '.')); tr.style.opacity = '0.55'; savedCount++; }
-                else { setRowStatus((res.data && res.data.error) || 'Could not save.', true); acceptCoordBtn.disabled = false; }
-              }).catch(function(){ setRowStatus('Request failed.', true); acceptCoordBtn.disabled = false; });
+                if(res.data && res.data.ok){ acceptCoordBtn.textContent = 'Saved ✓'; setRowStatus('Saved — coordinate updated' + (res.data.locationLabel ? ' (' + res.data.locationLabel + ').' : '.')); tr.style.opacity = '0.55'; savedCount++; }
+                else { acceptCoordBtn.textContent = acceptCoordBtnLabel; setRowStatus((res.data && res.data.error) || 'Could not save.', true); acceptCoordBtn.disabled = false; }
+              }).catch(function(){ acceptCoordBtn.textContent = acceptCoordBtnLabel; setRowStatus('Request failed.', true); acceptCoordBtn.disabled = false; });
             });
           }
 
           var saveBtn = tr.querySelector('[data-act="save"]');
+          var saveBtnLabel = saveBtn.textContent;
           saveBtn.addEventListener('click', function(){
             var sel = document.getElementById(selectIdFor(f.index));
             var loc = readLocationSelect(sel);
@@ -9589,10 +9633,7 @@
             // StockNetwork's search fields are wrong.
             if(!hasTreePick && !hasFixFields){ setRowStatus('Pick a Town, Suburb or Area, or fill in a StockNetwork field to fix, first.', true); return; }
             saveBtn.disabled = true;
-            // Disabling the button drops it out of keyboard focus with no
-            // other visible change until the request resolves, which reads
-            // as the page having hung (Jean hit this live, 2026-10-02) —
-            // show something immediately instead of waiting on the response.
+            saveBtn.textContent = 'Saving…';
             setRowStatus('Saving…');
 
             var hubSave = hasTreePick
@@ -9610,16 +9651,18 @@
                 var parts = [];
                 if(hasTreePick) parts.push('hub location updated');
                 if(hasFixFields) parts.push('flagged for StockNetwork to fix District/City2/State');
+                saveBtn.textContent = 'Saved ✓';
                 setRowStatus('Saved — ' + parts.join(', ') + '.');
                 tr.style.opacity = '0.55';
                 savedCount++;
                 if(hasFixFields && typeof window.refreshSnFieldFixList === 'function') window.refreshSnFieldFixList();
               } else {
                 var err = (!hubOk && hubRes.data && hubRes.data.error) || (!fixOk && fixRes.data && fixRes.data.error) || 'Could not save.';
+                saveBtn.textContent = saveBtnLabel;
                 setRowStatus(err, true);
                 saveBtn.disabled = false;
               }
-            }).catch(function(){ setRowStatus('Request failed.', true); saveBtn.disabled = false; });
+            }).catch(function(){ saveBtn.textContent = saveBtnLabel; setRowStatus('Request failed.', true); saveBtn.disabled = false; });
           });
         }
 
@@ -9642,7 +9685,17 @@
             rowsShown += newRows.length;
             offset = d.offset + newRows.length;
             var pendingSelectIds = newRows.map(function(f){ return selectIdFor(f.index); });
-            populateLocationSelects(pendingSelectIds);
+            var pendingTreeFixSelectIds = newRows.map(function(f){ return snFixTreeSelectIdFor(f.index); });
+            populateLocationSelects(pendingSelectIds.concat(pendingTreeFixSelectIds)).then(function(){
+              // populateLocationSelects stamps the one shared tree-options
+              // HTML onto every id it's given, including the default "—
+              // None selected —" first option — fix that id's wording back
+              // to what it's actually for on the sn-fix dropdowns.
+              pendingTreeFixSelectIds.forEach(function(id){
+                var sel = document.getElementById(id);
+                if(sel && sel.options[0]) sel.options[0].textContent = '— or pick from tree, fills City2 —';
+              });
+            });
             moreRow.style.display = d.remaining > 0 ? 'flex' : 'none';
             lastTotalFlagged = d.totalFlagged || 0;
             lastTotalProperties = d.totalProperties || 0;
