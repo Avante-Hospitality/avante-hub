@@ -1766,7 +1766,7 @@ export default async (request, context) => {
 
       const LOOKUP_START_BUDGET_MS = 11000;
       const lookupsBeganAt = Date.now();
-      let skippedForTime = 0, fixed = 0, stillUnresolved = 0;
+      let skippedForTime = 0, fixed = 0, fixedByName = 0, stillUnresolved = 0;
       const exampleFixes = [];
       const exampleUnresolved = [];
       let resortListChanged = false;
@@ -1788,6 +1788,32 @@ export default async (request, context) => {
           rec.zone = clean(geo.province || geo.country, 120);
           fixed++;
           if (exampleFixes.length < 10) exampleFixes.push({ name: t.name, country: rec.country, zone: rec.zone });
+          if (t.source === "listing") listingUpdates.push(rec);
+          else resortListChanged = true;
+          return;
+        }
+
+        // Coordinate reverse-geocode drew a blank — common for a remote
+        // bush/safari camp with no mapped road nearby (confirmed 2026-10-02:
+        // every property still unresolved here is deep in the Okavango
+        // Delta / NamibRand / Mana Pools area). A country bounding-box
+        // fallback was considered and rejected: every one of these
+        // coordinates sits inside the overlap of two neighbouring
+        // countries' boxes (e.g. Namibia/Botswana near the Caprivi Strip),
+        // so a box alone would be a coin-flip, not a fix — worse than
+        // leaving it blank. Instead, fall back to looking the property up
+        // by NAME (the same Google Places lookup "Improve property
+        // coordinates" already uses), cross-checked against this record's
+        // own real coordinate via checkNameAgainstCoordinate — only ever
+        // trusted when Google's name match lands within 15km of the pin
+        // we already have, so a same-named place elsewhere can't slip in.
+        const nameCheck = await checkNameAgainstCoordinate(t.name, t.lat, t.lng, apiKey);
+        if (nameCheck.confidence === "high" && nameCheck.country) {
+          rec.country = nameCheck.country;
+          rec.zone = clean(nameCheck.country, 120);
+          fixed++;
+          fixedByName++;
+          if (exampleFixes.length < 10) exampleFixes.push({ name: t.name, country: rec.country, zone: rec.zone, byName: true });
           if (t.source === "listing") listingUpdates.push(rec);
           else resortListChanged = true;
         } else {
@@ -1817,6 +1843,7 @@ export default async (request, context) => {
         remaining,
         nextOffset,
         fixed,
+        fixedByName,
         stillUnresolved,
         exampleFixes,
         exampleUnresolved,
