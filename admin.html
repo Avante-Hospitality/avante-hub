@@ -8223,12 +8223,32 @@
                      + ', adding ' + totalTowns + ' new town' + (totalTowns === 1 ? '' : 's') + ' and ' + totalSuburbs + ' new suburb' + (totalSuburbs === 1 ? '' : 's') + ' along the way.'
                      + (totalFailed ? (' ' + totalFailed + ' location' + (totalFailed === 1 ? '' : 's') + ' couldn’t be resolved — see the status message above for why.') : ''));
                 if (typeof showStepResultModal === 'function') {
-                  showStepResultModal({
-                    title: 'Start geocoding — done',
-                    message: explain,
-                    nextId: 'recheckZonesBtn',
-                    nextLabel: 'Re-check all zones'
-                  });
+                  // This exact button does double duty: it's Step 1 the
+                  // first time through the cleanup walkthrough (Next should
+                  // go on to "Re-check all zones"), and Step 6 on a later
+                  // pass once everything's already been through that once
+                  // (Next should skip ahead to "StockNetwork location
+                  // review" instead — looping back to Step 2 here would
+                  // just re-run a step already done). Re-check all zones
+                  // marks a flag the first time IT finishes, so this can
+                  // tell which pass it's on.
+                  var alreadyRecheckedZones = false;
+                  try { alreadyRecheckedZones = localStorage.getItem('avante-recheck-zones-done') === '1'; } catch(e){}
+                  if (alreadyRecheckedZones) {
+                    showStepResultModal({
+                      title: 'Start geocoding — done',
+                      message: explain,
+                      nextId: 'map-jump-sn-review',
+                      nextLabel: 'StockNetwork location review'
+                    });
+                  } else {
+                    showStepResultModal({
+                      title: 'Start geocoding — done',
+                      message: explain,
+                      nextId: 'recheckZonesBtn',
+                      nextLabel: 'Re-check all zones'
+                    });
+                  }
                 }
               }
               finish(summary);
@@ -8505,6 +8525,12 @@
                   });
                 }
               }
+              // Marks that this step has now run at least once — "Start
+              // geocoding" reads this flag so its own popup's Next button
+              // knows whether it's being run for the first time (Step 1,
+              // Next → here) or run again later (Step 6, Next → skip ahead
+              // to StockNetwork location review instead of looping back).
+              try { localStorage.setItem('avante-recheck-zones-done', '1'); } catch(e){}
               finish(summary);
             }
           }).catch(function(err){
