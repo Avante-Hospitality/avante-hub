@@ -483,6 +483,14 @@ export async function checkNameAgainstCoordinate(name, lat, lng, apiKey) {
     lng: Math.round(g.lng * 1e6) / 1e6,
     distKm: distKm === null ? null : Math.round(distKm * 10) / 10,
     formatted: g.formatted, googleType: g.types[0] || "", locationType: g.locationType, partial: g.partial,
+    // country (2026-10-02): forwardGeocodeByName already pulls this off the
+    // result's address_components — surfaced here too so fixPropertyCountry
+    // in map-api.js can use a NAME match as a fallback country source when
+    // the coordinate itself reverse-geocodes to ZERO_RESULTS (common for a
+    // remote bush/safari camp with no mapped road nearby). Purely additive:
+    // existing callers (suggestCoordinates, resorts-api.js's sync) destructure
+    // only the fields they already used.
+    country: g.country || "",
   };
 }
 
