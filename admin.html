@@ -8649,7 +8649,7 @@
 
       if(fixPropertyCountryBtn){
         fixPropertyCountryBtn.addEventListener('click', function(){
-          if(!confirm('This looks at every property/resort row that already has a real coordinate but no zone, works out its true country straight from that coordinate, and saves it. It never touches a row with no usable coordinate. Continue?')){
+          if(!confirm('This looks at every property/resort row that already has a real coordinate but no zone, works out its true country straight from that coordinate, and saves it. If the coordinate alone draws a blank (common for a remote bush/safari camp), it falls back to looking the property up by name and only trusts that if it lands within 15km of the coordinate you already have. It never touches a row with no usable coordinate. Continue?')){
             return;
           }
           var OFFSET_KEY = 'avante-fix-property-country-offset';
@@ -8667,7 +8667,7 @@
           startGeocodeBtn.disabled = true;
           checkGeocodeBtn.disabled = true;
 
-          var totalFixed = 0, totalUnresolved = 0, totalTargets = 0, iterations = 0;
+          var totalFixed = 0, totalFixedByName = 0, totalUnresolved = 0, totalTargets = 0, iterations = 0;
           var MAX_ITERATIONS = 300;
           var batchRetries = 0, MAX_BATCH_RETRIES = 4;
           var exampleFixes = [];
@@ -8715,6 +8715,7 @@
               batchRetries = 0;
               totalTargets = res.data.totalTargets || totalTargets;
               totalFixed += res.data.fixed || 0;
+              totalFixedByName += res.data.fixedByName || 0;
               totalUnresolved += res.data.stillUnresolved || 0;
               if(res.data.exampleFixes) exampleFixes = exampleFixes.concat(res.data.exampleFixes).slice(0, 10);
               offset = (typeof res.data.nextOffset === 'number') ? res.data.nextOffset : (offset + (res.data.processed || 0));
@@ -8726,9 +8727,10 @@
               }
 
               saveOffset(0);
-              var summary = 'Done — fixed ' + totalFixed + ' propert' + (totalFixed === 1 ? 'y' : 'ies') + '.';
+              var summary = 'Done — fixed ' + totalFixed + ' propert' + (totalFixed === 1 ? 'y' : 'ies')
+                + (totalFixedByName ? (' (' + totalFixedByName + ' by name match, since the coordinate alone drew a blank)') : '') + '.';
               if(totalUnresolved){
-                summary += ' ' + totalUnresolved + ' still couldn’t be placed (Google had no answer for that exact coordinate) — worth a manual look.';
+                summary += ' ' + totalUnresolved + ' still couldn’t be placed (Google had no usable answer for the coordinate or the name) — worth a manual look.';
               }
               if(exampleFixes.length){
                 summary += ' Examples: ' + exampleFixes.map(function(f){ return f.name + ' → ' + f.country; }).join('; ') + '.';
@@ -8736,8 +8738,9 @@
               if (typeof showStepResultModal === 'function') {
                 var fpcExplain = (totalFixed === 0 && totalUnresolved === 0)
                   ? 'Nothing needed fixing — every property with a real coordinate already has the right country.'
-                  : ('Fixed ' + totalFixed + ' propert' + (totalFixed === 1 ? 'y' : 'ies') + ' by working out the true country straight from its coordinate.'
-                     + (totalUnresolved ? (' ' + totalUnresolved + ' still couldn’t be placed — Google had no answer for that exact coordinate, worth a manual look (the table below lists them).') : ''));
+                  : ('Fixed ' + totalFixed + ' propert' + (totalFixed === 1 ? 'y' : 'ies') + ' by working out the true country from its coordinate'
+                     + (totalFixedByName ? (', ' + totalFixedByName + ' of those by falling back to a name lookup when the coordinate itself drew a blank (only trusted when it landed within 15km of the pin you already had)') : '') + '.'
+                     + (totalUnresolved ? (' ' + totalUnresolved + ' still couldn’t be placed either way — genuinely nothing for Google to go on, worth a manual look (the table below lists them).') : ''));
                 showStepResultModal({
                   title: 'Fix countries with a real coordinate — done',
                   message: fpcExplain,
