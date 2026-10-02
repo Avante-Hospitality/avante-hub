@@ -1802,7 +1802,7 @@
             <button class="how-it-works-btn" type="button" aria-expanded="false" data-panel="snReviewHowItWorks">How it works</button>
           </div>
         </div>
-        <div class="how-it-works-panel" id="snReviewHowItWorks">Every night, StockNetwork's own API refreshes each property's Country, Area, District, City, City2, State, Suburb, ratings and a few other fields directly in the hub &mdash; informational only, alongside (never replacing) the hub's own Zone &gt; Town &gt; Suburb tree, which stays driven purely by the property's coordinates. Whenever StockNetwork sends a new coordinate for a property, the hub also checks that property's own name against Google right then, and flags it here — "coordinate may be wrong" — if the name doesn't look like it belongs near that point; District, City2 and State are shown for reference (they're never used to place a property). This tool compares the rest the same way it always has: any property where StockNetwork's Country/Area/City/Suburb disagrees with the hub's tree, or is blank, shows up below. The hub is the master &mdash; for each flagged property, either accept StockNetwork's country as correct, accept a suggested coordinate when one is offered, or pick the right Town/Suburb from the tree yourself if the hub's own placement needs fixing, then save. Nothing changes until you save a row. Once you've worked through the list, use "Corrected StockNetwork file" below to download a file with the hub's (now-corrected) values, ready to load back into StockNetwork.</div>
+        <div class="how-it-works-panel" id="snReviewHowItWorks">Every night, StockNetwork's own API refreshes each property's Country, Area, District, City, City2, State, Suburb, ratings and a few other fields directly in the hub &mdash; informational only, alongside (never replacing) the hub's own Zone &gt; Town &gt; Suburb tree, which stays driven purely by the property's coordinates. Whenever StockNetwork sends a new coordinate for a property, the hub also checks that property's own name against Google right then, and flags it here — "coordinate may be wrong" — if the name doesn't look like it belongs near that point. This tool compares the rest the same way it always has: any property where StockNetwork's Country/Area/City/Suburb disagrees with the hub's tree, or is blank, shows up below. The hub is the master &mdash; for each flagged property, either accept StockNetwork's country as correct, accept a suggested coordinate when one is offered, or pick the right Town/Suburb from the tree yourself if the hub's own placement needs fixing, then save. Nothing changes until you save a row. Once you've worked through the list, use "Corrected StockNetwork file" below to download a file with the hub's (now-corrected) Country/Area/City/Suburb values, ready to load back into StockNetwork — that file never touches District, City2 or State, though, since StockNetwork uses those for their own availability search and only they can fix them; when Save'ing a row here you can also say what those three should be, and it's queued below to send to StockNetwork's team directly.</div>
         <div class="btn-row" style="margin-top:0;">
           <button class="btn-outline" id="snReviewLoadBtn">Load flagged properties</button>
         </div>
@@ -1824,6 +1824,32 @@
         <div class="btn-row" id="snReviewMoreRow" style="display:none; margin-top:10px;">
           <button class="btn-outline" id="snReviewLoadMoreBtn">Load more</button>
         </div>
+
+        <div style="margin-top:18px; padding-top:16px; border-top:1.5px solid var(--line);">
+          <h4 style="margin:0 0 6px; font-size:13.5px;">Corrections to send to StockNetwork</h4>
+          <p style="margin:0 0 10px; font-size:12.5px; color:var(--muted);">District, City2 and State aren't touched by "Corrected StockNetwork file" below — StockNetwork uses them for their own availability search, so only StockNetwork can fix them. Flag what they should say next to a row's Save button above and it lands here; download the CSV and send it to their team. It's fine to do this a batch at a time, whatever you can get sent before their next nightly run.</p>
+          <div class="btn-row">
+            <button class="btn-outline" id="snFieldFixLoadBtn">Refresh list</button>
+            <button class="btn-outline" id="snFieldFixDownloadBtn" style="display:none;">Download CSV</button>
+          </div>
+          <div class="status" id="snFieldFixStatus"></div>
+          <div class="table-wrap" id="snFieldFixTableWrap" style="display:none; margin-top:12px;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Property</th>
+                  <th>District</th>
+                  <th>City2</th>
+                  <th>State</th>
+                  <th>Note</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="snFieldFixTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+
         <div class="btn-row" style="margin-top:18px; padding-top:16px; border-top:1.5px solid var(--line);">
           <button class="btn-outline" id="snReviewContinueBtn">Continue — review the rest later</button>
         </div>
@@ -2967,6 +2993,20 @@
     // of them, since they're just nested functions closing over it.
     var _locationTreeTownsPromise = null;
     var _locationTreeTowns = [];
+    // Every location <select> on the page (StockNetwork review, property
+    // forms, etc.) shares one fetch of the Town/Suburb tree, cached for the
+    // rest of this page load (see populateLocationSelects below) so opening
+    // several tabs only costs one round trip. That means adding, renaming
+    // or deleting a town/suburb in the Towns & Suburbs admin panel would
+    // otherwise go unnoticed by every dropdown already open on the page
+    // until a full reload (Jean asked about this, 2026-10-02) — call this
+    // after any such change succeeds so the next dropdown render re-fetches
+    // the tree instead of reusing stale options.
+    function invalidateLocationTreeCache(){
+      _locationTreeTownsPromise = null;
+      _locationTreeTowns = [];
+      _locationSelectOptionsHtml = null;
+    }
     function fetchLocationTreeTowns(){
       if(_locationTreeTownsPromise) return _locationTreeTownsPromise;
       _locationTreeTownsPromise = affSectionMapPost('adminList').then(function(res){
@@ -7905,7 +7945,7 @@
           delBtn.textContent = 'Delete';
           delBtn.addEventListener('click', function(){
             if(!confirm('Delete "' + (t.name || 'this town') + '"? This cannot be undone.')) return;
-            mapAdminPost('deleteTown', { id: t.id }).then(function(){ loadActivities(); });
+            mapAdminPost('deleteTown', { id: t.id }).then(function(){ invalidateLocationTreeCache(); loadActivities(); });
           });
           tdActions.appendChild(delBtn);
 
@@ -7937,7 +7977,7 @@
               chipDel.style.cssText = 'width:16px; height:16px; line-height:14px; padding:0; border-radius:50%; border:none; background:#b42318; color:#fff; font-size:11px; cursor:pointer;';
               chipDel.addEventListener('click', function(){
                 if(!confirm('Delete suburb "' + s.name + '"?')) return;
-                mapAdminPost('deleteSuburb', { townId: t.id, suburbId: s.id }).then(function(){ loadActivities(); });
+                mapAdminPost('deleteSuburb', { townId: t.id, suburbId: s.id }).then(function(){ invalidateLocationTreeCache(); loadActivities(); });
               });
               chip.appendChild(chipDel);
               chipsWrap.appendChild(chip);
@@ -7967,7 +8007,7 @@
             addSuburbBtn.disabled = true;
             mapAdminPost('addSuburb', { townId: t.id, name: name }).then(function(res){
               addSuburbBtn.disabled = false;
-              if(res.data && res.data.ok){ addSuburbInput.value = ''; loadActivities(); }
+              if(res.data && res.data.ok){ addSuburbInput.value = ''; invalidateLocationTreeCache(); loadActivities(); }
             });
           });
           addSuburbRow.appendChild(addSuburbInput);
@@ -8007,6 +8047,7 @@
         if(id) payload.id = id;
         mapAdminPost(action, payload).then(function(res){
           if(res.data && res.data.ok){
+            invalidateLocationTreeCache();
             var newId = res.data.town && res.data.town.id;
             if(newId && pendingTownPhotoFiles.length){
               townFormStatusEl.textContent = 'Saved. Uploading photos…';
@@ -9474,6 +9515,18 @@
               ) : '') +
             '</div>';
           }
+          // Fields that District/City2/State "should be" — never auto-filled
+          // from the hub's tree (a Zone doesn't map cleanly onto a province,
+          // and a town can have more than one valid search name), so these
+          // stay blank until Jean types something; left blank, nothing is
+          // flagged for StockNetwork when Save is clicked (see below).
+          var snFixHtml = '<div class="sn-fix-fields" style="margin-top:8px; padding-top:8px; border-top:1px dashed var(--border);">' +
+            '<div style="font-size:11px; color:var(--muted); margin-bottom:4px;">Tell StockNetwork to fix (optional):</div>' +
+            '<input type="text" class="sn-fix-district" placeholder="District should be (SN has: ' + escapeHtml(f.snDistrict || '—') + ')" style="width:100%; max-width:260px; margin-bottom:4px; font-size:12px;"> ' +
+            '<input type="text" class="sn-fix-city2" placeholder="City2 should be (SN has: ' + escapeHtml(f.snCity2 || '—') + ')" style="width:100%; max-width:260px; margin-bottom:4px; font-size:12px;"> ' +
+            '<input type="text" class="sn-fix-state" placeholder="State should be (SN has: ' + escapeHtml(f.snState || '—') + ')" style="width:100%; max-width:260px; margin-bottom:4px; font-size:12px;"> ' +
+            '<input type="text" class="sn-fix-note" placeholder="Note for StockNetwork (optional)" style="width:100%; max-width:260px; font-size:12px;">' +
+          '</div>';
           tr.innerHTML =
             '<td>' + escapeHtml(f.name || '(unnamed)') + '</td>' +
             '<td>' + flagsHtml + '</td>' +
@@ -9485,6 +9538,7 @@
               '<select id="' + selectIdFor(f.index) + '" style="width:100%; max-width:260px;"></select> ' +
               '<button type="button" class="primary btn-small" data-act="save" style="margin-top:6px;">Save</button>' +
               '<div class="status" style="margin-top:6px;"></div>' +
+              snFixHtml +
             '</td>';
           tbody.appendChild(tr);
 
@@ -9495,6 +9549,7 @@
           if(acceptBtn){
             acceptBtn.addEventListener('click', function(){
               acceptBtn.disabled = true;
+              setRowStatus('Saving…');
               mapAdminPost('resolveStocknetworkLocation', { index: f.index, country: f.snCountry }).then(function(res){
                 if(res.data && res.data.ok){ setRowStatus('Saved — country set to ' + f.snCountry + '.'); tr.style.opacity = '0.55'; savedCount++; }
                 else { setRowStatus((res.data && res.data.error) || 'Could not save.', true); acceptBtn.disabled = false; }
@@ -9506,6 +9561,7 @@
           if(acceptCoordBtn && f.coordSuggested){
             acceptCoordBtn.addEventListener('click', function(){
               acceptCoordBtn.disabled = true;
+              setRowStatus('Saving…');
               mapAdminPost('applyPropertyCoordinate', { source: 'resort', index: f.index, lat: f.coordSuggested.lat, lng: f.coordSuggested.lng }).then(function(res){
                 if(res.data && res.data.ok){ setRowStatus('Saved — coordinate updated' + (res.data.locationLabel ? ' (' + res.data.locationLabel + ').' : '.')); tr.style.opacity = '0.55'; savedCount++; }
                 else { setRowStatus((res.data && res.data.error) || 'Could not save.', true); acceptCoordBtn.disabled = false; }
@@ -9517,11 +9573,52 @@
           saveBtn.addEventListener('click', function(){
             var sel = document.getElementById(selectIdFor(f.index));
             var loc = readLocationSelect(sel);
-            if(!loc.zone && !loc.townId && !loc.suburbId){ setRowStatus('Pick a Town, Suburb or Area first.', true); return; }
+            var districtVal = (tr.querySelector('.sn-fix-district') || {}).value || '';
+            var city2Val = (tr.querySelector('.sn-fix-city2') || {}).value || '';
+            var stateVal = (tr.querySelector('.sn-fix-state') || {}).value || '';
+            var noteVal = (tr.querySelector('.sn-fix-note') || {}).value || '';
+            var hasFixFields = !!(districtVal.trim() || city2Val.trim() || stateVal.trim() || noteVal.trim());
+            var hasTreePick = !!(loc.zone || loc.townId || loc.suburbId);
+            // A tree pick and the District/City2/State fields are now
+            // independent — picking the hub's own Town/Suburb/Area fixes
+            // the hub's placement; filling in District/City2/State (which
+            // the hub never shows a tree for — see snFixHtml above) instead
+            // queues a correction for StockNetwork's team. Either on its
+            // own is a valid Save; needing both would block the common case
+            // of the hub's placement already being right while only
+            // StockNetwork's search fields are wrong.
+            if(!hasTreePick && !hasFixFields){ setRowStatus('Pick a Town, Suburb or Area, or fill in a StockNetwork field to fix, first.', true); return; }
             saveBtn.disabled = true;
-            mapAdminPost('resolveStocknetworkLocation', { index: f.index, zone: loc.zone, townId: loc.townId, suburbId: loc.suburbId, locationLabel: loc.locationLabel }).then(function(res){
-              if(res.data && res.data.ok){ setRowStatus('Saved — hub location updated.'); tr.style.opacity = '0.55'; savedCount++; }
-              else { setRowStatus((res.data && res.data.error) || 'Could not save.', true); saveBtn.disabled = false; }
+            // Disabling the button drops it out of keyboard focus with no
+            // other visible change until the request resolves, which reads
+            // as the page having hung (Jean hit this live, 2026-10-02) —
+            // show something immediately instead of waiting on the response.
+            setRowStatus('Saving…');
+
+            var hubSave = hasTreePick
+              ? mapAdminPost('resolveStocknetworkLocation', { index: f.index, zone: loc.zone, townId: loc.townId, suburbId: loc.suburbId, locationLabel: loc.locationLabel })
+              : Promise.resolve({ data: { ok: true, skipped: true } });
+            var fixSave = hasFixFields
+              ? mapAdminPost('flagStockNetworkFieldFix', { index: f.index, district: districtVal, city2: city2Val, state: stateVal, note: noteVal })
+              : Promise.resolve({ data: { ok: true, skipped: true } });
+
+            Promise.all([hubSave, fixSave]).then(function(results){
+              var hubRes = results[0], fixRes = results[1];
+              var hubOk = hubRes.data && hubRes.data.ok;
+              var fixOk = fixRes.data && fixRes.data.ok;
+              if(hubOk && fixOk){
+                var parts = [];
+                if(hasTreePick) parts.push('hub location updated');
+                if(hasFixFields) parts.push('flagged for StockNetwork to fix District/City2/State');
+                setRowStatus('Saved — ' + parts.join(', ') + '.');
+                tr.style.opacity = '0.55';
+                savedCount++;
+                if(hasFixFields && typeof window.refreshSnFieldFixList === 'function') window.refreshSnFieldFixList();
+              } else {
+                var err = (!hubOk && hubRes.data && hubRes.data.error) || (!fixOk && fixRes.data && fixRes.data.error) || 'Could not save.';
+                setRowStatus(err, true);
+                saveBtn.disabled = false;
+              }
             }).catch(function(){ setRowStatus('Request failed.', true); saveBtn.disabled = false; });
           });
         }
@@ -9853,6 +9950,115 @@
         // both IIFEs have run) can refresh this list right after a flag,
         // instead of making Jean click "Refresh flagged list" herself.
         window.refreshFlaggedInactiveList = load;
+      })();
+
+      // ---- Corrections to send to StockNetwork (District / City2 / State) ----
+      // These three fields are StockNetwork's own availability-search fields
+      // (district = municipality, state = province) and get silently
+      // overwritten by StockNetwork's data every night, so the hub can't
+      // just "fix" them the way it owns coordinates/zone/town/suburb — only
+      // StockNetwork's team can actually correct them on their side. This
+      // list is filled by the sn-fix-district/city2/state/note inputs added
+      // to each StockNetwork-review row's Save button (2026-10-02, Jean's
+      // request): whatever Jean types there gets queued here, and "Download
+      // CSV" is what she forwards to StockNetwork's support team — a batch
+      // at a time, whatever she can get to them before the next nightly
+      // run. See flagStockNetworkFieldFix/listStockNetworkFieldFixes/
+      // markStockNetworkFieldFixesSent in map-api.js.
+      (function(){
+        var loadBtn = document.getElementById('snFieldFixLoadBtn');
+        var downloadBtn = document.getElementById('snFieldFixDownloadBtn');
+        var statusEl = document.getElementById('snFieldFixStatus');
+        var tableWrap = document.getElementById('snFieldFixTableWrap');
+        var tbody = document.getElementById('snFieldFixTableBody');
+        if(!loadBtn || !tbody) return;
+
+        var currentItems = [];
+
+        function setStatus(t, isError){ statusEl.textContent = t; statusEl.className = 'status show' + (isError ? '' : ' ok'); }
+
+        function csvCell(v){
+          v = (v === null || v === undefined) ? '' : String(v);
+          return /[",\r\n]|^\s|\s$/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+        }
+
+        function downloadSnFieldFixCsv(){
+          if(!currentItems.length) return;
+          var rows = [['Property', 'Resort ID', 'Site ID', 'District (current)', 'District (should be)', 'City2 (current)', 'City2 (should be)', 'State (current)', 'State (should be)', 'Note', 'Flagged at']];
+          currentItems.forEach(function(it){
+            rows.push([it.name, it.resortId, it.siteId, it.currentDistrict, it.district, it.currentCity2, it.city2, it.currentState, it.state, it.note, it.flaggedAt]);
+          });
+          var text = '﻿' + rows.map(function(r){ return r.map(csvCell).join(','); }).join('\r\n') + '\r\n';
+          var blob = new Blob([text], { type: 'text/csv;charset=utf-8' });
+          var a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = 'stocknetwork-field-corrections-' + new Date().toISOString().slice(0, 10) + '.csv';
+          document.body.appendChild(a); a.click();
+          setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+
+          var indices = currentItems.map(function(it){ return it.index; });
+          var sentCount = currentItems.length;
+          mapAdminPost('markStockNetworkFieldFixesSent', { indices: indices }).then(function(){
+            load();
+          }).catch(function(){ /* CSV already downloaded either way; a refresh click will retry marking */ });
+
+          if (typeof showStepResultModal === 'function') {
+            showStepResultModal({
+              title: 'StockNetwork field corrections — downloaded',
+              message: 'Send this CSV to StockNetwork’s support team so they can fix District/City2/State for these ' + sentCount + ' propert' + (sentCount === 1 ? 'y' : 'ies') + ' before their next nightly run. They’re marked as sent here and will drop off this list — flag a property again later if it still needs a correction.',
+              nextId: 'map-jump-corrected-file',
+              nextLabel: 'Corrected StockNetwork file export'
+            });
+          }
+        }
+
+        function renderSnFieldFixRow(item){
+          var tr = document.createElement('tr');
+          tr.innerHTML =
+            '<td>' + escapeHtml(item.name || '(unnamed)') + '</td>' +
+            '<td>' + (item.district ? escapeHtml(item.district) + '<div style="font-size:11px;color:var(--muted);">was: ' + escapeHtml(item.currentDistrict || '—') + '</div>' : '<span style="color:var(--muted);">—</span>') + '</td>' +
+            '<td>' + (item.city2 ? escapeHtml(item.city2) + '<div style="font-size:11px;color:var(--muted);">was: ' + escapeHtml(item.currentCity2 || '—') + '</div>' : '<span style="color:var(--muted);">—</span>') + '</td>' +
+            '<td>' + (item.state ? escapeHtml(item.state) + '<div style="font-size:11px;color:var(--muted);">was: ' + escapeHtml(item.currentState || '—') + '</div>' : '<span style="color:var(--muted);">—</span>') + '</td>' +
+            '<td style="max-width:200px;">' + (item.note ? escapeHtml(item.note) : '<span style="color:var(--muted);">—</span>') + '</td>' +
+            '<td><button type="button" class="btn-outline btn-small" data-act="clear">Clear</button></td>';
+          tbody.appendChild(tr);
+          tr.querySelector('[data-act="clear"]').addEventListener('click', function(){
+            var btn = tr.querySelector('[data-act="clear"]');
+            btn.disabled = true;
+            mapAdminPost('flagStockNetworkFieldFix', { index: item.index, district: '', city2: '', state: '', note: '' }).then(function(res){
+              if(res.data && res.data.ok){ tr.remove(); }
+              else { btn.disabled = false; alert((res.data && res.data.error) || 'Could not clear.'); }
+            }).catch(function(){ btn.disabled = false; alert('Request failed.'); });
+          });
+        }
+
+        function load(){
+          loadBtn.disabled = true;
+          setStatus('Loading StockNetwork field corrections…');
+          mapAdminPost('listStockNetworkFieldFixes', {}).then(function(res){
+            loadBtn.disabled = false;
+            if(!(res.data && res.data.ok)){ setStatus((res.data && res.data.error) || 'Could not load the list.', true); return; }
+            currentItems = res.data.items || [];
+            tbody.innerHTML = '';
+            if(!currentItems.length){
+              setStatus('Nothing queued for StockNetwork right now.');
+              tableWrap.style.display = 'none';
+              downloadBtn.style.display = 'none';
+              return;
+            }
+            currentItems.forEach(renderSnFieldFixRow);
+            tableWrap.style.display = 'block';
+            downloadBtn.style.display = '';
+            setStatus(currentItems.length + ' propert' + (currentItems.length === 1 ? 'y' : 'ies') + ' queued to send to StockNetwork.');
+          }).catch(function(){ loadBtn.disabled = false; setStatus('Request failed.', true); });
+        }
+
+        loadBtn.addEventListener('click', load);
+        downloadBtn.addEventListener('click', downloadSnFieldFixCsv);
+        // Exposed so the sn-review Save button (flags a correction inline)
+        // can refresh this list right away instead of making Jean click
+        // "Refresh list" herself.
+        window.refreshSnFieldFixList = load;
       })();
 
       // ---- Corrected StockNetwork file (Country / Area / City / Suburb from the hub) ----
