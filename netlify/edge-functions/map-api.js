@@ -2216,6 +2216,115 @@ export default async (request, context) => {
       return json({ ok: true, items: flagged });
     }
 
+    if (action === "flagStockNetworkFieldFix") {
+      // "Corrections to send to StockNetwork" (2026-10-02, Jean's request):
+      // District, City2 and State are mirrored from StockNetwork's own API
+      // every night (mapApiRowToRawFields in resorts-api.js) and NEVER
+      // corrected by "Corrected StockNetwork file" below, unlike
+      // Country/Area/City/Suburb, which that export already derives from
+      // the hub's Zone/Town/Suburb tree for every property automatically.
+      // So there's no way to push a fix for these three back into
+      // StockNetwork except telling their team directly — Jean uses these
+      // for availability search on her side (a town can have two valid
+      // search names, e.g. Warmbaths/Bela-Bela; a province can span more
+      // than one hub zone), so what's "correct" here needs a person's
+      // judgement, never auto-derived from the hub's tree. This action
+      // just records that judgement against the row, alongside (not
+      // instead of) resolveStocknetworkLocation fixing the hub's own
+      // placement — the admin page calls both when "Save" is clicked and
+      // any of these three fields were filled in. Passing all empty clears
+      // a flag set by mistake, same as flagPropertyInactive's flag:false.
+      const index = parseInt(body.index, 10);
+      if (!isFinite(index) || index < 0) return json({ error: "Missing or invalid index." }, 400);
+      const resortRecord = await resortListStore.get("current", { type: "json" });
+      const resortList = (resortRecord && Array.isArray(resortRecord.resorts)) ? resortRecord.resorts : [];
+      const rec = resortList[index];
+      if (!rec) return json({ error: "Property not found — the list may have changed, refresh and try again." }, 404);
+
+      const district = clean(body.district, 120);
+      const city2 = clean(body.city2, 120);
+      const state = clean(body.state, 120);
+      const note = clean(body.note, 300);
+
+      if (!district && !city2 && !state && !note) {
+        delete rec.snFixDistrict;
+        delete rec.snFixCity2;
+        delete rec.snFixState;
+        delete rec.snFixNote;
+        delete rec.snFixFlaggedAt;
+        delete rec.snFixSentAt;
+        await resortListStore.setJSON("current", Object.assign({}, resortRecord, { resorts: resortList }));
+        return json({ ok: true, cleared: true });
+      }
+
+      rec.snFixDistrict = district;
+      rec.snFixCity2 = city2;
+      rec.snFixState = state;
+      rec.snFixNote = note;
+      rec.snFixFlaggedAt = new Date().toISOString();
+      delete rec.snFixSentAt; // editing an already-sent flag un-sends it, so it shows again until re-downloaded
+
+      await resortListStore.setJSON("current", Object.assign({}, resortRecord, { resorts: resortList }));
+      return json({ ok: true });
+    }
+
+    if (action === "listStockNetworkFieldFixes") {
+      // Backs "Corrections to send to StockNetwork" next to the
+      // StockNetwork location review table above. Only ever shows
+      // not-yet-sent flags (see markStockNetworkFieldFixesSent) — this
+      // list is meant to be worked through in small daily batches, per
+      // Jean's own workflow, not accumulated indefinitely. Read-only.
+      const resortRecord = await resortListStore.get("current", { type: "json" });
+      const resortList = (resortRecord && Array.isArray(resortRecord.resorts)) ? resortRecord.resorts : [];
+      const items = [];
+      resortList.forEach((r, i) => {
+        if (r && !r.snFixSentAt && (r.snFixDistrict || r.snFixCity2 || r.snFixState || r.snFixNote)) {
+          items.push({
+            index: i,
+            resortId: r.resortId || "",
+            siteId: r.siteId || "",
+            name: r.name || "",
+            currentDistrict: r.district || "",
+            currentCity2: r.city2 || "",
+            currentState: r.state || "",
+            district: r.snFixDistrict || "",
+            city2: r.snFixCity2 || "",
+            state: r.snFixState || "",
+            note: r.snFixNote || "",
+            flaggedAt: r.snFixFlaggedAt || "",
+          });
+        }
+      });
+      items.sort((a, b) => a.name.localeCompare(b.name));
+      return json({ ok: true, items });
+    }
+
+    if (action === "markStockNetworkFieldFixesSent") {
+      // Called right after the CSV in "Corrections to send to StockNetwork"
+      // downloads, with the indices that were in that download — marks
+      // them so they drop out of listStockNetworkFieldFixes above (today's
+      // batch is "sent"; tomorrow's view starts fresh with whatever's
+      // flagged between now and then). Editing a row again later clears
+      // this (see flagStockNetworkFieldFix) so a correction that still
+      // hasn't landed can be re-flagged and re-sent.
+      const indices = Array.isArray(body.indices) ? body.indices : [];
+      if (!indices.length) return json({ error: "No indices supplied." }, 400);
+      const resortRecord = await resortListStore.get("current", { type: "json" });
+      const resortList = (resortRecord && Array.isArray(resortRecord.resorts)) ? resortRecord.resorts : [];
+      const now = new Date().toISOString();
+      let marked = 0;
+      indices.forEach((raw) => {
+        const i = parseInt(raw, 10);
+        const rec = resortList[i];
+        if (rec && (rec.snFixDistrict || rec.snFixCity2 || rec.snFixState || rec.snFixNote)) {
+          rec.snFixSentAt = now;
+          marked++;
+        }
+      });
+      await resortListStore.setJSON("current", Object.assign({}, resortRecord, { resorts: resortList }));
+      return json({ ok: true, marked });
+    }
+
     if (action === "searchPropertyPlaces") {
       // Case C step 2: given a name (+ whatever area/city/country text the
       // admin page appended to disambiguate), search worldwide via Google
