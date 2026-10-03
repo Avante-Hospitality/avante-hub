@@ -10315,6 +10315,22 @@
           });
           download('Resort Information - hub corrected.csv', toStockNetworkCsv(out));
           setStatus('Downloaded the corrected file: ' + changed + ' of ' + state.rows.length + ' rows had Country, Area, City or Suburb changed; every other column and row is exactly as it was. Have a look through the change report before loading it into StockNetwork.');
+          // This is the last card in the 8-step workflow — the natural
+          // "done" moment is downloading the corrected file itself (same
+          // pattern as the other CSV-download steps above), not an earlier
+          // "build" click, since the report can be downloaded separately
+          // and doesn't on its own mean this step is finished. Looping Next
+          // back to Start geocoding (2026-10-03, Jean's request to have
+          // every step's popup in place before she tests) since this whole
+          // sequence is one she repeats.
+          if (typeof showStepResultModal === 'function') {
+            showStepResultModal({
+              title: 'Corrected StockNetwork file — downloaded',
+              message: changed + ' of ' + state.rows.length + ' rows were corrected. Have a look through the change report, then load this file into StockNetwork whenever you’re ready — nothing was sent from here. That’s the full workflow; next time, start again from the top.',
+              nextId: 'map-jump-geocode',
+              nextLabel: 'Start geocoding'
+            });
+          }
         });
 
         dlReportBtn.addEventListener('click', function(){
