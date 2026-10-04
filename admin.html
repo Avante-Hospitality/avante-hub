@@ -730,9 +730,9 @@
       <h2 id="propertyDetailsModalTitle">Property Listing</h2>
       <p class="modal-sub">Edit the listing details below, set commission &amp; agreement terms, then save. Send the agreement to the owner/affiliate for acceptance before marking a listing as Listed.</p>
       <div id="propertyDetailsModalBody"></div>
-      <label for="propertyLocationSelect">Location (area / town / suburb)</label>
-      <select id="propertyLocationSelect"><option value="">— None selected —</option></select>
-      <div class="hint" style="margin-top:-6px;">Tag this property with its real location from your location tree — separate from the Suburb/City/State fields above, which are as submitted by the owner/agent.</div>
+      <label>Location (country › zone › town › suburb)</label>
+      <div id="propertyLocationPickerHost" style="max-width:340px;"></div>
+      <div class="hint" style="margin-top:2px;">Tag this property with its real location from your location tree — separate from the Suburb/City/State fields above, which are as submitted by the owner/agent.</div>
       <label for="propCommissionInput" style="margin-top:14px;">Commission / Revenue Share</label>
       <input id="propCommissionInput" placeholder="e.g. 15% of booking value">
       <label for="propDurationInput">Listing Duration</label>
@@ -1504,6 +1504,7 @@
                 <th>Source</th>
                 <th>Area / City / Country</th>
                 <th>Coordinates</th>
+                <th>Edit</th>
               </tr>
             </thead>
             <tbody id="noZonePropsTableBody"></tbody>
@@ -1620,11 +1621,11 @@
           <div><label for="activityPriceInput">Price</label><input id="activityPriceInput" placeholder="e.g. R2,800 pp"></div>
         </div>
         <div class="btn-row" style="flex-wrap:wrap; gap:10px; margin-top:10px;">
-          <div><label for="activityLocationSelect">Location (area / town / suburb)</label>
-            <select id="activityLocationSelect"><option value="">— None selected —</option></select>
+          <div><label>Location (country › zone › town › suburb)</label>
+            <div id="activityLocationPickerHost" style="max-width:340px;"></div>
           </div>
         </div>
-        <div class="hint" style="margin-top:-6px;">Tag this activity with a location from your location tree — used for the map's Zone filter and for Discover locations. Separate from the free-text Area field above.</div>
+        <div class="hint" style="margin-top:2px;">Tag this activity with a location from your location tree — used for the map's Zone filter and for Discover locations. Separate from the free-text Area field above.</div>
         <div class="btn-row" style="flex-wrap:wrap; gap:10px; margin-top:10px;">
           <div><label for="activityLatInput">Latitude</label><input id="activityLatInput" placeholder="e.g. -34.0033"></div>
           <div><label for="activityLngInput">Longitude</label><input id="activityLngInput" placeholder="e.g. 23.3833"></div>
@@ -2035,6 +2036,7 @@
                 <th>Location</th>
                 <th>Has coordinates</th>
                 <th>Show on map</th>
+                <th>Edit</th>
               </tr>
             </thead>
             <tbody id="mapPropertiesTableBody"></tbody>
@@ -7012,6 +7014,7 @@
       // after opening the modal, before the /api/map fetch resolves)
       // and silently overwriting a previously-saved location with empty.
       var propertyLocationReady = false;
+      var propPicker = null;
 
       function fmtPropDate(iso){
         if(!iso) return '\u2014';
@@ -7202,13 +7205,46 @@
           });
           bodyEl.innerHTML = html;
 
-          populateLocationSelects(['propertyLocationSelect']).then(function(){
+          // Country > Zone > Town > Suburb picker (2026-10-04) replaces the
+          // old single tree dropdown. The picker lives in the Map &
+          // Activities script (it needs that tab's tree data), so it is
+          // reached through window.createLocationPicker /
+          // window.ensureLocationPickerData.
+          var pickerHost = document.getElementById('propertyLocationPickerHost');
+          var saveBtnEl = document.getElementById('propertyDetailsSaveBtn');
+          if(saveBtnEl) saveBtnEl.disabled = false;
+          propPicker = null;
+          pickerHost.innerHTML = '<div class="hint">Loading the location tree\u2026</div>';
+          var pickerDataReady = (typeof window.ensureLocationPickerData === 'function') ? window.ensureLocationPickerData() : Promise.resolve();
+          pickerDataReady.then(function(){
             // A newer openPropertyDetailsModal call may have fired while
             // this fetch was in flight (admin clicked View on a different
             // row before this one loaded) — only apply/arm if we're still
             // looking at the listing this fetch was actually for.
             if(currentListingId !== listingId) return;
-            applyLocationSelect(document.getElementById('propertyLocationSelect'), { zone: l.zone || '', townId: l.townId || '', suburbId: l.suburbId || '' });
+            if(typeof window.createLocationPicker !== 'function'){
+              pickerHost.innerHTML = '<div class="hint">The location picker is not available \u2014 reload the page.</div>';
+              return;
+            }
+            pickerHost.innerHTML = '';
+            var lat0 = parseFloat(l.latitude), lng0 = parseFloat(l.longitude);
+            propPicker = window.createLocationPicker({
+              levels: ['country', 'zone', 'town', 'suburb'],
+              defaultLat: lat0,
+              defaultLng: lng0,
+              onChange: function(){
+                // Only block Save when the picker was CHANGED and has an
+                // unsaved new level \u2014 an old listing whose stored place
+                // doesn't match the tree must still be able to save its
+                // commission/agreement details untouched.
+                var b = document.getElementById('propertyDetailsSaveBtn');
+                if(b && propPicker) b.disabled = propPicker.isChanged() && propPicker.hasPending();
+              }
+            });
+            pickerHost.appendChild(propPicker.el);
+            // The owner-typed country on a listing is free text, so it is
+            // NOT used to pre-fill; the tree works it out from the town/zone.
+            propPicker.setValue({ zone: l.zone || '', townId: l.townId || '', suburbId: l.suburbId || '' });
             propertyLocationReady = true;
           });
 
@@ -7251,8 +7287,13 @@
         // omitting them here means updateListing leaves whatever was
         // already saved untouched, rather than us sending an empty
         // overwrite from a not-yet-populated select.
-        if(propertyLocationReady){
-          var loc = readLocationSelect(document.getElementById('propertyLocationSelect'));
+        if(propertyLocationReady && propPicker && propPicker.isChanged()){
+          if(propPicker.hasPending()){
+            modalStatusEl.textContent = 'Save the new location level (the amber \u201cNew \u2014 not saved yet\u201d box) first, then save the listing.';
+            modalStatusEl.className = 'modal-status show';
+            return;
+          }
+          var loc = propPicker.getValue();
           listingPayload.zone = loc.zone;
           listingPayload.townId = loc.townId;
           listingPayload.suburbId = loc.suburbId;
@@ -7369,7 +7410,8 @@
       var idInput = document.getElementById('activityIdInput');
       var nameInput = document.getElementById('activityNameInput');
       var areaInput = document.getElementById('activityAreaInput');
-      var locationSelect = document.getElementById('activityLocationSelect');
+      var activityLocationHost = document.getElementById('activityLocationPickerHost');
+      var activityPicker = null;   // Country > Zone > Town > Suburb picker, created once the picker code has loaded (see below)
       var priceInput = document.getElementById('activityPriceInput');
       var latInput = document.getElementById('activityLatInput');
       var lngInput = document.getElementById('activityLngInput');
@@ -10559,7 +10601,7 @@
           importTownsStatusEl.className = 'status show';
           mapAdminPost('importTownsCsv', { csv: reader.result }).then(function(res){
             if(res.data && res.data.ok){
-              importTownsStatusEl.textContent = 'Imported: ' + res.data.created + ' added, ' + res.data.updated + ' updated.';
+              showImportResult(importTownsStatusEl, 'Imported: ' + res.data.created + ' added, ' + res.data.updated + ' updated.', res.data.warnings, res.data.warningCount);
               loadActivities();
             } else {
               importTownsStatusEl.textContent = (res.data && res.data.error) || 'Could not import CSV.';
@@ -10575,9 +10617,10 @@
       });
 
       document.getElementById('templateTownsBtn').addEventListener('click', function(){
-        downloadCsv('avante-towns-template.csv', ['name', 'area', 'zone', 'description', 'latitude', 'longitude', 'affiliateId'], {
+        downloadCsv('avante-towns-template.csv', ['name', 'area', 'country', 'zone', 'description', 'latitude', 'longitude', 'affiliateId'], {
           name: 'e.g. Hermanus',
           area: 'e.g. Cape Whale Coast',
+          country: 'South Africa',
           zone: 'Garden Route',
           description: 'Short blurb for the map popup and area-hook picker',
           latitude: '-34.4187',
@@ -10589,7 +10632,7 @@
       document.getElementById('exportTownsBtn').addEventListener('click', function(){
         mapAdminPost('adminList').then(function(res){
           if(!res.data || !res.data.ok) return;
-          var cols = ['id', 'name', 'area', 'zone', 'description', 'latitude', 'longitude', 'affiliateId', 'visible'];
+          var cols = ['id', 'name', 'area', 'country', 'zone', 'description', 'latitude', 'longitude', 'affiliateId', 'visible'];
           var lines = [cols.join(',')];
           (res.data.towns || []).forEach(function(t){
             lines.push(cols.map(function(c){
@@ -10763,6 +10806,16 @@
             .sort(function(a, b){ return (a.name || '').localeCompare(b.name || ''); });
         }
         function townById(id){ return tAll().filter(function(t){ return t.id === id; })[0] || null; }
+        // Which country a bare zone name belongs to (old records only stored
+        // the zone): the 12 South African zones, else the first town or saved
+        // zone in the tree that carries that name. '' if nobody does.
+        function inferCountryForZone(zone){
+          if((MAP_ZONES || []).indexOf(zone) !== -1) return SA;
+          var hit = tAll().filter(function(t){ return (t.zone || '') === zone; })[0];
+          if(hit) return tCountry(hit);
+          var zl = (locLists().zones || []).filter(function(z){ return z && z.name === zone; })[0];
+          return zl ? zl.country : '';
+        }
 
         function saved(l){ return !!S[l].value && !S[l].isNew; }
         function parentOk(l){
@@ -10794,7 +10847,7 @@
           var t = v.townId ? townById(v.townId) : null;
           var country = v.country || (t ? tCountry(t) : '');
           var zone = v.zone || (t ? (t.zone || '') : '');
-          if(!country && zone && MAP_ZONES.indexOf(zone) !== -1) country = SA;
+          if(!country && zone) country = inferCountryForZone(zone);
           if(country){
             S.country.value = country;
             S.country.isNew = countryList().indexOf(country) === -1;
@@ -10962,6 +11015,25 @@
         return api;
       }
 
+      // Used by the Listed-property edit window (a different script section)
+      // so it can show the same picker. ensureLocationPickerData loads the
+      // tree on its own when the Map & Activities tab hasn't been opened yet.
+      window.createLocationPicker = createLocationPicker;
+      var pickerDataPromise = null;
+      window.ensureLocationPickerData = function(){
+        if(lastMapTowns && lastMapTowns.length) return Promise.resolve();
+        if(pickerDataPromise) return pickerDataPromise;
+        pickerDataPromise = mapAdminPost('adminList').then(function(res){
+          if(res.data && res.data.ok){
+            if(!(lastMapTowns && lastMapTowns.length)) lastMapTowns = res.data.towns || [];
+            lastMapLocationLists = res.data.locationLists || { countries: [], zones: [] };
+            applyServerZones(res.data.zones);
+            locationDataVersion++;
+          }
+        }).catch(function(){}).then(function(){ pickerDataPromise = null; });
+        return pickerDataPromise;
+      };
+
       function dotIcon(color){
         return L.divIcon({
           className: '',
@@ -10994,6 +11066,16 @@
         'Mpumalanga',
         'Limpopo'
       ];
+      // One list of the South African zones (2026-10-04): the server's own
+      // list (lib/zones.js, returned by adminList as `zones`) replaces these
+      // hard-coded names the moment it arrives, so a zone added or renamed
+      // there can no longer drift from what the admin page offers. The
+      // names above stay only as the fallback if the server list is missing.
+      function applyServerZones(list){
+        if(!list || !list.length) return;
+        MAP_ZONES = list.slice();
+        if(typeof AFF_ZONE_ORDER !== 'undefined') AFF_ZONE_ORDER = list.slice();
+      }
       // Same colours as the zone-areas example map Jean sent (2026-09-21).
       var MAP_ZONE_COLORS = {
         'Cape Town': '#8074dd',
@@ -11647,7 +11729,7 @@
         idInput.value = '';
         nameInput.value = '';
         areaInput.value = '';
-        locationSelect.value = '';
+        if(activityPicker) activityPicker.setValue({});
         priceInput.value = '';
         latInput.value = '';
         lngInput.value = '';
@@ -11798,7 +11880,7 @@
             idInput.value = a.id;
             nameInput.value = a.name || '';
             areaInput.value = a.area || '';
-            applyLocationSelect(locationSelect, { zone: a.zone || '', townId: a.townId || '', suburbId: a.suburbId || '' });
+            if(activityPicker) activityPicker.setValue({ country: a.country || '', zone: a.zone || '', townId: a.townId || '', suburbId: a.suburbId || '' });
             priceInput.value = a.price || '';
             latInput.value = a.latitude || '';
             lngInput.value = a.longitude || '';
@@ -11864,6 +11946,10 @@
           });
           tdShow.appendChild(showCheck);
           tr.appendChild(tdShow);
+
+          var tdEdit = document.createElement('td');
+          tdEdit.appendChild(makeOpenListingButton(p));
+          tr.appendChild(tdEdit);
 
           propTableBody.appendChild(tr);
         });
@@ -11952,12 +12038,176 @@
           tdCoords.textContent = p.latitude.toFixed(5) + ', ' + p.longitude.toFixed(5);
           tdCoords.style.fontSize = '11px';
           tdCoords.style.color = 'var(--muted)';
+          var tdEdit = document.createElement('td');
           tr.appendChild(tdName);
           tr.appendChild(tdSource);
           tr.appendChild(tdLoc);
           tr.appendChild(tdCoords);
+          tr.appendChild(tdEdit);
           body.appendChild(tr);
+
+          if(p.source === 'resort-list' && p.resortId){
+            // StockNetwork bulk-import row: Edit opens a small panel right
+            // under the row (fix the coordinate and/or pick the place).
+            var panelTr = document.createElement('tr');
+            panelTr.style.display = 'none';
+            var panelTd = document.createElement('td');
+            panelTd.colSpan = 5;
+            panelTd.style.background = '#fafaf7';
+            panelTr.appendChild(panelTd);
+            body.appendChild(panelTr);
+            var panel = null;
+            var eb = document.createElement('button');
+            eb.type = 'button';
+            eb.className = 'btn-outline btn-small';
+            eb.textContent = 'Edit';
+            eb.addEventListener('click', function(){
+              var showing = panelTr.style.display !== 'none';
+              panelTr.style.display = showing ? 'none' : '';
+              if(!showing && !panel){
+                panel = buildResortLocationPanel(p);
+                panelTd.appendChild(panel);
+              }
+            });
+            tdEdit.appendChild(eb);
+          } else if(p.source !== 'resort-list'){
+            tdEdit.appendChild(makeOpenListingButton(p));
+          } else {
+            tdEdit.textContent = '\u2014';
+          }
         });
+      }
+
+      // "Edit" button for an onboarded ("Listed") property: jumps to the
+      // Property Listings tab and opens that listing's edit window, the same
+      // as the map popup's Edit does.
+      function makeOpenListingButton(p){
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'btn-outline btn-small';
+        b.textContent = 'Edit';
+        b.addEventListener('click', function(){
+          var tab = document.querySelector('.tab[data-panel="propertyListings"]');
+          if(tab) tab.click();
+          if(typeof window.openPropertyDetailsModal === 'function') window.openPropertyDetailsModal(p.listingId);
+        });
+        return b;
+      }
+
+      // Inline editor for one StockNetwork resort-list row, used under a row
+      // of "Properties with no zone": (1) Fix the coordinate (the usual
+      // reason a row has no zone is a coordinate in the sea or on a border)
+      // and (2) set the place with the Country > Zone > Town > Suburb
+      // picker. Same server actions as the map popup's Edit / Fix
+      // coordinates (applyPropertyCoordinate, resolveStocknetworkLocation).
+      function buildResortLocationPanel(p){
+        var wrap = document.createElement('div');
+        wrap.style.cssText = 'padding:10px 4px; display:flex; gap:24px; flex-wrap:wrap; align-items:flex-start;';
+
+        // -- Fix coordinates
+        var colA = document.createElement('div');
+        colA.style.cssText = 'flex:1 1 260px; min-width:240px; max-width:360px;';
+        var hA = document.createElement('div');
+        hA.style.cssText = 'font-weight:700; font-size:12px; margin-bottom:4px;';
+        hA.textContent = 'Fix the coordinates';
+        colA.appendChild(hA);
+        var hint = document.createElement('div');
+        hint.style.cssText = 'font-size:11.5px; color:#777; margin-bottom:6px;';
+        hint.textContent = 'Open Google Maps, right-click the correct spot, click the coordinates at the top of the menu to copy them, then paste below.';
+        colA.appendChild(hint);
+        var linkRow = document.createElement('div');
+        linkRow.style.marginBottom = '6px';
+        linkRow.appendChild(makeMapsLink([p.name, p.area, p.country].filter(Boolean).join(' '), 'Open in Google Maps'));
+        colA.appendChild(linkRow);
+        var cIn = document.createElement('input');
+        cIn.type = 'text';
+        cIn.placeholder = 'Paste e.g. -29.011272, 29.469514';
+        cIn.style.cssText = 'width:100%; margin-bottom:4px; box-sizing:border-box;';
+        colA.appendChild(cIn);
+        var cSt = document.createElement('div');
+        cSt.style.cssText = 'font-size:11.5px; color:#777; margin-bottom:4px;';
+        cSt.textContent = 'Currently ' + p.latitude.toFixed(5) + ', ' + p.longitude.toFixed(5);
+        colA.appendChild(cSt);
+        var cBtn = document.createElement('button');
+        cBtn.type = 'button';
+        cBtn.className = 'btn-outline btn-small';
+        cBtn.textContent = 'Save coordinates & re-place';
+        colA.appendChild(cBtn);
+        cBtn.addEventListener('click', function(){
+          var c = parseCoordText(cIn.value);
+          if(!c){ cSt.textContent = 'Could not read that \u2014 paste it as two numbers like -29.011272, 29.469514.'; return; }
+          cBtn.disabled = true;
+          cBtn.textContent = 'Saving\u2026';
+          cSt.textContent = 'Saving and re-placing\u2026';
+          mapAdminPost('applyPropertyCoordinate', { source: 'resort', resortId: p.resortId, lat: c.lat, lng: c.lng }).then(function(res){
+            cBtn.disabled = false;
+            if(res.data && res.data.ok){
+              cBtn.textContent = 'Saved \u2713';
+              cSt.textContent = res.data.placed ? ('Saved \u2713 \u2014 placed in ' + (res.data.locationLabel || 'the tree') + '. This row leaves the list on the next refresh.') : 'Saved \u2713 \u2014 but it couldn\u2019t be placed in the tree automatically; pick the place on the right.';
+              loadActivities();
+            } else {
+              cBtn.textContent = 'Save coordinates & re-place';
+              cSt.textContent = (res.data && res.data.error) || 'Could not save.';
+            }
+          }).catch(function(){
+            cBtn.disabled = false;
+            cBtn.textContent = 'Save coordinates & re-place';
+            cSt.textContent = 'Could not save \u2014 check your connection and try again.';
+          });
+        });
+        wrap.appendChild(colA);
+
+        // -- Pick the place
+        var colB = document.createElement('div');
+        colB.style.cssText = 'flex:1 1 280px; min-width:260px; max-width:340px;';
+        var hB = document.createElement('div');
+        hB.style.cssText = 'font-weight:700; font-size:12px; margin-bottom:2px;';
+        hB.textContent = 'Or set the place by hand';
+        colB.appendChild(hB);
+        var saveBtn = document.createElement('button');
+        saveBtn.type = 'button';
+        saveBtn.className = 'btn-outline btn-small';
+        saveBtn.textContent = 'Save place';
+        saveBtn.style.marginTop = '8px';
+        var st = document.createElement('div');
+        st.style.cssText = 'font-size:11.5px; color:#777; margin-top:4px;';
+        var picker = createLocationPicker({
+          levels: ['country', 'zone', 'town', 'suburb'],
+          defaultLat: p.latitude,
+          defaultLng: p.longitude,
+          onChange: function(){ saveBtn.disabled = picker ? picker.hasPending() : true; }
+        });
+        colB.appendChild(picker.el);
+        picker.setValue({ country: p.country || '', zone: p.zone || '', townId: p.townId || '', suburbId: p.suburbId || '' });
+        colB.appendChild(st);
+        colB.appendChild(saveBtn);
+        saveBtn.addEventListener('click', function(){
+          var v = picker.getValue();
+          if(!picker.isChanged()){ st.textContent = 'Nothing to save \u2014 change the place first.'; return; }
+          if(!v.country){ st.textContent = 'Choose a Country first.'; return; }
+          saveBtn.disabled = true;
+          saveBtn.textContent = 'Saving\u2026';
+          mapAdminPost('resolveStocknetworkLocation', {
+            resortId: p.resortId, country: v.country, zone: v.zone, townId: v.townId, suburbId: v.suburbId, locationLabel: v.locationLabel,
+            clearLocation: !v.zone && !v.townId
+          }).then(function(res){
+            saveBtn.disabled = picker.hasPending();
+            if(res.data && res.data.ok){
+              saveBtn.textContent = 'Saved \u2713';
+              st.textContent = (v.zone || v.townId) ? 'Saved \u2713 \u2014 this row leaves the list on the next refresh.' : 'Saved \u2713 \u2014 country only, so it will stay on this list until a zone or town is chosen.';
+              loadActivities();
+            } else {
+              saveBtn.textContent = 'Save place';
+              st.textContent = (res.data && res.data.error) || 'Could not save.';
+            }
+          }).catch(function(){
+            saveBtn.disabled = picker.hasPending();
+            saveBtn.textContent = 'Save place';
+            st.textContent = 'Could not save \u2014 check your connection and try again.';
+          });
+        });
+        wrap.appendChild(colB);
+        return wrap;
       }
 
       function csvEscape(val){
@@ -12044,8 +12294,10 @@
             lastMapActivities = res.data.activities || [];
             lastMapTowns = res.data.towns || [];
             lastMapLocationLists = res.data.locationLists || { countries: [], zones: [] };
+            applyServerZones(res.data.zones);
             locationDataVersion++;
             if(typeof townFormPicker !== 'undefined' && townFormPicker && !townFormPicker.hasPending()) townFormPicker.refresh();
+            if(activityPicker && !activityPicker.hasPending()) activityPicker.refresh();
             var treeEl = document.getElementById('mapLocationTree');
             if(treeEl){
               if(!mapLocTree){
@@ -12165,6 +12417,18 @@
         });
       })();
 
+      // Created here (after the picker code and tree variables exist). The
+      // lat/lng getters let a town or suburb added from this form default to
+      // whatever coordinate is typed in the form at that moment.
+      if(activityLocationHost){
+        activityPicker = createLocationPicker({
+          levels: ['country', 'zone', 'town', 'suburb'],
+          get defaultLat(){ return parseFloat(latInput.value); },
+          get defaultLng(){ return parseFloat(lngInput.value); }
+        });
+        activityLocationHost.appendChild(activityPicker.el);
+      }
+
       document.getElementById('saveActivityBtn').addEventListener('click', function(){
         var name = nameInput.value.trim();
         if(!name){
@@ -12181,21 +12445,33 @@
         // cached tree, so existing zone-based filtering keeps working
         // exactly as before even though the form no longer has its own
         // flat Zone dropdown.
-        var loc = readLocationSelect(locationSelect);
-        var derivedZone = loc.zone || (loc.townId ? lookupTownZone(loc.townId) : '');
+        // Country > Zone > Town > Suburb picker (2026-10-04). The location is
+        // only sent when it was actually changed (so an old activity whose
+        // stored place doesn't line up with the tree keeps it), and not
+        // while a brand-new level is typed but not yet saved to the tree.
+        var locChanged = !!(activityPicker && activityPicker.isChanged());
+        if(locChanged && activityPicker.hasPending()){
+          formStatusEl.textContent = 'Save the new location level (the amber \u201cNew \u2014 not saved yet\u201d box) first, then save the activity.';
+          formStatusEl.className = 'status show';
+          return;
+        }
         var payload = {
           name: name,
           area: areaInput.value.trim(),
-          zone: derivedZone,
-          townId: loc.townId,
-          suburbId: loc.suburbId,
-          locationLabel: loc.locationLabel,
           price: priceInput.value.trim(),
           latitude: latInput.value.trim(),
           longitude: lngInput.value.trim(),
           contactLink: contactInput.value.trim(),
           description: descInput.value.trim()
         };
+        if(locChanged){
+          var loc = activityPicker.getValue();
+          payload.country = loc.country;
+          payload.zone = loc.zone;
+          payload.townId = loc.townId;
+          payload.suburbId = loc.suburbId;
+          payload.locationLabel = loc.locationLabel;
+        }
         formStatusEl.textContent = 'Saving\u2026';
         formStatusEl.className = 'status show';
         var id = idInput.value.trim();
@@ -12380,7 +12656,7 @@
           importStatusEl.className = 'status show';
           mapAdminPost('importActivitiesCsv', { csv: reader.result }).then(function(res){
             if(res.data && res.data.ok){
-              importStatusEl.textContent = 'Imported: ' + res.data.created + ' added, ' + res.data.updated + ' updated.';
+              showImportResult(importStatusEl, 'Imported: ' + res.data.created + ' added, ' + res.data.updated + ' updated.', res.data.warnings, res.data.warningCount);
               loadActivities();
             } else {
               importStatusEl.textContent = (res.data && res.data.error) || 'Could not import CSV.';
@@ -12395,15 +12671,31 @@
         importFileInput.value = '';
       });
 
+      // Shows an import's result line plus any location warnings the server
+      // found (a country/zone that isn't in the tree yet, or a zone filed
+      // under a different country). Warnings never stop the import.
+      function showImportResult(el, summary, warnings, warningCount){
+        var txt = summary;
+        if(warningCount){
+          txt += '\n' + warningCount + ' location warning' + (warningCount === 1 ? '' : 's') + ' \u2014 the rows were still imported, but check:';
+          (warnings || []).slice(0, 12).forEach(function(w){ txt += '\n\u2022 ' + w; });
+          if(warningCount > 12) txt += '\n\u2026 and ' + (warningCount - 12) + ' more.';
+          txt += '\nFix them by editing the row\u2019s location (the picker offers \u201cNot in the list \u2014 add\u201d) or correct the CSV and re-import.';
+        }
+        el.style.whiteSpace = 'pre-line';
+        el.textContent = txt;
+      }
+
       function csvEscape(v){
         v = String(v == null ? '' : v);
         return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
       }
 
       document.getElementById('templateActivitiesBtn').addEventListener('click', function(){
-        downloadCsv('avante-activities-template.csv', ['name', 'area', 'zone', 'price', 'contactLink', 'description', 'latitude', 'longitude'], {
+        downloadCsv('avante-activities-template.csv', ['name', 'area', 'country', 'zone', 'price', 'contactLink', 'description', 'latitude', 'longitude'], {
           name: 'e.g. Bloukrans Bungy',
           area: 'e.g. Plettenberg Bay',
+          country: 'South Africa',
           zone: 'Garden Route',
           price: 'e.g. R2,800 pp',
           contactLink: 'https://example.com/book',
@@ -12416,7 +12708,7 @@
       document.getElementById('exportActivitiesBtn').addEventListener('click', function(){
         mapAdminPost('adminList').then(function(res){
           if(!res.data || !res.data.ok) return;
-          var cols = ['id', 'name', 'area', 'zone', 'price', 'contactLink', 'description', 'latitude', 'longitude', 'visible'];
+          var cols = ['id', 'name', 'area', 'country', 'zone', 'price', 'contactLink', 'description', 'latitude', 'longitude', 'visible'];
           var lines = [cols.join(',')];
           (res.data.activities || []).forEach(function(a){
             lines.push(cols.map(function(c){
@@ -12439,7 +12731,6 @@
       document.querySelectorAll('.tab').forEach(function(btn){
         if(btn.dataset.panel === 'mapActivities'){
           btn.addEventListener('click', function(){
-            populateLocationSelects(['activityLocationSelect']);
             if(!loadedMapAdmin){ loadedMapAdmin = true; loadActivities(); }
             else loadActivities();
             setTimeout(function(){ if(adminLeafletMap) adminLeafletMap.invalidateSize(); }, 150);
