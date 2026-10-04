@@ -123,6 +123,12 @@ export default async (request) => {
     matchedProperties: importResult.matchedProperties,
     matchedRows: importResult.matchedRows,
     unmatchedApiRows: importResult.unmatchedApiRows,
+    // new-properties-flagging (2026-10-03): of the unmatched rows above, how
+    // many are now saved for admin.html's "New StockNetwork properties" card
+    // to show — see resorts-api.js's handleApiSync for where this list is
+    // built and dismissPendingNewStockNetworkProperty for how one drops out
+    // of it for good without ever being imported.
+    newPropertiesPending: importResult.newPropertiesPending,
     coordinatesChanged: importResult.coordinatesChanged,
     // Case A (full-hub-coordinate-geocoding-scope, 2026-09-29): of the
     // properties whose coordinate just changed, how many resorts-api.js's
