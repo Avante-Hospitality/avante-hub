@@ -512,6 +512,12 @@
   .sharekit-actions button{ flex:1; }
 </style>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+/* Full-screen master map (2026-10-04) — toggled by the map's own Full screen control; Esc exits. */
+#adminMapEl.map-fs{position:fixed !important; top:0; left:0; width:100vw !important; height:100vh !important; z-index:99999; border-radius:0 !important; margin:0;}
+.map-fs-btn{background:#fff; padding:6px 10px; font-weight:600; font-size:12.5px; font-family:inherit; cursor:pointer; border-radius:4px; box-shadow:0 1px 4px rgba(0,0,0,.35); border:0; color:#1a1a1a;}
+.map-fs-btn:hover{background:#f3f3ee;}
+</style>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.css">
 </head>
@@ -1695,6 +1701,7 @@
         <div class="btn-row" style="flex-wrap:wrap; gap:10px;">
           <div><label for="townNameInput">Town name</label><input id="townNameInput" placeholder="e.g. Hermanus"></div>
           <div><label for="townAreaInput">Area (optional)</label><input id="townAreaInput" placeholder="e.g. Cape Whale Coast"></div>
+          <div><label for="townCountryInput">Country</label><input id="townCountryInput" placeholder="blank = treated as South Africa"></div>
           <div><label for="townZoneInput">Zone (optional)</label>
             <select id="townZoneInput">
               <option value="">— No zone —</option>
@@ -7609,6 +7616,7 @@
       var townIdInput = document.getElementById('townIdInput');
       var townNameInput = document.getElementById('townNameInput');
       var townAreaInput = document.getElementById('townAreaInput');
+      var townCountryInput = document.getElementById('townCountryInput');
       var townZoneInput = document.getElementById('townZoneInput');
       var townAffInput = document.getElementById('townAffInput');
       var townLatInput = document.getElementById('townLatInput');
@@ -7770,6 +7778,7 @@
         townIdInput.value = '';
         townNameInput.value = '';
         townAreaInput.value = '';
+        townCountryInput.value = '';
         townZoneInput.value = '';
         townAffInput.value = '';
         townLatInput.value = '';
@@ -7968,6 +7977,7 @@
             townIdInput.value = t.id;
             townNameInput.value = t.name || '';
             townAreaInput.value = t.area || '';
+            townCountryInput.value = t.country || '';
             // Zones outside South Africa are created automatically (a province/region
         // per country), so the fixed list may not have this town's zone yet.
         if(t.zone && !Array.prototype.some.call(townZoneInput.options, function(o){ return o.value === t.zone; })){
@@ -8089,6 +8099,7 @@
         var payload = {
           name: name,
           area: townAreaInput.value.trim(),
+          country: townCountryInput.value.trim(),
           zone: townZoneInput.value,
           affId: townAffInput.value,
           latitude: townLatInput.value.trim(),
@@ -10595,6 +10606,91 @@
           maxZoom: 18,
           attribution: '&copy; OpenStreetMap contributors'
         }).addTo(adminLeafletMap);
+
+        // Full screen toggle (2026-10-04): expands #adminMapEl to the whole
+        // window (see .map-fs CSS above) so popups with the edit forms have
+        // room, and exits on the same button or Esc.
+        var FsControl = L.Control.extend({
+          options: { position: 'topright' },
+          onAdd: function(){
+            var btn = L.DomUtil.create('button', 'map-fs-btn');
+            btn.type = 'button';
+            btn.textContent = 'Full screen';
+            L.DomEvent.disableClickPropagation(btn);
+            function setFs(on){
+              var el = adminLeafletMap.getContainer();
+              el.classList.toggle('map-fs', on);
+              document.body.style.overflow = on ? 'hidden' : '';
+              btn.textContent = on ? 'Exit full screen' : 'Full screen';
+              setTimeout(function(){ adminLeafletMap.invalidateSize(); }, 50);
+            }
+            btn.addEventListener('click', function(){
+              setFs(!adminLeafletMap.getContainer().classList.contains('map-fs'));
+            });
+            document.addEventListener('keydown', function(e){
+              if(e.key === 'Escape' && adminLeafletMap.getContainer().classList.contains('map-fs')) setFs(false);
+            });
+            return btn;
+          }
+        });
+        adminLeafletMap.addControl(new FsControl());
+      }
+
+      // ---- Shared helpers for the marker popups' edit forms (2026-10-04) ----
+      // Reads "-29.011272, 29.469514" (what Google Maps' right-click shows),
+      // or a Google Maps URL containing @lat,lng, into {lat, lng}.
+      function parseCoordText(txt){
+        var m = String(txt || '').match(/(-?\d{1,3}(?:\.\d+)?)\s*[,;\s]\s*(-?\d{1,3}(?:\.\d+)?)/);
+        if(!m) return null;
+        var lat = parseFloat(m[1]), lng = parseFloat(m[2]);
+        if(!isFinite(lat) || !isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+        return { lat: lat, lng: lng };
+      }
+      function mapsSearchLink(query){
+        return 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(query);
+      }
+      function makeMapsLink(query, label){
+        var a = document.createElement('a');
+        a.href = mapsSearchLink(query);
+        a.target = '_blank';
+        a.rel = 'noopener';
+        a.className = 'btn-outline btn-small';
+        a.style.textDecoration = 'none';
+        a.textContent = label || 'Open in Google Maps';
+        return a;
+      }
+      // One shared <datalist> of known countries, so any popup's Country
+      // field can suggest them while still accepting anything typed.
+      function ensureCountryDatalist(towns){
+        var dl = document.getElementById('mapCountryList');
+        if(!dl){
+          dl = document.createElement('datalist');
+          dl.id = 'mapCountryList';
+          document.body.appendChild(dl);
+        }
+        var seen = { 'South Africa': true };
+        (towns || []).forEach(function(t){ if(t && t.country) seen[t.country] = true; });
+        dl.innerHTML = Object.keys(seen).sort().map(function(c){ return '<option value="' + escapeHtml(c) + '">'; }).join('');
+      }
+      function makeZoneSelect(current){
+        var sel = document.createElement('select');
+        sel.style.cssText = 'width:100%; margin-bottom:6px;';
+        var html = '<option value="">\u2014 No zone / not in list \u2014</option>';
+        var list = MAP_ZONES.slice();
+        if(current && list.indexOf(current) === -1) list.push(current);
+        list.forEach(function(z){
+          html += '<option value="' + escapeHtml(z) + '"' + (z === current ? ' selected' : '') + '>' + escapeHtml(z) + '</option>';
+        });
+        sel.innerHTML = html;
+        return sel;
+      }
+      function labelledInput(wrap, labelText, input){
+        var l = document.createElement('div');
+        l.style.cssText = 'font-size:11px; color:#777; margin:4px 0 1px;';
+        l.textContent = labelText;
+        wrap.appendChild(l);
+        wrap.appendChild(input);
+        return input;
       }
 
       function dotIcon(color){
@@ -10772,6 +10868,7 @@
       function renderAdminMap(properties, activities, towns){
         initAdminMap();
         if(!adminLeafletMap) return;
+        ensureCountryDatalist(towns);
         if(adminClusterGroup) adminLeafletMap.removeLayer(adminClusterGroup);
         adminClusterGroup = L.markerClusterGroup({ maxClusterRadius: 50 });
 
@@ -10831,6 +10928,84 @@
           editBtn.textContent = 'Edit';
           actionsRow.appendChild(editBtn);
 
+          // Fix coordinates (2026-10-04): open the property in Google Maps,
+          // right-click the right spot, copy the coordinates Google shows,
+          // paste here and save — the hub then re-places it in the
+          // Zone/Town/Suburb tree and fills the country (same
+          // applyPropertyCoordinate engine "Find & fix missing coordinates"
+          // already uses; nothing new server-side except looking the row up
+          // by resortId so a map pin can call it).
+          var coordBtn = document.createElement('button');
+          coordBtn.type = 'button';
+          coordBtn.className = 'btn-outline btn-small';
+          coordBtn.textContent = 'Fix coordinates';
+          actionsRow.appendChild(coordBtn);
+
+          var coordWrap = document.createElement('div');
+          coordWrap.style.cssText = 'display:none; margin-top:8px; border-top:1px solid #e5e5e0; padding-top:8px;';
+          var coordHint = document.createElement('div');
+          coordHint.style.cssText = 'font-size:11.5px; color:#777; margin-bottom:6px;';
+          coordHint.textContent = 'Open Google Maps, right-click the correct spot, click the coordinates at the top of the menu to copy them, then paste below.';
+          coordWrap.appendChild(coordHint);
+          var coordLinkRow = document.createElement('div');
+          coordLinkRow.style.marginBottom = '6px';
+          coordLinkRow.appendChild(makeMapsLink([p.name, p.area, p.country].filter(Boolean).join(' '), 'Open in Google Maps'));
+          coordWrap.appendChild(coordLinkRow);
+          var coordInput = document.createElement('input');
+          coordInput.type = 'text';
+          coordInput.placeholder = 'Paste e.g. -29.011272, 29.469514';
+          coordInput.style.cssText = 'width:100%; margin-bottom:4px; box-sizing:border-box;';
+          coordWrap.appendChild(coordInput);
+          var coordStatus = document.createElement('div');
+          coordStatus.style.cssText = 'font-size:11.5px; color:#777; margin-bottom:4px;';
+          coordStatus.textContent = 'Currently ' + p.latitude.toFixed(5) + ', ' + p.longitude.toFixed(5);
+          coordWrap.appendChild(coordStatus);
+          var coordSaveBtn = document.createElement('button');
+          coordSaveBtn.type = 'button';
+          coordSaveBtn.className = 'btn-outline btn-small';
+          coordSaveBtn.textContent = 'Save coordinates & re-place';
+          coordWrap.appendChild(coordSaveBtn);
+          content.appendChild(coordWrap);
+
+          coordBtn.addEventListener('click', function(){
+            coordWrap.style.display = coordWrap.style.display === 'none' ? 'block' : 'none';
+            if(marker.getPopup()) marker.getPopup().update();
+          });
+          coordSaveBtn.addEventListener('click', function(){
+            var c = parseCoordText(coordInput.value);
+            if(!c){
+              coordStatus.textContent = 'Could not read that \u2014 paste it as two numbers like -29.011272, 29.469514.';
+              return;
+            }
+            var payload = { lat: c.lat, lng: c.lng };
+            if(p.source === 'resort-list'){
+              if(!p.resortId){ coordStatus.textContent = 'Missing StockNetwork ResortID for this row \u2014 cannot save.'; return; }
+              payload.source = 'resort';
+              payload.resortId = p.resortId;
+            } else {
+              payload.source = 'listing';
+              payload.listingId = p.listingId;
+            }
+            coordSaveBtn.disabled = true;
+            coordSaveBtn.textContent = 'Saving\u2026';
+            coordStatus.textContent = 'Saving and re-placing\u2026';
+            mapAdminPost('applyPropertyCoordinate', payload).then(function(res){
+              coordSaveBtn.disabled = false;
+              if(res.data && res.data.ok){
+                coordSaveBtn.textContent = 'Saved \u2713';
+                coordStatus.textContent = res.data.placed ? ('Saved \u2713 \u2014 placed in ' + (res.data.locationLabel || 'the tree')) : 'Saved \u2713 \u2014 but couldn\u2019t be placed in the tree automatically; use Edit to pick it.';
+                loadActivities();
+              } else {
+                coordSaveBtn.textContent = 'Save coordinates & re-place';
+                coordStatus.textContent = (res.data && res.data.error) || 'Could not save.';
+              }
+            }).catch(function(){
+              coordSaveBtn.disabled = false;
+              coordSaveBtn.textContent = 'Save coordinates & re-place';
+              coordStatus.textContent = 'Could not save \u2014 check your connection and try again.';
+            });
+          });
+
           if(p.source === 'resort-list'){
             var editWrap = document.createElement('div');
             editWrap.style.cssText = 'display:none; margin-top:8px; border-top:1px solid #e5e5e0; padding-top:8px;';
@@ -10842,6 +11017,18 @@
             editSelect.style.cssText = 'width:100%; margin-bottom:6px;';
             editSelect.innerHTML = '<option value="">Loading\u2026</option>';
             editWrap.appendChild(editSelect);
+            var editTreeNote = document.createElement('div');
+            editTreeNote.style.cssText = 'font-size:11px; color:#777; margin:-2px 0 4px;';
+            editTreeNote.textContent = 'Picking a Town/Suburb fills its Zone and Country automatically. If it isn\u2019t in the tree, type the Country and choose the Zone below.';
+            editWrap.appendChild(editTreeNote);
+            var editCountry = document.createElement('input');
+            editCountry.type = 'text';
+            editCountry.setAttribute('list', 'mapCountryList');
+            editCountry.value = p.country || '';
+            editCountry.style.cssText = 'width:100%; margin-bottom:4px; box-sizing:border-box;';
+            labelledInput(editWrap, 'Country', editCountry);
+            var editZone = makeZoneSelect(p.zone || '');
+            labelledInput(editWrap, 'Zone', editZone);
             var snFixInputs = {};
             [['district', 'District'], ['city2', 'City2'], ['state', 'State'], ['note', 'Note (optional)']].forEach(function(f){
               var inp = document.createElement('input');
@@ -10872,6 +11059,7 @@
                 editSelect.id = tempId;
                 populateLocationSelects([tempId]).then(function(){
                   applyLocationSelect(editSelect, { zone: p.zone || '', townId: p.townId || '', suburbId: p.suburbId || '' });
+                  editSelect.dataset.initial = editSelect.value; // so Save only re-sends the tree pick if it was actually changed
                   editSaveBtn.disabled = false;
                 });
               }
@@ -10882,8 +11070,13 @@
                 editStatus.textContent = 'Missing StockNetwork ResortID for this row \u2014 cannot save.';
                 return;
               }
-              var loc = readLocationSelect(editSelect);
-              var hasLoc = !!(loc.zone || loc.townId || loc.suburbId);
+              var treeChanged = editSelect.value !== (editSelect.dataset.initial || '');
+              var loc = treeChanged ? readLocationSelect(editSelect) : { zone: '', townId: '', suburbId: '', locationLabel: '' };
+              var typedCountry = editCountry.value.trim();
+              var typedZone = editZone.value;
+              var countryChanged = typedCountry !== (p.country || '');
+              var zoneChanged = typedZone !== (p.zone || '');
+              var hasLoc = !!(loc.zone || loc.townId || loc.suburbId || countryChanged || zoneChanged);
               var fixVals = {};
               var hasFix = false;
               Object.keys(snFixInputs).forEach(function(k){
@@ -10899,13 +11092,19 @@
               editSaveBtn.textContent = 'Saving\u2026';
               var calls = [];
               if(hasLoc){
-                calls.push(mapAdminPost('resolveStocknetworkLocation', {
+                // A tree pick wins for Town/Suburb (and fills Zone + Country
+                // server-side); a typed Country/Zone is only sent when the
+                // person actually changed it, so an untouched prefill can't
+                // overwrite what the tree pick derived.
+                var locBody = {
                   resortId: p.resortId,
-                  zone: loc.zone,
+                  zone: loc.zone || (zoneChanged ? typedZone : ''),
                   townId: loc.townId,
                   suburbId: loc.suburbId,
                   locationLabel: loc.locationLabel
-                }));
+                };
+                if(countryChanged && typedCountry) locBody.country = typedCountry;
+                calls.push(mapAdminPost('resolveStocknetworkLocation', locBody));
               }
               if(hasFix){
                 calls.push(mapAdminPost('flagStockNetworkFieldFix', {
@@ -11020,63 +11219,132 @@
             content.appendChild(affLine);
           }
 
-          // Edit zone (2026-10-04, Jean's request): a town has no
-          // StockNetwork property page, so instead of View/Edit like a
-          // property pin it gets a small zone picker, for fixing the
-          // stubborn "No zone set" towns that "Fix towns with no zone"
-          // can't resolve on its own. Saves via the existing updateTown.
+          // Edit town (2026-10-04, Jean's request): Country, Zone and
+          // coordinates. A town has no StockNetwork page, so instead of
+          // View/Edit it gets this form, for towns "Fix towns with no zone"
+          // can't resolve — usually a wrong/missing country or a mistyped
+          // coordinate (e.g. a lost minus sign). Pasting a coordinate from
+          // Google Maps fills Lat/Lng and looks up its country + zone for
+          // review (lookupCoordinateInfo, read-only); nothing is saved until
+          // Save, which uses the existing updateTown.
           var townEditBtn = document.createElement('button');
           townEditBtn.type = 'button';
           townEditBtn.className = 'btn-outline btn-small';
           townEditBtn.style.marginTop = '6px';
           townEditBtn.style.marginRight = '6px';
-          townEditBtn.textContent = 'Edit zone';
+          townEditBtn.textContent = 'Edit town';
           content.appendChild(townEditBtn);
 
           var townEditWrap = document.createElement('div');
-          townEditWrap.style.cssText = 'display:none; margin-top:8px; border-top:1px solid #e5e5e0; padding-top:8px;';
-          var townZoneSelect = document.createElement('select');
-          townZoneSelect.style.cssText = 'width:100%; margin-bottom:6px;';
-          var zoneOpts = '<option value="">— Choose a zone —</option>';
-          MAP_ZONES.forEach(function(z){
-            zoneOpts += '<option value="' + escapeHtml(z) + '"' + (z === t.zone ? ' selected' : '') + '>' + escapeHtml(z) + '</option>';
-          });
-          townZoneSelect.innerHTML = zoneOpts;
-          townEditWrap.appendChild(townZoneSelect);
+          townEditWrap.style.cssText = 'display:none; margin-top:8px; border-top:1px solid #e5e5e0; padding-top:8px; min-width:250px;';
+
+          var townCountryEdit = document.createElement('input');
+          townCountryEdit.type = 'text';
+          townCountryEdit.setAttribute('list', 'mapCountryList');
+          townCountryEdit.value = t.countrySet ? (t.country || '') : '';
+          townCountryEdit.placeholder = t.countrySet ? '' : 'not set — treated as South Africa';
+          townCountryEdit.style.cssText = 'width:100%; margin-bottom:4px; box-sizing:border-box;';
+          labelledInput(townEditWrap, 'Country', townCountryEdit);
+
+          var townZoneEdit = makeZoneSelect(t.zone || '');
+          labelledInput(townEditWrap, 'Zone', townZoneEdit);
+
+          var townLatEdit = document.createElement('input');
+          townLatEdit.type = 'text';
+          townLatEdit.value = t.latitude;
+          townLatEdit.style.cssText = 'width:100%; margin-bottom:4px; box-sizing:border-box;';
+          labelledInput(townEditWrap, 'Latitude', townLatEdit);
+          var townLngEdit = document.createElement('input');
+          townLngEdit.type = 'text';
+          townLngEdit.value = t.longitude;
+          townLngEdit.style.cssText = 'width:100%; margin-bottom:4px; box-sizing:border-box;';
+          labelledInput(townEditWrap, 'Longitude', townLngEdit);
+
+          var townLinkRow = document.createElement('div');
+          townLinkRow.style.cssText = 'margin:6px 0;';
+          townLinkRow.appendChild(makeMapsLink([t.name, t.area, t.countrySet ? t.country : ''].filter(Boolean).join(' '), 'Open in Google Maps'));
+          townEditWrap.appendChild(townLinkRow);
+
+          var townPaste = document.createElement('input');
+          townPaste.type = 'text';
+          townPaste.placeholder = 'Paste coordinates from Google Maps';
+          townPaste.style.cssText = 'width:100%; margin-bottom:4px; box-sizing:border-box;';
+          townEditWrap.appendChild(townPaste);
+
           var townEditStatus = document.createElement('div');
           townEditStatus.style.cssText = 'font-size:11.5px; color:#777; margin-bottom:4px;';
           townEditWrap.appendChild(townEditStatus);
+
           var townSaveBtn = document.createElement('button');
           townSaveBtn.type = 'button';
           townSaveBtn.className = 'btn-outline btn-small';
-          townSaveBtn.textContent = 'Save zone';
+          townSaveBtn.textContent = 'Save town';
           townEditWrap.appendChild(townSaveBtn);
           content.appendChild(townEditWrap);
+
+          function applyPastedTownCoords(){
+            var c = parseCoordText(townPaste.value);
+            if(!c){
+              if(townPaste.value.trim()) townEditStatus.textContent = 'Could not read that — paste two numbers like -29.011272, 29.469514.';
+              return;
+            }
+            townLatEdit.value = String(c.lat);
+            townLngEdit.value = String(c.lng);
+            townEditStatus.textContent = 'Looking up country & zone for that spot…';
+            mapAdminPost('lookupCoordinateInfo', { lat: c.lat, lng: c.lng }).then(function(res){
+              if(res.data && res.data.ok){
+                if(res.data.country) townCountryEdit.value = res.data.country;
+                if(res.data.zone){
+                  if(!Array.prototype.some.call(townZoneEdit.options, function(o){ return o.value === res.data.zone; })){
+                    var zo = document.createElement('option');
+                    zo.value = res.data.zone;
+                    zo.textContent = res.data.zone;
+                    townZoneEdit.appendChild(zo);
+                  }
+                  townZoneEdit.value = res.data.zone;
+                }
+                townEditStatus.textContent = 'Filled in' + (res.data.country ? ' ' + res.data.country : '') + (res.data.zone ? ' / ' + res.data.zone : '') + ' — check it, then press Save town.';
+              } else {
+                townEditStatus.textContent = 'Coordinates filled in, but the lookup failed' + (res.data && res.data.error ? ' (' + res.data.error + ')' : '') + ' — set Country/Zone by hand.';
+              }
+            }).catch(function(){
+              townEditStatus.textContent = 'Coordinates filled in, but the lookup failed — set Country/Zone by hand.';
+            });
+          }
+          townPaste.addEventListener('change', applyPastedTownCoords);
+          townPaste.addEventListener('paste', function(){ setTimeout(applyPastedTownCoords, 0); });
 
           townEditBtn.addEventListener('click', function(){
             townEditWrap.style.display = townEditWrap.style.display === 'none' ? 'block' : 'none';
             if(marker.getPopup()) marker.getPopup().update();
           });
           townSaveBtn.addEventListener('click', function(){
-            if(!townZoneSelect.value){
-              townEditStatus.textContent = 'Choose a zone first.';
+            var latNum = parseFloat(townLatEdit.value), lngNum = parseFloat(townLngEdit.value);
+            if(!isFinite(latNum) || !isFinite(lngNum) || Math.abs(latNum) > 90 || Math.abs(lngNum) > 180){
+              townEditStatus.textContent = 'Latitude and Longitude must be valid numbers.';
               return;
             }
             townSaveBtn.disabled = true;
             townSaveBtn.textContent = 'Saving…';
-            mapAdminPost('updateTown', { id: t.id, zone: townZoneSelect.value }).then(function(res){
+            mapAdminPost('updateTown', {
+              id: t.id,
+              country: townCountryEdit.value.trim(),
+              zone: townZoneEdit.value,
+              latitude: String(latNum),
+              longitude: String(lngNum)
+            }).then(function(res){
               townSaveBtn.disabled = false;
               if(res.data && (res.data.ok || res.data.town)){
                 townSaveBtn.textContent = 'Saved ✓';
                 townEditStatus.textContent = 'Saved ✓';
                 loadActivities();
               } else {
-                townSaveBtn.textContent = 'Save zone';
+                townSaveBtn.textContent = 'Save town';
                 townEditStatus.textContent = (res.data && res.data.error) || 'Could not save.';
               }
             }).catch(function(){
               townSaveBtn.disabled = false;
-              townSaveBtn.textContent = 'Save zone';
+              townSaveBtn.textContent = 'Save town';
               townEditStatus.textContent = 'Could not save — check your connection and try again.';
             });
           });
