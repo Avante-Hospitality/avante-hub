@@ -2289,10 +2289,18 @@ export default async (request, context) => {
       // placement — the admin page calls both when "Save" is clicked and
       // any of these three fields were filled in. Passing all empty clears
       // a flag set by mistake, same as flagPropertyInactive's flag:false.
-      const index = parseInt(body.index, 10);
-      if (!isFinite(index) || index < 0) return json({ error: "Missing or invalid index." }, 400);
       const resortRecord = await resortListStore.get("current", { type: "json" });
       const resortList = (resortRecord && Array.isArray(resortRecord.resorts)) ? resortRecord.resorts : [];
+      // Same two ways to point at a row as resolveStocknetworkLocation:
+      // sn-review rows pass their raw index, the map popup passes the
+      // stable resortId (2026-10-04).
+      let index = parseInt(body.index, 10);
+      if (!isFinite(index) || index < 0) {
+        const resortId = typeof body.resortId === "string" ? body.resortId.trim() : "";
+        if (!resortId) return json({ error: "Missing index or resortId." }, 400);
+        index = resortList.findIndex((r) => r && String(r.resortId || "") === resortId);
+        if (index < 0) return json({ error: "Property not found — the list may have changed, refresh and try again." }, 404);
+      }
       const rec = resortList[index];
       if (!rec) return json({ error: "Property not found — the list may have changed, refresh and try again." }, 404);
 
