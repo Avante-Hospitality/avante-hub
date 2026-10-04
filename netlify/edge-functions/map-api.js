@@ -1000,6 +1000,13 @@ export default async (request, context) => {
   // listPendingNewStockNetworkProperties/dismissPendingNewStockNetworkProperty
   // below (new-properties-flagging, 2026-10-03).
   const pendingNewStore = getStore({ name: "resort-pending-new", consistency: "strong" });
+// Countries and Zones that exist in the hub's location tree WITHOUT (yet)
+// any town under them (2026-10-04, Jean's "Country > Zone > Town > Suburb"
+// picker). Everything else is derived from the towns themselves (+ the 12
+// fixed South African zones) so nothing needs migrating — this store only
+// holds the extras a person adds via the picker's "Not in the list — add a
+// new country/zone" step. Shape: { countries: [name], zones: [{country, name}] }.
+const locationListStore = getStore({ name: "map-location-lists", consistency: "strong" });
 
   try {
     if (request.method === "GET") {
@@ -1126,7 +1133,38 @@ export default async (request, context) => {
       const activities = await loadActivities(activitiesStore);
       const towns = await loadTowns(townsStore);
 
-      return json({ ok: true, properties, activities: activities.filter(Boolean), towns: towns.filter(Boolean), missingCoordinates, resortStats });
+      const locationLists = (await locationListStore.get("current", { type: "json" })) || {};
+      return json({
+        ok: true, properties, activities: activities.filter(Boolean), towns: towns.filter(Boolean), missingCoordinates, resortStats,
+        locationLists: {
+          countries: Array.isArray(locationLists.countries) ? locationLists.countries : [],
+          zones: Array.isArray(locationLists.zones) ? locationLists.zones : [],
+        },
+      });
+    }
+
+    if (action === "addLocationValue") {
+      // Adds a Country, or a Zone under a Country, to the tree's own list
+      // (see locationListStore above). Duplicate-safe (case-insensitive) —
+      // adding something that already exists is a quiet success.
+      const kind = body.kind === "zone" ? "zone" : body.kind === "country" ? "country" : "";
+      const name = clean(body.name, 120);
+      const country = clean(body.country, 120);
+      if (!kind) return json({ error: "kind must be country or zone." }, 400);
+      if (!name) return json({ error: "Name is required." }, 400);
+      if (kind === "zone" && !country) return json({ error: "A zone needs its country." }, 400);
+      const cur = (await locationListStore.get("current", { type: "json" })) || {};
+      const countries = Array.isArray(cur.countries) ? cur.countries.slice() : [];
+      const zones = Array.isArray(cur.zones) ? cur.zones.slice() : [];
+      const lc = (x) => String(x || "").toLowerCase();
+      if (kind === "country") {
+        if (!countries.some((c) => lc(c) === lc(name))) countries.push(name);
+      } else {
+        if (!zones.some((z) => lc(z.name) === lc(name) && lc(z.country) === lc(country))) zones.push({ country, name });
+        if (!countries.some((c) => lc(c) === lc(country))) countries.push(country);
+      }
+      await locationListStore.setJSON("current", { countries, zones, updatedAt: new Date().toISOString() });
+      return json({ ok: true, countries, zones });
     }
 
     if (action === "discoverLocations") {
@@ -2048,6 +2086,7 @@ export default async (request, context) => {
           snArea: r.area || "", hubZone,
           snCity: r.city || "", hubTown: hubTownName,
           snSuburb: r.suburb || "", hubSuburb: hubSuburbName,
+          hubTownId: r.townId || "", hubSuburbId: r.suburbId || "",
           // Read-only display fields Jean asked for (2026-09-29) — StockNetwork's
           // own District/City2/State never feed the hub's tree (that's still
           // purely coordinate-geocoding driven), they're shown here purely so
