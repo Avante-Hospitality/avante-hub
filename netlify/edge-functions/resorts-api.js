@@ -226,6 +226,33 @@ function mapApiRowToRawFields(r) {
   };
 }
 
+// Returns the first non-empty value found under any of `keys` on `obj`, or
+// "" if none are present. Used below for a StockNetwork API row's name and
+// SiteID equivalent fields, which — unlike every other field this file
+// reads off the API — were never actually needed until now: a MATCHED row
+// keeps the name/siteId the hub already has from its original CSV import,
+// so mapApiRowToRawFields above never had to know what StockNetwork calls
+// them. For an UNMATCHED row there is no existing hub record to fall back
+// on, so this guesses from the field-naming conventions StockNetwork's API
+// uses elsewhere (iExchangeResortFileID for resortId) — if none of these
+// guesses hit, the full raw row is kept alongside (see below) so the actual
+// field name can be read straight from it and this list tightened.
+function pickFirst(obj, keys) {
+  for (const k of keys) {
+    const v = obj && obj[k];
+    if (v !== undefined && v !== null && String(v).trim() !== "") return String(v).trim();
+  }
+  return "";
+}
+const UNMATCHED_NAME_KEYS = ["name", "resortName", "ResortName", "Resort", "resort", "title", "Name", "ResortTitle"];
+const UNMATCHED_SITEID_KEYS = ["siteId", "siteID", "SiteID", "SiteId", "iExchangeSiteFileID", "iSiteID"];
+// Caps how many full unmatched-row objects get saved to blob storage in one
+// sync — a backlog in the thousands (e.g. the very first run after this
+// feature ships) would otherwise risk a single oversized blob write. The
+// real total is still reported via totalUnmatched even when the saved list
+// is capped.
+const UNMATCHED_SAVE_CAP = 500;
+
 async function handleApiSync(request, store, cors) {
   let body;
   try {
@@ -273,6 +300,14 @@ async function handleApiSync(request, store, cors) {
   // hub already had a coordinate never lands here, whether StockNetwork's
   // value matched or was flagged as a mismatch -- see the per-row loop.
   const changedIdxs = [];
+  // StockNetwork resort rows this sync couldn't match to any existing hub
+  // property (new-properties-flagging, 2026-10-03, Jean's request) — saved
+  // below so admin.html can show "N StockNetwork properties aren't in your
+  // hub yet" instead of these being silently dropped, which is what
+  // happened before this. Never auto-added to the hub itself: per
+  // hub-is-master-for-location, only a reviewed CSV upload creates a new
+  // resort-list row.
+  const unmatchedItems = [];
 
   for (const apiRow of rows) {
     const resortId = String(apiRow.iExchangeResortFileID || "").trim();
@@ -280,6 +315,17 @@ async function handleApiSync(request, store, cors) {
     const idxs = byResortId.get(resortId);
     if (!idxs || !idxs.length) {
       unmatchedApiRows++;
+      if (unmatchedItems.length < UNMATCHED_SAVE_CAP) {
+        unmatchedItems.push({
+          resortId,
+          name: pickFirst(apiRow, UNMATCHED_NAME_KEYS),
+          siteId: pickFirst(apiRow, UNMATCHED_SITEID_KEYS),
+          latitude: typeof apiRow.latitude === "number" ? apiRow.latitude : null,
+          longitude: typeof apiRow.longitude === "number" ? apiRow.longitude : null,
+          ...mapApiRowToRawFields(apiRow),
+          raw: apiRow,
+        });
+      }
       continue;
     }
     matchedProperties++;
@@ -474,6 +520,26 @@ async function handleApiSync(request, store, cors) {
     Object.assign({}, record, { resorts, apiSyncedAt: new Date().toISOString() })
   );
 
+  // Save this run's unmatched-row list, minus anything Jean has explicitly
+  // dismissed (dismissPendingNewStockNetworkProperty in map-api.js) — that
+  // set is read back here and carried forward since this whole list is a
+  // full replace every run (a daily full resort fetch means a property no
+  // longer unmatched just means she imported it; one still unmatched would
+  // otherwise resurface every single day forever without this).
+  const pendingNewStore = getStore({ name: "resort-pending-new", consistency: "strong" });
+  const existingPending = (await pendingNewStore.get("current", { type: "json" })) || {};
+  const dismissedIds = Array.isArray(existingPending.dismissedIds) ? existingPending.dismissedIds : [];
+  const dismissedSet = new Set(dismissedIds);
+  const keptItems = unmatchedItems.filter((it) => !dismissedSet.has(it.resortId));
+  await pendingNewStore.setJSON("current", {
+    items: keptItems,
+    dismissedIds,
+    totalUnmatched: unmatchedApiRows,
+    savedCount: keptItems.length,
+    truncated: unmatchedApiRows > keptItems.length + dismissedSet.size,
+    updatedAt: new Date().toISOString(),
+  });
+
   return new Response(
     JSON.stringify({
       ok: true,
@@ -481,6 +547,7 @@ async function handleApiSync(request, store, cors) {
       matchedProperties,
       matchedRows,
       unmatchedApiRows,
+      newPropertiesPending: keptItems.length,
       coordinatesChanged,
       autoPlaced,
       autoPlaceFailed,
