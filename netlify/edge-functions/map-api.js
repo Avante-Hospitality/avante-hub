@@ -342,6 +342,12 @@ function toResortPin(record, hidden) {
     kind: "property",
     listingId: resortPinId(record),
     source: "resort-list",
+    // Exposed (2026-10-03) so admin.html's map popup can offer an inline
+    // "Edit location" action for this one row without needing its raw
+    // resortList array index (which shifts as the list is re-fetched) —
+    // see resolveStocknetworkLocation's resortId lookup path below.
+    resortId: record.resortId || "",
+    siteId: record.siteId || "",
     name: record.name || "",
     area: record.suburb || record.district || "",
     city: "",
@@ -981,6 +987,11 @@ export default async (request, context) => {
   // a manually-uploaded one does, since toActivityPin() reads both kinds
   // of photoKeys identically via /api/property-file?key=...
   const activityPhotoFilesStore = getStore({ name: "property-listing-files", consistency: "strong" });
+  // StockNetwork resort rows the nightly sync couldn't match to an existing
+  // hub property — written by resorts-api.js's handleApiSync, read by
+  // listPendingNewStockNetworkProperties/dismissPendingNewStockNetworkProperty
+  // below (new-properties-flagging, 2026-10-03).
+  const pendingNewStore = getStore({ name: "resort-pending-new", consistency: "strong" });
 
   try {
     if (request.method === "GET") {
@@ -2065,11 +2076,24 @@ export default async (request, context) => {
       // Town/Suburb/Zone from the tree (same encoding readLocationSelect/
       // applyLocationSelect use in admin.html), and only this action, on
       // that explicit save, writes it onto the resort-list row.
-      const index = parseInt(body.index, 10);
-      if (!isFinite(index) || index < 0) return json({ error: "Missing or invalid index." }, 400);
-
       const resortRecord = await resortListStore.get("current", { type: "json" });
       const resortList = (resortRecord && Array.isArray(resortRecord.resorts)) ? resortRecord.resorts : [];
+
+      // Two ways to point at the row to fix: the "StockNetwork location
+      // review" card (sn-review rows) already knows its raw array index.
+      // The map popup's new "Edit location" action (2026-10-03) doesn't —
+      // a pin only carries the pin's own resortId — and a raw index would
+      // be unsafe there anyway since it can shift between the map's last
+      // fetch and this save. resortId (StockNetwork's own ResortID) is
+      // stable across both, so it's looked up fresh here instead.
+      let index = parseInt(body.index, 10);
+      if (!isFinite(index) || index < 0) {
+        const resortId = typeof body.resortId === "string" ? body.resortId.trim() : "";
+        if (!resortId) return json({ error: "Missing index or resortId." }, 400);
+        index = resortList.findIndex((r) => r && String(r.resortId || "") === resortId);
+        if (index < 0) return json({ error: "Property not found — the list may have changed, refresh and try again." }, 404);
+      }
+
       const rec = resortList[index];
       if (!rec) return json({ error: "Property not found — the list may have changed, refresh and try again." }, 404);
 
@@ -2214,6 +2238,37 @@ export default async (request, context) => {
       });
       flagged.sort((a, b) => a.name.localeCompare(b.name));
       return json({ ok: true, items: flagged });
+    }
+
+    if (action === "listPendingNewStockNetworkProperties") {
+      // Backs the "New StockNetwork properties" card (new-properties-
+      // flagging, 2026-10-03, Jean's request) — the list resorts-api.js's
+      // handleApiSync saves of StockNetwork resort rows the nightly sync
+      // couldn't match to anything already in the hub. Purely informational:
+      // nothing here is in the hub's own resort list or on the map until
+      // Jean reviews it and re-uploads via the existing "StockNetwork resort
+      // list (upload CSV)" flow above — per hub-is-master-for-location, a
+      // property is never auto-added.
+      const pending = (await pendingNewStore.get("current", { type: "json" })) || {};
+      const items = Array.isArray(pending.items) ? pending.items : [];
+      return json({ ok: true, items, totalUnmatched: pending.totalUnmatched || 0, truncated: !!pending.truncated, updatedAt: pending.updatedAt || null });
+    }
+
+    if (action === "dismissPendingNewStockNetworkProperty") {
+      // Drops one StockNetwork resortId out of the "New StockNetwork
+      // properties" list for good (e.g. a property Avante doesn't carry) —
+      // without this, since the list is a full replace every sync, an
+      // unmatched row Jean never imports would otherwise resurface every
+      // single day forever. Does not touch anything in the hub itself.
+      const resortId = String(body.resortId || "").trim();
+      if (!resortId) return json({ error: "Missing resortId." }, 400);
+      const pending = (await pendingNewStore.get("current", { type: "json" })) || {};
+      const items = Array.isArray(pending.items) ? pending.items : [];
+      const dismissedIds = Array.isArray(pending.dismissedIds) ? pending.dismissedIds : [];
+      if (!dismissedIds.includes(resortId)) dismissedIds.push(resortId);
+      const keptItems = items.filter((it) => it.resortId !== resortId);
+      await pendingNewStore.setJSON("current", Object.assign({}, pending, { items: keptItems, dismissedIds }));
+      return json({ ok: true, remaining: keptItems.length });
     }
 
     if (action === "flagStockNetworkFieldFix") {
