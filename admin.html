@@ -1300,6 +1300,7 @@
         <select id="mapJumpSelect">
           <option value="" selected>Choose a section&hellip;</option>
           <optgroup label="Map">
+            <option value="map-jump-overview">Overview (dashboard)</option>
             <option value="map-jump-browse">Browse by location</option>
             <option value="map-jump-master">Master map</option>
             <option value="map-jump-properties-on-map">Properties on the map</option>
@@ -1315,6 +1316,7 @@
           </optgroup>
           <optgroup label="StockNetwork sync">
             <option value="map-jump-sn-resort-list">StockNetwork resort list (upload CSV)</option>
+            <option value="map-jump-new-sn-properties">New StockNetwork properties</option>
             <option value="map-jump-sn-review">StockNetwork location review</option>
             <option value="map-jump-corrected-file">Corrected StockNetwork file</option>
             <option value="map-jump-bulk-fill-csv">Bulk-fill property coordinates from CSV</option>
@@ -1419,7 +1421,40 @@
         })();
       </script>
 
-      <div class="card map-jump-target" id="map-jump-browse">
+      <div class="card map-jump-target" id="map-jump-overview">
+        <h3 style="margin-top:0;">Overview</h3>
+        <p style="margin-top:0;">A holistic view of what still needs attention across Map &amp; Activities — every number below is live. Click a tile to jump straight to it.</p>
+        <div class="status" id="mapOverviewStatus"></div>
+        <div class="stat-grid" id="mapOverviewGrid" style="display:none;">
+          <button type="button" class="stat-card" id="mapOverviewNewSn" style="cursor:pointer; text-align:left; font:inherit; width:100%; margin:0; border-width:1.5px; border-style:solid;">
+            <div class="num">0</div>
+            <div class="lbl">New StockNetwork properties</div>
+          </button>
+          <button type="button" class="stat-card" id="mapOverviewMissingCoords" style="cursor:pointer; text-align:left; font:inherit; width:100%; margin:0; border-width:1.5px; border-style:solid;">
+            <div class="num">0</div>
+            <div class="lbl">Missing coordinates</div>
+          </button>
+          <button type="button" class="stat-card" id="mapOverviewNoZone" style="cursor:pointer; text-align:left; font:inherit; width:100%; margin:0; border-width:1.5px; border-style:solid;">
+            <div class="num">0</div>
+            <div class="lbl">Not yet placed (no zone)</div>
+          </button>
+          <button type="button" class="stat-card" id="mapOverviewSnReview" style="cursor:pointer; text-align:left; font:inherit; width:100%; margin:0; border-width:1.5px; border-style:solid;">
+            <div class="num">0</div>
+            <div class="lbl">StockNetwork review flagged</div>
+          </button>
+          <button type="button" class="stat-card" id="mapOverviewInactive" style="cursor:pointer; text-align:left; font:inherit; width:100%; margin:0; border-width:1.5px; border-style:solid;">
+            <div class="num">0</div>
+            <div class="lbl">Flagged possibly inactive</div>
+          </button>
+          <button type="button" class="stat-card" id="mapOverviewFieldFix" style="cursor:pointer; text-align:left; font:inherit; width:100%; margin:0; border-width:1.5px; border-style:solid;">
+            <div class="num">0</div>
+            <div class="lbl">SN corrections queued to send</div>
+          </button>
+        </div>
+        <p id="mapOverviewAllClear" style="display:none; margin:0; font-size:13.5px; color:var(--teal-dark); font-weight:600;">Everything is placed and reviewed — nothing outstanding right now.</p>
+      </div>
+
+      <div class="card map-jump-target" id="map-jump-browse" style="margin-top:20px;">
         <h3 style="margin-top:0;">Browse by location</h3>
         <p style="margin-top:0;">Tick a region, town, or suburb to narrow the master map below to just that area — cascades down (ticking a region ticks everything under it) the same way the affiliate allocation picker does. Leave nothing ticked to see everything.</p>
         <div class="loc-tree-country">South Africa</div>
@@ -1510,6 +1545,22 @@
         </div>
         <div class="status" id="resortListUploadStatus"></div>
         <p id="resortListStatusText" style="margin:10px 0 0; font-size:13px; color:var(--muted);"></p>
+      </div>
+
+      <div class="card map-jump-target" id="map-jump-new-sn-properties" style="margin-top:20px;">
+        <h3 style="margin-top:0;">New StockNetwork properties</h3>
+        <p style="margin-top:0;">The nightly StockNetwork sync only updates properties already in your hub — it can never add one on its own. Anything StockNetwork has that your hub doesn't shows up here instead, so nothing new is ever added without you reviewing it first. Download the CSV below (pre-filled with what StockNetwork sent) and upload it through "StockNetwork resort list" above whenever you're ready to bring one in — it'll then get coordinates checked and placed in the location tree the same way as everything else. "Dismiss" removes one from this list for good if it's not one you carry, without importing it.</p>
+        <div class="btn-row" style="margin-top:0;">
+          <button class="btn-outline" id="newSnPropsLoadBtn">Refresh list</button>
+          <button class="btn-outline" id="newSnPropsDownloadBtn" style="display:none;">Download CSV (ready to re-upload)</button>
+        </div>
+        <div class="status" id="newSnPropsStatus"></div>
+        <div class="table-wrap" id="newSnPropsTableWrap" style="display:none; margin-top:12px;">
+          <table class="data-table">
+            <thead><tr><th>Property</th><th>ResortID</th><th>SiteID</th><th>Country / Area / City</th><th>Coordinates</th><th></th></tr></thead>
+            <tbody id="newSnPropsTableBody"></tbody>
+          </table>
+        </div>
       </div>
 
       <div class="card map-jump-target" id="map-jump-bulk-fill-csv" style="margin-top:20px;">
@@ -7121,6 +7172,10 @@
         return 'Agreement status: ' + s + extra;
       }
 
+      // Exposed globally (2026-10-03) so the Map & Activities tab's map
+      // popup can open this same modal for an onboarded ("Listed") pin's
+      // Edit button, from a different <script> block/IIFE.
+      window.openPropertyDetailsModal = openPropertyDetailsModal;
       function openPropertyDetailsModal(listingId){
         currentListingId = listingId;
         propertyLocationReady = false;
@@ -10114,6 +10169,108 @@
         window.refreshSnFieldFixList = load;
       })();
 
+      // ---- New StockNetwork properties ----
+      // Lists StockNetwork resort rows the nightly sync couldn't match to
+      // anything already in the hub (new-properties-flagging, 2026-10-03,
+      // Jean's request) — see listPendingNewStockNetworkProperties in
+      // map-api.js for how this list is built and why. The CSV this
+      // downloads is pre-filled in the exact column shape "StockNetwork
+      // resort list (upload CSV)" above already reads, Zone left blank on
+      // purpose — Start geocoding derives it properly from the coordinate
+      // once the property is actually in the hub, rather than guessing it
+      // here from StockNetwork's State column (not the same thing — see
+      // the StockNetwork location review card for why). Nothing here is on
+      // the map or in the hub until that CSV is uploaded.
+      (function(){
+        var loadBtn = document.getElementById('newSnPropsLoadBtn');
+        var downloadBtn = document.getElementById('newSnPropsDownloadBtn');
+        var statusEl = document.getElementById('newSnPropsStatus');
+        var tableWrap = document.getElementById('newSnPropsTableWrap');
+        var tbody = document.getElementById('newSnPropsTableBody');
+        if(!loadBtn || !tbody) return;
+
+        var currentItems = [];
+
+        function setStatus(t, isError){ statusEl.textContent = t; statusEl.className = 'status show' + (isError ? '' : ' ok'); }
+
+        function csvCell(v){
+          v = (v === null || v === undefined) ? '' : String(v);
+          return /[",\r\n]|^\s|\s$/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+        }
+
+        function downloadNewSnPropsCsv(){
+          if(!currentItems.length) return;
+          var rows = [['Resort','District','Suburb','Zone','Country','Area','City','City2','State','SiteID','ResortID','Latitude','Longitude']];
+          currentItems.forEach(function(it){
+            rows.push([it.name, it.district, it.suburb, '', it.snCountry, it.area, it.city, it.city2, it.state, it.siteId, it.resortId, it.latitude != null ? it.latitude : '', it.longitude != null ? it.longitude : '']);
+          });
+          var text = '﻿' + rows.map(function(r){ return r.map(csvCell).join(','); }).join('\r\n') + '\r\n';
+          var blob = new Blob([text], { type: 'text/csv;charset=utf-8' });
+          var a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = 'new-stocknetwork-properties-' + new Date().toISOString().slice(0, 10) + '.csv';
+          document.body.appendChild(a); a.click();
+          setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+          if (typeof showStepResultModal === 'function') {
+            showStepResultModal({
+              title: 'New StockNetwork properties — downloaded',
+              message: 'Have a look through this CSV, then upload it via “StockNetwork resort list” above whenever you’re ready to bring any of these ' + currentItems.length + ' propert' + (currentItems.length === 1 ? 'y' : 'ies') + ' in. Nothing changes in the hub until you do — and once in, it’ll need coordinates checked and placing in the location tree like any other property.',
+              nextId: 'map-jump-sn-resort-list',
+              nextLabel: 'StockNetwork resort list (upload CSV)'
+            });
+          }
+        }
+
+        function renderNewSnPropRow(item){
+          var tr = document.createElement('tr');
+          var hint = [item.snCountry, item.area, item.city].filter(function(x){ return x; }).join(' / ') || '—';
+          var coords = (item.latitude != null && item.longitude != null) ? (item.latitude.toFixed(5) + ', ' + item.longitude.toFixed(5)) : '—';
+          tr.innerHTML =
+            '<td>' + escapeHtml(item.name || '(name unavailable — see ResortID)') + '</td>' +
+            '<td>' + escapeHtml(item.resortId || '—') + '</td>' +
+            '<td>' + escapeHtml(item.siteId || '—') + '</td>' +
+            '<td>' + escapeHtml(hint) + '</td>' +
+            '<td style="font-size:11px; color:var(--muted);">' + escapeHtml(coords) + '</td>' +
+            '<td><button type="button" class="btn-outline btn-small" data-act="dismiss">Dismiss</button></td>';
+          tbody.appendChild(tr);
+          tr.querySelector('[data-act="dismiss"]').addEventListener('click', function(){
+            if(!confirm('Dismiss "' + (item.name || item.resortId) + '"? It won’t be suggested again unless StockNetwork sends it with a different ResortID.')) return;
+            var btn = tr.querySelector('[data-act="dismiss"]');
+            btn.disabled = true;
+            mapAdminPost('dismissPendingNewStockNetworkProperty', { resortId: item.resortId }).then(function(res){
+              if(res.data && res.data.ok){ tr.remove(); if(typeof window.refreshMapOverview === 'function') window.refreshMapOverview(); }
+              else { btn.disabled = false; alert((res.data && res.data.error) || 'Could not dismiss.'); }
+            }).catch(function(){ btn.disabled = false; alert('Request failed.'); });
+          });
+        }
+
+        function load(){
+          loadBtn.disabled = true;
+          setStatus('Checking for new StockNetwork properties…');
+          mapAdminPost('listPendingNewStockNetworkProperties', {}).then(function(res){
+            loadBtn.disabled = false;
+            if(!(res.data && res.data.ok)){ setStatus((res.data && res.data.error) || 'Could not load the list.', true); return; }
+            currentItems = res.data.items || [];
+            tbody.innerHTML = '';
+            if(!currentItems.length){
+              setStatus(res.data.updatedAt ? 'Nothing new — every StockNetwork property matches one already in your hub.' : 'No sync has run yet, or nothing to show.');
+              tableWrap.style.display = 'none';
+              downloadBtn.style.display = 'none';
+              return;
+            }
+            currentItems.forEach(renderNewSnPropRow);
+            tableWrap.style.display = 'block';
+            downloadBtn.style.display = '';
+            var msg = currentItems.length + ' propert' + (currentItems.length === 1 ? 'y' : 'ies') + ' from StockNetwork ' + (currentItems.length === 1 ? 'isn’t' : 'aren’t') + ' in your hub yet.';
+            if(res.data.truncated) msg += ' Showing the first ' + currentItems.length + ' of ' + res.data.totalUnmatched + ' — import some of these and refresh to see more.';
+            setStatus(msg);
+          }).catch(function(){ loadBtn.disabled = false; setStatus('Request failed.', true); });
+        }
+
+        loadBtn.addEventListener('click', load);
+        downloadBtn.addEventListener('click', downloadNewSnPropsCsv);
+      })();
+
       // ---- Corrected StockNetwork file (Country / Area / City / Suburb from the hub) ----
       // Reads the admin's StockNetwork resort export in the browser, asks
       // map-api.js's exportLocations action what Country / Area (= hub zone,
@@ -10635,6 +10792,114 @@
             sub.textContent = p.area + (p.source === 'resort-list' ? ' \u00b7 StockNetwork' : '');
             content.appendChild(sub);
           }
+
+          // View/Edit (2026-10-03, Jean's "=" / "Build" request): every pin
+          // gets a row of action buttons under its name. "View on
+          // StockNetwork" just opens p.infoLink (already computed server
+          // side by toResortPin/toPropertyPin) in a new tab when present.
+          // "Edit" differs by pin source since the two datasets have
+          // completely different edit paths:
+          //  - onboarded ("Listed") pins already have a full edit modal
+          //    elsewhere in the hub (Property Listings tab) that can
+          //    change every field including location, so Edit just jumps
+          //    there and opens it for this exact listing.
+          //  - resort-list (bulk StockNetwork import) pins have NO
+          //    per-row edit UI anywhere else \u2014 by design, since most
+          //    fields only ever change via a full CSV re-upload. The one
+          //    thing worth fixing one row at a time is Zone/Town/Suburb
+          //    (same as the "StockNetwork location review" card), so
+          //    Edit here reveals a small inline tree-picker instead of
+          //    leaving the map with no fix path at all.
+          var actionsRow = document.createElement('div');
+          actionsRow.style.cssText = 'margin-top:6px; display:flex; gap:6px; flex-wrap:wrap;';
+          content.appendChild(actionsRow);
+
+          if(p.infoLink){
+            var viewLink = document.createElement('a');
+            viewLink.href = p.infoLink;
+            viewLink.target = '_blank';
+            viewLink.rel = 'noopener';
+            viewLink.className = 'btn-outline btn-small';
+            viewLink.style.textDecoration = 'none';
+            viewLink.textContent = p.source === 'resort-list' ? 'View on StockNetwork' : 'View listing info';
+            actionsRow.appendChild(viewLink);
+          }
+
+          var editBtn = document.createElement('button');
+          editBtn.type = 'button';
+          editBtn.className = 'btn-outline btn-small';
+          editBtn.textContent = 'Edit';
+          actionsRow.appendChild(editBtn);
+
+          if(p.source === 'resort-list'){
+            var editWrap = document.createElement('div');
+            editWrap.style.cssText = 'display:none; margin-top:8px; border-top:1px solid #e5e5e0; padding-top:8px;';
+            var editHint = document.createElement('div');
+            editHint.style.cssText = 'font-size:11.5px; color:#777; margin-bottom:4px;';
+            editHint.textContent = 'From StockNetwork\u2019s bulk import \u2014 only Zone/Town/Suburb can be fixed here. Other fields update via CSV re-upload.';
+            editWrap.appendChild(editHint);
+            var editSelect = document.createElement('select');
+            editSelect.style.cssText = 'width:100%; margin-bottom:6px;';
+            editSelect.innerHTML = '<option value="">Loading\u2026</option>';
+            editWrap.appendChild(editSelect);
+            var editStatus = document.createElement('div');
+            editStatus.style.cssText = 'font-size:11.5px; color:#777; margin-top:4px;';
+            editWrap.appendChild(editStatus);
+            var editSaveBtn = document.createElement('button');
+            editSaveBtn.type = 'button';
+            editSaveBtn.className = 'btn-outline btn-small';
+            editSaveBtn.textContent = 'Save location';
+            editSaveBtn.disabled = true; // enabled once the tree picker has real options — see populateLocationSelects().then() below
+            editWrap.appendChild(editSaveBtn);
+            content.appendChild(editWrap);
+
+            var editPopulated = false;
+            editBtn.addEventListener('click', function(){
+              var showing = editWrap.style.display !== 'none';
+              editWrap.style.display = showing ? 'none' : 'block';
+              if(!showing && !editPopulated){
+                editPopulated = true;
+                var tempId = 'mapEditLocSel_' + Math.random().toString(36).slice(2);
+                editSelect.id = tempId;
+                populateLocationSelects([tempId]).then(function(){
+                  applyLocationSelect(editSelect, { zone: p.zone || '', townId: p.townId || '', suburbId: p.suburbId || '' });
+                  editSaveBtn.disabled = false;
+                });
+              }
+              if(marker.getPopup()) marker.getPopup().update();
+            });
+            editSaveBtn.addEventListener('click', function(){
+              if(!p.resortId){
+                editStatus.textContent = 'Missing StockNetwork ResortID for this row \u2014 cannot save.';
+                return;
+              }
+              var loc = readLocationSelect(editSelect);
+              editStatus.textContent = 'Saving\u2026';
+              mapAdminPost('resolveStocknetworkLocation', {
+                resortId: p.resortId,
+                zone: loc.zone,
+                townId: loc.townId,
+                suburbId: loc.suburbId,
+                locationLabel: loc.locationLabel
+              }).then(function(res){
+                if(res.data && res.data.ok){
+                  editStatus.textContent = 'Saved \u2713';
+                  loadActivities();
+                } else {
+                  editStatus.textContent = (res.data && res.data.error) || 'Could not save.';
+                }
+              }).catch(function(){
+                editStatus.textContent = 'Could not save \u2014 check your connection and try again.';
+              });
+            });
+          } else {
+            editBtn.addEventListener('click', function(){
+              var tab = document.querySelector('.tab[data-panel="propertyListings"]');
+              if(tab) tab.click();
+              if(typeof window.openPropertyDetailsModal === 'function') window.openPropertyDetailsModal(p.listingId);
+            });
+          }
+
           var toggleBtn = document.createElement('button');
           toggleBtn.type = 'button';
           toggleBtn.className = 'btn-outline btn-small';
@@ -11155,6 +11420,7 @@
             renderMissingCoordsSummary(res.data.missingCoordinates || [], res.data.activities || []);
             renderNoZonePropsTable(res.data.properties || []);
             renderResortListStatus(res.data.resortStats || null);
+            loadMapOverviewStats(res.data);
           } else {
             actStatusEl.textContent = (res.data && res.data.error) || 'Could not load map data.';
             actStatusEl.className = 'status show';
@@ -11164,6 +11430,98 @@
           actStatusEl.className = 'status show';
         });
       }
+
+      // ---- Overview (dashboard) ----
+      // Jean's "holistic view" request (2026-10-03): one card at the top of
+      // Map & Activities showing every outstanding count in one place,
+      // instead of having to check "Properties with no zone," "Find & fix
+      // missing coordinates," "StockNetwork location review" etc.
+      // separately to know whether anything's left to do. Missing-coords
+      // and no-zone counts are computed from the same adminList response
+      // loadActivities() above already fetched (no extra request); the
+      // other four each reuse an existing list action, fired in parallel —
+      // stocknetworkReview is called with limit:1 since totalFlagged counts
+      // the full match regardless of how many rows are returned, so this
+      // costs nothing extra over the review card's own first load.
+      function setOverviewTile(btnId, count){
+        var btn = document.getElementById(btnId);
+        if(!btn) return;
+        var numEl = btn.querySelector('.num');
+        if(numEl) numEl.textContent = String(count);
+        btn.classList.toggle('outstanding', count > 0);
+      }
+
+      function loadMapOverviewStats(adminData){
+        var statusEl = document.getElementById('mapOverviewStatus');
+        var gridEl = document.getElementById('mapOverviewGrid');
+        var allClearEl = document.getElementById('mapOverviewAllClear');
+        if(!gridEl || !statusEl) return;
+        statusEl.textContent = 'Checking…';
+        statusEl.className = 'status show';
+
+        var missingListed = (adminData.missingCoordinates || []).length;
+        var stats = adminData.resortStats || {};
+        var missingResortList = Math.max(0, (stats.total || 0) - (stats.withCoordinates || 0));
+        var missingActivities = (adminData.activities || []).filter(function(a){
+          var lat = parseFloat(a.latitude), lng = parseFloat(a.longitude);
+          return !isFinite(lat) || !isFinite(lng);
+        }).length;
+        var missingCoordsTotal = missingListed + missingResortList + missingActivities;
+
+        var noZoneTotal = (adminData.properties || []).filter(function(p){
+          return typeof p.latitude === 'number' && typeof p.longitude === 'number' && !p.zone;
+        }).length;
+
+        Promise.all([
+          mapAdminPost('listPendingNewStockNetworkProperties', {}).catch(function(){ return null; }),
+          mapAdminPost('stocknetworkReview', { offset: 0, limit: 1 }).catch(function(){ return null; }),
+          mapAdminPost('listFlaggedInactiveProperties', {}).catch(function(){ return null; }),
+          mapAdminPost('listStockNetworkFieldFixes', {}).catch(function(){ return null; })
+        ]).then(function(results){
+          var newSn = results[0] && results[0].data && results[0].data.ok ? results[0].data.items.length : 0;
+          var snReview = results[1] && results[1].data && results[1].data.ok ? (results[1].data.totalFlagged || 0) : 0;
+          var inactive = results[2] && results[2].data && results[2].data.ok ? results[2].data.items.length : 0;
+          var fieldFix = results[3] && results[3].data && results[3].data.ok ? results[3].data.items.length : 0;
+
+          setOverviewTile('mapOverviewNewSn', newSn);
+          setOverviewTile('mapOverviewMissingCoords', missingCoordsTotal);
+          setOverviewTile('mapOverviewNoZone', noZoneTotal);
+          setOverviewTile('mapOverviewSnReview', snReview);
+          setOverviewTile('mapOverviewInactive', inactive);
+          setOverviewTile('mapOverviewFieldFix', fieldFix);
+
+          statusEl.textContent = '';
+          statusEl.className = 'status';
+          var total = newSn + missingCoordsTotal + noZoneTotal + snReview + inactive + fieldFix;
+          gridEl.style.display = total === 0 ? 'none' : '';
+          allClearEl.style.display = total === 0 ? 'block' : 'none';
+        }).catch(function(){
+          statusEl.textContent = 'Could not load the overview — the cards below still work individually.';
+          statusEl.className = 'status show';
+        });
+      }
+
+      // Refreshing the overview after something elsewhere changes a count
+      // (a new StockNetwork property dismissed, a flag cleared, etc.) just
+      // means calling loadActivities() again — it already re-fetches
+      // adminList and calls loadMapOverviewStats with the real numbers, so
+      // there's no separate lightweight refresh path to keep in sync here.
+      window.refreshMapOverview = loadActivities;
+
+      (function(){
+        var tileTargets = {
+          mapOverviewNewSn: 'map-jump-new-sn-properties',
+          mapOverviewMissingCoords: 'map-jump-master',
+          mapOverviewNoZone: 'map-jump-no-zone',
+          mapOverviewSnReview: 'map-jump-sn-review',
+          mapOverviewInactive: 'map-jump-find-fix-coords',
+          mapOverviewFieldFix: 'map-jump-sn-review'
+        };
+        Object.keys(tileTargets).forEach(function(id){
+          var btn = document.getElementById(id);
+          if(btn) btn.addEventListener('click', function(){ window.jumpToStep(tileTargets[id]); });
+        });
+      })();
 
       document.getElementById('saveActivityBtn').addEventListener('click', function(){
         var name = nameInput.value.trim();
