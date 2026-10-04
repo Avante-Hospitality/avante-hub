@@ -421,6 +421,13 @@ function sanitizeTown(body, existing) {
   if (typeof body.zone === "string") {
     record.zone = okZone(body.zone);
   }
+  // country (2026-10-04, Jean's request): a town with a blank country is
+  // silently treated as South Africa everywhere (townCountry()), so a town
+  // whose coordinate is really elsewhere — or just wrongly entered — could
+  // never be corrected from the admin page. Now editable.
+  if (typeof body.country === "string") {
+    record.country = clean(body.country, 120);
+  }
   // affId: which affiliate this town is allocated to. Empty string means
   // shared/unallocated — every affiliate's Explore Map and area-hook
   // picker can use it. Not validated against the affiliate-profiles store
@@ -456,6 +463,7 @@ function toTownPin(record) {
     area: record.area || "",
     zone: townZone(record),
     country: record.country || "South Africa",
+    countrySet: !!record.country,
     affId: record.affId || "",
     description: (record.description || "").slice(0, 400),
     photo: photos[0] || "",
@@ -2109,6 +2117,19 @@ export default async (request, context) => {
         rec.zone = body.zone ? okZone(body.zone) : "";
         rec.townId = typeof body.townId === "string" ? body.townId : "";
         rec.suburbId = typeof body.suburbId === "string" ? body.suburbId : "";
+        // Picking a Town/Suburb from the tree used to leave the zone blank
+        // and the country untouched (the picker only encodes a zone for a
+        // zone-level pick). Now the chosen town's own zone and country are
+        // copied across — unless a country was typed explicitly above, or
+        // a zone was sent explicitly, which win (Jean 2026-10-04).
+        if (rec.townId) {
+          const pickedTowns = await loadTowns(townsStore);
+          const picked = pickedTowns.find((t) => t.id === rec.townId);
+          if (picked) {
+            if (!body.zone) rec.zone = okZone(townZone(picked)) || rec.zone;
+            if (!(typeof body.country === "string" && body.country.trim())) rec.country = townCountry(picked);
+          }
+        }
         rec.locationLabel = typeof body.locationLabel === "string" ? clean(body.locationLabel, 200) : "";
         rec.nearby = false;
         rec.locV = LOCATION_TAG_VERSION;
@@ -2388,6 +2409,26 @@ export default async (request, context) => {
       return json({ ok: true, marked });
     }
 
+    if (action === "lookupCoordinateInfo") {
+      // Read-only (2026-10-04): works out the country and (for South Africa)
+      // zone for a pasted coordinate, so the town edit popup can fill its
+      // Country/Zone fields for a person to review before saving. Writes
+      // nothing and never creates a town.
+      const lat = parseFloat(body.lat), lng = parseFloat(body.lng);
+      if (!isFinite(lat) || !isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+        return json({ error: "Missing or invalid lat/lng." }, 400);
+      }
+      const apiKey = Deno.env.get("GOOGLE_GEOCODING_API_KEY") || "";
+      const geoCacheStore = getStore({ name: "map-geocache", consistency: "strong" });
+      const geo = apiKey ? await cachedReverseGeocode(geoCacheStore, lat, lng, apiKey) : null;
+      const at = locateZone(lat, lng);
+      const onLand = at.km <= 4;
+      const country = geo && geo.ok && geo.country ? geo.country : (onLand ? SA_NAME : "");
+      let zone = "";
+      if (country === SA_NAME) zone = onLand ? (at.zone || "") : (districtToZone(geo && geo.ok ? geo.town : "") || provinceToZone(geo && geo.ok ? geo.province : "") || "");
+      return json({ ok: true, country, zone, townName: geo && geo.ok ? (geo.town || "") : "", usedGoogle: !!(geo && geo.ok) });
+    }
+
     if (action === "searchPropertyPlaces") {
       // Case C step 2: given a name (+ whatever area/city/country text the
       // admin page appended to disambiguate), search worldwide via Google
@@ -2438,10 +2479,16 @@ export default async (request, context) => {
         return json({ ok: true, placed: !!result, locationLabel: rec.locationLabel || "" });
       }
 
-      const index = parseInt(body.index, 10);
-      if (!isFinite(index) || index < 0) return json({ error: "Missing or invalid index." }, 400);
       const resortRecord = await resortListStore.get("current", { type: "json" });
       const resortList = (resortRecord && Array.isArray(resortRecord.resorts)) ? resortRecord.resorts : [];
+      // index (review/Find&fix cards) or resortId (map popup, 2026-10-04).
+      let index = parseInt(body.index, 10);
+      if (!isFinite(index) || index < 0) {
+        const resortId = typeof body.resortId === "string" ? body.resortId.trim() : "";
+        if (!resortId) return json({ error: "Missing index or resortId." }, 400);
+        index = resortList.findIndex((r) => r && String(r.resortId || "") === resortId);
+        if (index < 0) return json({ error: "Property not found — the list may have changed, refresh and try again." }, 404);
+      }
       const rec = resortList[index];
       if (!rec) return json({ error: "Property not found — the list may have changed, refresh and try again." }, 404);
       rec.latitude = String(lat);
