@@ -1701,23 +1701,9 @@
         <div class="btn-row" style="flex-wrap:wrap; gap:10px;">
           <div><label for="townNameInput">Town name</label><input id="townNameInput" placeholder="e.g. Hermanus"></div>
           <div><label for="townAreaInput">Area (optional)</label><input id="townAreaInput" placeholder="e.g. Cape Whale Coast"></div>
-          <div><label for="townCountryInput">Country</label><input id="townCountryInput" placeholder="blank = treated as South Africa"></div>
-          <div><label for="townZoneInput">Zone (optional)</label>
-            <select id="townZoneInput">
-              <option value="">— No zone —</option>
-              <option value="Cape Town">Cape Town</option>
-              <option value="Winelands">Winelands</option>
-              <option value="West Coast &amp; Overberg">West Coast &amp; Overberg</option>
-              <option value="Garden Route">Garden Route</option>
-              <option value="Eastern Cape">Eastern Cape</option>
-              <option value="Northern Cape">Northern Cape</option>
-              <option value="Free State">Free State</option>
-              <option value="KwaZulu-Natal">KwaZulu-Natal</option>
-              <option value="Gauteng">Gauteng</option>
-              <option value="North West">North West</option>
-              <option value="Mpumalanga">Mpumalanga</option>
-              <option value="Limpopo">Limpopo</option>
-            </select>
+          <div style="flex:1 1 280px; min-width:260px;">
+            <label style="display:block;">Location (Country &rsaquo; Zone)</label>
+            <div id="townLocationPickerHost"></div>
           </div>
           <div><label for="townAffInput">Allocate to affiliate (optional)</label>
             <select id="townAffInput">
@@ -7616,8 +7602,18 @@
       var townIdInput = document.getElementById('townIdInput');
       var townNameInput = document.getElementById('townNameInput');
       var townAreaInput = document.getElementById('townAreaInput');
-      var townCountryInput = document.getElementById('townCountryInput');
-      var townZoneInput = document.getElementById('townZoneInput');
+      // Country > Zone picker (2026-10-04) replaces the old free-typed Country
+      // box and the fixed 12-zone dropdown: a town can only be saved with a
+      // Country/Zone that's in the tree (or one just added and saved via the
+      // picker itself). Save is blocked while a new level is unsaved.
+      var saveTownBtnEl = document.getElementById('saveTownBtn');
+      var townFormPicker = createLocationPicker({
+        levels: ['country', 'zone'],
+        onChange: function(){
+          if(saveTownBtnEl && townFormPicker) saveTownBtnEl.disabled = townFormPicker.hasPending();
+        }
+      });
+      document.getElementById('townLocationPickerHost').appendChild(townFormPicker.el);
       var townAffInput = document.getElementById('townAffInput');
       var townLatInput = document.getElementById('townLatInput');
       var townLngInput = document.getElementById('townLngInput');
@@ -7778,8 +7774,7 @@
         townIdInput.value = '';
         townNameInput.value = '';
         townAreaInput.value = '';
-        townCountryInput.value = '';
-        townZoneInput.value = '';
+        townFormPicker.setValue({});
         townAffInput.value = '';
         townLatInput.value = '';
         townLngInput.value = '';
@@ -7977,16 +7972,7 @@
             townIdInput.value = t.id;
             townNameInput.value = t.name || '';
             townAreaInput.value = t.area || '';
-            townCountryInput.value = t.country || '';
-            // Zones outside South Africa are created automatically (a province/region
-        // per country), so the fixed list may not have this town's zone yet.
-        if(t.zone && !Array.prototype.some.call(townZoneInput.options, function(o){ return o.value === t.zone; })){
-          var extraZoneOpt = document.createElement('option');
-          extraZoneOpt.value = t.zone;
-          extraZoneOpt.textContent = t.zone;
-          townZoneInput.appendChild(extraZoneOpt);
-        }
-        townZoneInput.value = t.zone || '';
+            townFormPicker.setValue({ country: t.country || '', zone: t.zone || '' });
             if(!townAffOptionsPopulated){ populateTownAffiliateOptions(); townAffOptionsPopulated = true; }
             townAffInput.value = t.affId || '';
             townLatInput.value = t.latitude || '';
@@ -8096,11 +8082,16 @@
           townFormStatusEl.className = 'status show';
           return;
         }
+        if(townFormPicker.hasPending()){
+          townFormStatusEl.textContent = 'Save the new Country/Zone shown in amber first (press its Save button), then save the town.';
+          townFormStatusEl.className = 'status show';
+          return;
+        }
         var payload = {
           name: name,
           area: townAreaInput.value.trim(),
-          country: townCountryInput.value.trim(),
-          zone: townZoneInput.value,
+          country: townFormPicker.getValue().country,
+          zone: townFormPicker.getValue().zone,
           affId: townAffInput.value,
           latitude: townLatInput.value.trim(),
           longitude: townLngInput.value.trim(),
@@ -9619,7 +9610,7 @@
             '<td>' +
               coordBlockHtml +
               '<div class="btn-row" style="margin:0 0 6px;">' + acceptCountryBtn + '</div>' +
-              '<select id="' + selectIdFor(f.index) + '" style="width:100%; max-width:260px;"></select> ' +
+              '<div class="sn-loc-picker-host" style="max-width:280px;"></div>' +
               '<button type="button" class="primary btn-small" data-act="save" style="margin-top:6px;">Save</button>' +
               '<div class="status" style="margin-top:6px;"></div>' +
               snFixHtml +
@@ -9628,6 +9619,23 @@
 
           var rowStatusEl = tr.querySelector('.status');
           function setRowStatus(t, isError){ rowStatusEl.textContent = t; rowStatusEl.className = 'status show' + (isError ? '' : ' ok'); }
+
+          // Country > Zone > Town > Suburb picker (2026-10-04) replaces the
+          // old single tree dropdown here, pre-filled with the hub's current
+          // placement. Save is blocked while a new level is typed but not yet
+          // saved to the tree.
+          var rowSaved = false;
+          var saveBtnRef = null;
+          var rowPicker = createLocationPicker({
+            levels: ['country', 'zone', 'town', 'suburb'],
+            defaultLat: parseFloat(f.latitude),
+            defaultLng: parseFloat(f.longitude),
+            onChange: function(){
+              if(saveBtnRef && !rowSaved) saveBtnRef.disabled = rowPicker ? rowPicker.hasPending() : false;
+            }
+          });
+          tr.querySelector('.sn-loc-picker-host').appendChild(rowPicker.el);
+          rowPicker.setValue({ country: f.hubCountry || '', zone: f.hubZone || '', townId: f.hubTownId || '', suburbId: f.hubSuburbId || '' });
 
           var snFixTreeSel = document.getElementById(snFixTreeSelectIdFor(f.index));
           if(snFixTreeSel){
@@ -9679,16 +9687,17 @@
           }
 
           var saveBtn = tr.querySelector('[data-act="save"]');
+          saveBtnRef = saveBtn;
+          saveBtn.disabled = rowPicker.hasPending();
           var saveBtnLabel = saveBtn.textContent;
           saveBtn.addEventListener('click', function(){
-            var sel = document.getElementById(selectIdFor(f.index));
-            var loc = readLocationSelect(sel);
+            var loc = rowPicker.getValue();
             var districtVal = (tr.querySelector('.sn-fix-district') || {}).value || '';
             var city2Val = (tr.querySelector('.sn-fix-city2') || {}).value || '';
             var stateVal = (tr.querySelector('.sn-fix-state') || {}).value || '';
             var noteVal = (tr.querySelector('.sn-fix-note') || {}).value || '';
             var hasFixFields = !!(districtVal.trim() || city2Val.trim() || stateVal.trim() || noteVal.trim());
-            var hasTreePick = !!(loc.zone || loc.townId || loc.suburbId);
+            var hasTreePick = rowPicker.isChanged() && !!loc.country;
             // A tree pick and the District/City2/State fields are now
             // independent — picking the hub's own Town/Suburb/Area fixes
             // the hub's placement; filling in District/City2/State (which
@@ -9697,13 +9706,18 @@
             // own is a valid Save; needing both would block the common case
             // of the hub's placement already being right while only
             // StockNetwork's search fields are wrong.
-            if(!hasTreePick && !hasFixFields){ setRowStatus('Pick a Town, Suburb or Area, or fill in a StockNetwork field to fix, first.', true); return; }
+            if(!hasTreePick && !hasFixFields){ setRowStatus('Change the location (Country down to Suburb), or fill in a StockNetwork field to fix, first.', true); return; }
             saveBtn.disabled = true;
             saveBtn.textContent = 'Saving…';
             setRowStatus('Saving…');
 
             var hubSave = hasTreePick
-              ? mapAdminPost('resolveStocknetworkLocation', { index: f.index, zone: loc.zone, townId: loc.townId, suburbId: loc.suburbId, locationLabel: loc.locationLabel })
+              ? mapAdminPost('resolveStocknetworkLocation', {
+                  index: f.index, country: loc.country, zone: loc.zone, townId: loc.townId, suburbId: loc.suburbId, locationLabel: loc.locationLabel,
+                  // A country-only result that CHANGES the country makes the old zone/town tag stale, so clear it; a
+                  // country-only result that matches what's already there must not wipe a valid tag.
+                  clearLocation: !loc.zone && !loc.townId && loc.country !== (f.hubCountry || '')
+                })
               : Promise.resolve({ data: { ok: true, skipped: true } });
             var fixSave = hasFixFields
               ? mapAdminPost('flagStockNetworkFieldFix', { index: f.index, district: districtVal, city2: city2Val, state: stateVal, note: noteVal })
@@ -9718,6 +9732,7 @@
                 if(hasTreePick) parts.push('hub location updated');
                 if(hasFixFields) parts.push('flagged for StockNetwork to fix District/City2/State');
                 saveBtn.textContent = 'Saved ✓';
+                rowSaved = true;
                 setRowStatus('Saved — ' + parts.join(', ') + '.');
                 tr.style.opacity = '0.55';
                 savedCount++;
@@ -9750,7 +9765,7 @@
             newRows.forEach(renderRow);
             rowsShown += newRows.length;
             offset = d.offset + newRows.length;
-            var pendingSelectIds = newRows.map(function(f){ return selectIdFor(f.index); });
+            var pendingSelectIds = [];
             var pendingTreeFixSelectIds = newRows.map(function(f){ return snFixTreeSelectIdFor(f.index); });
             populateLocationSelects(pendingSelectIds.concat(pendingTreeFixSelectIds)).then(function(){
               // populateLocationSelects stamps the one shared tree-options
@@ -10659,31 +10674,6 @@
         a.textContent = label || 'Open in Google Maps';
         return a;
       }
-      // One shared <datalist> of known countries, so any popup's Country
-      // field can suggest them while still accepting anything typed.
-      function ensureCountryDatalist(towns){
-        var dl = document.getElementById('mapCountryList');
-        if(!dl){
-          dl = document.createElement('datalist');
-          dl.id = 'mapCountryList';
-          document.body.appendChild(dl);
-        }
-        var seen = { 'South Africa': true };
-        (towns || []).forEach(function(t){ if(t && t.country) seen[t.country] = true; });
-        dl.innerHTML = Object.keys(seen).sort().map(function(c){ return '<option value="' + escapeHtml(c) + '">'; }).join('');
-      }
-      function makeZoneSelect(current){
-        var sel = document.createElement('select');
-        sel.style.cssText = 'width:100%; margin-bottom:6px;';
-        var html = '<option value="">\u2014 No zone / not in list \u2014</option>';
-        var list = MAP_ZONES.slice();
-        if(current && list.indexOf(current) === -1) list.push(current);
-        list.forEach(function(z){
-          html += '<option value="' + escapeHtml(z) + '"' + (z === current ? ' selected' : '') + '>' + escapeHtml(z) + '</option>';
-        });
-        sel.innerHTML = html;
-        return sel;
-      }
       function labelledInput(wrap, labelText, input){
         var l = document.createElement('div');
         l.style.cssText = 'font-size:11px; color:#777; margin:4px 0 1px;';
@@ -10691,6 +10681,285 @@
         wrap.appendChild(l);
         wrap.appendChild(input);
         return input;
+      }
+
+      // ---- Country > Zone > Town > Suburb picker (2026-10-04, Jean's request) ----
+      // One reusable control for the map popups. Each level only offers what
+      // belongs under the level above it, and a level stays locked until the
+      // one above it is actually in the tree: if it isn't, the person adds it
+      // ("Not in the list") and presses Save on that level first. Picking a
+      // Town/Suburb from the shortcut box fills everything above it. Countries
+      // and Zones with no town yet live in map-api.js's map-location-lists
+      // store (addLocationValue); Towns/Suburbs use the existing
+      // addTown/addSuburb. Reads the full town list from lastMapTowns (NOT the
+      // filtered list renderAdminMap is sometimes given).
+      var lastMapLocationLists = { countries: [], zones: [] };
+      var locationPickerSeq = 0;
+      var locationDataVersion = 0;   // bumped whenever the tree changes, so the shared search list rebuilds
+      var findListStamp = '';
+      function locLists(){ return lastMapLocationLists || { countries: [], zones: [] }; }
+
+      // ONE shared <datalist> of every Town/Suburb for all pickers' "jump
+      // straight to" box (not one per picker — a page can hold a hundred
+      // pickers). Rebuilt only when the tree has changed.
+      function ensureFindDatalist(){
+        var towns = lastMapTowns || [];
+        var stamp = locationDataVersion + ':' + towns.length;
+        var dl = document.getElementById('mapLocPickFind');
+        if(dl && stamp === findListStamp) return;
+        if(!dl){
+          dl = document.createElement('datalist');
+          dl.id = 'mapLocPickFind';
+          document.body.appendChild(dl);
+        }
+        var html = '';
+        towns.forEach(function(t){
+          var tc = t.country || 'South Africa';
+          html += '<option value="' + escapeHtml((t.name || '') + ' \u2014 ' + (t.zone || 'no zone') + ', ' + tc) + '">';
+          (t.suburbs || []).forEach(function(sb){
+            html += '<option value="' + escapeHtml((sb.name || '') + ' \u2014 ' + (t.name || '') + ', ' + (t.zone || 'no zone') + ', ' + tc) + '">';
+          });
+        });
+        dl.innerHTML = html;
+        findListStamp = stamp;
+      }
+
+      function createLocationPicker(cfg){
+        var SA = 'South Africa';
+        var ORDER = ['country', 'zone', 'town', 'suburb'];
+        var LABELS = { country: 'Country', zone: 'Zone', town: 'Town', suburb: 'Suburb' };
+        var levels = ORDER.filter(function(l){ return !cfg.levels || cfg.levels.indexOf(l) !== -1; });
+        var S = {};
+        var snapshot = '';
+        var uid = ++locationPickerSeq;
+        var wrap = document.createElement('div');
+        wrap.style.cssText = 'min-width:250px;';
+        var api = { el: wrap, onChange: cfg.onChange || function(){} };
+
+        function blankState(){ ORDER.forEach(function(l){ S[l] = { value: '', id: '', isNew: false, adding: false, busy: false, error: '' }; }); }
+        blankState();
+
+        function tAll(){ return lastMapTowns || []; }
+        function tCountry(t){ return t.country || SA; }
+        function countryList(){
+          var set = {}; set[SA] = true;
+          tAll().forEach(function(t){ set[tCountry(t)] = true; });
+          (locLists().countries || []).forEach(function(c){ if(c) set[c] = true; });
+          (locLists().zones || []).forEach(function(z){ if(z && z.country) set[z.country] = true; });
+          return Object.keys(set).sort(function(a, b){ if(a === SA) return -1; if(b === SA) return 1; return a.localeCompare(b); });
+        }
+        function zoneList(country){
+          var out = [], seen = {};
+          function add(z){ if(z && !seen[z]){ seen[z] = true; out.push(z); } }
+          if(country === SA) (MAP_ZONES || []).forEach(add);
+          var extra = [];
+          tAll().forEach(function(t){ if(tCountry(t) === country && t.zone && !seen[t.zone]){ seen[t.zone] = true; extra.push(t.zone); } });
+          (locLists().zones || []).forEach(function(z){ if(z && z.country === country && z.name && !seen[z.name]){ seen[z.name] = true; extra.push(z.name); } });
+          extra.sort();
+          return out.concat(extra);
+        }
+        function townList(country, zone){
+          return tAll().filter(function(t){ return tCountry(t) === country && (t.zone || '') === zone; })
+            .sort(function(a, b){ return (a.name || '').localeCompare(b.name || ''); });
+        }
+        function townById(id){ return tAll().filter(function(t){ return t.id === id; })[0] || null; }
+
+        function saved(l){ return !!S[l].value && !S[l].isNew; }
+        function parentOk(l){
+          var i = levels.indexOf(l);
+          return i <= 0 || saved(levels[i - 1]);
+        }
+        function resetBelow(l){
+          for(var i = ORDER.indexOf(l) + 1; i < ORDER.length; i++){
+            S[ORDER[i]] = { value: '', id: '', isNew: false, adding: false, busy: false, error: '' };
+          }
+        }
+        function keyNow(){ return [S.country.value, S.zone.value, S.town.id, S.suburb.id].join('|'); }
+
+        api.refresh = function(){ render(); };
+        api.hasPending = function(){
+          return levels.some(function(l){ return S[l].isNew || S[l].adding; });
+        };
+        api.isChanged = function(){ return keyNow() !== snapshot; };
+        api.getValue = function(){
+          var label = '';
+          if(S.suburb.value && S.town.value) label = S.suburb.value + ', ' + S.town.value;
+          else if(S.town.value) label = S.town.value;
+          return { country: S.country.value, zone: S.zone.value, townId: S.town.id, suburbId: S.suburb.id, locationLabel: label };
+        };
+        // keepSnapshot true = treat what's being set as an edit (isChanged stays true).
+        api.setValue = function(v, keepSnapshot){
+          v = v || {};
+          blankState();
+          var t = v.townId ? townById(v.townId) : null;
+          var country = v.country || (t ? tCountry(t) : '');
+          var zone = v.zone || (t ? (t.zone || '') : '');
+          if(!country && zone && MAP_ZONES.indexOf(zone) !== -1) country = SA;
+          if(country){
+            S.country.value = country;
+            S.country.isNew = countryList().indexOf(country) === -1;
+            if(zone && levels.indexOf('zone') !== -1){
+              S.zone.value = zone;
+              S.zone.isNew = S.country.isNew || zoneList(country).indexOf(zone) === -1;
+            }
+          }
+          if(t && levels.indexOf('town') !== -1 && S.zone.value && !S.zone.isNew){
+            S.town.value = t.name || '';
+            S.town.id = t.id;
+            if(v.suburbId && levels.indexOf('suburb') !== -1){
+              var sb = (t.suburbs || []).filter(function(x){ return x.id === v.suburbId; })[0];
+              if(sb){ S.suburb.value = sb.name || ''; S.suburb.id = sb.id; }
+            }
+          }
+          if(!keepSnapshot) snapshot = keyNow();
+          render();
+        };
+
+        function post(action, body){ return mapAdminPost(action, body); }
+        function refreshTreeCaches(){ if(typeof invalidateLocationTreeCache === 'function') invalidateLocationTreeCache(); }
+
+        function saveLevel(l){
+          var s = S[l];
+          s.busy = true; s.error = '';
+          render();
+          var p;
+          if(l === 'country'){
+            p = post('addLocationValue', { kind: 'country', name: s.value }).then(function(res){
+              if(!res.data || !res.data.ok) throw new Error((res.data && res.data.error) || 'Could not save.');
+              lastMapLocationLists = { countries: res.data.countries || [], zones: res.data.zones || [] };
+            });
+          } else if(l === 'zone'){
+            p = post('addLocationValue', { kind: 'zone', country: S.country.value, name: s.value }).then(function(res){
+              if(!res.data || !res.data.ok) throw new Error((res.data && res.data.error) || 'Could not save.');
+              lastMapLocationLists = { countries: res.data.countries || [], zones: res.data.zones || [] };
+            });
+          } else if(l === 'town'){
+            var tb = { name: s.value, zone: S.zone.value, country: S.country.value };
+            if(isFinite(cfg.defaultLat) && isFinite(cfg.defaultLng)){ tb.latitude = String(cfg.defaultLat); tb.longitude = String(cfg.defaultLng); }
+            p = post('addTown', tb).then(function(res){
+              if(!res.data || !res.data.ok || !res.data.town) throw new Error((res.data && res.data.error) || 'Could not save.');
+              lastMapTowns.push(res.data.town);
+              s.id = res.data.town.id;
+            });
+          } else {
+            var sbBody = { townId: S.town.id, name: s.value };
+            if(isFinite(cfg.defaultLat) && isFinite(cfg.defaultLng)){ sbBody.latitude = String(cfg.defaultLat); sbBody.longitude = String(cfg.defaultLng); }
+            p = post('addSuburb', sbBody).then(function(res){
+              if(!res.data || !res.data.ok || !res.data.town) throw new Error((res.data && res.data.error) || 'Could not save.');
+              for(var i = 0; i < lastMapTowns.length; i++){ if(lastMapTowns[i].id === res.data.town.id){ lastMapTowns[i] = res.data.town; } }
+              var subs = res.data.town.suburbs || [];
+              for(var j = subs.length - 1; j >= 0; j--){ if(subs[j].name === s.value){ s.id = subs[j].id; break; } }
+            });
+          }
+          p.then(function(){
+            s.busy = false; s.isNew = false; s.adding = false;
+            locationDataVersion++;
+            refreshTreeCaches();
+            render();
+          }).catch(function(err){
+            s.busy = false;
+            s.error = (err && err.message) || 'Could not save — try again.';
+            render();
+          });
+        }
+
+        function render(){
+          var html = '';
+          html += '<div style="font-size:11px; color:#777; margin:0 0 2px;">Jump straight to a Town or Suburb</div>';
+          if(levels.indexOf('town') !== -1){
+            ensureFindDatalist();
+            html += '<input type="text" data-find="1" list="mapLocPickFind" placeholder="e.g. Cap Malheureux" style="width:100%; box-sizing:border-box; margin-bottom:2px;">';
+            html += '<div style="font-size:11px; color:#777; margin-bottom:4px;">Fills in its Zone and Country for you.</div>';
+          }
+          levels.forEach(function(l){
+            var s = S[l], ok = parentOk(l);
+            var badge;
+            if(!ok) badge = '<span style="font-size:10.5px; color:#999;">Locked</span>';
+            else if(s.isNew || s.adding) badge = '<span style="font-size:10.5px; font-weight:700; color:#b7791f;">New — not saved yet</span>';
+            else if(s.value) badge = '<span style="font-size:10.5px; font-weight:700; color:#0e8f7e;">In the tree ✓</span>';
+            else badge = '<span style="font-size:10.5px; color:#999;">Choose one</span>';
+            html += '<div style="display:flex; justify-content:space-between; align-items:center; font-size:11px; font-weight:700; letter-spacing:.03em; text-transform:uppercase; color:#777; margin:8px 0 2px;"><span>' + LABELS[l] + '</span>' + badge + '</div>';
+
+            var opts = '<option value="">' + (ok ? '— Choose a ' + LABELS[l].toLowerCase() + ' —' : '— locked —') + '</option>';
+            var list = [];
+            if(ok){
+              if(l === 'country') list = countryList().map(function(c){ return { v: c, t: c }; });
+              else if(l === 'zone') list = zoneList(S.country.value).map(function(z){ return { v: z, t: z }; });
+              else if(l === 'town') list = townList(S.country.value, S.zone.value).map(function(t){ return { v: t.id, t: t.name || '' }; });
+              else {
+                var tt = townById(S.town.id);
+                list = ((tt && tt.suburbs) || []).slice().sort(function(a, b){ return (a.name || '').localeCompare(b.name || ''); }).map(function(sb){ return { v: sb.id, t: sb.name || '' }; });
+              }
+            }
+            var curVal = (l === 'town' || l === 'suburb') ? S[l].id : S[l].value;
+            list.forEach(function(o){ opts += '<option value="' + escapeHtml(o.v) + '"' + (!s.isNew && !s.adding && o.v === curVal ? ' selected' : '') + '>' + escapeHtml(o.t) + '</option>'; });
+            if(ok) opts += '<option value="__add__"' + (s.adding || s.isNew ? ' selected' : '') + '>＋ Not in the list — add a new ' + LABELS[l].toLowerCase() + '…</option>';
+            html += '<select data-l="' + l + '" style="width:100%; box-sizing:border-box;"' + (ok ? '' : ' disabled') + '>' + opts + '</select>';
+
+            if(!ok){
+              html += '<div style="font-size:11px; color:#b7791f; margin-top:2px;">Save the ' + LABELS[levels[levels.indexOf(l) - 1]] + ' first.</div>';
+            } else if(l === 'zone' && S.country.value && S.country.value !== SA && !S.country.isNew){
+              html += '<div style="font-size:11px; color:#777; margin-top:2px;">Showing ' + escapeHtml(S.country.value) + '’s own zones.</div>';
+            }
+            if(s.adding || s.isNew){
+              html += '<div style="display:flex; gap:6px; margin-top:5px;">' +
+                '<input type="text" data-add="' + l + '" placeholder="Type the new ' + LABELS[l].toLowerCase() + ' name" value="' + escapeHtml(s.isNew ? s.value : '') + '"' + (s.isNew || s.busy ? ' disabled' : '') + ' style="flex:1; min-width:0; box-sizing:border-box;">' +
+                (s.isNew
+                  ? '<button type="button" class="btn-outline btn-small" data-save="' + l + '"' + (s.busy ? ' disabled' : '') + '>' + (s.busy ? 'Saving…' : 'Save ' + LABELS[l]) + '</button>'
+                  : '<button type="button" class="btn-outline btn-small" data-use="' + l + '">Use name</button>') + '</div>';
+              html += '<div style="font-size:11px; color:' + (s.error ? '#b3402a' : '#b7791f') + '; margin-top:2px;">' + escapeHtml(s.error || (s.isNew ? 'Press “Save ' + LABELS[l] + '” to add it to the tree. Levels below stay locked until then.' : 'Type the name, then press “Use name”.')) + '</div>';
+            }
+          });
+          wrap.innerHTML = html;
+          api.onChange();
+        }
+
+        wrap.addEventListener('change', function(e){
+          var f = e.target.getAttribute('data-find');
+          if(f){
+            var name = e.target.value.split(' — ')[0].trim();
+            var hitT = null, hitS = '';
+            tAll().forEach(function(t){
+              if(t.name === name && !hitT) hitT = t;
+              (t.suburbs || []).forEach(function(sb){ if(sb.name === name && !hitT){ hitT = t; hitS = sb.id; } });
+            });
+            if(hitT) api.setValue({ country: tCountry(hitT), zone: hitT.zone || '', townId: hitT.id, suburbId: hitS }, true);
+            e.target.value = '';
+            return;
+          }
+          var l = e.target.getAttribute('data-l');
+          if(!l) return;
+          var v = e.target.value;
+          resetBelow(l);
+          if(v === '__add__'){
+            S[l] = { value: '', id: '', isNew: false, adding: true, busy: false, error: '' };
+          } else if(l === 'town'){
+            var tw = townById(v);
+            S.town = { value: tw ? (tw.name || '') : '', id: v, isNew: false, adding: false, busy: false, error: '' };
+          } else if(l === 'suburb'){
+            var tt2 = townById(S.town.id);
+            var sb2 = tt2 ? (tt2.suburbs || []).filter(function(x){ return x.id === v; })[0] : null;
+            S.suburb = { value: sb2 ? (sb2.name || '') : '', id: v, isNew: false, adding: false, busy: false, error: '' };
+          } else {
+            S[l] = { value: v, id: '', isNew: false, adding: false, busy: false, error: '' };
+          }
+          render();
+        });
+        wrap.addEventListener('click', function(e){
+          var use = e.target.getAttribute('data-use'), sv = e.target.getAttribute('data-save');
+          if(use){
+            var inp = wrap.querySelector('[data-add="' + use + '"]');
+            var nm = inp ? inp.value.trim() : '';
+            if(!nm){ S[use].error = 'Type a name first.'; render(); return; }
+            resetBelow(use);
+            S[use] = { value: nm, id: '', isNew: true, adding: false, busy: false, error: '' };
+            render();
+          }
+          if(sv) saveLevel(sv);
+        });
+
+        render();
+        return api;
       }
 
       function dotIcon(color){
@@ -10868,7 +11137,6 @@
       function renderAdminMap(properties, activities, towns){
         initAdminMap();
         if(!adminLeafletMap) return;
-        ensureCountryDatalist(towns);
         if(adminClusterGroup) adminLeafletMap.removeLayer(adminClusterGroup);
         adminClusterGroup = L.markerClusterGroup({ maxClusterRadius: 50 });
 
@@ -11011,72 +11279,63 @@
             editWrap.style.cssText = 'display:none; margin-top:8px; border-top:1px solid #e5e5e0; padding-top:8px;';
             var editHint = document.createElement('div');
             editHint.style.cssText = 'font-size:11.5px; color:#777; margin-bottom:4px;';
-            editHint.textContent = 'From StockNetwork\u2019s bulk import. Pick the correct place from the location tree, and/or type corrected District / City2 / State to send to StockNetwork. Everything else updates via CSV re-upload.';
+            editHint.textContent = 'From StockNetwork’s bulk import. Set the place from Country down to Suburb, and/or type corrected District / City2 / State to send to StockNetwork. Everything else updates via CSV re-upload.';
             editWrap.appendChild(editHint);
-            var editSelect = document.createElement('select');
-            editSelect.style.cssText = 'width:100%; margin-bottom:6px;';
-            editSelect.innerHTML = '<option value="">Loading\u2026</option>';
-            editWrap.appendChild(editSelect);
-            var editTreeNote = document.createElement('div');
-            editTreeNote.style.cssText = 'font-size:11px; color:#777; margin:-2px 0 4px;';
-            editTreeNote.textContent = 'Picking a Town/Suburb fills its Zone and Country automatically. If it isn\u2019t in the tree, type the Country and choose the Zone below.';
-            editWrap.appendChild(editTreeNote);
-            var editCountry = document.createElement('input');
-            editCountry.type = 'text';
-            editCountry.setAttribute('list', 'mapCountryList');
-            editCountry.value = p.country || '';
-            editCountry.style.cssText = 'width:100%; margin-bottom:4px; box-sizing:border-box;';
-            labelledInput(editWrap, 'Country', editCountry);
-            var editZone = makeZoneSelect(p.zone || '');
-            labelledInput(editWrap, 'Zone', editZone);
-            var snFixInputs = {};
-            [['district', 'District'], ['city2', 'City2'], ['state', 'State'], ['note', 'Note (optional)']].forEach(function(f){
-              var inp = document.createElement('input');
-              inp.type = 'text';
-              inp.placeholder = f[1] + ' \u2014 correction for StockNetwork';
-              inp.style.cssText = 'width:100%; margin-bottom:4px; box-sizing:border-box;';
-              snFixInputs[f[0]] = inp;
-              editWrap.appendChild(inp);
-            });
+
             var editStatus = document.createElement('div');
             editStatus.style.cssText = 'font-size:11.5px; color:#777; margin-top:4px;';
-            editWrap.appendChild(editStatus);
             var editSaveBtn = document.createElement('button');
             editSaveBtn.type = 'button';
             editSaveBtn.className = 'btn-outline btn-small';
             editSaveBtn.textContent = 'Save';
-            editSaveBtn.disabled = true; // enabled once the tree picker has real options — see populateLocationSelects().then() below
+
+            // Country > Zone > Town > Suburb picker. Built lazily on the
+            // first click of Edit (NOT here) — this loop runs once for every
+            // pin on the map, thousands of them. Save stays disabled while a
+            // brand-new level is typed but not yet saved to the tree.
+            var picker = null;
+            var pickerHost = document.createElement('div');
+            editWrap.appendChild(pickerHost);
+
+            var snFixInputs = {};
+            [['district', 'District'], ['city2', 'City2'], ['state', 'State'], ['note', 'Note (optional)']].forEach(function(f){
+              var inp = document.createElement('input');
+              inp.type = 'text';
+              inp.placeholder = f[1] + ' — correction for StockNetwork';
+              inp.style.cssText = 'width:100%; margin:4px 0 0; box-sizing:border-box;';
+              snFixInputs[f[0]] = inp;
+              editWrap.appendChild(inp);
+            });
+            editWrap.appendChild(editStatus);
+            editSaveBtn.style.marginTop = '6px';
             editWrap.appendChild(editSaveBtn);
             content.appendChild(editWrap);
 
-            var editPopulated = false;
             editBtn.addEventListener('click', function(){
               var showing = editWrap.style.display !== 'none';
               editWrap.style.display = showing ? 'none' : 'block';
-              if(!showing && !editPopulated){
-                editPopulated = true;
-                var tempId = 'mapEditLocSel_' + Math.random().toString(36).slice(2);
-                editSelect.id = tempId;
-                populateLocationSelects([tempId]).then(function(){
-                  applyLocationSelect(editSelect, { zone: p.zone || '', townId: p.townId || '', suburbId: p.suburbId || '' });
-                  editSelect.dataset.initial = editSelect.value; // so Save only re-sends the tree pick if it was actually changed
-                  editSaveBtn.disabled = false;
+              if(!showing && !picker){
+                picker = createLocationPicker({
+                  levels: ['country', 'zone', 'town', 'suburb'],
+                  defaultLat: p.latitude,
+                  defaultLng: p.longitude,
+                  onChange: function(){
+                    editSaveBtn.disabled = picker ? picker.hasPending() : true;
+                    if(marker.getPopup()) marker.getPopup().update();
+                  }
                 });
+                pickerHost.appendChild(picker.el);
+                picker.setValue({ country: p.country || '', zone: p.zone || '', townId: p.townId || '', suburbId: p.suburbId || '' });
               }
               if(marker.getPopup()) marker.getPopup().update();
             });
             editSaveBtn.addEventListener('click', function(){
               if(!p.resortId){
-                editStatus.textContent = 'Missing StockNetwork ResortID for this row \u2014 cannot save.';
+                editStatus.textContent = 'Missing StockNetwork ResortID for this row — cannot save.';
                 return;
               }
-              var treeChanged = editSelect.value !== (editSelect.dataset.initial || '');
-              var loc = treeChanged ? readLocationSelect(editSelect) : { zone: '', townId: '', suburbId: '', locationLabel: '' };
-              var typedCountry = editCountry.value.trim();
-              var typedZone = editZone.value;
-              var countryChanged = typedCountry !== (p.country || '');
-              var zoneChanged = typedZone !== (p.zone || '');
-              var hasLoc = !!(loc.zone || loc.townId || loc.suburbId || countryChanged || zoneChanged);
+              var hasLoc = !!(picker && picker.isChanged());
+              var v = picker ? picker.getValue() : { country: '', zone: '', townId: '', suburbId: '', locationLabel: '' };
               var fixVals = {};
               var hasFix = false;
               Object.keys(snFixInputs).forEach(function(k){
@@ -11084,27 +11343,29 @@
                 if(fixVals[k]) hasFix = true;
               });
               if(!hasLoc && !hasFix){
-                editStatus.textContent = 'Nothing to save \u2014 pick a place from the tree and/or type a correction.';
+                editStatus.textContent = 'Nothing to save — change the place and/or type a correction.';
                 return;
               }
-              editStatus.textContent = 'Saving\u2026';
+              if(hasLoc && !v.country){
+                editStatus.textContent = 'Choose a Country first.';
+                return;
+              }
+              editStatus.textContent = 'Saving…';
               editSaveBtn.disabled = true;
-              editSaveBtn.textContent = 'Saving\u2026';
+              editSaveBtn.textContent = 'Saving…';
               var calls = [];
               if(hasLoc){
-                // A tree pick wins for Town/Suburb (and fills Zone + Country
-                // server-side); a typed Country/Zone is only sent when the
-                // person actually changed it, so an untouched prefill can't
-                // overwrite what the tree pick derived.
-                var locBody = {
+                // Country-only (no zone/town) clears the old tag; anything
+                // deeper sets Zone/Town/Suburb exactly as picked.
+                calls.push(mapAdminPost('resolveStocknetworkLocation', {
                   resortId: p.resortId,
-                  zone: loc.zone || (zoneChanged ? typedZone : ''),
-                  townId: loc.townId,
-                  suburbId: loc.suburbId,
-                  locationLabel: loc.locationLabel
-                };
-                if(countryChanged && typedCountry) locBody.country = typedCountry;
-                calls.push(mapAdminPost('resolveStocknetworkLocation', locBody));
+                  country: v.country,
+                  zone: v.zone,
+                  townId: v.townId,
+                  suburbId: v.suburbId,
+                  locationLabel: v.locationLabel,
+                  clearLocation: !v.zone && !v.townId
+                }));
               }
               if(hasFix){
                 calls.push(mapAdminPost('flagStockNetworkFieldFix', {
@@ -11114,20 +11375,20 @@
               }
               Promise.all(calls).then(function(results){
                 var bad = results.filter(function(r){ return !(r.data && r.data.ok); })[0];
-                editSaveBtn.disabled = false;
+                editSaveBtn.disabled = !!(picker && picker.hasPending());
                 if(bad){
                   editSaveBtn.textContent = 'Save';
                   editStatus.textContent = (bad.data && bad.data.error) || 'Could not save.';
                 } else {
-                  editSaveBtn.textContent = 'Saved \u2713';
-                  editStatus.textContent = hasFix ? 'Saved \u2713 \u2014 corrections are listed under \u201cCorrections to send to StockNetwork\u201d.' : 'Saved \u2713';
+                  editSaveBtn.textContent = 'Saved ✓';
+                  editStatus.textContent = hasFix ? 'Saved ✓ — corrections are listed under “Corrections to send to StockNetwork”.' : 'Saved ✓';
                   if(window.refreshSnFieldFixList) window.refreshSnFieldFixList();
                   if(hasLoc) loadActivities();
                 }
               }).catch(function(){
-                editSaveBtn.disabled = false;
+                editSaveBtn.disabled = !!(picker && picker.hasPending());
                 editSaveBtn.textContent = 'Save';
-                editStatus.textContent = 'Could not save \u2014 check your connection and try again.';
+                editStatus.textContent = 'Could not save — check your connection and try again.';
               });
             });
           } else {
@@ -11238,16 +11499,31 @@
           var townEditWrap = document.createElement('div');
           townEditWrap.style.cssText = 'display:none; margin-top:8px; border-top:1px solid #e5e5e0; padding-top:8px; min-width:250px;';
 
-          var townCountryEdit = document.createElement('input');
-          townCountryEdit.type = 'text';
-          townCountryEdit.setAttribute('list', 'mapCountryList');
-          townCountryEdit.value = t.countrySet ? (t.country || '') : '';
-          townCountryEdit.placeholder = t.countrySet ? '' : 'not set — treated as South Africa';
-          townCountryEdit.style.cssText = 'width:100%; margin-bottom:4px; box-sizing:border-box;';
-          labelledInput(townEditWrap, 'Country', townCountryEdit);
+          var townSaveBtn = document.createElement('button');
+          townSaveBtn.type = 'button';
+          townSaveBtn.className = 'btn-outline btn-small';
+          townSaveBtn.textContent = 'Save town';
 
-          var townZoneEdit = makeZoneSelect(t.zone || '');
-          labelledInput(townEditWrap, 'Zone', townZoneEdit);
+          // Country > Zone picker (a town is itself the "Town" level, so only
+          // the two levels above it apply). Save stays disabled while a new
+          // Country/Zone is typed but not yet saved to the tree.
+          // Built lazily (first click of Edit town), not for every town pin up front.
+          var townPicker = null;
+          var townPickerHost = document.createElement('div');
+          townEditWrap.appendChild(townPickerHost);
+          function ensureTownPicker(){
+            if(townPicker) return townPicker;
+            townPicker = createLocationPicker({
+              levels: ['country', 'zone'],
+              onChange: function(){
+                townSaveBtn.disabled = townPicker ? townPicker.hasPending() : true;
+                if(marker.getPopup()) marker.getPopup().update();
+              }
+            });
+            townPickerHost.appendChild(townPicker.el);
+            townPicker.setValue({ country: t.country || '', zone: t.zone || '' });
+            return townPicker;
+          }
 
           var townLatEdit = document.createElement('input');
           townLatEdit.type = 'text';
@@ -11262,7 +11538,7 @@
 
           var townLinkRow = document.createElement('div');
           townLinkRow.style.cssText = 'margin:6px 0;';
-          townLinkRow.appendChild(makeMapsLink([t.name, t.area, t.countrySet ? t.country : ''].filter(Boolean).join(' '), 'Open in Google Maps'));
+          townLinkRow.appendChild(makeMapsLink([t.name, t.area, t.country].filter(Boolean).join(' '), 'Open in Google Maps'));
           townEditWrap.appendChild(townLinkRow);
 
           var townPaste = document.createElement('input');
@@ -11275,10 +11551,6 @@
           townEditStatus.style.cssText = 'font-size:11.5px; color:#777; margin-bottom:4px;';
           townEditWrap.appendChild(townEditStatus);
 
-          var townSaveBtn = document.createElement('button');
-          townSaveBtn.type = 'button';
-          townSaveBtn.className = 'btn-outline btn-small';
-          townSaveBtn.textContent = 'Save town';
           townEditWrap.appendChild(townSaveBtn);
           content.appendChild(townEditWrap);
 
@@ -11293,17 +11565,11 @@
             townEditStatus.textContent = 'Looking up country & zone for that spot…';
             mapAdminPost('lookupCoordinateInfo', { lat: c.lat, lng: c.lng }).then(function(res){
               if(res.data && res.data.ok){
-                if(res.data.country) townCountryEdit.value = res.data.country;
-                if(res.data.zone){
-                  if(!Array.prototype.some.call(townZoneEdit.options, function(o){ return o.value === res.data.zone; })){
-                    var zo = document.createElement('option');
-                    zo.value = res.data.zone;
-                    zo.textContent = res.data.zone;
-                    townZoneEdit.appendChild(zo);
-                  }
-                  townZoneEdit.value = res.data.zone;
+                if(res.data.country || res.data.zone){
+                  var tpk = ensureTownPicker();
+                  tpk.setValue({ country: res.data.country || tpk.getValue().country, zone: res.data.zone || '' }, true);
                 }
-                townEditStatus.textContent = 'Filled in' + (res.data.country ? ' ' + res.data.country : '') + (res.data.zone ? ' / ' + res.data.zone : '') + ' — check it, then press Save town.';
+                townEditStatus.textContent = 'Filled in' + (res.data.country ? ' ' + res.data.country : '') + (res.data.zone ? ' / ' + res.data.zone : '') + ' — check it' + (ensureTownPicker().hasPending() ? ', save any new level shown in amber,' : '') + ' then press Save town.';
               } else {
                 townEditStatus.textContent = 'Coordinates filled in, but the lookup failed' + (res.data && res.data.error ? ' (' + res.data.error + ')' : '') + ' — set Country/Zone by hand.';
               }
@@ -11315,7 +11581,9 @@
           townPaste.addEventListener('paste', function(){ setTimeout(applyPastedTownCoords, 0); });
 
           townEditBtn.addEventListener('click', function(){
-            townEditWrap.style.display = townEditWrap.style.display === 'none' ? 'block' : 'none';
+            var opening = townEditWrap.style.display === 'none';
+            townEditWrap.style.display = opening ? 'block' : 'none';
+            if(opening) ensureTownPicker();
             if(marker.getPopup()) marker.getPopup().update();
           });
           townSaveBtn.addEventListener('click', function(){
@@ -11324,12 +11592,14 @@
               townEditStatus.textContent = 'Latitude and Longitude must be valid numbers.';
               return;
             }
+            var tv = ensureTownPicker().getValue();
+            if(ensureTownPicker().hasPending()){ townEditStatus.textContent = 'Save the new level shown in amber first.'; return; }
             townSaveBtn.disabled = true;
             townSaveBtn.textContent = 'Saving…';
             mapAdminPost('updateTown', {
               id: t.id,
-              country: townCountryEdit.value.trim(),
-              zone: townZoneEdit.value,
+              country: tv.country,
+              zone: tv.zone,
               latitude: String(latNum),
               longitude: String(lngNum)
             }).then(function(res){
@@ -11773,6 +12043,9 @@
             lastMapProperties = res.data.properties || [];
             lastMapActivities = res.data.activities || [];
             lastMapTowns = res.data.towns || [];
+            lastMapLocationLists = res.data.locationLists || { countries: [], zones: [] };
+            locationDataVersion++;
+            if(typeof townFormPicker !== 'undefined' && townFormPicker && !townFormPicker.hasPending()) townFormPicker.refresh();
             var treeEl = document.getElementById('mapLocationTree');
             if(treeEl){
               if(!mapLocTree){
