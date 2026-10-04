@@ -10836,19 +10836,28 @@
             editWrap.style.cssText = 'display:none; margin-top:8px; border-top:1px solid #e5e5e0; padding-top:8px;';
             var editHint = document.createElement('div');
             editHint.style.cssText = 'font-size:11.5px; color:#777; margin-bottom:4px;';
-            editHint.textContent = 'From StockNetwork\u2019s bulk import \u2014 only Zone/Town/Suburb can be fixed here. Other fields update via CSV re-upload.';
+            editHint.textContent = 'From StockNetwork\u2019s bulk import. Pick the correct place from the location tree, and/or type corrected District / City2 / State to send to StockNetwork. Everything else updates via CSV re-upload.';
             editWrap.appendChild(editHint);
             var editSelect = document.createElement('select');
             editSelect.style.cssText = 'width:100%; margin-bottom:6px;';
             editSelect.innerHTML = '<option value="">Loading\u2026</option>';
             editWrap.appendChild(editSelect);
+            var snFixInputs = {};
+            [['district', 'District'], ['city2', 'City2'], ['state', 'State'], ['note', 'Note (optional)']].forEach(function(f){
+              var inp = document.createElement('input');
+              inp.type = 'text';
+              inp.placeholder = f[1] + ' \u2014 correction for StockNetwork';
+              inp.style.cssText = 'width:100%; margin-bottom:4px; box-sizing:border-box;';
+              snFixInputs[f[0]] = inp;
+              editWrap.appendChild(inp);
+            });
             var editStatus = document.createElement('div');
             editStatus.style.cssText = 'font-size:11.5px; color:#777; margin-top:4px;';
             editWrap.appendChild(editStatus);
             var editSaveBtn = document.createElement('button');
             editSaveBtn.type = 'button';
             editSaveBtn.className = 'btn-outline btn-small';
-            editSaveBtn.textContent = 'Save location';
+            editSaveBtn.textContent = 'Save';
             editSaveBtn.disabled = true; // enabled once the tree picker has real options — see populateLocationSelects().then() below
             editWrap.appendChild(editSaveBtn);
             content.appendChild(editWrap);
@@ -10874,21 +10883,51 @@
                 return;
               }
               var loc = readLocationSelect(editSelect);
+              var hasLoc = !!(loc.zone || loc.townId || loc.suburbId);
+              var fixVals = {};
+              var hasFix = false;
+              Object.keys(snFixInputs).forEach(function(k){
+                fixVals[k] = snFixInputs[k].value.trim();
+                if(fixVals[k]) hasFix = true;
+              });
+              if(!hasLoc && !hasFix){
+                editStatus.textContent = 'Nothing to save \u2014 pick a place from the tree and/or type a correction.';
+                return;
+              }
               editStatus.textContent = 'Saving\u2026';
-              mapAdminPost('resolveStocknetworkLocation', {
-                resortId: p.resortId,
-                zone: loc.zone,
-                townId: loc.townId,
-                suburbId: loc.suburbId,
-                locationLabel: loc.locationLabel
-              }).then(function(res){
-                if(res.data && res.data.ok){
-                  editStatus.textContent = 'Saved \u2713';
-                  loadActivities();
+              editSaveBtn.disabled = true;
+              editSaveBtn.textContent = 'Saving\u2026';
+              var calls = [];
+              if(hasLoc){
+                calls.push(mapAdminPost('resolveStocknetworkLocation', {
+                  resortId: p.resortId,
+                  zone: loc.zone,
+                  townId: loc.townId,
+                  suburbId: loc.suburbId,
+                  locationLabel: loc.locationLabel
+                }));
+              }
+              if(hasFix){
+                calls.push(mapAdminPost('flagStockNetworkFieldFix', {
+                  resortId: p.resortId,
+                  district: fixVals.district, city2: fixVals.city2, state: fixVals.state, note: fixVals.note
+                }));
+              }
+              Promise.all(calls).then(function(results){
+                var bad = results.filter(function(r){ return !(r.data && r.data.ok); })[0];
+                editSaveBtn.disabled = false;
+                if(bad){
+                  editSaveBtn.textContent = 'Save';
+                  editStatus.textContent = (bad.data && bad.data.error) || 'Could not save.';
                 } else {
-                  editStatus.textContent = (res.data && res.data.error) || 'Could not save.';
+                  editSaveBtn.textContent = 'Saved \u2713';
+                  editStatus.textContent = hasFix ? 'Saved \u2713 \u2014 corrections are listed under \u201cCorrections to send to StockNetwork\u201d.' : 'Saved \u2713';
+                  if(window.refreshSnFieldFixList) window.refreshSnFieldFixList();
+                  if(hasLoc) loadActivities();
                 }
               }).catch(function(){
+                editSaveBtn.disabled = false;
+                editSaveBtn.textContent = 'Save';
                 editStatus.textContent = 'Could not save \u2014 check your connection and try again.';
               });
             });
@@ -10980,6 +11019,68 @@
             affLine.textContent = 'Affiliate: ' + affiliateLabel(t.affId);
             content.appendChild(affLine);
           }
+
+          // Edit zone (2026-10-04, Jean's request): a town has no
+          // StockNetwork property page, so instead of View/Edit like a
+          // property pin it gets a small zone picker, for fixing the
+          // stubborn "No zone set" towns that "Fix towns with no zone"
+          // can't resolve on its own. Saves via the existing updateTown.
+          var townEditBtn = document.createElement('button');
+          townEditBtn.type = 'button';
+          townEditBtn.className = 'btn-outline btn-small';
+          townEditBtn.style.marginTop = '6px';
+          townEditBtn.style.marginRight = '6px';
+          townEditBtn.textContent = 'Edit zone';
+          content.appendChild(townEditBtn);
+
+          var townEditWrap = document.createElement('div');
+          townEditWrap.style.cssText = 'display:none; margin-top:8px; border-top:1px solid #e5e5e0; padding-top:8px;';
+          var townZoneSelect = document.createElement('select');
+          townZoneSelect.style.cssText = 'width:100%; margin-bottom:6px;';
+          var zoneOpts = '<option value="">— Choose a zone —</option>';
+          MAP_ZONES.forEach(function(z){
+            zoneOpts += '<option value="' + escapeHtml(z) + '"' + (z === t.zone ? ' selected' : '') + '>' + escapeHtml(z) + '</option>';
+          });
+          townZoneSelect.innerHTML = zoneOpts;
+          townEditWrap.appendChild(townZoneSelect);
+          var townEditStatus = document.createElement('div');
+          townEditStatus.style.cssText = 'font-size:11.5px; color:#777; margin-bottom:4px;';
+          townEditWrap.appendChild(townEditStatus);
+          var townSaveBtn = document.createElement('button');
+          townSaveBtn.type = 'button';
+          townSaveBtn.className = 'btn-outline btn-small';
+          townSaveBtn.textContent = 'Save zone';
+          townEditWrap.appendChild(townSaveBtn);
+          content.appendChild(townEditWrap);
+
+          townEditBtn.addEventListener('click', function(){
+            townEditWrap.style.display = townEditWrap.style.display === 'none' ? 'block' : 'none';
+            if(marker.getPopup()) marker.getPopup().update();
+          });
+          townSaveBtn.addEventListener('click', function(){
+            if(!townZoneSelect.value){
+              townEditStatus.textContent = 'Choose a zone first.';
+              return;
+            }
+            townSaveBtn.disabled = true;
+            townSaveBtn.textContent = 'Saving…';
+            mapAdminPost('updateTown', { id: t.id, zone: townZoneSelect.value }).then(function(res){
+              townSaveBtn.disabled = false;
+              if(res.data && (res.data.ok || res.data.town)){
+                townSaveBtn.textContent = 'Saved ✓';
+                townEditStatus.textContent = 'Saved ✓';
+                loadActivities();
+              } else {
+                townSaveBtn.textContent = 'Save zone';
+                townEditStatus.textContent = (res.data && res.data.error) || 'Could not save.';
+              }
+            }).catch(function(){
+              townSaveBtn.disabled = false;
+              townSaveBtn.textContent = 'Save zone';
+              townEditStatus.textContent = 'Could not save — check your connection and try again.';
+            });
+          });
+
           var toggleBtn = document.createElement('button');
           toggleBtn.type = 'button';
           toggleBtn.className = 'btn-outline btn-small';
