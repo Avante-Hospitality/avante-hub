@@ -82,6 +82,60 @@ function parseCsvLine(line) {
   return result;
 }
 
+// ---- Import checks (2026-10-04) ----
+// What the tree already knows: every country and, per country, every zone
+// (the 12 South African zones + any town's zone + the saved Countries/Zones
+// list). Used to WARN about CSV rows whose country/zone is new or filed under
+// a different country. Warnings never block an import — a new country/zone
+// is legitimate — they just stop typos going in unnoticed.
+function buildKnownLocations(towns, lists) {
+  const SA = "South Africa";
+  const countries = new Map(); // lowercase -> display
+  const zones = new Map();     // lowercase country -> Map(lowercase zone -> display)
+  const addCountry = (c) => { const k = String(c || "").trim().toLowerCase(); if (k && !countries.has(k)) countries.set(k, String(c).trim()); };
+  const addZone = (c, z) => {
+    const ck = String(c || "").trim().toLowerCase();
+    const zk = String(z || "").trim().toLowerCase();
+    if (!ck || !zk) return;
+    addCountry(c);
+    if (!zones.has(ck)) zones.set(ck, new Map());
+    zones.get(ck).set(zk, String(z).trim());
+  };
+  addCountry(SA);
+  ZONES.forEach((z) => addZone(SA, z));
+  (towns || []).forEach((t) => { if (!t) return; const c = townCountry(t); addCountry(c); const z = townZone(t); if (z) addZone(c, z); });
+  const l = lists || {};
+  (Array.isArray(l.countries) ? l.countries : []).forEach(addCountry);
+  (Array.isArray(l.zones) ? l.zones : []).forEach((z) => { if (z) addZone(z.country, z.name); });
+  return { countries, zones };
+}
+
+function checkRowLocation(label, row, known) {
+  const out = [];
+  const SA = "South Africa";
+  const typedCountry = String(row.country || "").trim();
+  const zone = okZone(row.zone);
+  let country = SA;
+  if (typedCountry) {
+    const hit = known.countries.get(typedCountry.toLowerCase());
+    if (hit) country = hit;
+    else { country = typedCountry; out.push(label + ": country \"" + typedCountry + "\" isn't in the location tree yet."); }
+  }
+  if (zone) {
+    const inCountry = known.zones.get(country.toLowerCase());
+    if (!inCountry || !inCountry.has(zone.toLowerCase())) {
+      const elsewhere = [];
+      known.zones.forEach((m, ck) => { if (ck !== country.toLowerCase() && m.has(zone.toLowerCase())) elsewhere.push(known.countries.get(ck) || ck); });
+      if (elsewhere.length) {
+        out.push(label + ": zone \"" + zone + "\" is filed under " + elsewhere.join(" / ") + " in the tree, not " + country + (typedCountry ? "." : " (the country column is blank, so South Africa is assumed)."));
+      } else {
+        out.push(label + ": zone \"" + zone + "\" isn't in the tree yet for " + country + ".");
+      }
+    }
+  }
+  return out;
+}
+
 function parseActivitiesCsv(text) {
   const lines = text.split(/\r\n|\r|\n/).filter((l) => l.trim().length > 0);
   if (lines.length === 0) return [];
@@ -91,6 +145,7 @@ function parseActivitiesCsv(text) {
     id: idx("id"),
     name: idx("name"),
     area: idx("area"),
+    country: idx("country"),
     zone: idx("zone"),
     price: idx("price"),
     contactLink: idx("contactlink"),
@@ -108,6 +163,7 @@ function parseActivitiesCsv(text) {
       id: get("id"),
       name: name,
       area: get("area"),
+      country: get("country"),
       zone: get("zone"),
       price: get("price"),
       contactLink: get("contactLink"),
@@ -133,6 +189,7 @@ function parseTownsCsv(text) {
     id: idx("id"),
     name: idx("name"),
     area: idx("area"),
+    country: idx("country"),
     zone: idx("zone"),
     description: idx("description"),
     latitude: idx("latitude"),
@@ -148,6 +205,7 @@ function parseTownsCsv(text) {
       id: get("id"),
       name: name,
       area: get("area"),
+      country: get("country"),
       zone: get("zone"),
       description: get("description"),
       latitude: get("latitude"),
@@ -387,6 +445,12 @@ function sanitizeActivity(body, existing) {
   if (typeof body.zone === "string") {
     record.zone = okZone(body.zone);
   }
+  // country (2026-10-04): the top level of the Country > Zone > Town >
+  // Suburb tree. Blank means "not set" (activities were never forced to
+  // carry one); the town's own country wins whenever a town is tagged.
+  if (typeof body.country === "string") {
+    record.country = clean(body.country, 120);
+  }
   // Which town/suburb (from the Zone > Town > Suburb tree) this activity
   // is tagged with — set via admin.html's location tree picker, which
   // replaced the old flat Zone-only dropdown. Not validated against the
@@ -485,6 +549,7 @@ function toActivityPin(record) {
     id: record.id,
     name: record.name || "",
     area: record.area || "",
+    country: record.country || "",
     zone: recordZone(record),
     townId: record.townId || "",
     suburbId: record.suburbId || "",
@@ -1136,6 +1201,9 @@ const locationListStore = getStore({ name: "map-location-lists", consistency: "s
       const locationLists = (await locationListStore.get("current", { type: "json" })) || {};
       return json({
         ok: true, properties, activities: activities.filter(Boolean), towns: towns.filter(Boolean), missingCoordinates, resortStats,
+        // The one list of South African zones (lib/zones.js) — admin.html uses
+        // this instead of its own hard-coded copy.
+        zones: ZONES,
         locationLists: {
           countries: Array.isArray(locationLists.countries) ? locationLists.countries : [],
           zones: Array.isArray(locationLists.zones) ? locationLists.zones : [],
@@ -2838,9 +2906,16 @@ const locationListStore = getStore({ name: "map-location-lists", consistency: "s
       const byName = new Map(existingRecords.map((r) => [(r.name || "").toLowerCase(), r]));
       const existingIds = new Set(byId.keys());
 
+      const known = buildKnownLocations(await loadTowns(townsStore), await locationListStore.get("current", { type: "json" }));
+      const warnings = [];
+      let warningCount = 0;
+
       let created = 0;
       let updated = 0;
       for (const row of rows) {
+        const rowWarnings = checkRowLocation(row.name, row, known);
+        warningCount += rowWarnings.length;
+        if (warnings.length < 40) rowWarnings.forEach((w) => { if (warnings.length < 40) warnings.push(w); });
         const matchExisting = (row.id && byId.get(row.id)) || byName.get(row.name.toLowerCase());
         const record = sanitizeActivity(row, matchExisting || {});
         if (matchExisting) {
@@ -2862,7 +2937,7 @@ const locationListStore = getStore({ name: "map-location-lists", consistency: "s
       // untouched existing record too, since nothing is ever deleted from it.
       await saveActivities(activitiesStore, Array.from(byId.values()));
 
-      return json({ ok: true, created: created, updated: updated });
+      return json({ ok: true, created: created, updated: updated, warnings, warningCount });
     }
 
     if (action === "importTownsCsv") {
@@ -2876,9 +2951,16 @@ const locationListStore = getStore({ name: "map-location-lists", consistency: "s
       const byName = new Map(existingRecords.map((r) => [(r.name || "").toLowerCase(), r]));
       const existingIds = new Set(byId.keys());
 
+      const known = buildKnownLocations(existingRecords, await locationListStore.get("current", { type: "json" }));
+      const warnings = [];
+      let warningCount = 0;
+
       let created = 0;
       let updated = 0;
       for (const row of rows) {
+        const rowWarnings = checkRowLocation(row.name, row, known);
+        warningCount += rowWarnings.length;
+        if (warnings.length < 40) rowWarnings.forEach((w) => { if (warnings.length < 40) warnings.push(w); });
         const matchExisting = (row.id && byId.get(row.id)) || byName.get(row.name.toLowerCase());
         const record = sanitizeTown(row, matchExisting || {});
         if (matchExisting) {
@@ -2898,7 +2980,7 @@ const locationListStore = getStore({ name: "map-location-lists", consistency: "s
 
       await saveTowns(townsStore, Array.from(byId.values()));
 
-      return json({ ok: true, created: created, updated: updated });
+      return json({ ok: true, created: created, updated: updated, warnings, warningCount });
     }
 
     // ---- Merge duplicate towns -------------------------------------------
