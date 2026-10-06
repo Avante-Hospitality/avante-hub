@@ -79,7 +79,17 @@ export function mergeResorts(oldResorts, newResorts) {
     const key = resortKey(r);
     const old = key ? oldByKey.get(key) : null;
     const merged = { ...r, affId: old && typeof old.affId === "string" ? old.affId : "" };
-    if (old && sameCoordinate(old, r)) {
+    // SN cleanup wizard (2026-10-06): the hub's coordinate was set on
+    // purpose ahead of StockNetwork's (old.snCoordPending). Until a file
+    // arrives with that same coordinate, keep the hub's coordinate and its
+    // Town/Suburb tag rather than reverting to the file's older one. Once
+    // the file matches, the marker is simply not carried forward.
+    if (old && old.snCoordPending && !sameCoordinate(old, r)) {
+      merged.latitude = old.latitude;
+      merged.longitude = old.longitude;
+      merged.snCoordPending = { ...old.snCoordPending, snSaw: { lat: r.latitude, lng: r.longitude } };
+    }
+    if (old && sameCoordinate(old, merged)) {
       for (const field of LOCATION_TAG_FIELDS) {
         if (Object.prototype.hasOwnProperty.call(old, field)) merged[field] = old[field];
       }

@@ -770,6 +770,7 @@
       <button class="tab" data-panel="whatsapp">WhatsApp Messaging</button>
       <button class="tab" data-panel="propertyListings">Property Listings</button>
       <button class="tab" data-panel="mapActivities">Map &amp; Activities</button>
+      <button class="tab" data-panel="snCleanup">SN Cleanup</button>
       <button class="tab" data-panel="tutorial">How Payouts Work</button>
     </nav>
   </header>
@@ -2043,6 +2044,151 @@
           </table>
         </div>
         <div class="empty-state" id="mapPropertiesEmpty" style="display:none;">No listed properties yet.</div>
+      </div>
+    </section>
+
+    <!-- ===================== SN CLEANUP WIZARD ===================== -->
+    <!-- 2026-10-06, Jean's request: one guided, one-step-at-a-time pass that
+         replaces jumping between the separate Map & Activities tools for a
+         StockNetwork clean-up. Reuses the same server actions those tools
+         use (suggestCoordinates, exportLocations) plus three wizard-only
+         ones (snCleanupApply / snCleanupSaveRun / snCleanupCheck in
+         map-api.js). Every existing Map & Activities tool is untouched. -->
+    <section class="panel" id="panel-snCleanup">
+      <div class="hero">
+        <h1>StockNetwork cleanup wizard</h1>
+        <p>One guided pass so that, once you load the file it builds into StockNetwork, StockNetwork and the hub agree on Country, Area, City, Suburb and Latitude/Longitude. One step at a time &mdash; nothing runs until you press that step's button.</p>
+      </div>
+
+      <style>
+        .snw-steps{ list-style:none; display:flex; flex-wrap:wrap; gap:6px; padding:0; margin:0 0 18px; }
+        .snw-steps li{ padding:7px 12px; border-radius:20px; border:1.5px solid var(--line); background:#fff; font-size:12.5px; font-weight:600; color:var(--muted); }
+        .snw-steps li.active{ background:var(--navy); border-color:var(--navy); color:#fff; }
+        .snw-steps li.done{ background:var(--mint); border-color:#bfe6e2; color:var(--teal-dark); }
+        .snw-step{ display:none; }
+        .snw-step.active{ display:block; }
+        .snw-nav{ display:flex; justify-content:space-between; gap:10px; margin-top:16px; }
+        .snw-nav button{ margin-top:0; }
+        .snw-choice{ display:flex; gap:10px; align-items:flex-start; padding:10px 12px; border:1.5px solid var(--line); border-radius:10px; margin:8px 0; cursor:pointer;
+          font-size:14px; font-weight:400; text-transform:none; letter-spacing:normal; color:var(--navy); }
+        .snw-choice input{ width:auto; margin:3px 0 0; }
+        .snw-choice small{ display:block; color:var(--muted); font-size:12.5px; margin-top:2px; }
+        .snw-note{ font-size:13px; color:var(--muted); }
+        .snw-section-title{ margin:18px 0 6px; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); }
+        .snw-table td, .snw-table th{ vertical-align:top; }
+        table.data-table.snw-table th:last-child{ background:var(--navy); }
+        .snw-table td small{ color:var(--muted); display:block; }
+        .snw-btn-sm{ padding:5px 10px; font-size:12px; border-radius:16px; border:1.5px solid var(--line); background:#fff; cursor:pointer; color:var(--navy); font-weight:600; }
+        .snw-btn-sm.on-accept{ background:var(--mint); border-color:var(--teal); color:var(--teal-dark); }
+        .snw-btn-sm.on-reject{ background:#fdeaea; border-color:#e9a3a3; color:#8a2020; }
+        .snw-checks{ margin:10px 0 0; padding-left:20px; font-size:13.5px; }
+        .snw-checks li{ margin:3px 0; }
+        .snw-checks .bad{ color:#8a2020; font-weight:700; }
+        .snw-checks .good{ color:var(--teal-dark); }
+        .snw-scope{ display:flex; gap:8px; align-items:center; }
+        .snw-scope input[type=number]{ width:80px; padding:6px 8px; }
+      </style>
+
+      <ol class="snw-steps" id="snwSteps">
+        <li data-step="1">1. Upload</li>
+        <li data-step="2">2. Find coordinates</li>
+        <li data-step="3">3. Place in hub</li>
+        <li data-step="4">4. Area choice</li>
+        <li data-step="5">5. Build file</li>
+        <li data-step="6">6. Check</li>
+      </ol>
+
+      <!-- Step 1 -->
+      <div class="card snw-step" data-step="1">
+        <h3 style="margin-top:0;">Step 1 &mdash; Upload your StockNetwork export</h3>
+        <p style="margin-top:0;">Choose the StockNetwork <strong>Resort Information</strong> export (.csv). Nothing is looked up or changed yet &mdash; this only counts what needs doing and what it will cost.</p>
+        <div class="snw-note" id="snwResumeBox" style="display:none; margin-bottom:12px; padding:10px 12px; border:1.5px solid #bfe6e2; background:var(--mint); border-radius:10px;"></div>
+        <div class="btn-row" style="margin-top:0;">
+          <button class="btn-outline" id="snwFileBtn">Choose StockNetwork export (.csv)&hellip;</button>
+          <input type="file" id="snwFileInput" accept=".csv,text/csv" style="display:none;">
+        </div>
+        <div class="status" id="snwUploadStatus"></div>
+        <div id="snwUploadSummary" style="display:none; margin-top:14px;">
+          <div class="stat-grid" id="snwUploadStats"></div>
+          <p class="snw-section-title">Which properties to do</p>
+          <label class="snw-choice"><input type="radio" name="snwScope" value="test" checked>
+            <span><span class="snw-scope">Test run: the first <input type="number" id="snwTestN" min="1" max="500" value="10"> properties that need a lookup</span>
+            <small>Recommended first. Only these properties are looked up, placed in the hub and changed in the file &mdash; every other row of the file stays exactly as it is.</small></span></label>
+          <label class="snw-choice"><input type="radio" name="snwScope" value="all">
+            <span>Everything in the file<small>Use this once the test run looks right.</small></span></label>
+          <p class="snw-section-title">Estimated Google lookups for this choice</p>
+          <div id="snwEstimate" class="snw-note" style="color:var(--navy);"></div>
+        </div>
+      </div>
+
+      <!-- Step 2 -->
+      <div class="card snw-step" data-step="2">
+        <h3 style="margin-top:0;">Step 2 &mdash; Find coordinates</h3>
+        <p style="margin-top:0;">Looks each property up on Google by its name and town &mdash; the same lookup &ldquo;Improve property coordinates&rdquo; uses &mdash; and sorts the answers into <strong>Confident</strong> (Google matched the property itself, within 15&nbsp;km of the current pin), <strong>Unsure</strong> (matched by name, but far from the current pin or there was no pin to compare) and <strong>Not found</strong> (Google only found the town, or nothing). Nothing is saved to the hub in this step.</p>
+        <div class="btn-row" style="margin-top:0;">
+          <button class="primary" id="snwLookupBtn" style="margin-top:0;">Start lookups</button>
+          <button class="btn-outline" id="snwRetryBtn" style="display:none;">Retry the ones that failed</button>
+        </div>
+        <div class="status" id="snwLookupStatus"></div>
+        <div id="snwLookupResults" style="display:none;"></div>
+      </div>
+
+      <!-- Step 3 -->
+      <div class="card snw-step" data-step="3">
+        <h3 style="margin-top:0;">Step 3 &mdash; Place in the hub</h3>
+        <p style="margin-top:0;">Saves each property's coordinate in the hub (Google's where you accepted it, otherwise the best one already on file) and places it straight away in the hub's Country &gt; Zone &gt; Town &gt; Suburb tree, the same way &ldquo;Find &amp; fix missing coordinates&rdquo; does. Where the hub's coordinate now differs from StockNetwork's, the property is marked <em>waiting for StockNetwork</em>: until StockNetwork sends the same coordinate, the nightly sync, a resort-list CSV re-upload and the &ldquo;Corrected StockNetwork file&rdquo; tool all keep the hub's coordinate instead of going back to StockNetwork's old one. The mark clears itself once StockNetwork matches.</p>
+        <div id="snwApplyPlan" class="snw-note" style="color:var(--navy);"></div>
+        <div class="btn-row">
+          <button class="primary" id="snwApplyBtn" style="margin-top:0;">Save coordinates and place in hub</button>
+        </div>
+        <div class="status" id="snwApplyStatus"></div>
+        <div id="snwApplyResults" style="display:none;"></div>
+      </div>
+
+      <!-- Step 4 -->
+      <div class="card snw-step" data-step="4">
+        <h3 style="margin-top:0;">Step 4 &mdash; What should StockNetwork's Area column say?</h3>
+        <label class="snw-choice"><input type="radio" name="snwArea" value="sn">
+          <span>Keep StockNetwork's own regions<small>The Area column stays exactly as it is in your export (e.g. &ldquo;KZN Midlands&rdquo;). Country, City and Suburb still come from the hub.</small></span></label>
+        <label class="snw-choice"><input type="radio" name="snwArea" value="hub">
+          <span>Replace with the hub zone<small>Area becomes the hub's zone for each property (e.g. &ldquo;Garden Route&rdquo;, &ldquo;Eastern Cape&rdquo;) &mdash; the same rule &ldquo;Corrected StockNetwork file&rdquo; uses.</small></span></label>
+        <div id="snwAreaExamples" class="snw-note" style="margin-top:10px;"></div>
+      </div>
+
+      <!-- Step 5 -->
+      <div class="card snw-step" data-step="5">
+        <h3 style="margin-top:0;">Step 5 &mdash; Build the file for StockNetwork</h3>
+        <p style="margin-top:0;">Builds <strong>one</strong> file in exactly the same format as your export &mdash; same columns, order, quoting, line endings and text encoding &mdash; with the new Latitude/Longitude and the hub's Country, City, Suburb (and Area, if you chose that). <strong>District, City2 and State are never changed</strong>, nor is any other column. You also get a change report listing every single change.</p>
+        <div class="btn-row" style="margin-top:0;">
+          <button class="primary" id="snwBuildBtn" style="margin-top:0;">Build file</button>
+        </div>
+        <div class="status" id="snwBuildStatus"></div>
+        <ul class="snw-checks" id="snwBuildChecks" style="display:none;"></ul>
+        <div class="btn-row" id="snwBuildDownloads" style="display:none;">
+          <button class="btn-outline" id="snwDlFileBtn">Download file for StockNetwork (.csv)</button>
+          <button class="btn-outline" id="snwDlReportBtn">Download change report (.csv)</button>
+        </div>
+      </div>
+
+      <!-- Step 6 -->
+      <div class="card snw-step" data-step="6">
+        <h3 style="margin-top:0;">Step 6 &mdash; Load it into StockNetwork, then check</h3>
+        <ol style="margin-top:0; font-size:14px; line-height:1.6;">
+          <li>Load the file from step 5 into StockNetwork.</li>
+          <li>Wait for the hub's next nightly StockNetwork sync (02:00 UTC &mdash; 04:00 South African time).</li>
+          <li>Come back to this tab (it remembers your last file) and press <strong>Check now</strong>.</li>
+        </ol>
+        <div class="btn-row" style="margin-top:0;">
+          <button class="primary" id="snwCheckBtn" style="margin-top:0;">Check now</button>
+          <button class="btn-outline" id="snwCheckDlBtn" style="display:none;">Download the ones that still differ (.csv)</button>
+        </div>
+        <div class="status" id="snwCheckStatus"></div>
+        <div id="snwCheckResults" style="display:none; margin-top:12px;"></div>
+      </div>
+
+      <div class="snw-nav">
+        <button class="btn-outline" id="snwBackBtn">&larr; Back</button>
+        <button class="primary" id="snwNextBtn">Next &rarr;</button>
       </div>
     </section>
 
@@ -12741,6 +12887,881 @@
 
     // ---------- initial load ----------
     loadAffiliates();
+  </script>
+
+  <script>
+    // ---------- StockNetwork cleanup wizard (2026-10-06) ----------
+    // See the panel-snCleanup comment above. Self-contained: its own copy of
+    // the CSV handling (the other tools' parsers are private to their own
+    // closures, and this one additionally remembers which cells were quoted
+    // and the file's encoding/line endings so an untouched file round-trips
+    // byte-for-byte), and only server actions that already exist plus the
+    // three snCleanup* ones.
+    (function(){
+      var panel = document.getElementById('panel-snCleanup');
+      if(!panel) return;
+      function $(id){ return document.getElementById(id); }
+      function esc(x){ return String(x == null ? '' : x).replace(/[&<>"]/g, function(c){ return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]; }); }
+      function setStatus(el, t, isError){ el.textContent = t; el.className = 'status show' + (isError ? '' : ' ok'); }
+      function plural(n, one, many){ return n + ' ' + (n === 1 ? one : (many || one + 's')); }
+
+      var STEP_NAMES = ['', 'Upload', 'Find coordinates', 'Place in hub', 'Area choice', 'Build file', 'Check'];
+      var COST_PER_LOOKUP = 0.005;   // Google Geocoding API list price, USD per request beyond the monthly free allowance
+      var LOOKUP_BATCH = 12, APPLY_BATCH = 100, EXPORT_BATCH = 150, MAX_RETRIES = 4;
+      var TOL = 0.00002;             // same coordinate tolerance the rest of the hub uses (~2 m)
+
+      function post(action, body){
+        return fetch('/api/map', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(Object.assign({ action: action, token: ADMIN_TOKEN }, body || {}))
+        }).then(function(r){
+          if(r.status === 401){ goToLogin(); return Promise.reject(new Error('unauthenticated')); }
+          return r.text().then(function(t){
+            var d = null; try { d = JSON.parse(t); } catch(e){}
+            if(!r.ok || !d || d.error || d.ok === false){
+              var err = new Error((d && d.error) || ('HTTP ' + r.status));
+              err.fatal = r.status >= 400 && r.status < 500;
+              throw err;
+            }
+            return d;
+          });
+        });
+      }
+      // Retries timeouts/network hiccups (not a 4xx answer from the server).
+      function postRetry(action, body, onRetry){
+        var tries = 0;
+        function go(){
+          return post(action, body).catch(function(e){
+            if(e.fatal || e.message === 'unauthenticated' || tries >= MAX_RETRIES) throw e;
+            tries++;
+            if(onRetry) onRetry(tries);
+            return new Promise(function(res){ setTimeout(res, 1500 * tries); }).then(go);
+          });
+        }
+        return go();
+      }
+
+      // ---------- CSV: exact round-trip ----------
+      function decodeFile(buf){
+        var bytes = new Uint8Array(buf);
+        var bom = bytes.length >= 3 && bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF;
+        try {
+          return { text: new TextDecoder('utf-8', { fatal: true }).decode(bom ? bytes.subarray(3) : bytes), encoding: 'utf-8', bom: bom, bytes: bytes };
+        } catch(e){
+          return { text: new TextDecoder('windows-1252').decode(bytes), encoding: 'windows-1252', bom: false, bytes: bytes };
+        }
+      }
+      var CP1252 = { 0x20AC:0x80, 0x201A:0x82, 0x0192:0x83, 0x201E:0x84, 0x2026:0x85, 0x2020:0x86, 0x2021:0x87, 0x02C6:0x88, 0x2030:0x89, 0x0160:0x8A,
+        0x2039:0x8B, 0x0152:0x8C, 0x017D:0x8E, 0x2018:0x91, 0x2019:0x92, 0x201C:0x93, 0x201D:0x94, 0x2022:0x95, 0x2013:0x96, 0x2014:0x97,
+        0x02DC:0x98, 0x2122:0x99, 0x0161:0x9A, 0x203A:0x9B, 0x0153:0x9C, 0x017E:0x9E, 0x0178:0x9F };
+      function encodeText(text, enc, bom){
+        if(enc === 'utf-8'){
+          var b = new TextEncoder().encode(text);
+          if(!bom) return { bytes: b, lost: 0 };
+          var out = new Uint8Array(b.length + 3); out.set([0xEF, 0xBB, 0xBF]); out.set(b, 3);
+          return { bytes: out, lost: 0 };
+        }
+        var arr = new Uint8Array(text.length), lost = 0;
+        for(var i = 0; i < text.length; i++){
+          var c = text.charCodeAt(i);
+          if(c < 0x100) arr[i] = c;                 // ASCII, Latin-1 and the C1 bytes cp1252 leaves undefined
+          else if(CP1252[c] !== undefined) arr[i] = CP1252[c];
+          else { arr[i] = 0x3F; lost++; }          // '?' — can't be written in this encoding
+        }
+        return { bytes: arr, lost: lost };
+      }
+      function parseCsv(text){
+        var rows = [], cells = [], quoted = [], field = '', inQ = false, wasQ = false, atStart = true, eol = null, mixed = false;
+        var i = 0, n = text.length, c;
+        while(i < n){
+          c = text[i];
+          if(inQ){
+            if(c === '"'){
+              if(text[i+1] === '"'){ field += '"'; i += 2; continue; }
+              inQ = false; i++; continue;
+            }
+            field += c; i++; continue;
+          }
+          if(c === '"' && atStart){ inQ = true; wasQ = true; atStart = false; i++; continue; }
+          if(c === ','){ cells.push(field); quoted.push(wasQ); field = ''; wasQ = false; atStart = true; i++; continue; }
+          if(c === '\r' || c === '\n'){
+            var e = (c === '\r' && text[i+1] === '\n') ? '\r\n' : c;
+            if(eol === null) eol = e; else if(eol !== e) mixed = true;
+            cells.push(field); quoted.push(wasQ); rows.push({ cells: cells, quoted: quoted });
+            cells = []; quoted = []; field = ''; wasQ = false; atStart = true; i += e.length; continue;
+          }
+          field += c; atStart = false; i++;
+        }
+        var finalEol = !cells.length && field === '' && !wasQ && rows.length > 0;
+        if(!finalEol){ cells.push(field); quoted.push(wasQ); rows.push({ cells: cells, quoted: quoted }); }
+        return { rows: rows, eol: eol || '\r\n', finalEol: finalEol, mixed: mixed };
+      }
+      function cellOut(v, wasQuoted){
+        v = (v === null || v === undefined) ? '' : String(v);
+        return (wasQuoted || /[",\r\n]/.test(v)) ? '"' + v.replace(/"/g, '""') + '"' : v;
+      }
+      function serialize(F, rows){
+        return rows.map(function(r){ return r.cells.map(function(v, i){ return cellOut(v, r.quoted[i]); }).join(','); }).join(F.eol) + (F.finalEol ? F.eol : '');
+      }
+      function sameBytes(a, b){
+        if(a.length !== b.length) return false;
+        for(var i = 0; i < a.length; i++) if(a[i] !== b[i]) return false;
+        return true;
+      }
+      function reportCsv(rows){
+        function c(v){ v = (v === null || v === undefined) ? '' : String(v); return /[",\r\n]|^\s|\s$/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
+        return '﻿' + rows.map(function(r){ return r.map(c).join(','); }).join('\r\n') + '\r\n';
+      }
+      function download(name, data){
+        var blob = new Blob([data], { type: 'text/csv' + (typeof data === 'string' ? ';charset=utf-8' : '') });
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob); a.download = name;
+        document.body.appendChild(a); a.click();
+        setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+      }
+
+      // ---------- coordinates ----------
+      function decimals(t){ var i = t.indexOf('.'); return i < 0 ? 0 : t.slice(i + 1).replace(/0+$/, '').length; }
+      // kind: precise | rounded (≤2 real decimals, i.e. ~1 km — trailing zeros
+      // like -29.610000 don't count) | missing (blank, 0,0, out of range) | damaged (not numbers)
+      function coordInfo(latT, lngT){
+        var lt = String(latT == null ? '' : latT).trim(), gt = String(lngT == null ? '' : lngT).trim();
+        if(lt === '' || gt === '') return { kind: (lt === '' && gt === '') || /^-?[\d.]*$/.test(lt + gt) ? 'missing' : 'damaged' };
+        var num = /^[-+]?\d+(\.\d+)?$/;
+        if(!num.test(lt) || !num.test(gt)) return { kind: 'damaged' };
+        var la = parseFloat(lt), ln = parseFloat(gt);
+        if((la === 0 && ln === 0) || Math.abs(la) > 90 || Math.abs(ln) > 180) return { kind: 'missing', zero: la === 0 && ln === 0 };
+        return { kind: Math.min(decimals(lt), decimals(gt)) <= 2 ? 'rounded' : 'precise', lat: la, lng: ln };
+      }
+      function valid(ci){ return ci && (ci.kind === 'precise' || ci.kind === 'rounded'); }
+      function near(a, b){ return a && b && Math.abs(a.lat - b.lat) < TOL && Math.abs(a.lng - b.lng) < TOL; }
+      function r6(x){ return Math.round(x * 1e6) / 1e6; }
+      function mapsLink(lat, lng){ return 'https://www.google.com/maps/search/?api=1&query=' + lat + ',' + lng; }
+      function mapsSearch(q){ return 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(q); }
+
+      // ---------- wizard state ----------
+      var S = null;      // everything about the loaded file and the run; reset on a new upload
+      var step = 1, done = {}, busy = false;
+      var lastCheck = null;
+
+      function fresh(){
+        return { file: null, F: null, col: null, groups: [], byRid: {}, hub: {}, scope: [], results: {}, decision: {}, applied: {}, areaMode: null,
+          exportRes: {}, build: null, storeKey: '' };
+      }
+
+      // ---------- navigation ----------
+      function show(n, noScroll){
+        step = n;
+        Array.prototype.forEach.call(panel.querySelectorAll('.snw-step'), function(el){ el.classList.toggle('active', +el.dataset.step === n); });
+        Array.prototype.forEach.call($('snwSteps').children, function(li){
+          var k = +li.dataset.step;
+          li.className = k === n ? 'active' : (done[k] ? 'done' : '');
+        });
+        $('snwBackBtn').style.visibility = n > 1 ? 'visible' : 'hidden';
+        var next = $('snwNextBtn');
+        next.style.visibility = n < 6 ? 'visible' : 'hidden';
+        if(n < 6) next.textContent = 'Next: ' + STEP_NAMES[n + 1] + ' →';
+        next.disabled = busy || !done[n];
+        $('snwBackBtn').disabled = busy;
+        if(n === 2 && S && S.F && !done[2] && !busy){
+          // Lookups for this whole scope already exist (restored, or the
+          // scope only shrank) — nothing to pay for, just show them.
+          if(!lookupTargets(false).length) finishLookups();
+          else if(Object.keys(S.results).length) renderLookups();
+        }
+        if(n === 3) renderApplyPlan();
+        if(n === 4) renderAreaExamples();
+        if(!noScroll) window.scrollTo({ top: Math.max(0, panel.getBoundingClientRect().top + window.pageYOffset - 10), behavior: 'smooth' });
+      }
+      function refreshNav(){
+        $('snwNextBtn').disabled = busy || !done[step];
+        $('snwBackBtn').disabled = busy;
+        Array.prototype.forEach.call($('snwSteps').children, function(li){
+          var k = +li.dataset.step;
+          li.className = k === step ? 'active' : (done[k] ? 'done' : '');
+        });
+      }
+      function setBusy(b){ busy = b; refreshNav(); }
+      function invalidateFrom(n){
+        for(var k = n; k <= 6; k++) delete done[k];
+        if(n <= 2){ $('snwLookupBtn').disabled = false; $('snwLookupBtn').textContent = 'Start lookups'; }
+        if(n <= 5 && S){ S.build = null; $('snwBuildDownloads').style.display = 'none'; $('snwBuildChecks').style.display = 'none'; }
+        refreshNav();
+      }
+      $('snwBackBtn').addEventListener('click', function(){ if(!busy && step > 1) show(step - 1); });
+      $('snwNextBtn').addEventListener('click', function(){ if(!busy && done[step] && step < 6) show(step + 1); });
+
+      // ---------- persistence of paid-for lookups (per file, this browser only) ----------
+      function saveLookups(){
+        if(!S || !S.storeKey) return;
+        try { localStorage.setItem(S.storeKey, JSON.stringify({ results: S.results, decision: S.decision, at: Date.now() })); } catch(e){}
+      }
+      function loadLookups(){
+        try {
+          var d = JSON.parse(localStorage.getItem(S.storeKey) || 'null');
+          if(d && d.results){ S.results = d.results; S.decision = d.decision || {}; return Object.keys(d.results).length; }
+        } catch(e){}
+        return 0;
+      }
+
+      // =====================================================================
+      // Step 1 — Upload
+      // =====================================================================
+      $('snwFileBtn').addEventListener('click', function(){ if(!busy) $('snwFileInput').click(); });
+      $('snwFileInput').addEventListener('change', function(){
+        var input = $('snwFileInput');
+        if(!input.files || !input.files[0]) return;
+        var f = input.files[0];
+        input.value = '';
+        var statusEl = $('snwUploadStatus');
+        S = fresh();
+        invalidateFrom(1);
+        $('snwUploadSummary').style.display = 'none';
+        ['snwLookupStatus', 'snwApplyStatus', 'snwBuildStatus'].forEach(function(id){ $(id).className = 'status'; });
+        ['snwLookupResults', 'snwApplyResults'].forEach(function(id){ $(id).style.display = 'none'; $(id).innerHTML = ''; });
+        $('snwRetryBtn').style.display = 'none';
+        Array.prototype.forEach.call(panel.querySelectorAll('input[name=snwArea]'), function(r){ r.checked = false; });
+        setStatus(statusEl, 'Reading ' + f.name + '…');
+        f.arrayBuffer().then(function(buf){
+          var dec = decodeFile(buf);
+          var F = parseCsv(dec.text);
+          F.encoding = dec.encoding; F.bom = dec.bom; F.bytes = dec.bytes; F.name = f.name;
+          if(F.rows.length < 2){ setStatus(statusEl, 'That file looks empty.', true); return; }
+          var lower = F.rows[0].cells.map(function(h){ return h.trim().toLowerCase(); });
+          function ix(name){ return lower.indexOf(name); }
+          var col = { name: ix('resort'), district: ix('district'), area: ix('area'), country: ix('country'), lat: ix('latitude'), lng: ix('longitude'),
+            suburb: ix('suburb'), city: ix('city'), city2: ix('city2'), state: ix('state'), siteId: ix('siteid'), resortId: ix('resortid') };
+          var missing = ['name', 'area', 'country', 'lat', 'lng', 'suburb', 'city', 'resortId'].filter(function(k){ return col[k] < 0; });
+          if(missing.length){
+            setStatus(statusEl, 'This doesn’t look like the StockNetwork Resort Information export — I need the Resort, Area, Country, Latitude, Longitude, Suburb, City and ResortID columns.', true);
+            return;
+          }
+          // Round-trip check before anything else: if writing the file back
+          // out unchanged doesn't give the identical bytes, step 5 couldn't
+          // promise "exactly the same format", so say so now.
+          F.roundTripOk = !F.mixed && sameBytes(encodeText(serialize(F, F.rows), F.encoding, F.bom).bytes, F.bytes);
+          S.F = F; S.col = col;
+          S.storeKey = 'snw-lookups:' + f.name + ':' + F.bytes.length;
+          setStatus(statusEl, 'Read ' + (F.rows.length - 1) + ' rows. Checking what the hub already has…');
+          return fetch('/api/resorts').then(function(r){ return r.json(); }).then(function(d){
+            indexHub(d && Array.isArray(d.resorts) ? d.resorts : []);
+            buildGroups();
+            var restored = loadLookups();
+            done[1] = true;
+            renderUpload(restored);
+            refreshNav();
+          });
+        }).catch(function(e){ setStatus(statusEl, 'Could not read that file or the hub’s property list: ' + e.message, true); });
+      });
+
+      function indexHub(resorts){
+        resorts.forEach(function(r){
+          var rid = String(r.resortId || '').trim();
+          if(!rid) return;
+          var h = S.hub[rid];
+          if(!h){ h = S.hub[rid] = { rows: 0, ci: null, tagCurrent: true, pending: false, zone: '', label: '' }; }
+          h.rows++;
+          var ci = coordInfo(r.latitude, r.longitude);
+          if(valid(ci) && (!h.ci || (h.ci.kind === 'rounded' && ci.kind === 'precise'))) h.ci = ci;
+          if(!(r.locV === 2 && r.townId)) h.tagCurrent = false;
+          if(r.snCoordPending) h.pending = true;
+          if(!h.zone && r.zone) h.zone = r.zone;
+          if(!h.label && r.locationLabel) h.label = r.locationLabel;
+        });
+      }
+
+      // One group per physical property (ResortID); its rows can be several SiteIDs.
+      function buildGroups(){
+        var F = S.F, c = S.col;
+        for(var i = 1; i < F.rows.length; i++){
+          var cells = F.rows[i].cells;
+          if(cells.length === 1 && cells[0].trim() === '') continue;                 // blank line
+          if(cells.length !== F.rows[0].cells.length){ S.damaged = (S.damaged || 0) + 1; continue; }
+          var ci = coordInfo(cells[c.lat], cells[c.lng]);
+          if(ci.kind === 'damaged'){ S.damaged = (S.damaged || 0) + 1; continue; }
+          var rid = (cells[c.resortId] || '').trim();
+          var key = rid || ('row:' + i);
+          var g = S.byRid[key];
+          if(!g){
+            g = S.byRid[key] = { key: key, rid: rid, rows: [], name: cells[c.name], query: queryFor(cells), sn: ci, hub: rid ? S.hub[rid] || null : null };
+            S.groups.push(g);
+          } else if(!valid(g.sn) || (g.sn.kind === 'rounded' && ci.kind === 'precise')) g.sn = ci;
+          g.rows.push(i);
+        }
+        S.groups.forEach(function(g){
+          var h = g.hub && g.hub.ci;
+          // The hub is master: its coordinate wins, unless it's rounded and
+          // StockNetwork's is precise.
+          if(h && !(h.kind === 'rounded' && g.sn.kind === 'precise')) g.cand = { lat: h.lat, lng: h.lng, kind: h.kind, src: 'hub' };
+          else if(valid(g.sn)) g.cand = { lat: g.sn.lat, lng: g.sn.lng, kind: g.sn.kind, src: 'sn' };
+          else g.cand = null;
+          g.needLookup = !g.cand || g.cand.kind === 'rounded';
+          g.hubBetter = !!(g.cand && g.cand.src === 'hub' && g.cand.kind === 'precise' && !near(g.cand, g.sn));
+        });
+      }
+      // Same query "Improve property coordinates" builds: name, suburb, city, state, country (no repeats).
+      function queryFor(cells){
+        var c = S.col, parts = [];
+        [c.name, c.suburb, c.city, c.state, c.country].forEach(function(ix){
+          if(ix < 0) return;
+          var v = (cells[ix] || '').trim();
+          if(v && parts.map(function(p){ return p.toLowerCase(); }).indexOf(v.toLowerCase()) < 0) parts.push(v);
+        });
+        return parts.join(', ');
+      }
+
+      function scopeChoice(){
+        var r = panel.querySelector('input[name=snwScope]:checked');
+        var n = Math.max(1, Math.min(500, parseInt($('snwTestN').value, 10) || 10));
+        return { test: !r || r.value === 'test', n: n };
+      }
+      function computeScope(){
+        var sc = scopeChoice();
+        if(!sc.test){ S.scope = S.groups.slice(); S.test = false; return; }
+        var pick = S.groups.filter(function(g){ return g.needLookup && g.hub; }).slice(0, sc.n);
+        if(pick.length < sc.n) pick = pick.concat(S.groups.filter(function(g){ return pick.indexOf(g) < 0; }).slice(0, sc.n - pick.length));
+        S.scope = pick; S.test = true;
+      }
+      function estimate(){
+        computeScope();
+        var fwd = 0, place = 0, rowsIn = 0, already = 0;
+        S.scope.forEach(function(g){
+          rowsIn += g.rows.length;
+          if(g.needLookup){ if(S.results[g.key] && !S.results[g.key].failed) already++; else fwd++; }
+          // Placement lookup: the coordinate may change (lookups) or the hub
+          // has no current Town/Suburb for it. Usually fewer — cached.
+          if(g.needLookup || !g.hub || !g.hub.tagCurrent || !g.hub.ci) place++;
+        });
+        var total = fwd + place;
+        var mins = Math.max(1, Math.round((Math.ceil(fwd / LOOKUP_BATCH) * 4 + Math.ceil(place / 24) * 8) / 60));
+        return { fwd: fwd, place: place, total: total, cost: total * COST_PER_LOOKUP, mins: mins, rowsIn: rowsIn, already: already };
+      }
+      function renderUpload(restored){
+        var F = S.F, cnt = { precise: 0, rounded: 0, missing: 0 }, rowsTotal = 0;
+        S.groups.forEach(function(g){ rowsTotal += g.rows.length; cnt[g.sn.kind === 'precise' ? 'precise' : g.sn.kind === 'rounded' ? 'rounded' : 'missing']++; });
+        var hubBetter = S.groups.filter(function(g){ return g.hubBetter; }).length;
+        var notInHub = S.groups.filter(function(g){ return !g.hub; }).length;
+        var needLookup = S.groups.filter(function(g){ return g.needLookup; }).length;
+        function tile(n, l, warn){ return '<div class="stat-card' + (warn ? ' outstanding' : '') + '"><div class="num">' + n.toLocaleString() + '</div><div class="lbl">' + esc(l) + '</div></div>'; }
+        $('snwUploadStats').innerHTML =
+          tile(S.groups.length, 'Properties (' + rowsTotal.toLocaleString() + ' rows)') +
+          tile(cnt.rounded, 'Rounded coordinates', cnt.rounded > 0) +
+          tile(cnt.missing, 'Missing or 0,0', cnt.missing > 0) +
+          tile(cnt.precise, 'Precise coordinates');
+        var msg = 'Read ' + F.name + ': ' + plural(S.groups.length, 'property', 'properties') + ' (' + rowsTotal + ' rows — some properties are listed under more than one SiteID; each property is looked up once). '
+          + (hubBetter ? plural(hubBetter, 'property already has', 'properties already have') + ' a more precise coordinate in the hub than in StockNetwork — the hub’s is used, no lookup needed. ' : '')
+          + plural(needLookup, 'property has', 'properties have') + ' a rounded or missing coordinate and need' + (needLookup === 1 ? 's' : '') + ' a Google lookup.';
+        if(notInHub) msg += ' ' + plural(notInHub, 'property isn’t', 'properties aren’t') + ' in the hub yet (add with the resort-list upload) — the file can still be corrected, but they can’t be placed in the hub.';
+        if(S.damaged) msg += ' ' + plural(S.damaged, 'row looks', 'rows look') + ' damaged (columns shifted) and will be left exactly as they are.';
+        if(restored) msg += ' ' + plural(restored, 'earlier lookup') + ' for this same file were restored from this browser — they won’t be paid for again.';
+        if(!F.roundTripOk) msg += ' WARNING: this file doesn’t write back out byte-for-byte identical (mixed line endings or unusual quoting) — step 5 will tell you exactly what differs.';
+        setStatus($('snwUploadStatus'), msg, !F.roundTripOk);
+        $('snwUploadSummary').style.display = '';
+        renderEstimate();
+      }
+      function renderEstimate(){
+        if(!S || !S.F) return;
+        var e = estimate();
+        $('snwEstimate').innerHTML =
+          '<strong>' + plural(S.scope.length, 'property', 'properties') + '</strong> (' + e.rowsIn + ' rows) in this run.<br>'
+          + '&bull; Name lookups (step 2): <strong>' + e.fwd.toLocaleString() + '</strong>' + (e.already ? ' (+' + e.already + ' already done earlier, free)' : '') + '<br>'
+          + '&bull; Placement lookups (steps 3 and 5): <strong>up to ' + e.place.toLocaleString() + '</strong> — usually fewer, since a coordinate the hub has seen before is never paid for twice<br>'
+          + '&bull; Total: <strong>up to ' + e.total.toLocaleString() + ' Google lookups ≈ US$' + e.cost.toFixed(2) + '</strong> at Google’s US$5 per 1,000 (less if part of it falls inside Google’s monthly free allowance)<br>'
+          + '&bull; Rough time: about ' + plural(e.mins, 'minute') + '.';
+      }
+      Array.prototype.forEach.call(panel.querySelectorAll('input[name=snwScope]'), function(r){
+        r.addEventListener('change', function(){ if(!busy){ invalidateFrom(2); renderEstimate(); } });
+      });
+      $('snwTestN').addEventListener('input', function(){ if(!busy){ invalidateFrom(2); renderEstimate(); } });
+
+      // =====================================================================
+      // Step 2 — Find coordinates (suggestCoordinates, as in "Improve property coordinates")
+      // =====================================================================
+      function lookupTargets(onlyFailed){
+        return S.scope.filter(function(g){
+          if(!g.needLookup) return false;
+          var r = S.results[g.key];
+          return onlyFailed ? !!(r && r.failed && r.reason !== 'ZERO_RESULTS') : (!r || (r.failed && r.reason !== 'ZERO_RESULTS'));
+        });
+      }
+      function bucket(g){
+        var r = S.results[g.key];
+        if(!r) return null;
+        if(r.confidence === 'high') return 'confident';
+        if(r.confidence === 'review') return 'unsure';
+        return 'notfound';
+      }
+      $('snwLookupBtn').addEventListener('click', function(){ runLookups(false); });
+      $('snwRetryBtn').addEventListener('click', function(){ runLookups(true); });
+
+      function runLookups(onlyFailed){
+        if(busy || !S) return;
+        var statusEl = $('snwLookupStatus');
+        var todo = lookupTargets(onlyFailed);
+        if(!todo.length){ finishLookups('Nothing left to look up.'); return; }
+        if(!confirm('This will look up ' + plural(todo.length, 'property', 'properties') + ' on Google (one lookup each, about US$' + (todo.length * COST_PER_LOOKUP).toFixed(2) + '). Continue?')) return;
+        setBusy(true);
+        $('snwLookupBtn').disabled = true; $('snwRetryBtn').disabled = true;
+        var pos = 0, failStreak = 0;
+        function stop(msg, isError){
+          setBusy(false);
+          $('snwLookupBtn').disabled = false; $('snwRetryBtn').disabled = false;
+          finishLookups(msg, isError);
+        }
+        function next(){
+          if(pos >= todo.length){ stop(null); return; }
+          var slice = todo.slice(pos, pos + LOOKUP_BATCH);
+          setStatus(statusEl, 'Looking up… ' + pos + ' of ' + todo.length);
+          var items = slice.map(function(g){ return { id: g.key, query: g.query, lat: g.cand ? g.cand.lat : '', lng: g.cand ? g.cand.lng : '' }; });
+          postRetry('suggestCoordinates', { items: items }, function(t){ setStatus(statusEl, 'That request timed out — retrying (' + t + '/' + MAX_RETRIES + ')… ' + pos + ' of ' + todo.length + ' done'); })
+            .then(function(d){
+              var allFailed = d.results.length > 0;
+              d.results.forEach(function(r){
+                S.results[r.id] = r;
+                if(r.confidence === 'high') S.decision[r.id] = 'accept';
+                else if(S.decision[r.id] === undefined) S.decision[r.id] = null;
+                if(!r.failed) allFailed = false;
+              });
+              saveLookups();
+              if(allFailed){
+                failStreak++;
+                if(failStreak >= 3){
+                  var f = d.results[0];
+                  stop('Stopped — Google refused 3 batches in a row (' + (f.reason || 'unknown') + (f.message ? ': ' + f.message : '') + '). Usually the API key, billing or the monthly limit. What was found so far is kept — press Start lookups to carry on.', true);
+                  return;
+                }
+              } else failStreak = 0;
+              pos += slice.length;
+              next();
+            })
+            .catch(function(e){ stop('Stopped at ' + pos + ' of ' + todo.length + ' (' + e.message + '). Finished lookups are kept — press Start lookups to carry on.', true); });
+        }
+        next();
+      }
+      function finishLookups(msg, isError){
+        var c = { confident: 0, unsure: 0, notfound: 0, failed: 0, skipped: 0 };
+        S.scope.forEach(function(g){
+          if(!g.needLookup){ c.skipped++; return; }
+          var r = S.results[g.key];
+          if(!r) return;
+          if(r.failed && r.reason !== 'ZERO_RESULTS') c.failed++;
+          c[bucket(g)]++;
+        });
+        var remaining = lookupTargets(false).length;
+        if(!msg){
+          msg = 'Done — ' + c.confident + ' confident, ' + c.unsure + ' unsure, ' + c.notfound + ' not found'
+            + (c.skipped ? ' (' + c.skipped + ' needed no lookup)' : '') + '.' + (c.unsure ? ' Decide the unsure ones below, then press Next.' : ' Press Next.');
+        }
+        setStatus($('snwLookupStatus'), msg, isError);
+        $('snwRetryBtn').style.display = c.failed ? '' : 'none';
+        $('snwLookupBtn').textContent = remaining ? 'Start lookups' : 'All looked up';
+        $('snwLookupBtn').disabled = !remaining;
+        if(!remaining) done[2] = true;
+        renderLookups();
+        refreshNav();
+      }
+
+      function renderLookups(){
+        var box = $('snwLookupResults');
+        var groups = { unsure: [], confident: [], notfound: [] };
+        S.scope.forEach(function(g){ var b = g.needLookup && bucket(g); if(b) groups[b].push(g); });
+        var byName = function(a, b){ return (a.name || '').localeCompare(b.name || ''); };
+        groups.unsure.sort(byName); groups.confident.sort(byName); groups.notfound.sort(byName);
+        function cur(g){ return g.cand ? '<a href="' + mapsLink(g.cand.lat, g.cand.lng) + '" target="_blank" rel="noopener">current pin</a>' : 'no current pin'; }
+        function town(g){ var cells = S.F.rows[g.rows[0]].cells; return esc([cells[S.col.suburb], cells[S.col.city], cells[S.col.country]].filter(Boolean).join(', ')); }
+        function decBtns(g){
+          var d = S.decision[g.key];
+          return '<button type="button" class="snw-btn-sm' + (d === 'accept' ? ' on-accept' : '') + '" data-dec="accept" data-key="' + esc(g.key) + '">Accept</button> '
+            + '<button type="button" class="snw-btn-sm' + (d === 'reject' ? ' on-reject' : '') + '" data-dec="reject" data-key="' + esc(g.key) + '">Reject</button>';
+        }
+        var undecided = groups.unsure.filter(function(g){ return !S.decision[g.key]; }).length;
+        var html = '';
+        html += '<p class="snw-section-title">Unsure — your call (' + groups.unsure.length + ')</p>';
+        if(groups.unsure.length){
+          html += '<p class="snw-note" style="margin:0 0 8px;">Open both pins; accept if Google’s pin is the property. ' + (undecided ? '<strong>' + undecided + ' not decided yet — anything left undecided is treated as Reject.</strong>' : 'All decided.') + '</p>'
+            + '<div class="btn-row" style="margin:0 0 8px;"><button type="button" class="snw-btn-sm" data-bulk="accept">Accept all unsure</button><button type="button" class="snw-btn-sm" data-bulk="reject">Reject all unsure</button></div>'
+            + '<div class="table-wrap"><table class="data-table snw-table"><thead><tr><th>Property</th><th>Google found</th><th>Pins</th><th>Decision</th></tr></thead><tbody>'
+            + groups.unsure.map(function(g){
+                var r = S.results[g.key];
+                return '<tr><td>' + esc(g.name) + '<small>' + town(g) + '</small></td><td>' + esc(r.formatted || '') + '<small>' + esc(r.note || '') + '</small></td>'
+                  + '<td>' + cur(g) + '<br><a href="' + mapsLink(r.lat, r.lng) + '" target="_blank" rel="noopener">Google’s pin</a></td><td style="white-space:nowrap;">' + decBtns(g) + '</td></tr>';
+              }).join('') + '</tbody></table></div>';
+        } else html += '<p class="snw-note" style="margin:0;">None.</p>';
+
+        html += '<details style="margin-top:14px;"><summary class="snw-section-title" style="cursor:pointer; display:list-item;">Confident (' + groups.confident.length + ') — accepted unless you untick</summary>';
+        if(groups.confident.length){
+          html += '<div class="table-wrap"><table class="data-table snw-table"><thead><tr><th>Use</th><th>Property</th><th>Google found</th><th>Moved</th></tr></thead><tbody>'
+            + groups.confident.map(function(g){
+                var r = S.results[g.key];
+                return '<tr><td><input type="checkbox" style="width:auto;" data-conf="' + esc(g.key) + '"' + (S.decision[g.key] === 'accept' ? ' checked' : '') + '></td><td>' + esc(g.name) + '<small>' + town(g) + '</small></td>'
+                  + '<td>' + esc(r.formatted || '') + '<small><a href="' + mapsLink(r.lat, r.lng) + '" target="_blank" rel="noopener">Google’s pin</a></small></td><td>' + (r.distKm != null ? r.distKm + ' km' : '') + '</td></tr>';
+              }).join('') + '</tbody></table></div>';
+        }
+        html += '</details>';
+
+        html += '<details style="margin-top:10px;"><summary class="snw-section-title" style="cursor:pointer; display:list-item;">Not found (' + groups.notfound.length + ') — keep their current coordinate</summary>';
+        if(groups.notfound.length){
+          html += '<div class="table-wrap"><table class="data-table snw-table"><thead><tr><th>Property</th><th>Why</th><th>Search yourself</th></tr></thead><tbody>'
+            + groups.notfound.map(function(g){
+                var r = S.results[g.key];
+                return '<tr><td>' + esc(g.name) + '<small>' + town(g) + '</small></td><td>' + esc(r.note || '') + '</td><td><a href="' + mapsSearch(g.query) + '" target="_blank" rel="noopener">Google Maps</a></td></tr>';
+              }).join('') + '</tbody></table></div>';
+          html += '<p class="snw-note">These keep their current coordinate (it is still placed in the hub and used for Country/City/Suburb). To fix one by hand later, use &ldquo;Find &amp; fix missing coordinates&rdquo; on the Map &amp; Activities tab.</p>';
+        }
+        html += '</details>';
+        box.innerHTML = html;
+        box.style.display = '';
+      }
+      $('snwLookupResults').addEventListener('click', function(e){
+        var b = e.target.closest('button');
+        if(!b || busy) return;
+        if(b.dataset.dec){ S.decision[b.dataset.key] = b.dataset.dec; }
+        else if(b.dataset.bulk){
+          S.scope.forEach(function(g){ if(g.needLookup && bucket(g) === 'unsure') S.decision[g.key] = b.dataset.bulk; });
+        } else return;
+        saveLookups(); invalidateFrom(3); renderLookups();
+      });
+      $('snwLookupResults').addEventListener('change', function(e){
+        var cb = e.target;
+        if(!cb.dataset || !cb.dataset.conf) return;
+        S.decision[cb.dataset.conf] = cb.checked ? 'accept' : 'reject';
+        saveLookups(); invalidateFrom(3);
+      });
+
+      // =====================================================================
+      // Step 3 — Place in hub (snCleanupApply)
+      // =====================================================================
+      // The coordinate each property ends up with: Google's where accepted,
+      // otherwise the hub-or-StockNetwork candidate from step 1.
+      function finalFor(g){
+        var r = S.results[g.key];
+        if(g.needLookup && r && S.decision[g.key] === 'accept' && r.lat != null && r.confidence !== 'none'){
+          return { lat: r6(r.lat), lng: r6(r.lng), src: r.confidence === 'high' ? 'google' : 'google-you' };
+        }
+        return g.cand ? { lat: r6(g.cand.lat), lng: r6(g.cand.lng), src: g.cand.src } : null;
+      }
+      function applyItems(){
+        var items = [];
+        S.scope.forEach(function(g){
+          var f = finalFor(g);
+          if(!g.hub || !f) return;
+          items.push({ id: g.key, resortId: g.rid, lat: f.lat, lng: f.lng, pending: !near(f, g.sn) });
+        });
+        return items;
+      }
+      function renderApplyPlan(){
+        if(!S || !S.F) return;
+        var items = applyItems();
+        var google = 0, hub = 0, pend = 0;
+        S.scope.forEach(function(g){ var f = finalFor(g); if(f && /^google/.test(f.src)) google++; });
+        items.forEach(function(it){ if(it.pending) pend++; });
+        var noCoord = S.scope.filter(function(g){ return g.hub && !finalFor(g); }).length;
+        var notInHub = S.scope.filter(function(g){ return !g.hub; }).length;
+        $('snwApplyPlan').innerHTML = '<strong>' + plural(items.length, 'property', 'properties') + '</strong> will be saved and placed: '
+          + google + ' with a new Google coordinate, the rest with the coordinate already on file. '
+          + pend + ' will be marked <em>waiting for StockNetwork</em> (the hub’s coordinate will differ from StockNetwork’s until you load the new file).'
+          + (noCoord ? ' ' + plural(noCoord, 'property has', 'properties have') + ' no usable coordinate at all and ' + (noCoord === 1 ? 'is' : 'are') + ' skipped.' : '')
+          + (notInHub ? ' ' + plural(notInHub, 'property isn’t', 'properties aren’t') + ' in the hub yet and ' + (notInHub === 1 ? 'is' : 'are') + ' skipped here (the file is still corrected).' : '');
+      }
+      $('snwApplyBtn').addEventListener('click', function(){
+        if(busy || !S) return;
+        var queue = applyItems();
+        var statusEl = $('snwApplyStatus');
+        if(!queue.length){ setStatus(statusEl, 'Nothing to save.'); done[3] = true; refreshNav(); return; }
+        if(!confirm('Save ' + plural(queue.length, 'coordinate') + ' to the hub and place each property in Country > Zone > Town > Suburb? This changes the hub’s live data.')) return;
+        setBusy(true); $('snwApplyBtn').disabled = true;
+        var total = queue.length, stuck = 0;
+        S.applied = {};
+        function stop(msg, isError){
+          setBusy(false); $('snwApplyBtn').disabled = false;
+          renderApplyResults(msg, isError);
+        }
+        function next(){
+          if(!queue.length){ done[3] = true; stop(null); return; }
+          var slice = queue.slice(0, APPLY_BATCH);
+          setStatus(statusEl, 'Saving and placing… ' + (total - queue.length) + ' of ' + total);
+          postRetry('snCleanupApply', { items: slice }, function(t){ setStatus(statusEl, 'Timed out — retrying (' + t + '/' + MAX_RETRIES + ')…'); })
+            .then(function(d){
+              var finished = {};
+              d.results.forEach(function(r){ if(r && r.done){ S.applied[r.id] = r; finished[r.id] = true; } });
+              var n = Object.keys(finished).length;
+              queue = queue.filter(function(it){ return !finished[it.id]; });
+              if(!n){ stuck++; if(stuck >= 3){ stop('Stopped — the server finished nothing three times in a row. Press the button again to carry on (what’s done is kept).', true); return; } }
+              else stuck = 0;
+              next();
+            })
+            .catch(function(e){ stop('Stopped with ' + queue.length + ' still to do (' + e.message + '). Press the button again to carry on — what’s done is kept.', true); });
+        }
+        next();
+      });
+      function renderApplyResults(msg, isError){
+        var placed = [], problems = [];
+        S.scope.forEach(function(g){
+          var r = S.applied[g.key];
+          if(!r) return;
+          (r.status === 'placed' ? placed : problems).push({ g: g, r: r });
+        });
+        var lookups = placed.concat(problems).filter(function(x){ return x.r.lookup; }).length;
+        if(!msg) msg = 'Done — ' + placed.length + ' placed in the hub' + (problems.length ? ', ' + problems.length + ' couldn’t be placed (listed below)' : '') + ' (' + lookups + ' placement lookups used).';
+        setStatus($('snwApplyStatus'), msg, isError);
+        var html = '';
+        if(problems.length){
+          html += '<p class="snw-section-title">Couldn’t be placed (' + problems.length + ')</p><div class="table-wrap"><table class="data-table snw-table"><thead><tr><th>Property</th><th>Why</th></tr></thead><tbody>'
+            + problems.map(function(x){ return '<tr><td>' + esc(x.g.name) + '</td><td>' + esc(x.r.status === 'notInHub' ? 'Not in the hub’s resort list' : (x.r.error || x.r.status)) + '</td></tr>'; }).join('')
+            + '</tbody></table></div><p class="snw-note">Their coordinate is saved; they’ll show under &ldquo;Properties with no zone&rdquo; on the Map &amp; Activities tab.</p>';
+        }
+        if(placed.length){
+          html += '<details style="margin-top:12px;"><summary class="snw-section-title" style="cursor:pointer; display:list-item;">Placed (' + placed.length + ')</summary><div class="table-wrap"><table class="data-table snw-table"><thead><tr><th>Property</th><th>Now in the hub as</th></tr></thead><tbody>'
+            + placed.map(function(x){ return '<tr><td>' + esc(x.g.name) + '</td><td>' + esc([x.r.country, x.r.zone, x.r.locationLabel].filter(Boolean).join(' › ')) + '</td></tr>'; }).join('')
+            + '</tbody></table></div></details>';
+        }
+        $('snwApplyResults').innerHTML = html;
+        $('snwApplyResults').style.display = html ? '' : 'none';
+        refreshNav();
+      }
+
+      // =====================================================================
+      // Step 4 — Area choice
+      // =====================================================================
+      Array.prototype.forEach.call(panel.querySelectorAll('input[name=snwArea]'), function(r){
+        r.addEventListener('change', function(){ if(busy) return; S.areaMode = r.value; invalidateFrom(5); done[4] = true; refreshNav(); });
+      });
+      function renderAreaExamples(){
+        if(!S || !S.F) return;
+        var ex = [], seen = {};
+        S.scope.forEach(function(g){
+          var r = S.applied[g.key], zone = (r && r.zone) || (g.hub && g.hub.zone) || '';
+          var area = (S.F.rows[g.rows[0]].cells[S.col.area] || '').trim();
+          var k = area + '|' + zone;
+          if(zone && area.toLowerCase() !== zone.toLowerCase() && !seen[k] && ex.length < 6){ seen[k] = 1; ex.push([area || '(blank)', zone]); }
+        });
+        $('snwAreaExamples').innerHTML = ex.length
+          ? 'Examples from this run where they differ — StockNetwork’s Area → hub zone:<br>' + ex.map(function(e){ return '&bull; ' + esc(e[0]) + ' → ' + esc(e[1]); }).join('<br>')
+          : 'In this run StockNetwork’s Area already matches the hub zone wherever both are known.';
+      }
+
+      // =====================================================================
+      // Step 5 — Build file (exportLocations, as in "Corrected StockNetwork file")
+      // =====================================================================
+      var APPLY_STATUS = { ok: 1, nearby: 1, sea: 1 };
+      $('snwBuildBtn').addEventListener('click', function(){
+        if(busy || !S) return;
+        if(!S.areaMode){ setStatus($('snwBuildStatus'), 'Choose what the Area column should say in step 4 first.', true); return; }
+        var statusEl = $('snwBuildStatus');
+        var c = S.col, rows = [];
+        S.scope.forEach(function(g){
+          var f = finalFor(g);
+          g.rows.forEach(function(i){
+            var cells = S.F.rows[i].cells;
+            rows.push({ i: i, name: cells[c.name], resortId: (cells[c.resortId] || '').trim(), siteId: c.siteId > -1 ? (cells[c.siteId] || '').trim() : '',
+              lat: f ? String(f.lat) : '', lng: f ? String(f.lng) : '', csvCountry: (cells[c.country] || '').trim() });
+          });
+        });
+        rows.sort(function(a, b){ return a.i - b.i; });
+        setBusy(true); $('snwBuildBtn').disabled = true; $('snwBuildDownloads').style.display = 'none'; $('snwBuildChecks').style.display = 'none';
+        S.exportRes = {};
+        var pos = 0, stuck = 0;
+        function stop(msg, isError){ setBusy(false); $('snwBuildBtn').disabled = false; setStatus(statusEl, msg, isError); }
+        function next(){
+          if(pos >= rows.length){ finishBuild(); return; }
+          var slice = rows.slice(pos, pos + EXPORT_BATCH);
+          setStatus(statusEl, 'Working out Country / Area / City / Suburb from the hub… ' + pos + ' of ' + rows.length);
+          postRetry('exportLocations', { rows: slice }, function(t){ setStatus(statusEl, 'Timed out — retrying (' + t + '/' + MAX_RETRIES + ')…'); })
+            .then(function(d){
+              (d.results || []).forEach(function(it){ S.exportRes[it.i] = it; });
+              var used = d.nextIndex || 0;
+              if(!used){ stuck++; if(stuck >= 3){ stop('Stopped — the server processed nothing three times in a row. Press Build file to try again.', true); return; } }
+              else stuck = 0;
+              pos += used;
+              next();
+            })
+            .catch(function(e){ stop('Stopped at ' + pos + ' of ' + rows.length + ' (' + e.message + '). Press Build file to try again — look-ups already done are cached, so it’s quicker.', true); });
+        }
+        function finishBuild(){
+          try { buildOutputs(); }
+          catch(e){ stop('Could not build the file: ' + e.message, true); return; }
+          var B = S.build;
+          var run = { fileName: S.F.name, areaMode: S.areaMode, test: S.test, expected: B.expected };
+          postRetry('snCleanupSaveRun', { run: run }).then(function(){
+            done[5] = B.checksOk;
+            stop('Built: ' + B.changedRows + ' of ' + (S.F.rows.length - 1) + ' rows changed (' + B.changes + ' individual changes). '
+              + (B.leftForYou ? plural(B.leftForYou, 'row was', 'rows were') + ' left unchanged for you to decide — see the change report. ' : '')
+              + 'Download both files below.', !B.checksOk);
+            renderChecks();
+          }).catch(function(e){
+            done[5] = B.checksOk;
+            stop('The file is built, but saving it for the Check step failed (' + e.message + ') — press Build file again before loading it into StockNetwork, or Check won’t know what to compare.', true);
+            renderChecks();
+          });
+        }
+        next();
+      });
+
+      function buildOutputs(){
+        var F = S.F, c = S.col;
+        // Write new coordinates the way this file already writes them (e.g. -29.610000).
+        var decCount = {};
+        for(var k = 1; k < F.rows.length; k++){
+          var t = (F.rows[k].cells[c.lat] || '').trim(), p = t.indexOf('.');
+          if(p > -1 && /^[-+]?\d+\.\d+$/.test(t)){ var dd = t.length - p - 1; decCount[dd] = (decCount[dd] || 0) + 1; }
+        }
+        var places = 6, best = 0;
+        Object.keys(decCount).forEach(function(d){ if(decCount[d] > best){ best = decCount[d]; places = +d; } });
+        if(places < 6) places = 6;
+
+        var out = F.rows.map(function(r){ return { cells: r.cells.slice(), quoted: r.quoted }; });
+        var report = [['Resort', 'ResortID', 'SiteID', 'Field', 'Old value', 'New value', 'Why']];
+        var expected = [], changes = 0, changedRows = 0, leftForYou = 0;
+        var SRC = { google: 'Google matched the property by name (confident)', 'google-you': 'Google match you accepted', hub: 'The hub already had a more precise coordinate', sn: 'StockNetwork’s own coordinate' };
+        var areaWhy = S.areaMode === 'hub' ? 'Hub zone for this coordinate' : '';
+
+        S.scope.forEach(function(g){
+          var f = finalFor(g);
+          g.rows.forEach(function(i){
+            var cells = out[i].cells, before = F.rows[i].cells, rowChanged = false;
+            var rid = (before[c.resortId] || ''), sid = c.siteId > -1 ? before[c.siteId] : '';
+            function set(col, val, field, why){
+              if(col < 0 || val === undefined || val === null) return;
+              val = String(val);
+              if(cells[col] === val) return;
+              report.push([before[c.name], rid, sid, field, before[col], val, why]);
+              cells[col] = val; changes++; rowChanged = true;
+            }
+            var rowCi = coordInfo(before[c.lat], before[c.lng]);
+            if(f && !(valid(rowCi) && near(f, rowCi))){
+              set(c.lat, f.lat.toFixed(places), 'Latitude', SRC[f.src]);
+              set(c.lng, f.lng.toFixed(places), 'Longitude', SRC[f.src]);
+            }
+            var it = S.exportRes[i];
+            var applied = !!(it && APPLY_STATUS[it.status]);
+            if(applied){
+              var why = 'From the hub’s Country > Zone > Town > Suburb for this coordinate' + (it.note ? ' — ' + it.note : '');
+              set(c.country, it.country, 'Country', why);
+              if(S.areaMode === 'hub') set(c.area, it.area, 'Area', areaWhy);
+              set(c.city, it.city, 'City', why);
+              set(c.suburb, it.suburb, 'Suburb', why);
+            } else {
+              leftForYou++;
+              report.push([before[c.name], rid, sid, '(left as is)', '', '', (it && it.note) || 'The hub couldn’t work out a location for this row.']);
+            }
+            if(rowChanged) changedRows++;
+            expected.push({ resortId: rid.trim(), siteId: String(sid || '').trim(), name: before[c.name],
+              lat: f ? cells[c.lat] : '', lng: f ? cells[c.lng] : '',
+              country: cells[c.country], area: cells[c.area], city: cells[c.city], suburb: cells[c.suburb],
+              status: applied ? 'applied' : 'unchanged' });
+          });
+        });
+
+        // ---- self-checks ----
+        var allowed = {}; [c.lat, c.lng, c.country, c.city, c.suburb].forEach(function(x){ allowed[x] = 1; });
+        if(S.areaMode === 'hub') allowed[c.area] = 1;
+        var protectedChanged = 0, shapeOk = out.length === F.rows.length;
+        out.forEach(function(r, i){
+          var b = F.rows[i].cells;
+          if(r.cells.length !== b.length) shapeOk = false;
+          r.cells.forEach(function(v, j){ if(v !== b[j] && !allowed[j]) protectedChanged++; });
+        });
+        var text = serialize(F, out);
+        var enc = encodeText(text, F.encoding, F.bom);
+        var checks = [];
+        checks.push({ ok: F.roundTripOk, text: F.roundTripOk ? 'Format: written back unchanged, your export comes out byte-for-byte identical (' + (F.encoding === 'utf-8' ? 'UTF-8' + (F.bom ? ' with BOM' : '') : 'Windows-1252') + ', ' + (F.eol === '\r\n' ? 'CRLF' : 'LF') + ' line endings, same quoting).' : 'Format: your export does NOT come back out byte-for-byte identical even with no changes (mixed line endings or unusual quoting). Check the file before loading it.' });
+        checks.push({ ok: shapeOk, text: shapeOk ? 'Same ' + (F.rows.length - 1) + ' rows and ' + F.rows[0].cells.length + ' columns, in the same order.' : 'Row or column count changed — do NOT load this file.' });
+        checks.push({ ok: protectedChanged === 0, text: protectedChanged === 0 ? 'District, City2, State' + (S.areaMode === 'sn' ? ', Area' : '') + ' and every other column untouched.' : protectedChanged + ' cells outside Latitude/Longitude/Country/Area/City/Suburb changed — do NOT load this file.' });
+        checks.push({ ok: enc.lost === 0, text: enc.lost === 0 ? 'Every character fits the file’s encoding.' : enc.lost + ' characters from the hub can’t be written in Windows-1252 and became “?” — see the change report.' });
+        // A plain-ASCII export doesn't reveal whether StockNetwork means UTF-8
+        // or Windows-1252, so an accented value from the hub is a guess.
+        var asciiOnly = !F.bom && !Array.prototype.some.call(F.bytes, function(b){ return b > 0x7F; });
+        var accented = asciiOnly ? report.filter(function(r, n){ return n > 0 && /[^\x00-\x7F]/.test(r[5] || ''); }).length : 0;
+        if(accented) checks.push({ ok: true, warn: true, text: 'Your export has only plain letters, so its encoding can’t be told apart; ' + plural(accented, 'new value has', 'new values have') + ' accented letters (written as UTF-8). Search the change report for them and check they look right in StockNetwork.' });
+        S.build = { bytes: enc.bytes, report: report, expected: expected, changes: changes, changedRows: changedRows, leftForYou: leftForYou,
+          checks: checks, checksOk: checks.every(function(x){ return x.ok; }) };
+      }
+      function renderChecks(){
+        var B = S.build; if(!B) return;
+        $('snwBuildChecks').innerHTML = B.checks.map(function(x){ return '<li class="' + (x.warn ? '' : x.ok ? 'good' : 'bad') + '">' + (x.warn ? '! ' : x.ok ? '✓ ' : '✗ ') + esc(x.text) + '</li>'; }).join('');
+        $('snwBuildChecks').style.display = '';
+        $('snwBuildDownloads').style.display = 'flex';
+        refreshNav();
+      }
+      function outName(suffix){ var n = S.F.name.replace(/\.csv$/i, ''); return n + ' - ' + suffix + '.csv'; }
+      $('snwDlFileBtn').addEventListener('click', function(){ if(S && S.build) download(outName(S.test ? 'cleanup TEST' : 'cleanup'), S.build.bytes); });
+      $('snwDlReportBtn').addEventListener('click', function(){ if(S && S.build) download(outName(S.test ? 'cleanup TEST change report' : 'cleanup change report'), reportCsv(S.build.report)); });
+
+      // =====================================================================
+      // Step 6 — Check (snCleanupCheck)
+      // =====================================================================
+      var FIELD_LABEL = { coordinate: 'Coordinates', country: 'Country', area: 'Area', city: 'City', suburb: 'Suburb' };
+      $('snwCheckBtn').addEventListener('click', runCheck);
+      function runCheck(){
+        if(busy) return;
+        var statusEl = $('snwCheckStatus');
+        setBusy(true); $('snwCheckBtn').disabled = true;
+        setStatus(statusEl, 'Comparing StockNetwork’s latest data with the file…');
+        post('snCleanupCheck', {}).then(function(d){
+          setBusy(false); $('snwCheckBtn').disabled = false;
+          lastCheck = d;
+          if(!d.run){ setStatus(statusEl, 'No cleanup file has been built yet — do steps 1–5 first.', true); return; }
+          var when = new Date(d.run.createdAt).toLocaleString();
+          var synced = d.apiSyncedAt ? new Date(d.apiSyncedAt).toLocaleString() : 'never';
+          var msg = 'File “' + d.run.fileName + '” built ' + when + (d.run.test ? ' (test run)' : '') + ' — ' + plural(d.run.total, 'row') + '. Last StockNetwork sync: ' + synced + '. ';
+          if(!d.syncedSinceRun) msg += 'StockNetwork hasn’t synced since this file was built, so differences below are expected — check again after the next nightly sync. ';
+          msg += d.stillDifferent ? (d.stillDifferent + ' of ' + d.run.total + ' rows still don’t match.') : 'Every row matches.';
+          setStatus(statusEl, msg, d.syncedSinceRun && d.stillDifferent > 0);
+          var html = '<div class="stat-grid">'
+            + '<div class="stat-card"><div class="num">' + d.matched + '</div><div class="lbl">Match</div></div>'
+            + Object.keys(FIELD_LABEL).filter(function(k){ return k !== 'area' || d.run.areaMode !== 'sn'; }).map(function(k){
+                return '<div class="stat-card' + (d.mismatch[k] ? ' outstanding' : '') + '"><div class="num">' + d.mismatch[k] + '</div><div class="lbl">' + FIELD_LABEL[k] + ' differ</div></div>';
+              }).join('') + '</div>';
+          var extra = [];
+          if(d.run.areaMode === 'sn') extra.push('Area isn’t compared — you chose to keep StockNetwork’s own regions.');
+          if(d.leftForYou) extra.push(plural(d.leftForYou, 'row was', 'rows were') + ' left unchanged in the file for you to decide (see the change report) — they can’t match until fixed.');
+          if(d.notInHub) extra.push(plural(d.notInHub, 'row isn’t', 'rows aren’t') + ' in the hub’s resort list, so can’t be checked.');
+          if(d.noSnData) extra.push(plural(d.noSnData, 'row has', 'rows have') + ' no StockNetwork Country/Area/City/Suburb in the hub yet.');
+          if(extra.length) html += '<p class="snw-note">' + extra.map(esc).join(' ') + '</p>';
+          if(d.rows.length){
+            html += '<div class="table-wrap" style="margin-top:10px;"><table class="data-table snw-table"><thead><tr><th>Property</th><th>Field</th><th>File says</th><th>StockNetwork says</th></tr></thead><tbody>'
+              + d.rows.map(function(r){
+                  return r.diffs.map(function(df, j){
+                    return '<tr>' + (j === 0 ? '<td rowspan="' + r.diffs.length + '">' + esc(r.name) + (r.siteId ? '<small>SiteID ' + esc(r.siteId) + '</small>' : '') + '</td>' : '') + '<td>' + esc(FIELD_LABEL[df.field]) + '</td><td>' + esc(df.expected) + '</td><td>' + esc(df.sn) + '</td></tr>';
+                  }).join('');
+                }).join('') + '</tbody></table></div>';
+            if(d.stillDifferent > d.rows.length) html += '<p class="snw-note">Showing the first ' + d.rows.length + ' — download the CSV for all of them.</p>';
+          }
+          $('snwCheckResults').innerHTML = html;
+          $('snwCheckResults').style.display = '';
+          $('snwCheckDlBtn').style.display = d.rows.length ? '' : 'none';
+        }).catch(function(e){ setBusy(false); $('snwCheckBtn').disabled = false; setStatus(statusEl, 'Could not check: ' + e.message, true); });
+      }
+      $('snwCheckDlBtn').addEventListener('click', function(){
+        if(!lastCheck || !lastCheck.rows) return;
+        var out = [['Resort', 'ResortID', 'SiteID', 'Field', 'File says', 'StockNetwork says']];
+        lastCheck.rows.forEach(function(r){ r.diffs.forEach(function(df){ out.push([r.name, r.resortId, r.siteId, FIELD_LABEL[df.field], df.expected, df.sn]); }); });
+        download('StockNetwork cleanup - still different.csv', reportCsv(out));
+      });
+
+      // ---------- first open: offer to jump straight to Check ----------
+      var opened = false;
+      document.querySelectorAll('.tab').forEach(function(btn){
+        if(btn.dataset.panel !== 'snCleanup') return;
+        btn.addEventListener('click', function(){
+          if(opened) return;
+          opened = true;
+          post('snCleanupCheck', {}).then(function(d){
+            if(!d.run) return;
+            lastCheck = null;
+            var box = $('snwResumeBox');
+            box.innerHTML = 'Your last cleanup file was “' + esc(d.run.fileName) + '”, built ' + esc(new Date(d.run.createdAt).toLocaleString()) + (d.run.test ? ' (test run)' : '') + '. '
+              + 'Already loaded it into StockNetwork? <button type="button" class="snw-btn-sm" id="snwResumeBtn">Go to Check &rarr;</button>';
+            box.style.display = '';
+            $('snwResumeBtn').addEventListener('click', function(){ show(6); });
+          }).catch(function(){});
+        });
+      });
+
+      S = fresh();
+      show(1, true);
+    })();
   </script>
 
 </body>

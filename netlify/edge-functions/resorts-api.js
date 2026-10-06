@@ -293,7 +293,10 @@ async function handleApiSync(request, store, cors) {
     // which Case B further down also increments/decrements.
     coordFlaggedSuspicious = 0,
     coordFlagCleared = 0,
-    coordProtectedFromOverwrite = 0;
+    coordProtectedFromOverwrite = 0,
+    // SN cleanup wizard (2026-10-06): rows carrying snCoordPending.
+    coordAwaitingSn = 0,
+    snCoordCaughtUp = 0;
   // Indices into `resorts` whose coordinate was newly ACCEPTED this sync —
   // collected so the auto-place pass below (Case A) only ever looks at rows
   // that genuinely need it, not the whole ~5,900-row list. A row where the
@@ -372,12 +375,28 @@ async function handleApiSync(request, store, cors) {
           // ~2m, same tolerance the old "moved" check used) -- nothing to
           // change. Clear a stale mismatch flag left over from an earlier
           // night, if this property still has one.
+          if (rec.snCoordPending) {
+            // SN cleanup wizard (2026-10-06): StockNetwork now has the
+            // coordinate the wizard set -- the two agree, so stop protecting.
+            delete rec.snCoordPending;
+            snCoordCaughtUp++;
+          }
           if (rec.coordSuspicious) {
             delete rec.coordSuspicious;
             delete rec.coordSuspiciousNote;
             delete rec.coordSuggested;
             coordFlagCleared++;
           }
+        } else if (rec.snCoordPending) {
+          // SN cleanup wizard (2026-10-06): the hub's coordinate was set on
+          // purpose ahead of StockNetwork's (the wizard's file hasn't been
+          // loaded into StockNetwork yet, or hasn't reached the API). Keep
+          // the hub's coordinate exactly like the branch below does, but
+          // don't raise a review flag every night for an expected
+          // difference -- just remember what StockNetwork still says, for
+          // the wizard's Check step.
+          rec.snCoordPending.snSaw = { lat: apiRow.latitude, lng: apiRow.longitude };
+          coordAwaitingSn++;
         } else {
           // The hub already has a coordinate for this property and
           // StockNetwork just sent a DIFFERENT one. Per Jean's explicit
@@ -556,6 +575,8 @@ async function handleApiSync(request, store, cors) {
       coordFlaggedSuspicious,
       coordFlagCleared,
       coordProtectedFromOverwrite,
+      coordAwaitingSn,
+      snCoordCaughtUp,
     }),
     { headers: { "content-type": "application/json", ...cors } }
   );
