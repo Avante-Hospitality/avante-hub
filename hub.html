@@ -921,21 +921,29 @@
   .loc-tree-label{ font-size:14px; }
   .loc-tree-summary{ font-size:12.5px; color:var(--muted); margin:2px 0 10px; }
   .explore-kind-row{ display:flex; flex-wrap:wrap; gap:14px; align-items:center; margin:14px 0; }
+
+  /* ---- Burger menu: all hub tabs live in one dropdown (Oct 2026) ---- */
+  .topbar{ display:none; }
+  header.hub-header{ position:relative; z-index:60; flex-wrap:nowrap; padding:12px 24px; background:#fff; }
+  .brand{ font-size:20px; display:flex; align-items:baseline; gap:6px; color:#08776f; }
+  .brand span{ display:inline; font-size:20px; font-weight:700; letter-spacing:0.02em; }
+  .hub-burger{ width:46px; height:46px; border-radius:10px; border:1.5px solid var(--line); background:var(--mint); color:var(--navy); display:flex; align-items:center; justify-content:center; cursor:pointer; flex:none; }
+  nav.tabs{ display:none; position:absolute; right:24px; top:100%; margin-top:6px; width:min(320px, calc(100vw - 32px)); max-height:75vh; overflow-y:auto; background:#fff; border:1.5px solid var(--line); border-radius:14px; box-shadow:0 18px 40px rgba(14,47,68,0.18); padding:8px; flex-direction:column; gap:2px; flex-wrap:nowrap; }
+  nav.tabs.open{ display:flex; }
+  nav.tabs .tab{ text-align:left; width:100%; min-height:42px; font-size:14px; padding:0 12px; }
+  nav.tabs .tab.active{ background:var(--teal); color:var(--navy); }
+  nav.tabs .menu-actions{ border-top:1px solid var(--line); margin:6px 4px 0; padding-top:6px; display:flex; flex-direction:column; }
+  nav.tabs .menu-actions a{ min-height:40px; display:flex; align-items:center; padding:0 8px; border-radius:8px; color:var(--navy); font-size:13.5px; cursor:pointer; text-decoration:none; }
+  nav.tabs .menu-actions a:hover{ background:var(--mint); }
+  @media (max-width:900px){ nav.tabs{ width:min(320px, calc(100vw - 32px)); } header.hub-header{ padding:12px 16px; } nav.tabs{ right:16px; } }
 </style>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.css">
+  <link rel="stylesheet" href="property-affiliate.css">
 </head>
 <body>
 
-  <div class="topbar">
-    <span>Avante Travel &middot; Affiliate Hub</span>
-    <span class="topbar-actions">
-      <a id="storefrontLink">View Front Store</a>
-      <a id="changePasswordLink">Change Password</a>
-      <a id="logoutLink">Log Out</a>
-    </span>
-  </div>
 
   <div class="a2hs-banner" id="a2hsBanner">
     <div class="a2hs-banner-text">
@@ -1025,8 +1033,11 @@
   </div>
 
   <header class="hub-header">
-    <div class="brand">AVANTE<span>TRAVEL &middot; AFFILIATE HUB</span></div>
-    <nav class="tabs" id="tabs">
+    <div class="brand">AVANTE <span>TRAVEL HUB</span></div>
+    <button type="button" class="hub-burger" id="hubBurger" aria-label="Hub menu" aria-expanded="false" aria-controls="tabs">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path class="hub-burger-icon" d="M4 7h16M4 12h16M4 17h16"></path></svg>
+    </button>
+    <nav class="tabs" id="tabs" aria-label="Hub sections">
       <button class="tab active" data-panel="home">Home</button>
       <button class="tab" data-panel="dashboard">My Dashboard</button>
       <button class="tab" data-panel="marketing">Affiliate Marketing</button>
@@ -1041,6 +1052,11 @@
       <button class="tab" data-panel="account">Account Details</button>
       <button class="tab" data-panel="property">Property Affiliate</button>
       <button class="tab" data-panel="tutorials">Tutorials</button>
+      <div class="menu-actions">
+        <a id="storefrontLink">View Front Store</a>
+        <a id="changePasswordLink">Change Password</a>
+        <a id="logoutLink">Log Out</a>
+      </div>
     </nav>
   </header>
 
@@ -1487,6 +1503,8 @@
 
       <!-- ===================== PROPERTY AFFILIATE ===================== -->
       <section class="panel" id="panel-property">
+        <div id="pa-app"></div>
+        <div id="pa-onboarding" style="display:none">
         <div class="card">
           <h2 class="section-heading">Property Affiliate</h2>
           <p class="hint">List a property with Avante's short-term rental program — as the property owner yourself, or on behalf of an owner as their appointed affiliate. Fill out the onboarding form below (it opens the same form in a new tab too). Your submission is reviewed by Avante Travel before anything goes live.</p>
@@ -1506,6 +1524,7 @@
             }
           })();
         </script>
+        </div>
       </section>
 <!-- ===================== TUTORIALS ===================== -->
     <section class="panel" id="panel-tutorials">
@@ -2122,6 +2141,22 @@
         document.getElementById('tut-' + btn.dataset.tut).classList.add('active');
       });
     });
+
+    // ---------- burger menu ----------
+    (function(){
+      var burger = document.getElementById('hubBurger'), menu = document.getElementById('tabs');
+      if(!burger || !menu) return;
+      var icon = burger.querySelector('.hub-burger-icon');
+      function setOpen(open){
+        menu.classList.toggle('open', open);
+        burger.setAttribute('aria-expanded', open ? 'true' : 'false');
+        if(icon) icon.setAttribute('d', open ? 'M6 6l12 12M18 6L6 18' : 'M4 7h16M4 12h16M4 17h16');
+      }
+      burger.addEventListener('click', function(e){ e.stopPropagation(); setOpen(!menu.classList.contains('open')); });
+      menu.addEventListener('click', function(e){ if(e.target.closest('.tab, .menu-actions a')) setOpen(false); });
+      document.addEventListener('click', function(e){ if(menu.classList.contains('open') && !menu.contains(e.target) && e.target !== burger) setOpen(false); });
+      document.addEventListener('keydown', function(e){ if(e.key === 'Escape' && menu.classList.contains('open')){ setOpen(false); burger.focus(); } });
+    })();
 
     // ---------- tab switching ----------
     document.querySelectorAll('.tab').forEach(function(btn){
@@ -5626,6 +5661,7 @@
     })();
 </script>
 
+  <script src="property-affiliate.js" defer></script>
 </body>
 </html>
 
