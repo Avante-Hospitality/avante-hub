@@ -47,7 +47,7 @@
 .pa-cart{ position:sticky; bottom:12px; z-index:30; background:var(--pa-ink); color:#fff; border-radius:14px; padding:14px 18px; box-shadow:0 16px 40px rgba(14,47,68,.35); display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin-bottom:18px; }
 .pa-cart .grow{ flex:1 1 320px; min-width:0; display:flex; flex-direction:column; gap:6px; }
 .pa-chip{ display:inline-flex; align-items:center; gap:6px; background:rgba(255,255,255,.12); border-radius:999px; padding:4px 6px 4px 12px; font-size:12.5px; margin:0 6px 6px 0; }
-.pa-chip button{ width:28px; height:28px; border-radius:50%; border:none; background:rgba(255,255,255,.18); color:#fff; cursor:pointer; }
+.pa-chip button{ width:36px; height:36px; border-radius:50%; border:none; background:rgba(255,255,255,.18); color:#fff; cursor:pointer; }
 .pa-stats{ display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:16px; margin-bottom:18px; }
 .pa-stat{ border-radius:14px; padding:18px 20px; display:flex; flex-direction:column; gap:4px; }
 .pa-stat b{ font:800 32px 'Montserrat',sans-serif; line-height:1; }
@@ -83,3 +83,21 @@
 .pa-copy input{ background:var(--mint,#f4fbfa) !important; }
 .pa-chan{ display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:14px; margin-top:10px; }
 @media (max-width:600px){ .pa h1{ font-size:22px; } .pa-dialog .body{ padding:16px; } }
+
+/* Hub-wide label{} is uppercase; keep plain checkbox labels readable */
+.pa label.pa-check{ text-transform:none; letter-spacing:normal; font:400 13.5px 'Noto Sans',sans-serif; color:var(--pa-ink); }
+.pa label.pa-check input{ width:20px; height:20px; flex:none; }
+/* Unit names stay visible while the 14-day grid scrolls sideways */
+.pa-grid .unit, .pa-grid > .pa-label{ position:sticky; left:0; z-index:2; background:#fff; }
+@media (max-width:600px){
+  .pa-grid{ min-width:820px; }
+  .pa-grid .unit{ padding-right:6px; }
+  .pa-cal{ min-width:0; gap:3px; }
+  .pa-cal .dow{ font-size:10px; padding:0 2px 2px; }
+  .pa-cal .day{ min-height:52px; padding:4px; border-radius:6px; }
+  .pa-cal .day b{ font-size:12.5px; }
+  .pa-cal .day span{ font-size:9px; }
+  .pa-dialog header{ padding:14px 16px; }
+  .pa-modal{ padding:16px 10px; }
+  .pa-cart{ bottom:8px; }
+}
