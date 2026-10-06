@@ -157,6 +157,11 @@ export default async (request) => {
     // "StockNetwork location review" (same Accept-suggested-coordinate
     // flow as coordFlaggedSuspicious above) rather than overwritten.
     coordProtectedFromOverwrite: importResult.coordProtectedFromOverwrite,
+    // SN cleanup wizard (2026-10-06): properties whose hub coordinate was
+    // set ahead of StockNetwork's and is still waiting for StockNetwork to
+    // match (kept, not flagged), and how many caught up on this run.
+    coordAwaitingSn: importResult.coordAwaitingSn,
+    snCoordCaughtUp: importResult.snCoordCaughtUp,
   };
 
   // 2026-09-30: print the result to the function's own log too -- Netlify's
