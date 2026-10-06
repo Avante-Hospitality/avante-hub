@@ -2158,7 +2158,7 @@
       <!-- Step 5 -->
       <div class="card snw-step" data-step="5">
         <h3 style="margin-top:0;">Step 5 &mdash; Build the file for StockNetwork</h3>
-        <p style="margin-top:0;">Builds <strong>one</strong> file in exactly the same format as your export &mdash; same columns, order, quoting, line endings and text encoding &mdash; with the new Latitude/Longitude and the hub's Country, City, Suburb (and Area, if you chose that). <strong>District, City2 and State are never changed</strong>, nor is any other column. You also get a change report listing every single change.</p>
+        <p style="margin-top:0;">Builds <strong>one</strong> file in exactly the same format as your export &mdash; same columns, order, quoting, line endings and text encoding &mdash; with the new Latitude/Longitude and the hub's Country, City, Suburb (and Area, if you chose that). <strong>District, City2 and State are never changed</strong>, nor is any other column. Where the hub's town is an agricultural holding (e.g. &ldquo;Renosterkop AH&rdquo;), City becomes the nearest proper town within 40&nbsp;km and the AH name goes in Suburb. You also get a change report listing every single change.</p>
         <div class="btn-row" style="margin-top:0;">
           <button class="primary" id="snwBuildBtn" style="margin-top:0;">Build file</button>
         </div>
@@ -13567,7 +13567,7 @@
           if(pos >= rows.length){ finishBuild(); return; }
           var slice = rows.slice(pos, pos + EXPORT_BATCH);
           setStatus(statusEl, 'Working out Country / Area / City / Suburb from the hub… ' + pos + ' of ' + rows.length);
-          postRetry('exportLocations', { rows: slice }, function(t){ setStatus(statusEl, 'Timed out — retrying (' + t + '/' + MAX_RETRIES + ')…'); })
+          postRetry('exportLocations', { rows: slice, foldAH: true }, function(t){ setStatus(statusEl, 'Timed out — retrying (' + t + '/' + MAX_RETRIES + ')…'); })
             .then(function(d){
               (d.results || []).forEach(function(it){ S.exportRes[it.i] = it; });
               var used = d.nextIndex || 0;

@@ -2669,14 +2669,40 @@ const locationListStore = getStore({ name: "map-location-lists", consistency: "s
         addFlipNote(item, lat, lng, csvCountry);
       }
 
-      function fieldsFromTown(town, suburbName, nearby, country) {
+      // foldAH (SN cleanup wizard only, 2026-10-06, Jean's choice): when the
+      // hub town is an agricultural holding ("Renosterkop AH"), StockNetwork's
+      // City gets the nearest non-AH hub town within 40 km instead and the AH
+      // name moves to Suburb — City is what guests search on. The hub's own
+      // tree is untouched, and without the flag this behaves as before.
+      const AH_NAME = /\b(AH|A\.H\.|agricultural holdings?)$/i;
+      const FOLD_AH_MAX_KM = 40;
+      function fieldsFromTown(town, suburbName, nearby, country, lat, lng) {
         const cityName = town.name || "";
-        return {
+        const f = {
           country,
           area: townZone(town),
           city: cityName,
           suburb: suburbName || (nearby ? "Nearby " + cityName : cityName),
         };
+        if (body.foldAH && AH_NAME.test(cityName.trim()) && isFinite(lat) && isFinite(lng)) {
+          let best = null, bestKm = Infinity;
+          for (const t of allTowns) {
+            if (t === town || AH_NAME.test(String(t.name || "").trim()) || townCountry(t) !== townCountry(town)) continue;
+            const d = townDistanceKm(t, lat, lng);
+            if (d < bestKm) { bestKm = d; best = t; }
+          }
+          if (best && bestKm <= FOLD_AH_MAX_KM) {
+            f.city = best.name || "";
+            f.suburb = cityName;
+            f.foldNote = cityName + " is an agricultural holding — City is the nearest town, " + f.city + " (" + Math.round(bestKm) + " km).";
+          }
+        }
+        return f;
+      }
+      function addFoldNote(item) {
+        if (!item.foldNote) return;
+        item.note = item.note ? item.note + " " + item.foldNote : item.foldNote;
+        delete item.foldNote;
       }
 
       function seaNote(km) {
@@ -2752,7 +2778,7 @@ const locationListStore = getStore({ name: "map-location-lists", consistency: "s
             continue;
           }
           const country = pickCountry(resolvedCountry, csvCountry);
-          Object.assign(item, fieldsFromTown(town, sub ? sub.name : "", !!rec.nearby, country));
+          Object.assign(item, fieldsFromTown(town, sub ? sub.name : "", !!rec.nearby, country, lat, lng));
           item.status = rec.nearby ? "nearby" : "ok";
           item.source = "hub";
           if (rec.nearby) item.note = "No town of its own here — placed with the nearest town.";
@@ -2787,7 +2813,7 @@ const locationListStore = getStore({ name: "map-location-lists", consistency: "s
             continue;
           }
           const country = pickCountry(result.country, csvCountry);
-          Object.assign(item, fieldsFromTown(town, result.suburbName, !!result.nearby, country));
+          Object.assign(item, fieldsFromTown(town, result.suburbName, !!result.nearby, country, lat, lng));
           item.source = "live";
           item.status = result.nearby ? "nearby" : "ok";
           if (result.nearby) item.note = "No town of its own here — placed with the nearest town (" + result.nearbyKm + " km away).";
@@ -2818,6 +2844,7 @@ const locationListStore = getStore({ name: "map-location-lists", consistency: "s
       if (resortChanged) {
         await resortListStore.setJSON("current", Object.assign({}, resortRecord, { resorts: resortList }));
       }
+      out.forEach(addFoldNote);
       return json({ ok: true, results: out, nextIndex: idx, liveLookups: liveUsed, totalMs: Date.now() - startedAt });
     }
 
