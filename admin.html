@@ -2148,10 +2148,10 @@
       <!-- Step 4 -->
       <div class="card snw-step" data-step="4">
         <h3 style="margin-top:0;">Step 4 &mdash; What should StockNetwork's Area column say?</h3>
+        <label class="snw-choice"><input type="radio" name="snwArea" value="hub" checked>
+          <span>Replace with the hub zone (default &mdash; the hub is master)<small>Area becomes the hub's zone for each property (e.g. &ldquo;Garden Route&rdquo;, &ldquo;Eastern Cape&rdquo;) &mdash; the same rule &ldquo;Corrected StockNetwork file&rdquo; uses.</small></span></label>
         <label class="snw-choice"><input type="radio" name="snwArea" value="sn">
           <span>Keep StockNetwork's own regions<small>The Area column stays exactly as it is in your export (e.g. &ldquo;KZN Midlands&rdquo;). Country, City and Suburb still come from the hub.</small></span></label>
-        <label class="snw-choice"><input type="radio" name="snwArea" value="hub">
-          <span>Replace with the hub zone<small>Area becomes the hub's zone for each property (e.g. &ldquo;Garden Route&rdquo;, &ldquo;Eastern Cape&rdquo;) &mdash; the same rule &ldquo;Corrected StockNetwork file&rdquo; uses.</small></span></label>
         <div id="snwAreaExamples" class="snw-note" style="margin-top:10px;"></div>
       </div>
 
@@ -13046,7 +13046,7 @@
       var lastCheck = null;
 
       function fresh(){
-        return { file: null, F: null, col: null, groups: [], byRid: {}, hub: {}, scope: [], results: {}, decision: {}, applied: {}, areaMode: null,
+        return { file: null, F: null, col: null, groups: [], byRid: {}, hub: {}, scope: [], results: {}, decision: {}, applied: {}, areaMode: 'hub',
           exportRes: {}, build: null, storeKey: '' };
       }
 
@@ -13071,7 +13071,7 @@
           else if(Object.keys(S.results).length) renderLookups();
         }
         if(n === 3) renderApplyPlan();
-        if(n === 4) renderAreaExamples();
+        if(n === 4){ renderAreaExamples(); if(S && S.areaMode){ done[4] = true; refreshNav(); } }
         if(!noScroll) window.scrollTo({ top: Math.max(0, panel.getBoundingClientRect().top + window.pageYOffset - 10), behavior: 'smooth' });
       }
       function refreshNav(){
@@ -13121,7 +13121,7 @@
         ['snwLookupStatus', 'snwApplyStatus', 'snwBuildStatus'].forEach(function(id){ $(id).className = 'status'; });
         ['snwLookupResults', 'snwApplyResults'].forEach(function(id){ $(id).style.display = 'none'; $(id).innerHTML = ''; });
         $('snwRetryBtn').style.display = 'none';
-        Array.prototype.forEach.call(panel.querySelectorAll('input[name=snwArea]'), function(r){ r.checked = false; });
+        Array.prototype.forEach.call(panel.querySelectorAll('input[name=snwArea]'), function(r){ r.checked = r.value === 'hub'; });
         setStatus(statusEl, 'Reading ' + f.name + '…');
         f.arrayBuffer().then(function(buf){
           var dec = decodeFile(buf);
