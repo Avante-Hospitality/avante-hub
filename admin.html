@@ -13064,7 +13064,8 @@
         if(n < 6) next.textContent = 'Next: ' + STEP_NAMES[n + 1] + ' →';
         next.disabled = busy || !done[n];
         $('snwBackBtn').disabled = busy;
-        if(n === 2 && S && S.F && !done[2] && !busy){
+        if(n >= 2 && n <= 5 && needFile(n)) { /* message shown */ }
+        else if(n === 2 && S && S.F && !done[2] && !busy){
           // Lookups for this whole scope already exist (restored, or the
           // scope only shrank) — nothing to pay for, just show them.
           if(!lookupTargets(false).length) finishLookups();
@@ -13083,13 +13084,22 @@
         });
       }
       function setBusy(b){ busy = b; refreshNav(); }
+      // Steps 2–5 work on the export loaded in step 1, which only lives in
+      // this page — after a reload, or a jump straight to Check, it's gone.
+      var STEP_STATUS = { 2: 'snwLookupStatus', 3: 'snwApplyStatus', 5: 'snwBuildStatus' };
+      function needFile(n){
+        if(S && S.F) return false;
+        var el = $(STEP_STATUS[n] || 'snwUploadStatus');
+        setStatus(el, 'No StockNetwork export is loaded in this page (it was reloaded, or you jumped straight to Check). Go back to step 1 and choose the export first — lookups already done for that file are remembered, so they won’t be paid for again.', true);
+        return true;
+      }
       function invalidateFrom(n){
         for(var k = n; k <= 6; k++) delete done[k];
         if(n <= 2){ $('snwLookupBtn').disabled = false; $('snwLookupBtn').textContent = 'Start lookups'; }
         if(n <= 5 && S){ S.build = null; $('snwBuildDownloads').style.display = 'none'; $('snwBuildChecks').style.display = 'none'; }
         refreshNav();
       }
-      $('snwBackBtn').addEventListener('click', function(){ if(!busy && step > 1) show(step - 1); });
+      $('snwBackBtn').addEventListener('click', function(){ if(!busy && step > 1) show(S && S.F ? step - 1 : 1); });
       $('snwNextBtn').addEventListener('click', function(){ if(!busy && done[step] && step < 6) show(step + 1); });
 
       // ---------- persistence of paid-for lookups (per file, this browser only) ----------
@@ -13296,7 +13306,7 @@
       $('snwRetryBtn').addEventListener('click', function(){ runLookups(true); });
 
       function runLookups(onlyFailed){
-        if(busy || !S) return;
+        if(busy || needFile(2)) return;
         var statusEl = $('snwLookupStatus');
         var todo = lookupTargets(onlyFailed);
         if(!todo.length){ finishLookups('Nothing left to look up.'); return; }
@@ -13465,7 +13475,7 @@
           + (notInHub ? ' ' + plural(notInHub, 'property isn’t', 'properties aren’t') + ' in the hub yet and ' + (notInHub === 1 ? 'is' : 'are') + ' skipped here (the file is still corrected).' : '');
       }
       $('snwApplyBtn').addEventListener('click', function(){
-        if(busy || !S) return;
+        if(busy || needFile(3)) return;
         var queue = applyItems();
         var statusEl = $('snwApplyStatus');
         if(!queue.length){ setStatus(statusEl, 'Nothing to save.'); done[3] = true; refreshNav(); return; }
@@ -13546,7 +13556,7 @@
       // =====================================================================
       var APPLY_STATUS = { ok: 1, nearby: 1, sea: 1 };
       $('snwBuildBtn').addEventListener('click', function(){
-        if(busy || !S) return;
+        if(busy || needFile(5)) return;
         if(!S.areaMode){ setStatus($('snwBuildStatus'), 'Choose what the Area column should say in step 4 first.', true); return; }
         var statusEl = $('snwBuildStatus');
         var c = S.col, rows = [];
