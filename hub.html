@@ -28,7 +28,7 @@
   (function(){
     var aff = new URLSearchParams(window.location.search).get('aff') || '';
     var authed = false;
-    try{ authed = !!aff && localStorage.getItem('avante-hub-auth:' + aff) === '1'; }catch(e){}
+    try{ authed = !!aff && localStorage.getItem('avante-hub-auth:' + aff) === '1' && !!localStorage.getItem('avante-hub-session:' + aff); }catch(e){}
 
     if(authed){
       // Remember this as the affiliate this device belongs to, so a
@@ -44,7 +44,7 @@
       try{ lastAff = localStorage.getItem('avante-hub-last-aff') || ''; }catch(e){}
       if(lastAff){
         var lastAuthed = false;
-        try{ lastAuthed = localStorage.getItem('avante-hub-auth:' + lastAff) === '1'; }catch(e){}
+        try{ lastAuthed = localStorage.getItem('avante-hub-auth:' + lastAff) === '1' && !!localStorage.getItem('avante-hub-session:' + lastAff); }catch(e){}
         if(lastAuthed){
           window.location.replace('hub.html?aff=' + encodeURIComponent(lastAff));
           return;
@@ -2314,6 +2314,12 @@
     // Every tab then pre-fills with that ID and remembers what they enter, in
     // this browser only — no login, no server, just localStorage keyed by ID.
     var AFF_ID = new URLSearchParams(window.location.search).get('aff') || '';
+    // Server session from the last login; Account Details only works with it.
+    function hubSession(){ try{ return localStorage.getItem('avante-hub-session:' + AFF_ID) || ''; }catch(e){ return ''; } }
+    function hubRelogin(){
+      try{ localStorage.removeItem('avante-hub-auth:' + AFF_ID); localStorage.removeItem('avante-hub-session:' + AFF_ID); }catch(e){}
+      window.location.href = 'login.html' + (AFF_ID ? ('?aff=' + encodeURIComponent(AFF_ID)) : '');
+    }
     var STOCKNETWORK_BASE = 'https://stock.stocknetwork.co.za/ui/';
     // Avante's own Impact.com/Travelstart tracking link. Impact.com has no
     // formal sub-affiliate feature, so each affiliate's flight link reuses
@@ -2484,7 +2490,7 @@
       logoutLink.addEventListener('click', function(e){
         e.preventDefault();
         if(AFF_ID){
-          try{ localStorage.removeItem('avante-hub-auth:' + AFF_ID); }catch(err){}
+          try{ localStorage.removeItem('avante-hub-auth:' + AFF_ID); localStorage.removeItem('avante-hub-session:' + AFF_ID); }catch(err){}
         }
         window.location.href = 'login.html' + (AFF_ID ? ('?aff=' + encodeURIComponent(AFF_ID)) : '');
       });
@@ -2542,6 +2548,8 @@
             saveBtn.disabled = false;
             saveBtn.textContent = 'Save Password';
             if(res.data && res.data.ok){
+              // Changing the password logs out other devices; this one keeps going.
+              if(res.data.session){ try{ localStorage.setItem('avante-hub-session:' + AFF_ID, res.data.session); }catch(e){} }
               showToast('Password updated');
               closeModal();
             }else{
@@ -4986,10 +4994,11 @@
         fetch('/api/auth', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ action: 'getProfile', aff: AFF_ID })
+          body: JSON.stringify({ action: 'getProfile', aff: AFF_ID, session: hubSession() })
         })
           .then(function(r){ return r.json(); })
           .then(function(data){
+            if(data && data.relogin){ hubRelogin(); return; }
             loaded = true;
             if(!data || !data.ok){
               statusEl.textContent = (data && data.error) || 'Could not load your account details right now.';
@@ -5031,6 +5040,7 @@
           body: JSON.stringify({
             action: 'updateProfile',
             aff: AFF_ID,
+            session: hubSession(),
             name: nameInput.value.trim(),
             email: emailInput.value.trim(),
             phone: phoneInput.value.trim(),
@@ -5047,6 +5057,7 @@
           .then(function(data){
             saveBtn.disabled = false;
             saveBtn.textContent = 'Save Account Details';
+            if(data && data.relogin){ hubRelogin(); return; }
             if(data && data.ok){
               if(data.profile) renderRevenueShare(data.profile.revenueShare);
               showToast('Account details saved');
@@ -5383,7 +5394,7 @@
         return fetch('/api/auth', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ action: 'getProfile', aff: AFF_ID })
+          body: JSON.stringify({ action: 'getProfile', aff: AFF_ID, session: hubSession() })
         }).then(function(r){ return r.json(); }).then(function(data){
           return (data && data.ok && data.profile && data.profile.zone) || '';
         }).catch(function(){ return ''; });

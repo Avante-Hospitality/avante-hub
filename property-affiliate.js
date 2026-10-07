@@ -20,7 +20,14 @@
   var S = { token: null, prop: null, view: 'avail', av: null, from: null, sel: null, cart: [], searched: null, results: null,
     modal: null, edit: null, found: null, findQ: '', msg: null, err: null, busy: false, channels: null, events: null,
     bookings: null, calUnit: null, calMonth: null, unitFilter: 'All units', connect: null };
-  try { S.token = localStorage.getItem(TOKEN_KEY); } catch (e) {}
+  // One connection per affiliate on this device (a shared computer can hold several).
+  if (aff) TOKEN_KEY = 'avante-pa-token:' + aff;
+  try {
+    S.token = localStorage.getItem(TOKEN_KEY);
+    var legacy = localStorage.getItem('avante-pa-token');
+    if (!S.token && legacy && aff) { S.token = legacy; localStorage.setItem(TOKEN_KEY, legacy); }
+    if (legacy) localStorage.removeItem('avante-pa-token');
+  } catch (e) {}
 
   // ---------- helpers ----------
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -124,7 +131,15 @@
 
   function viewConnect() {
     var c = S.connect || {};
-    var h = '<div class="pa-card"><p class="pa-h2">Connect your Stock Network site</p>' +
+    var h = '';
+    if (S.resume) {
+      h += '<div class="pa-card"><p class="pa-h2">' + esc(S.resume.resortName || 'Your property') + ' is connected to your account</p>' +
+        '<p class="pa-hint">To open it on this device, enter your Avante hub password (the one you log in with).</p>' +
+        '<div class="pa-row" style="margin-top:10px"><div class="pa-field"><label class="pa-label" for="pa-rp">Hub password</label><input id="pa-rp" type="password" autocomplete="current-password"></div>' +
+        '<button type="button" class="pa-btn" data-act="resume"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'Opening…' : 'Open ' + esc(S.resume.resortName || 'property')) + '</button></div></div>' +
+        '<details class="pa-card pa-soft"><summary class="pa-h2" style="cursor:pointer">Connect a different Stock Network site</summary>';
+    }
+    h += '<div class="pa-card"' + (S.resume ? ' style="margin:12px 0 0;box-shadow:none"' : '') + '><p class="pa-h2">Connect your Stock Network site</p>' +
       '<p class="pa-hint">Use the API login for your property\'s own Stock Network site. The hub keeps it encrypted and uses it only to read your availability and to make, change and cancel bookings for you.</p>' +
       '<div class="pa-form" style="margin-top:10px">' +
       '<div class="pa-field"><label class="pa-label" for="pa-u">Username</label><input id="pa-u" type="text" autocomplete="off" value="' + esc(c.username || '') + '"></div>' +
@@ -138,6 +153,7 @@
       h += '</div>';
     }
     h += '<div class="pa-row" style="margin-top:14px"><button type="button" class="pa-btn" data-act="connect"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'Connecting…' : 'Connect') + '</button></div></div>';
+    if (S.resume) h += '</details>';
     return h;
   }
 
@@ -485,6 +501,7 @@
     }).catch(fail);
   }
 
+  root.addEventListener('keydown', function (e) { if (e.key === 'Enter' && e.target.id === 'pa-rp') { var b = root.querySelector('[data-act="resume"]'); if (b) b.click(); } });
   root.addEventListener('click', function (e) {
     var t = e.target.closest('[data-act]'); if (!t) return;
     var a = t.dataset.act;
@@ -492,6 +509,11 @@
     if (a === 'view') return setView(t.dataset.v);
     if (a === 'dismiss') { S.err = null; return render(); }
     if (a === 'connect') return doConnect();
+    if (a === 'resume') {
+      var pw = val('pa-rp'); if (!pw) { var rp = document.getElementById('pa-rp'); if (rp) rp.focus(); return; }
+      S.err = null; busy(true); render();
+      return api('resume', { aff: aff, password: pw }).then(function (d) { S.busy = false; S.resume = null; setToken(d.token); S.prop = d.property; S.view = 'avail'; render(); loadAvailability(); }).catch(fail);
+    }
     if (a === 'pickResort') return doConnect(t.dataset.id);
     if (a === 'disconnect') { if (!confirm('Disconnect this property from the hub? Channel sync stops until you connect again.')) return; return api('disconnect').then(function () { setToken(null); S.prop = null; S.av = null; render(); }).catch(fail); }
     if ((a === 'close' || a === 'backdrop') && S.modal && S.modal.type === 'pay') return closePay();
@@ -600,5 +622,14 @@
 
   // ---------- start ----------
   render();
-  if (S.token) api('status').then(function (d) { S.prop = d.property; render(); loadAvailability(); }).catch(function (e) { if (S.token) fail(e); });
+  // Property affiliates land on Property Affiliate when the hub opens.
+  function openOwnTab() { var tab = document.querySelector('.tab[data-panel="property"]'); if (tab && !tab.classList.contains('active')) tab.click(); }
+  function checkAffiliate() {
+    if (!aff) return;
+    api('affStatus', { aff: aff }).then(function (d) { if (d.linked) { S.resume = { resortName: d.resortName }; openOwnTab(); render(); } }).catch(function () {});
+  }
+  if (S.token) {
+    openOwnTab();
+    api('status').then(function (d) { S.prop = d.property; render(); loadAvailability(); }).catch(function (e) { if (S.token) fail(e); else checkAffiliate(); });
+  } else checkAffiliate();
 })();

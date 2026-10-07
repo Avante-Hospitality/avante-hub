@@ -210,8 +210,21 @@
             try{
               localStorage.setItem('avante-hub-auth:' + aff, '1');
               localStorage.setItem('avante-hub-last-aff', aff);
+              if(res.data.session) localStorage.setItem('avante-hub-session:' + aff, res.data.session);
             }catch(e){}
-            window.location.href = 'hub.html?aff=' + encodeURIComponent(aff);
+            var goHub = function(){ window.location.href = 'hub.html?aff=' + encodeURIComponent(aff); };
+            // Property affiliates: open their connected property on this device too,
+            // so it stays connected without entering Stock Network details again.
+            var waited = setTimeout(goHub, 4000);
+            fetch('/api/property', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ action: 'resume', aff: aff, password: password })
+            })
+              .then(function(r){ return r.json(); })
+              .then(function(d){ if(d && d.ok && d.token){ try{ localStorage.setItem('avante-pa-token:' + aff, d.token); }catch(e){} } })
+              .catch(function(){})
+              .then(function(){ clearTimeout(waited); goHub(); });
           }else{
             showError((res.data && res.data.error) || 'Login failed. Please check your details.');
           }
@@ -228,9 +241,7 @@
     affInput.addEventListener('keydown', function(e){ if(e.key === 'Enter') passInput.focus(); });
 
     // ---------- Forgot password ----------
-    // No email system exists in this app, so this simply resets the
-    // affiliate's account back to the default password (0000) — the same
-    // one every affiliate starts with before they set their own.
+    // Emails a one-time reset link to the address on the affiliate's profile.
     document.getElementById('forgotLink').addEventListener('click', function(e){
       e.preventDefault();
       var aff = affInput.value.trim();
@@ -241,7 +252,7 @@
         affInput.focus();
         return;
       }
-      if(!window.confirm('Reset the password for affiliate ' + aff + ' back to the default (0000)?')) return;
+      if(!window.confirm('Email a password reset link for affiliate ' + aff + '?\n\nIt goes to the email address on that affiliate\'s Account Details.')) return;
 
       fetch('/api/auth', {
         method: 'POST',
@@ -251,10 +262,9 @@
         .then(function(r){ return r.json(); })
         .then(function(data){
           if(data && data.ok){
-            passInput.value = '0000';
-            showSuccess('Password reset to 0000 — click Log In, then change it once you\'re inside the Hub.');
+            showSuccess(data.message || 'If this affiliate number has an email address on file, a reset link is on its way.');
           }else{
-            showError((data && data.error) || 'Could not reset password. Please try again.');
+            showError((data && data.error) || 'Could not send a reset link. Please try again.');
           }
         })
         .catch(function(){
