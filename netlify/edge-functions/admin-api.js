@@ -3,8 +3,6 @@ import { generateHashtags } from "./lib/hashtag-helper.js";
 import { isShortLink, resolveShortLink, findExistingShortLink, createShortLink } from "./lib/short-link.js";
 import { correctBookingLinkSiteId, ADMIN_MASTER_SITE_GUID } from "./lib/booking-link.js";
 import { resolveHookMode } from "./lib/hook-mode.js";
-import { ZONES, LEGACY_EXPAND } from "./lib/zones.js";
-import { resortKey } from "./lib/resort-key.js";
 import { buildHookDraft } from "./lib/hook-draft.js";
 import { saveHookPhotoUrls } from "./lib/hook-photos.js";
 import { defaultTemplateForCategory } from "./lib/hook-templates.js";
@@ -885,15 +883,6 @@ export default async (request, context) => {
       const name = typeof body.name === "string" ? body.name.trim() : "";
       const email = typeof body.email === "string" ? body.email.trim() : "";
       const siteNr = typeof body.siteNr === "string" ? body.siteNr.trim() : "";
-      const zones = Array.isArray(body.zones)
-        // The old combined zones ("Eastern Cape & Garden Route", "Western Cape
-        // (Cape Town & Winelands)", "Gauteng & North West") were split
-        // (2026-09-21); an old value saved from a stale form counts as all the
-        // zones it covered.
-        ? [...new Set(body.zones
-            .flatMap((z) => (LEGACY_EXPAND[z] ? LEGACY_EXPAND[z] : [z]))
-            .filter((z) => typeof z === "string" && ZONES.includes(z)))]
-        : [];
       const ALLOWED_TYPES = ["franchise", "property", "agent"];
       const types = Array.isArray(body.types)
         ? [...new Set(body.types.filter((t) => ALLOWED_TYPES.includes(t)))]
@@ -912,11 +901,6 @@ export default async (request, context) => {
         // booking link is tied to. Admin-set only — shown read-only in the
         // affiliate's own Hub (Account Details tab).
         siteNr: siteNr,
-        zones: zones,
-        // Kept in sync with zones[0] so anything still reading the old
-        // singular field (e.g. a stale cached client) degrades gracefully
-        // rather than breaking outright.
-        zone: zones[0] || "",
         types: types,
         // Not editable from this admin form (yet) — preserve whatever the
         // affiliate has set for themselves via their Hub's Account Details
@@ -1344,43 +1328,6 @@ export default async (request, context) => {
       // box instead of an editable input a value would only ever vanish
       // from — see renderFlyerFieldsForm.
       return json({ ok: true, templateId: templateId, fields: template.fields.map((f) => ({ key: f.key, role: f.role, source: f.source })), values: values, missing: missing, svg: svg }, 200, cors);
-    }
-
-    if (action === "setResortAffId") {
-      // Bulk-assigns (or, with affId "", clears) an affiliate on one or
-      // more individual StockNetwork properties from the admin's
-      // location-tree "Properties" checkboxes (Add/Edit Affiliate modal,
-      // admin.html) — the property-level counterpart to updateTown/
-      // updateSuburb in map-api.js. Properties are matched by the same
-      // resortId+siteId key resorts-api.js's CSV merge already preserves
-      // across re-imports (see lib/resort-key.js), so an assignment made
-      // here survives the next StockNetwork upload instead of being wiped
-      // by it.
-      const affId = typeof body.affId === "string" ? body.affId.trim() : "";
-      const keys = Array.isArray(body.resortKeys)
-        ? Array.from(new Set(body.resortKeys.filter((k) => typeof k === "string" && k.trim()).map((k) => k.trim())))
-        : [];
-      if (!keys.length) return json({ ok: false, error: "No properties selected." }, 400, cors);
-
-      const listRecord = await resortStore.get("current", { type: "json" });
-      const resorts = listRecord && Array.isArray(listRecord.resorts) ? listRecord.resorts : [];
-      if (!resorts.length) return json({ ok: false, error: "No resort list loaded yet." }, 400, cors);
-
-      const keySet = new Set(keys);
-      let changed = 0;
-      for (const r of resorts) {
-        const key = resortKey(r);
-        if (key && keySet.has(key)) {
-          r.affId = affId;
-          changed++;
-        }
-      }
-      if (!changed) {
-        return json({ ok: false, error: "Couldn't find those properties in the current resort list — try re-loading and re-selecting them." }, 404, cors);
-      }
-
-      await resortStore.setJSON("current", { resorts: resorts, updatedAt: listRecord.updatedAt || new Date().toISOString() });
-      return json({ ok: true, changed: changed, affId: affId }, 200, cors);
     }
 
     if (action === "fixCollapsedHookLinks") {

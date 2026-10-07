@@ -1131,31 +1131,11 @@ const locationListStore = getStore({ name: "map-location-lists", consistency: "s
         .filter((r) => r && r.visible !== false)
         .map(toActivityPin);
 
-      // A town allocated to one affiliate (affId set) only appears for that
-      // affiliate's own Explore Map / area-hook picker. ?aff=<id> on the
-      // request scopes this; omitting it (or the admin's own unfiltered
-      // view) returns every visible town, allocated or not. Properties and
-      // activities are unaffected — they aren't affiliate-scoped.
-      const requestedAff = new URL(request.url).searchParams.get("aff") || "";
-      const townMatchesAff = (r) => !r.affId || !requestedAff || r.affId === requestedAff;
+      // Affiliates are no longer allocated towns (2026-10-07): every visible
+      // town goes to everyone.
       const towns = (await loadTowns(townsStore))
         .filter((r) => r && r.visible !== false)
-        // A town qualifies if its own allocation matches (or is
-        // shared/unallocated), OR — when it has suburbs — at least one of
-        // those suburbs qualifies on its own. This lets one town hold
-        // suburbs allocated to different affiliates side by side.
-        .filter((r) => {
-          const suburbs = Array.isArray(r.suburbs) ? r.suburbs.filter((s) => s && s.visible !== false) : [];
-          if (!suburbs.length) return townMatchesAff(r);
-          return townMatchesAff(r) || suburbs.some(townMatchesAff);
-        })
-        .map((r) => {
-          const pin = toTownPin(r);
-          if (requestedAff) {
-            pin.suburbs = pin.suburbs.filter((s) => !s.affId || s.affId === requestedAff);
-          }
-          return pin;
-        });
+        .map(toTownPin);
 
       return json({ ok: true, properties, activities, towns });
     }
