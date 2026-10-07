@@ -371,13 +371,11 @@ export default async (request, context) => {
             source: (rec && rec.source) || null,
             // A human-readable description of where this hook's property
             // (or campaign selection) is — computed from the Browse-by-
-            // location tree's ticked properties/suburbs/towns whenever
+            // location tree's ticked places whenever
             // Auto-build runs (see lib/hook-draft.js's locationLabel), and
             // just carried forward on every other save. There's no
             // separate "pick a location" field any more — the tree is the
-            // only source of location for a hook. zone/townId/suburbId
-            // may still linger on older records from before this changed;
-            // they're no longer read or written by anything.
+            // only source of location for a hook.
             locationLabel: (rec && rec.locationLabel) || "",
             // Flyer-template-only fields (see lib/hook-templates.js) —
             // price and the promo banner/date range, both typed in here

@@ -130,16 +130,11 @@ export default async (request) => {
     // of it for good without ever being imported.
     newPropertiesPending: importResult.newPropertiesPending,
     coordinatesChanged: importResult.coordinatesChanged,
-    // Case A (full-hub-coordinate-geocoding-scope, 2026-09-29): of the
-    // properties whose coordinate just changed, how many resorts-api.js's
-    // handleApiSync managed to place into the hub's own
-    // Zone/Town/Suburb/Nearby tree right away -- see that file for the
-    // full logic. autoPlaceNoApiKey true means GOOGLE_GEOCODING_API_KEY
-    // isn't set, so nothing was attempted at all this run.
-    autoPlaced: importResult.autoPlaced,
-    autoPlaceFailed: importResult.autoPlaceFailed,
-    autoPlaceSkippedForTime: importResult.autoPlaceSkippedForTime,
-    autoPlaceNoApiKey: importResult.autoPlaceNoApiKey,
+    // Name check of just-changed coordinates (resorts-api.js), and the
+    // properties placed in the location tree this run.
+    nameChecked: importResult.nameChecked,
+    nameCheckSkippedForTime: importResult.nameCheckSkippedForTime,
+    treePlace: importResult.treePlace,
     // Case B (full-hub-coordinate-geocoding-scope, 2026-09-29): of those
     // same just-changed coordinates, how many didn't look like they
     // matched the property's own name and got flagged for review in

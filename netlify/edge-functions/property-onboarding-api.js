@@ -57,18 +57,11 @@ const EDITABLE_FIELDS = [
   "checkInTime", "checkOutTime", "description", "houseRules", "moreInfo",
   "areaInfo", "depositPolicyText", "depositPct", "depositDays", "childPolicy",
   "commissionRate", "listingDuration", "agreementTerms",
-  // Which area/town/suburb (from the Zone > Town > Suburb tree in
-  // map-api.js) this property is tagged with — set via admin.html's
-  // location tree picker in the review modal. Deliberately separate from
-  // the free-text suburb/city/stateProvince fields above, which stay
-  // exactly as the owner/agent originally submitted them.
-  "zone", "townId", "suburbId", "locationLabel",
 ];
 
 const EDITABLE_FIELD_MAX = {
   description: 4000, houseRules: 4000, moreInfo: 4000, areaInfo: 4000,
   agreementTerms: 6000, depositPolicyText: 2000, childPolicy: 1000,
-  zone: 100, townId: 60, suburbId: 60, locationLabel: 160,
 };
 
 function sanitizeUnitTypes(input) {
@@ -355,10 +348,6 @@ export default async (request, context) => {
           submittedBy: r.submittedBy,
           country: r.country,
           city: r.city,
-          zone: r.zone || "",
-          townId: r.townId || "",
-          suburbId: r.suburbId || "",
-          locationLabel: r.locationLabel || "",
           status: r.status || "Requested",
           siteNr: r.siteNr || "",
           agreementStatus: r.agreementStatus,

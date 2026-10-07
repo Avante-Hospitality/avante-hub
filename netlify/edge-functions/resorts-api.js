@@ -1,21 +1,11 @@
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
 import { mergeResorts } from "./lib/resort-key.js";
 import { placeResortBacklog, PLACES_STORE } from "./lib/tree.js";
-// Case A of the full-hub-coordinate-geocoding-scope build (2026-09-29):
-// after this sync lands a new/changed coordinate from StockNetwork, place
-// that property in the hub's own Zone/Town/Suburb/Nearby tree right away —
-// using the exact same resolveLocationForCoordinate/applyLocationTag engine
-// map-api.js's "Start geocoding" button already uses — instead of leaving
-// it untagged until someone notices and presses that button by hand. See
-// lib/geolocate.js's own header comment for why this lives in a shared lib
-// rather than being duplicated here.
-//
-// Case B (same scope, same date): checkNameAgainstCoordinate — for the
-// same set of just-changed coordinates, also check the property's own NAME
-// against the new pin, so a StockNetwork coordinate that's plainly wrong
-// (a resort tagged to the wrong town, a data-entry slip) gets flagged for
-// Jean right when it happens rather than silently placed into the tree.
-import { resolveLocationForCoordinate, applyLocationTag, checkNameAgainstCoordinate } from "./lib/geolocate.js";
+// When StockNetwork sends a new coordinate, the property's own NAME is
+// checked against the new pin (checkNameAgainstCoordinate), so a plainly
+// wrong StockNetwork coordinate gets flagged for review right away. Its place
+// in the location tree is set by placeTreeBacklog (lib/tree.js).
+import { checkNameAgainstCoordinate } from "./lib/name-check.js";
 
 // Minimal CSV field-splitter (handles quoted fields, embedded commas, and
 // "" escaped quotes) — we only need the first column (the resort name), but
@@ -44,7 +34,7 @@ function parseCsvLine(line) {
   return result;
 }
 
-// Parses the resort master CSV into { name, district, suburb, zoneHint,
+// Parses the resort master CSV into { name, district, suburb,
 // siteId, resortId, latitude, longitude, ...rawFields } per row. Every field
 // is looked up by header name so the parser doesn't break if StockNetwork
 // reorders columns; siteId/resortId fall back to the last two columns (their
@@ -94,7 +84,6 @@ function parseResortsFromCsv(text) {
   let nameIdx = findCol(["resort"]);
   const districtIdx = findCol(["district", "town", "town/city", "city"]);
   const suburbIdx = findCol(["suburb", "area"]);
-  const zoneHintIdx = findCol(["zone", "province", "state", "stateprovince", "state/province"]);
   let siteIdIdx = findCol(["siteid"]);
   let resortIdIdx = findCol(["resortid"]);
   const latIdx = findCol(["latitude"]);
@@ -134,7 +123,6 @@ function parseResortsFromCsv(text) {
 
     const district = districtIdx > -1 ? (fields[districtIdx] || "").trim() : "";
     const suburb = suburbIdx > -1 ? (fields[suburbIdx] || "").trim() : "";
-    const zoneHint = zoneHintIdx > -1 ? (fields[zoneHintIdx] || "").trim() : "";
     const siteId = siteIdIdx > -1 ? (fields[siteIdIdx] || "").trim() : "";
     const resortId = resortIdIdx > -1 ? (fields[resortIdIdx] || "").trim() : "";
     const latitude = latIdx > -1 ? (fields[latIdx] || "").trim() : "";
@@ -164,7 +152,7 @@ function parseResortsFromCsv(text) {
     const key = name.toLowerCase() + "|" + siteId + "|" + resortId;
     if (seen.has(key)) continue;
     seen.add(key);
-    resorts.push({ name, district, suburb, zoneHint, siteId, resortId, latitude, longitude, ...raw });
+    resorts.push({ name, district, suburb, siteId, resortId, latitude, longitude, ...raw });
   }
 
   resorts.sort((a, b) => a.name.localeCompare(b.name) || a.district.localeCompare(b.district));
@@ -181,7 +169,13 @@ function parseResortsFromCsv(text) {
 // move, so a stale tag OR a stale suspicion flag tied to the OLD point
 // never lingers — the auto-place pass right after this loop re-derives
 // both fresh for the new coordinate.
-const API_SYNC_CLEAR_ON_MOVE = ["zone", "townId", "suburbId", "locationLabel", "country", "nearby", "offshoreKm", "locV", "coordSuspicious", "coordSuspiciousNote", "coordSuggested"];
+// The old zone/town tags (before the location tree, 2026-10-07). Removed from
+// every row on each sync and CSV upload.
+const OLD_ZONE_TAGS = ["zone", "townId", "suburbId", "locationLabel", "nearby", "offshoreKm", "locV", "zoneHint"];
+function stripOldZoneTags(resorts) {
+  (resorts || []).forEach((r) => { if (r) OLD_ZONE_TAGS.forEach((f) => { delete r[f]; }); });
+}
+const API_SYNC_CLEAR_ON_MOVE = ["country", "coordSuspicious", "coordSuspiciousNote", "coordSuggested"];
 
 // Maps one raw StockNetwork /api/1.0/resort row onto the same raw,
 // informational field names parseResortsFromCsv() above captures from a CSV
@@ -426,46 +420,27 @@ async function handleApiSync(request, store, cors) {
     });
   }
 
-  // Case A (full-hub-coordinate-geocoding-scope, 2026-09-29): place every
-  // property whose coordinate just changed straight into the hub's own
-  // Zone/Town/Suburb/Nearby tree, instead of leaving it untagged until
-  // someone presses "Re-check all zones" in admin. Deliberately the SAME
-  // safe rule geocodeLocations already uses — only ever fills in a row with
-  // no locationLabel yet (checked again here, not just assumed from
-  // `moved`, in case something else tagged it in between) — never the
-  // force:true behaviour recheckZones uses, so this can never silently
-  // revert a Town an admin corrected by hand. A skipped/failed row here
-  // just stays untagged, exactly like any other geocodeLocations backlog
-  // item — Jean's existing "Properties with no zone" tooling still sees it.
-  let autoPlaced = 0,
-    autoPlaceFailed = 0,
-    autoPlaceSkippedForTime = 0,
-    autoPlaceNoApiKey = false;
-  // coordFlaggedSuspicious/coordFlagCleared are now declared above, next to
-  // coordProtectedFromOverwrite, since the per-row loop above can also
-  // increment/decrement them (hub-is-master-for-location, 2026-09-30) --
-  // Case B just below is a second place that touches the same two
-  // counters, for a different reason (a brand-new placement whose name
-  // doesn't match), not a first place.
+  // Name check for every property whose coordinate just changed (see the
+  // import note at the top). Its place in the location tree is set by
+  // placeTreeBacklog below.
+  let nameChecked = 0,
+    nameCheckSkippedForTime = 0,
+    nameCheckNoApiKey = false;
 
   if (changedIdxs.length) {
     const apiKey = Deno.env.get("GOOGLE_GEOCODING_API_KEY") || "";
     if (!apiKey) {
-      autoPlaceNoApiKey = true;
+      nameCheckNoApiKey = true;
     } else {
       const targets = changedIdxs.filter((i) => {
         const rec = resorts[i];
-        if (!rec || rec.locationLabel) return false;
+        if (!rec) return false;
         const lat = parseFloat(rec.latitude);
         const lng = parseFloat(rec.longitude);
         return isFinite(lat) && isFinite(lng) && !(lat === 0 && lng === 0);
       });
 
       if (targets.length) {
-        const townsStore = getStore({ name: "map-towns", consistency: "strong" });
-        const geoCacheStore = getStore({ name: "map-geocache", consistency: "strong" });
-        const allTowns = (await townsStore.get("all", { type: "json" })) || [];
-        const existingIds = new Set(allTowns.map((t) => t.id));
 
         // Same time-budget pattern map-api.js's own batch geocoding actions
         // use: stop STARTING new lookups once spent, so a large night's
@@ -479,26 +454,14 @@ async function handleApiSync(request, store, cors) {
 
         await mapWithConcurrency(targets, 8, async (i) => {
           if (Date.now() - lookupsBeganAt > LOOKUP_START_BUDGET_MS) {
-            autoPlaceSkippedForTime++;
+            nameCheckSkippedForTime++;
             return;
           }
           const rec = resorts[i];
           const lat = parseFloat(rec.latitude);
           const lng = parseFloat(rec.longitude);
-          // Case A and Case B run together, in parallel, for each
-          // just-changed coordinate — one reverse-geocodes the point (where
-          // is this?), the other forward-geocodes the property's own name
-          // (does Google's answer for that name land near this point?).
-          const [placeResult, nameCheck] = await Promise.all([
-            resolveLocationForCoordinate(lat, lng, apiKey, allTowns, existingIds, false, geoCacheStore),
-            checkNameAgainstCoordinate(rec.name, lat, lng, apiKey),
-          ]);
-          if (placeResult.result) {
-            applyLocationTag(rec, placeResult.result);
-            autoPlaced++;
-          } else {
-            autoPlaceFailed++;
-          }
+          const nameCheck = await checkNameAgainstCoordinate(rec.name, lat, lng, apiKey);
+          nameChecked++;
           // Case B (full-hub-coordinate-geocoding-scope, 2026-09-29): flag a
           // StockNetwork coordinate that doesn't look like it belongs to
           // this property's own name, right when that coordinate just
@@ -530,11 +493,11 @@ async function handleApiSync(request, store, cors) {
           }
         });
 
-        await townsStore.setJSON("all", allTowns);
       }
     }
   }
 
+  stripOldZoneTags(resorts);
   await store.setJSON(
     "current",
     Object.assign({}, record, { resorts, apiSyncedAt: new Date().toISOString() })
@@ -575,10 +538,9 @@ async function handleApiSync(request, store, cors) {
       unmatchedApiRows,
       newPropertiesPending: keptItems.length,
       coordinatesChanged,
-      autoPlaced,
-      autoPlaceFailed,
-      autoPlaceSkippedForTime,
-      autoPlaceNoApiKey,
+      nameChecked,
+      nameCheckSkippedForTime,
+      nameCheckNoApiKey,
       coordFlaggedSuspicious,
       coordFlagCleared,
       coordProtectedFromOverwrite,
@@ -669,6 +631,7 @@ export default async (request, context) => {
       const resorts = mergeResorts(previousResorts, freshResorts);
 
       const updatedAt = new Date().toISOString();
+      stripOldZoneTags(resorts);
       await store.setJSON("current", { resorts, updatedAt });
       const treePlace = await placeTreeBacklog(resorts);
 

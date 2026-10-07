@@ -33,9 +33,9 @@ export function resortKey(r) {
 // these are set. None of these come from the CSV/StockNetwork API at all,
 // so mergeResorts is the only thing standing between them and being wiped
 // on every re-import.
-const LOCATION_TAG_FIELDS = [
-  "zone", "townId", "suburbId", "locationLabel", "country", "nearby", "offshoreKm", "locV",
-];
+// The old zone/town tags were removed with the location tree (2026-10-07);
+// only the hub's own country is carried forward now.
+const LOCATION_TAG_FIELDS = ["country"];
 
 // Same coordinate-match tolerance map-api.js itself already uses (see its
 // dryRun/apply handlers for the geocodeLocations action) before trusting a
