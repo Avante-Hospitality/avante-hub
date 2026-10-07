@@ -61,6 +61,7 @@ export default async (request) => {
       case "saveSettings": return json(Object.assign({ ok: true }, await core.saveSettings(prop, body)));
       case "channelEvents": return json(Object.assign({ ok: true }, await core.channelEvents(prop)));
       case "addChannelEvent": return json(Object.assign({ ok: true }, await core.addChannelEvent(prop, body.unit, body.channel, body.uid)));
+      case "unitNotice": return json(Object.assign({ ok: true }, await core.resolveUnitNotice(prop, body.name, body.from)));
       case "syncNow": return json({ ok: true, result: await core.syncProperty(prop) });
       default: return json({ ok: false, error: "unknown action" }, 400);
     }
