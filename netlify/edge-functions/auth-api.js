@@ -9,6 +9,28 @@ import {
 } from "./lib/booking-stats.js";
 
 const DEFAULT_PASSWORD = "0000";
+const RESET_LINK_MINUTES = 60;
+const RESET_MAX_PER_HOUR = 3;
+
+function randomToken(bytes = 24) {
+  const a = new Uint8Array(bytes); crypto.getRandomValues(a);
+  return Array.from(a).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+function escHtml(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+function maskEmail(e) { const m = /^(.)(.*)(@.*)$/.exec(String(e || "")); return m ? m[1] + "***" + m[3] : ""; }
+
+async function sendResendEmail(to, subject, html) {
+  const key = (typeof Netlify !== "undefined" ? Netlify.env.get("RESEND_API_KEY") : Deno.env.get("RESEND_API_KEY")) || "";
+  if (!key || !to) return false;
+  try {
+    const r = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { authorization: "Bearer " + key, "content-type": "application/json" },
+      body: JSON.stringify({ from: "Avante Travel <bookings@go.avantetravel.co.za>", to: [to], subject, html }),
+    });
+    return r.ok;
+  } catch (_) { return false; }
+}
 
 // Revenue channels — must stay in sync with CHANNEL_KEYS in admin-api.js.
 // Only used here to shape a safe, read-only revenueShare object to hand
@@ -101,18 +123,33 @@ export default async (request, context) => {
   const directoryStore = getStore({ name: "affiliates-directory", consistency: "strong" });
   // Same store name admin-api.js's importStockNetworkReport writes to.
   const transactionsStore = getStore({ name: "stocknetwork-transactions", consistency: "strong" });
+  // Logged-in devices. A session is tied to the password at the time of
+  // login, so changing or resetting the password logs every device out.
+  const sessionStore = getStore({ name: "affiliate-sessions", consistency: "strong" });
+  const resetStore = getStore({ name: "affiliate-password-reset", consistency: "strong" });
+  const json = (obj, status = 200) => new Response(JSON.stringify(obj), { status, headers: { "content-type": "application/json", ...cors } });
 
   try {
     const record = await store.get(aff, { type: "json" });
     const storedHash = record && record.passwordHash ? record.passwordHash : await sha256Hex(DEFAULT_PASSWORD);
+    const newSession = async (hash) => {
+      const token = randomToken(24);
+      await sessionStore.setJSON(token, { aff, ph: hash.slice(0, 16), createdAt: new Date().toISOString() });
+      return token;
+    };
+    const validSession = async () => {
+      const t = typeof body.session === "string" ? body.session.trim().slice(0, 100) : "";
+      if (!t) return false;
+      const s = await sessionStore.get(t, { type: "json" });
+      return !!(s && s.aff === aff && s.ph === storedHash.slice(0, 16));
+    };
+    const relogin = () => json({ ok: false, relogin: true, error: "Please log in again." }, 401);
 
     if (action === "login") {
       const password = typeof body.password === "string" ? body.password : "";
       const hash = await sha256Hex(password);
       if (hash === storedHash) {
-        return new Response(JSON.stringify({ ok: true }), {
-          headers: { "content-type": "application/json", ...cors },
-        });
+        return json({ ok: true, session: await newSession(storedHash) });
       }
       return new Response(JSON.stringify({ ok: false, error: "Incorrect affiliate number or password" }), {
         status: 401,
@@ -141,24 +178,52 @@ export default async (request, context) => {
 
       const newHash = await sha256Hex(newPassword);
       await store.setJSON(aff, { passwordHash: newHash, updatedAt: new Date().toISOString() });
-      return new Response(JSON.stringify({ ok: true }), {
-        headers: { "content-type": "application/json", ...cors },
-      });
+      // Other devices are logged out; this one gets a fresh session.
+      return json({ ok: true, session: await newSession(newHash) });
     }
 
     if (action === "reset") {
-      // No email system exists in this app, so "forgot password" simply
-      // reverts the affiliate's account back to the default password (0000)
-      // — the same one every new affiliate starts with. Anyone resetting
-      // needs to already know the affiliate's ID, which matches this app's
-      // existing security level throughout.
-      await store.delete(aff);
-      return new Response(JSON.stringify({ ok: true }), {
-        headers: { "content-type": "application/json", ...cors },
-      });
+      // Forgot password: email a one-time reset link to the address on the
+      // affiliate's profile. The answer is the same whether or not the
+      // affiliate exists or has an email, so it can't be used to probe accounts.
+      const generic = { ok: true, message: "If this affiliate number has an email address on file, a reset link is on its way. It works once and expires in " + RESET_LINK_MINUTES + " minutes. No email? Contact Avante Travel." };
+      const dir = await directoryStore.get(aff, { type: "json" });
+      const email = dir && typeof dir.email === "string" ? dir.email.trim() : "";
+      if (!email) return json(generic);
+      const rl = (await resetStore.get("rl:" + aff, { type: "json" })) || { times: [] };
+      const hourAgo = Date.now() - 3600000;
+      rl.times = (rl.times || []).filter((t) => t > hourAgo);
+      if (rl.times.length >= RESET_MAX_PER_HOUR) return json(generic);
+      rl.times.push(Date.now());
+      await resetStore.setJSON("rl:" + aff, rl);
+      const token = randomToken(24);
+      await resetStore.setJSON("t:" + token, { aff, exp: Date.now() + RESET_LINK_MINUTES * 60000, used: false, createdAt: new Date().toISOString() });
+      const link = new URL(request.url).origin + "/reset-password.html?aff=" + encodeURIComponent(aff) + "&t=" + token;
+      await sendResendEmail(email, "Reset your Avante Travel Hub password",
+        "<p>Hi " + escHtml(dir.name || "") + ",</p><p>Someone asked to reset the password for Avante Travel Hub affiliate <b>" + escHtml(aff) + "</b>.</p>" +
+        "<p><a href=\"" + escHtml(link) + "\" style=\"display:inline-block;background:#0e2f44;color:#fff;padding:12px 18px;border-radius:8px;text-decoration:none;font-weight:700\">Choose a new password</a></p>" +
+        "<p>The link works once and expires in " + RESET_LINK_MINUTES + " minutes. If you didn't ask for this, ignore this email: your password stays the same.</p>");
+      return json(generic);
+    }
+
+    if (action === "resetConfirm") {
+      const t = typeof body.t === "string" ? body.t.trim().slice(0, 100) : "";
+      const newPassword = typeof body.newPassword === "string" ? body.newPassword : "";
+      const rec = t ? await resetStore.get("t:" + t, { type: "json" }) : null;
+      if (!rec || rec.aff !== aff) return json({ ok: false, error: "This reset link isn't valid. Request a new one from the login page." }, 400);
+      if (rec.used) return json({ ok: false, error: "This reset link has already been used. Request a new one from the login page." }, 400);
+      if (rec.exp < Date.now()) return json({ ok: false, error: "This reset link has expired. Request a new one from the login page." }, 400);
+      if (!newPassword || newPassword.length < 4) return json({ ok: false, error: "New password must be at least 4 characters" }, 400);
+      if (newPassword === DEFAULT_PASSWORD) return json({ ok: false, error: "Choose a password other than 0000." }, 400);
+      const newHash = await sha256Hex(newPassword);
+      await store.setJSON(aff, { passwordHash: newHash, updatedAt: new Date().toISOString() });
+      rec.used = true; rec.usedAt = new Date().toISOString();
+      await resetStore.setJSON("t:" + t, rec);
+      return json({ ok: true });
     }
 
     if (action === "getProfile") {
+      if (!(await validSession())) return relogin();
       // Self-service — an affiliate viewing their own Account Details tab.
       // revenueShare is included here purely for read-only display; the
       // updateProfile action below never accepts or writes it.
@@ -186,6 +251,7 @@ export default async (request, context) => {
     }
 
     if (action === "updateProfile") {
+      if (!(await validSession())) return relogin();
       // Self-service update of personal + bank details only. Revenue share
       // AND siteNr are intentionally never read from the request body —
       // whatever (if anything) an affiliate submits for either is silently
