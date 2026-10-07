@@ -20,8 +20,13 @@ import { parseIcs, buildIcs, nightsToRanges } from "./ical.js";
 import { encryptJSON, decryptJSON, randomToken, sha256Hex } from "./pa-crypto.js";
 
 export const CHANNELS = { bcom: "Booking.com", airbnb: "Airbnb", lekke: "LekkeSlaap" };
-const HORIZON_DAYS = 365;
-const SNAPSHOT_MAX_AGE_MS = 5 * 60 * 1000;
+const HORIZON_DAYS = 365;               // full read: at connect, and every SYNC_FULL_MS for channel-linked properties
+const SYNC_NEAR_DAYS = 60;              // every 15-minute sync reads only this far ahead
+const SYNC_FULL_MS = 2 * 3600 * 1000;   // ... and the full year this often
+const WINDOW_MAX_AGE_MS = 5 * 60 * 1000; // a screen window is re-read from SN when older than this
+const MAX_WINDOW_DAYS = 62;             // the screen never asks SN for more than this at once
+const TOKEN_REUSE_MS = 50 * 60 * 1000;
+const FEED_ACTIVE_MS = 48 * 3600 * 1000; // a calendar link fetched by a channel within this time counts as linked
 const SESSION_DAYS = 30;
 const APPROVAL_HOURS = 24;
 const APPROVAL_MAX_TRIES = 5;
@@ -83,7 +88,9 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     await setJSON("feed:" + prop.feedToken, { siteId: prop.siteId });
     const token = randomToken(24);
     await setJSON("sess:" + token, { siteId: prop.siteId, aff: prop.aff, exp: now().getTime() + SESSION_DAYS * 86400000 });
-    await saveSnapshot(prop, snap, true);
+    // Connecting reads the full year once, to find every unit and its open nights.
+    await mergeWindow(prop, snap, today(), addDays(today(), HORIZON_DAYS), { first: true });
+    await setJSON("tok:" + prop.siteId, { enc: await encryptJSON(tok, encKey), until: Math.min(tok.expires || Infinity, now().getTime() + TOKEN_REUSE_MS) });
     return { token, property: publicProperty(prop) };
   }
 
@@ -115,55 +122,124 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     return { siteId: p.siteId, site: p.site, resortId: p.resortId, resortName: p.resortName, units: p.units, settings: p.settings, connectedAt: p.createdAt };
   }
 
-  async function clientFor(prop) { return clientFactory(await decryptJSON(prop.credsEnc, encKey)); }
+  // One Stock Network login per property is reused across requests until it
+  // is close to expiring (SN's expiry, capped at TOKEN_REUSE_MS); a rejected
+  // login triggers one fresh login inside SNClient.call.
+  async function clientFor(prop) {
+    const c = clientFactory(await decryptJSON(prop.credsEnc, encKey));
+    try {
+      const cached = await getJSON("tok:" + prop.siteId);
+      if (cached && cached.enc && cached.until > now().getTime() + 60000) c.tok = await decryptJSON(cached.enc, encKey);
+    } catch (_) {}
+    c.onLogin = async (tok) => {
+      const until = Math.min(tok.expires || Infinity, now().getTime() + TOKEN_REUSE_MS);
+      await setJSON("tok:" + prop.siteId, { enc: await encryptJSON(tok, encKey), until });
+    };
+    return c;
+  }
 
-  // ---------- snapshot of SN availability ----------
+  // ---------- what the hub knows about SN availability ----------
+  // snap:{siteId} = { open:{unit:[nights]}, nightRates:{unit:{night:rate}}, rates:{unit:min},
+  //                   taken:{unit:{night:since}}, readAt:{night:ms}, fullAt, at }
+  // Each read covers a window of dates and is merged in; nothing outside the
+  // window changes. "taken" = a night that was open on SN at an earlier read
+  // and has gone (booked on SN), excluding nights the hub booked itself.
   async function bookingsOf(prop) { return (await getJSON("book:" + prop.siteId)) || []; }
   function activeNightsByUnit(bookings) {
     const m = {};
     for (const b of bookings) if (b.status !== "Cancelled") for (const it of b.items) if (!it.cancelled) for (const n of eachNight(it.start, it.end)) ((m[it.unit] = m[it.unit] || {})[n] = b);
     return m;
   }
-
-  async function saveSnapshot(prop, snap, first) {
-    const prev = (await getJSON("snap:" + prop.siteId)) || { open: {}, taken: {}, rates: {} };
-    const bookings = await bookingsOf(prop);
-    const ours = activeNightsByUnit(bookings);
-    const open = {}, rates = {}, nightRates = {}, taken = {};
-    for (const s of snap.stretches) {
-      if (!(s.unitsAvailable > 0)) continue;
-      const nights = eachNight(s.start, s.end);
-      (open[s.unit] = open[s.unit] || []).push(...nights);
-      if (s.rateTotal && s.nights) { const r = Math.round(s.rateTotal / s.nights); const m = (nightRates[s.unit] = nightRates[s.unit] || {}); for (const n of nights) m[n] = r; rates[s.unit] = Math.min(rates[s.unit] || Infinity, r); }
-    }
-    const t0 = today();
-    for (const unit of new Set([...Object.keys(prev.open || {}), ...Object.keys(open), ...Object.keys(prev.taken || {})])) {
-      const nowOpen = new Set(open[unit] || []);
-      const keep = {};
-      for (const [n, since] of Object.entries((prev.taken || {})[unit] || {})) if (n >= t0 && !nowOpen.has(n)) keep[n] = since;
-      if (!first) for (const n of (prev.open || {})[unit] || []) if (n >= t0 && !nowOpen.has(n) && !(ours[unit] && ours[unit][n])) keep[n] = keep[n] || now().toISOString();
-      if (Object.keys(keep).length) taken[unit] = keep;
-    }
-    const out = { open, taken, rates, nightRates, at: now().toISOString() };
-    await setJSON("snap:" + prop.siteId, out);
-    return out;
+  function emptySnap() { return { open: {}, nightRates: {}, rates: {}, taken: {}, readAt: {}, at: null }; }
+  async function loadSnap(prop) {
+    const s = (await getJSON("snap:" + prop.siteId)) || emptySnap();
+    s.open = s.open || {}; s.nightRates = s.nightRates || {}; s.taken = s.taken || {}; s.readAt = s.readAt || {}; s.rates = s.rates || {};
+    return s;
+  }
+  function windowFresh(snap, from, to, maxAge) {
+    const limit = now().getTime() - maxAge;
+    return eachNight(from, to).every((n) => (snap.readAt[n] || 0) >= limit);
   }
 
-  async function snapshot(prop, { force = false, client } = {}) {
-    const cur = await getJSON("snap:" + prop.siteId);
-    if (!force && cur && now().getTime() - Date.parse(cur.at) < SNAPSHOT_MAX_AGE_MS) return cur;
+  async function mergeWindow(prop, read, from, to, { first = false } = {}) {
+    const snap = await loadSnap(prop);
+    const ours = activeNightsByUnit(await bookingsOf(prop));
+    const t0 = today();
+    const inWin = (n) => n >= from && n < to;
+    const open = {}, rates = {};
+    for (const st of read.stretches) {
+      if (!(st.unitsAvailable > 0)) continue;
+      const nights = eachNight(st.start, st.end).filter(inWin);
+      (open[st.unit] = open[st.unit] || new Set());
+      for (const n of nights) open[st.unit].add(n);
+      if (st.rateTotal && st.nights) { const r = Math.round(st.rateTotal / st.nights); const m = (rates[st.unit] = rates[st.unit] || {}); for (const n of nights) m[n] = r; }
+    }
+    const units = new Set([...Object.keys(snap.open), ...Object.keys(open), ...Object.keys(snap.taken), ...prop.units.map((u) => u.name)]);
+    const stamp = now().toISOString();
+    for (const u of units) {
+      const was = new Set((snap.open[u] || []).filter(inWin));
+      const nowOpen = open[u] || new Set();
+      const tk = snap.taken[u] || {};
+      for (const n of Object.keys(tk)) if (n < t0 || (inWin(n) && nowOpen.has(n))) delete tk[n];
+      if (!first) for (const n of was) if (n >= t0 && !nowOpen.has(n) && !(ours[u] && ours[u][n])) tk[n] = tk[n] || stamp;
+      if (Object.keys(tk).length) snap.taken[u] = tk; else delete snap.taken[u];
+      const keep = (snap.open[u] || []).filter((n) => n >= t0 && !inWin(n));
+      const merged = keep.concat([...nowOpen]).sort();
+      if (merged.length) snap.open[u] = merged; else delete snap.open[u];
+      const nr = snap.nightRates[u] || {};
+      for (const n of Object.keys(nr)) if (n < t0 || inWin(n)) delete nr[n];
+      Object.assign(nr, rates[u] || {});
+      if (Object.keys(nr).length) { snap.nightRates[u] = nr; snap.rates[u] = Math.min(...Object.values(nr)); } else { delete snap.nightRates[u]; delete snap.rates[u]; }
+    }
+    const ms = now().getTime();
+    for (const n of Object.keys(snap.readAt)) if (n < t0) delete snap.readAt[n];
+    for (const n of eachNight(from, to)) snap.readAt[n] = ms;
+    snap.at = stamp;
+    await setJSON("snap:" + prop.siteId, snap);
+    await noteUnits(prop, read.units, { first });
+    return snap;
+  }
+
+  // New unit names seen on SN are added to the property. After the first
+  // connect they are also flagged, because a "new" unit may be a renamed one
+  // whose channel links need moving across.
+  async function noteUnits(prop, found, { first = false } = {}) {
+    const units = Object.values(found || {}).map((u) => ({ name: u.name, size: u.size, roomId: u.roomId }));
+    const fresh = units.filter((u) => !prop.units.find((x) => x.name === u.name));
+    if (!fresh.length) return;
+    prop.units = mergeUnits(prop.units, fresh);
+    if (!first) prop.unitNotices = (prop.unitNotices || []).concat(fresh.map((u) => ({ name: u.name, at: now().toISOString() })));
+    await setJSON("site:" + prop.siteId, prop);
+  }
+
+  // Make sure the hub has a recent read of SN for [from, to).
+  async function ensureWindow(prop, from, to, { maxAge = WINDOW_MAX_AGE_MS, client, force = false } = {}) {
+    const snap = await loadSnap(prop);
+    if (!force && windowFresh(snap, from, to, maxAge)) return snap;
     const c = client || (await clientFor(prop));
-    const snap = await c.openStretches(prop.resortId, today(), addDays(today(), HORIZON_DAYS));
-    const units = Object.values(snap.units).map((u) => ({ name: u.name, size: u.size, roomId: u.roomId }));
-    if (units.some((u) => !prop.units.find((x) => x.name === u.name))) { prop.units = mergeUnits(prop.units, units); await setJSON("site:" + prop.siteId, prop); }
-    return saveSnapshot(prop, snap, false);
+    const read = await c.openStretches(prop.resortId, from, to);
+    return mergeWindow(prop, read, from, to);
+  }
+
+  // After the hub books or cancels, those nights must be read again next time.
+  async function invalidate(prop, items) {
+    const snap = await getJSON("snap:" + prop.siteId);
+    if (!snap || !snap.readAt) return;
+    for (const it of items) for (const n of eachNight(it.start, it.end)) delete snap.readAt[n];
+    await setJSON("snap:" + prop.siteId, snap);
+  }
+
+  // Kept for callers/tests: refresh the window the sync normally watches.
+  async function snapshot(prop, { force = false, client } = {}) {
+    return ensureWindow(prop, today(), addDays(today(), SYNC_NEAR_DAYS), { force, client });
   }
 
   // ---------- availability for the grid / calendar ----------
   async function availability(prop, from, to) {
     from = from || today(); to = to || addDays(from, 14);
-    if (nightsBetween(from, to) > 400 || to <= from) throw new PAError("Choose a shorter date range.");
-    const snap = await snapshot(prop);
+    if (to <= from || nightsBetween(from, to) > MAX_WINDOW_DAYS) throw new PAError("Choose a shorter date range.");
+    // Only the days on screen are read from SN (past days never are).
+    const snap = to > today() ? await ensureWindow(prop, from < today() ? today() : from, to) : await loadSnap(prop);
     const bookings = await bookingsOf(prop);
     const ours = activeNightsByUnit(bookings);
     const events = (await getJSON("chan:" + prop.siteId)) || {};
@@ -191,7 +267,11 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
 
   async function search(prop, checkIn, checkOut) {
     if (!checkIn || !checkOut || checkOut <= checkIn) throw new PAError("Choose a check-out after the check-in.");
-    const snap = await snapshot(prop);
+    if (checkIn < today()) throw new PAError("Choose a check-in from today.");
+    if (nightsBetween(checkIn, checkOut) > MAX_WINDOW_DAYS - 2) throw new PAError("Choose a shorter stay.");
+    // Read the stay, and at least the 2 weeks the grid will show next, in one call.
+    const wEnd = checkOut > addDays(checkIn, 14) ? checkOut : addDays(checkIn, 14);
+    const snap = await ensureWindow(prop, checkIn, wEnd);
     const ours = activeNightsByUnit(await bookingsOf(prop));
     const want = eachNight(checkIn, checkOut);
     const results = [];
@@ -314,7 +394,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
       items: items.map((it) => { const d = res.details.find((x) => x.unit === it.unit && x.start === it.start); return { unit: it.unit, start: it.start, end: it.end, detailId: d ? d.detailId : null }; }),
       total: res.total, paymentUrl: res.paymentUrl || null, infoUrl: res.infoUrl || null, amountPaid: res.amountPaid || 0, snStatus: res.status || "Request", createdAt: now().toISOString() };
     const list = await bookingsOf(prop); list.push(rec); await saveBookings(prop, list);
-    await snapshot(prop, { force: true, client }).catch(() => null);
+    await invalidate(prop, items);
     return { booking: decorate(rec), pay: await payInfoFor(prop, rec) };
   }
 
@@ -335,7 +415,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     await client.cancelReservation(b.reservationId);
     b.status = "Cancelled"; b.cancelledAt = now().toISOString();
     await saveBookings(prop, list);
-    await snapshot(prop, { force: true, client }).catch(() => null);
+    await invalidate(prop, b.items);
     return { booking: decorate(b) };
   }
 
@@ -401,7 +481,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
       try { await client.cancelReservation(b.reservationId); }
       catch (e) { throw new PAError("Approved, but Stock Network didn't cancel the booking: " + (e.message || e) + " Cancel it in the Stock Network back office.", 502); }
       b.status = "Cancelled"; b.cancelledAt = now().toISOString();
-      await snapshot(prop, { force: true, client }).catch(() => null);
+      await invalidate(prop, b.items);
     }
     b.cancelApproved = { by: a.aff, at: now().toISOString() };
     delete b.cancelRequest;
@@ -425,7 +505,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     await client.cancelDetail(it.detailId);
     it.cancelled = true; it.cancelledAt = now().toISOString();
     await saveBookings(prop, list);
-    await snapshot(prop, { force: true, client }).catch(() => null);
+    await invalidate(prop, [it]);
     return { booking: decorate(b) };
   }
 
@@ -471,7 +551,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
       guest: { first: guest.first, last: guest.last, email: guest.email, cellphone: guest.cellphone },
       items: [{ unit: next.unit, start: next.start, end: next.end, detailId: res.details[0] ? res.details[0].detailId : null }], total: res.total, createdAt: now().toISOString() });
     list.push(rec); await saveBookings(prop, list);
-    await snapshot(prop, { force: true, client }).catch(() => null);
+    await invalidate(prop, [old, next]);
     return { booking: decorate(rec), replaced: b.ref, pay: await payInfoFor(prop, rec) };
   }
 
@@ -524,11 +604,43 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
       name: u.name, size: u.size,
       channels: Object.keys(CHANNELS).map((key) => {
         const c = (prop.channels || {})[u.name] && prop.channels[u.name][key] || {};
-        return { key, label: CHANNELS[key], exportUrl: baseUrl + "/ical/" + prop.feedToken + "/" + slug(u.name) + "/" + key + ".ics", importUrl: c.importUrl || "", status: c.importUrl ? (c.status || "waiting") : "off", lastRead: c.lastRead || null, error: c.error || null, events: c.events || 0 };
+        return { key, label: CHANNELS[key], exportUrl: baseUrl + "/ical/" + prop.feedToken + "/" + slug(u.name) + "/" + key + ".ics", importUrl: c.importUrl || "", status: c.importUrl ? (c.status || "waiting") : "off", lastRead: c.lastRead || null, error: c.error || null, events: c.events || 0, next: c.importUrl ? (c.next || []) : [] };
       }),
     }));
     const settings = Object.assign({ payMode: "both" }, prop.settings || {});
-    return { settings, bank: await bankOf(prop), units, affiliateLinked: !!prop.aff };
+    const linked = Object.keys(prop.channels || {}).filter((n) => Object.values(prop.channels[n] || {}).some((c) => c && c.importUrl));
+    return { settings, bank: await bankOf(prop), units, affiliateLinked: !!prop.aff, unitNotices: prop.unitNotices || [], linkedUnits: linked };
+  }
+
+  // A unit name appeared on SN. from = the old unit it replaces (renamed on SN),
+  // or empty when it really is a new unit. Moving keeps the old calendar link working.
+  async function resolveUnitNotice(prop, name, from) {
+    name = cleanStr(name, 60); from = cleanStr(from, 60);
+    prop.unitNotices = (prop.unitNotices || []).filter((n) => n.name !== name);
+    if (from && from !== name) {
+      if (!prop.units.find((u) => u.name === name) || !prop.units.find((u) => u.name === from)) throw new PAError("Unknown unit.");
+      const ch = prop.channels || {};
+      if (ch[from]) { ch[name] = Object.assign({}, ch[from], ch[name] || {}); delete ch[from]; }
+      prop.channels = ch;
+      const pr = (prop.settings && prop.settings.prices) || {};
+      if (pr[from] && !pr[name]) pr[name] = pr[from];
+      delete pr[from];
+      prop.unitAliases = Object.assign({}, prop.unitAliases || {}, { [slug(from)]: name });
+      for (const [k, v] of Object.entries(prop.unitAliases)) if (v === from) prop.unitAliases[k] = name;
+      prop.units = prop.units.filter((u) => u.name !== from);
+      const events = (await getJSON("chan:" + prop.siteId)) || {};
+      const moved = {};
+      for (const [id, ev] of Object.entries(events)) { if (ev.unit === from) { ev.unit = name; moved[name + id.slice(from.length)] = ev; } else moved[id] = ev; }
+      await setJSON("chan:" + prop.siteId, moved);
+      const list = await bookingsOf(prop);
+      let changed = false;
+      for (const b of list) for (const it of b.items) if (it.unit === from) { it.unit = name; changed = true; }
+      if (changed) await saveBookings(prop, list);
+      const snap = await getJSON("snap:" + prop.siteId);
+      if (snap) { for (const k of ["open", "taken", "nightRates", "rates"]) if (snap[k]) delete snap[k][from]; await setJSON("snap:" + prop.siteId, snap); }
+    }
+    await setJSON("site:" + prop.siteId, prop);
+    return channelsView(prop);
   }
 
   // ---------- iCal export ----------
@@ -537,8 +649,13 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     if (!f) return null;
     const prop = await getJSON("site:" + f.siteId);
     if (!prop) return null;
-    const unit = prop.units.find((u) => slug(u.name) === unitSlug);
+    const alias = (prop.unitAliases || {})[unitSlug];
+    const unit = prop.units.find((u) => slug(u.name) === unitSlug) || (alias && prop.units.find((u) => u.name === alias));
     if (!unit || !CHANNELS[channelKey]) return null;
+    try {
+      const hit = await getJSON("feedhit:" + prop.siteId);
+      if (!hit || now().getTime() - Date.parse(hit.at) > 3600000) await setJSON("feedhit:" + prop.siteId, { at: now().toISOString() });
+    } catch (_) {}
     const snap = (await getJSON("snap:" + prop.siteId)) || { taken: {} };
     const t0 = today();
     const block = new Set();
@@ -572,9 +689,26 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     }
   }
 
-  async function syncProperty(prop) {
+  function importLinks(prop) {
+    let n = 0;
+    for (const u of Object.values(prop.channels || {})) for (const c of Object.values(u || {})) if (c && c.importUrl) n++;
+    return n;
+  }
+  // Linked = a channel calendar link is saved, or a channel fetched our calendar recently.
+  async function isLinked(prop) {
+    if (importLinks(prop)) return true;
+    const hit = await getJSON("feedhit:" + prop.siteId);
+    return !!(hit && now().getTime() - Date.parse(hit.at) < FEED_ACTIVE_MS);
+  }
+
+  async function syncProperty(prop, { full } = {}) {
     const client = await clientFor(prop);
-    await snapshot(prop, { force: true, client });
+    // Near dates every run; the whole year every SYNC_FULL_MS (or when asked).
+    const snap0 = await loadSnap(prop);
+    const doFull = full || !snap0.fullAt || now().getTime() - Date.parse(snap0.fullAt) > SYNC_FULL_MS - 5 * 60000;
+    const snapR = await ensureWindow(prop, today(), addDays(today(), doFull ? HORIZON_DAYS : SYNC_NEAR_DAYS), { client, force: true });
+    if (doFull) { snapR.fullAt = now().toISOString(); await setJSON("snap:" + prop.siteId, snapR); }
+    prop = (await getJSON("site:" + prop.siteId)) || prop; // may have gained units
     const events = (await getJSON("chan:" + prop.siteId)) || {};
     const list = await bookingsOf(prop);
     const t0 = today();
@@ -590,6 +724,8 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
         if (!res.ok) throw new Error("HTTP " + res.status);
         parsed = parseIcs(await res.text()).filter((e) => e.end > t0);
         c.status = "ok"; c.lastRead = now().toISOString(); c.error = null; c.events = parsed.length; summary.read++;
+        // Shown beside the link so the property can check it belongs to this unit.
+        c.next = parsed.slice().sort((x, y) => x.start.localeCompare(y.start)).slice(0, 3).map((e) => ({ start: e.start, end: e.end }));
       } catch (e) {
         c.status = "error"; c.error = "Could not read the link: " + (e.message || e); summary.errors++;
         continue;
@@ -621,7 +757,9 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     await saveBookings(prop, list);
     await setJSON("chan:" + prop.siteId, events);
     await setJSON("site:" + prop.siteId, prop);
-    await snapshot(prop, { force: true, client }).catch(() => null);
+    // No second availability read: nights the hub just booked or cancelled are
+    // read again the next time they're needed.
+    summary.read_sn = doFull ? "full year" : SYNC_NEAR_DAYS + " days";
     return summary;
   }
 
@@ -633,6 +771,8 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
       if (Date.now() - started > deadlineMs) { out[k] = "skipped (time)"; continue; }
       const prop = await getJSON(k);
       if (!prop) continue;
+      // Properties without channels make no background calls to Stock Network.
+      if (!(await isLinked(prop))) { out[prop.site] = "not linked to a channel: skipped"; continue; }
       try { out[prop.site] = await syncProperty(prop); } catch (e) { out[prop.site] = { error: e.message }; }
     }
     return out;
@@ -653,10 +793,10 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     await bookChannelEvent(prop, client, ev, list);
     await saveBookings(prop, list);
     await setJSON("chan:" + prop.siteId, events);
-    await snapshot(prop, { force: true, client }).catch(() => null);
+    await invalidate(prop, [ev]);
     if (ev.status !== "booked") throw new PAError(ev.error || "Could not add it to Stock Network.", 409);
     return { event: ev };
   }
 
-  return { connect, auth, disconnect, publicProperty, availability, search, book, cancel, cancelUnit, edit, find, saveSettings, channelsView, payInfo, markPaidEft, approvalInfo, approveCancel, icalFeed, runSync, syncProperty, channelEvents, addChannelEvent, snapshot, findResortsForSite };
+  return { connect, auth, disconnect, publicProperty, availability, search, book, cancel, cancelUnit, edit, find, saveSettings, channelsView, payInfo, markPaidEft, approvalInfo, approveCancel, icalFeed, runSync, syncProperty, channelEvents, addChannelEvent, snapshot, ensureWindow, resolveUnitNotice, findResortsForSite };
 }

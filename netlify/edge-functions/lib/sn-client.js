@@ -13,7 +13,7 @@
 //                                reservationId + reservationRefNo.
 //  - GET  /api/1/request/{id}    read a reservation back
 //  - POST /api/1/request/cancel/{id}   cancel; returns true, stock comes back
-//  - PUT  /api/1/request/canceldetail/{detailId}  cancel one unit (NOT yet tested)
+//  - PUT  /api/1/request/canceldetail/{detailId}  cancel one unit
 // Plain ESM + fetch only, so it runs in edge functions (Deno) and in tests.
 
 const BASE = "https://api.stocknetwork.co.za";
@@ -44,6 +44,8 @@ export class SNClient {
     this.creds = creds;
     this.fetch = fetchImpl || ((...a) => fetch(...a));
     this.tok = null;
+    this.onLogin = null; // optional: (tok) => save it so the next request can reuse the login
+    this.logins = 0;
   }
 
   async login() {
@@ -54,7 +56,10 @@ export class SNClient {
     });
     if (!res.ok) throw new SNError(res.status === 403 || res.status === 401 ? "Stock Network did not accept these credentials." : "Stock Network login failed (" + res.status + ").", res.status, await res.text().catch(() => ""));
     const d = await res.json();
-    this.tok = { accessToken: d.accessToken, siteId: d.siteId, site: d.site, expires: Number(d.expiresDT) || 0 };
+    const exp = Number(d.expiresDT) || Date.parse(d.expiresDT) || 0;
+    this.tok = { accessToken: d.accessToken, siteId: d.siteId, site: d.site, expires: exp };
+    this.logins++;
+    if (this.onLogin) { try { await this.onLogin(this.tok); } catch (_) {} }
     return this.tok;
   }
 
@@ -63,13 +68,15 @@ export class SNClient {
     return this.tok;
   }
 
-  async call(path, { method = "POST", body } = {}) {
+  async call(path, { method = "POST", body } = {}, retried = false) {
     const t = await this.token();
     const res = await this.fetch(BASE + path, {
       method,
       headers: { Authorization: "Bearer " + t.accessToken, Accept: "application/json", "Content-Type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
+    // A reused login that SN no longer accepts: log in once more and repeat the call.
+    if ((res.status === 401 || res.status === 403) && !retried) { this.tok = null; return this.call(path, { method, body }, true); }
     const text = await res.text();
     let data = null;
     try { data = text ? JSON.parse(text) : null; } catch (_) { data = text; }
