@@ -96,9 +96,14 @@ export default async (request) => {
     const pm = (await places.get(PROPERTY_KEY, { type: "json" })) || {};
     const am = (await places.get(ACTIVITY_KEY, { type: "json" })) || {};
     // Every name in the tree, lower-cased -> its spelling in the tree.
+    // "Brenton on Sea" and "Brenton-on-Sea" are the same name.
+    const nk = (v) => String(v || "").trim().toLowerCase().replace(/[-‐–]+/g, " ").replace(/\s+/g, " ");
     const names = new Map();
-    const add = (v) => { if (v && !/^\(/.test(v)) names.set(String(v).trim().toLowerCase(), String(v).trim()); };
-    Object.values(pm).concat(Object.values(am)).forEach((pl) => {
+    const add = (v) => { if (v && !/^\(/.test(v)) names.set(nk(v), String(v).trim()); };
+    // The approved tree file as well as the live store, so this works before set-up too.
+    let filePlaces = {};
+    try { const fr = await fetch(new URL("/tree-places.json", request.url)); if (fr.ok) filePlaces = (await fr.json()).places || {}; } catch (e) { /* live store only */ }
+    Object.values(filePlaces).concat(Object.values(pm), Object.values(am)).forEach((pl) => {
       if (!pl) return;
       add(pl.p); (pl.r || []).forEach(add); add(pl.t); add(pl.s); (pl.a || []).forEach((x) => add(x && x[0]));
     });
@@ -119,8 +124,8 @@ export default async (request) => {
       if (/^\d+ (more )?propert(y|ies)$/i.test(raw)) return { out: [raw], ok: true };
       if (OLD_ZONES[low]) return { out: OLD_ZONES[low], ok: true };
       let name = (rules.spell && rules.spell[raw]) || raw;
-      if (rules.parent && rules.parent[name] && !names.has(name.toLowerCase())) name = rules.parent[name];
-      if (names.has(name.toLowerCase())) return { out: [names.get(name.toLowerCase())], ok: true };
+      if (rules.parent && rules.parent[name] && !names.has(nk(name))) name = rules.parent[name];
+      if (names.has(nk(name))) return { out: [names.get(nk(name))], ok: true };
       if (propNames.has(low)) return { out: [raw], ok: true, property: true };
       return { out: [raw], ok: false };
     }
