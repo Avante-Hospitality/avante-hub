@@ -10,6 +10,7 @@ import TREE from "./tree-data.js";
 
 const FETCH_TIMEOUT_MS = 8000;
 const RULES = TREE.rules || {};
+export const TREE_RULES = RULES;
 const OVERLAY = new Set(TREE.overlay || []);
 
 // ---------- geometry ----------

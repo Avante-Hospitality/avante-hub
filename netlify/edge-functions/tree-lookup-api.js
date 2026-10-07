@@ -19,7 +19,7 @@
 // the "tree-places" store. No property, activity, zone or affiliate record is
 // changed here.
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
-import { googleLookup, placeCoordinate, placeResortBacklog, keyOf, PLACES_STORE, ACTIVITY_KEY, PROPERTY_KEY } from "./lib/tree.js";
+import { googleLookup, placeCoordinate, placeResortBacklog, keyOf, PLACES_STORE, ACTIVITY_KEY, PROPERTY_KEY, TREE_RULES } from "./lib/tree.js";
 
 const MAX_POINTS = 25;
 const CONCURRENCY = 5;
@@ -85,6 +85,79 @@ export default async (request) => {
     }
     await places.setJSON(PROPERTY_KEY, map);
     return json({ ok: true, seeded: added, total: Object.keys(map).length, resortRows: resorts.length });
+  }
+
+  if (body.action === "convertHooks") {
+    // Hooks only keep a text locationLabel ("Garden Route, Knysna"). This
+    // rewrites old zone/town names to location-tree names and drops the
+    // leftover zone/townId/suburbId fields. dryRun (the default) only reports.
+    const dryRun = body.dryRun !== false;
+    const hookStore = getStore({ name: "promo-hooks", consistency: "strong" });
+    const pm = (await places.get(PROPERTY_KEY, { type: "json" })) || {};
+    const am = (await places.get(ACTIVITY_KEY, { type: "json" })) || {};
+    // Every name in the tree, lower-cased -> its spelling in the tree.
+    const names = new Map();
+    const add = (v) => { if (v && !/^\(/.test(v)) names.set(String(v).trim().toLowerCase(), String(v).trim()); };
+    Object.values(pm).concat(Object.values(am)).forEach((pl) => {
+      if (!pl) return;
+      add(pl.p); (pl.r || []).forEach(add); add(pl.t); add(pl.s); (pl.a || []).forEach((x) => add(x && x[0]));
+    });
+    const rules = TREE_RULES;
+    // Old zones -> tree names (regions, or the province where a zone was a province).
+    const OLD_ZONES = {
+      "winelands": ["Cape Winelands"], "west coast & overberg": ["West Coast", "Overberg"],
+      "eastern cape & garden route": ["Garden Route", "Eastern Cape"],
+      "western cape (cape town & winelands)": ["Cape Town", "Cape Winelands"],
+      "gauteng & north west": ["Gauteng", "North West"],
+    };
+    const resorts = (((await getStore({ name: "resort-list", consistency: "strong" }).get("current", { type: "json" })) || {}).resorts || []);
+    const propNames = new Set(resorts.map((r) => String(r.name || "").trim().toLowerCase()).filter(Boolean));
+    function convertPart(part) {
+      const raw = part.trim().replace(/ \(entire area\)$/i, "").replace(/^— /, "").replace(/^Nearby /i, "");
+      if (!raw) return { out: [], ok: true };
+      const low = raw.toLowerCase();
+      if (/^\d+ (more )?propert(y|ies)$/i.test(raw)) return { out: [raw], ok: true };
+      if (OLD_ZONES[low]) return { out: OLD_ZONES[low], ok: true };
+      let name = (rules.spell && rules.spell[raw]) || raw;
+      if (rules.parent && rules.parent[name] && !names.has(name.toLowerCase())) name = rules.parent[name];
+      if (names.has(name.toLowerCase())) return { out: [names.get(name.toLowerCase())], ok: true };
+      if (propNames.has(low)) return { out: [raw], ok: true, property: true };
+      return { out: [raw], ok: false };
+    }
+    const { blobs } = await hookStore.list();
+    const keys = blobs.map((b) => b.key).sort();
+    const recs = await pool(keys, (k) => hookStore.get(k, { type: "json" }).catch(() => null));
+    const changes = [], unmatched = [];
+    let checked = 0;
+    const writes = [];
+    keys.forEach((key, i) => {
+      const rec = recs[i];
+      if (!rec || typeof rec !== "object" || Array.isArray(rec)) return;
+      checked++;
+      const oldLabel = typeof rec.locationLabel === "string" ? rec.locationLabel : "";
+      const hasOld = ["zone", "townId", "suburbId"].some((f) => f in rec);
+      let newLabel = oldLabel;
+      const bad = [];
+      if (oldLabel.trim()) {
+        const out = [];
+        oldLabel.split(/\s*,\s*|\s+›\s+/).forEach((p) => {
+          const r = convertPart(p);
+          r.out.forEach((x) => { if (out.indexOf(x) === -1) out.push(x); });
+          if (!r.ok) bad.push(p.trim());
+        });
+        newLabel = out.join(", ");
+      }
+      if (bad.length) unmatched.push({ key, hook: String(rec.caption || "").split("\n")[0].slice(0, 80), label: oldLabel, parts: bad });
+      if (newLabel === oldLabel && !hasOld) return;
+      changes.push({ key, hook: String(rec.caption || "").split("\n")[0].slice(0, 80), from: oldLabel, to: newLabel, dropsOldFields: hasOld });
+      if (!dryRun) {
+        const next = Object.assign({}, rec, { locationLabel: newLabel });
+        delete next.zone; delete next.townId; delete next.suburbId;
+        writes.push({ key, rec: next });
+      }
+    });
+    if (writes.length) await pool(writes, (w) => hookStore.setJSON(w.key, w.rec));
+    return json({ ok: true, dryRun, checked, changes, unmatched, written: writes.length });
   }
 
   const apiKey = Deno.env.get("GOOGLE_GEOCODING_API_KEY") || "";

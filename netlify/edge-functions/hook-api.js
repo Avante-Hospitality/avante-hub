@@ -325,8 +325,7 @@ export default async (request, context) => {
       // There's no separate "pick a location" field any more (the old
       // dropdown is gone — the tree is the only source of location), so
       // this is only ever sent right after a fresh Auto-build draft; any
-      // other save just keeps whatever was last set. zone/townId/suburbId
-      // may still linger on older records; nothing reads them any more.
+      // other save just keeps whatever was last set.
       if (typeof body.locationLabel === "string") record.locationLabel = body.locationLabel;
       // Flyer-template-only fields (see lib/hook-templates.js) — price and
       // the promo banner/date range. StockNetwork has no static rate field
@@ -425,7 +424,7 @@ export default async (request, context) => {
             // setDefaultHook in admin-api.js) — passed through as-is so a
             // future caller (e.g. hook-landing.html or the Hub's Explore
             // Map) can match or display it without a second lookup.
-            location: { zone: adminRecord.zone || "", townId: adminRecord.townId || "", suburbId: adminRecord.suburbId || "", label: adminRecord.locationLabel || "" },
+            location: { label: adminRecord.locationLabel || "" },
             flyerPromoTag: adminRecord.flyerPromoTag || "",
             flyerPrice: adminRecord.flyerPrice || "",
             flyerDates: adminRecord.flyerDates || "",
@@ -454,7 +453,7 @@ export default async (request, context) => {
           hashtags: affRecord.hashtags || null,
           galleryCount: affRecord.galleryCount || 0,
           details: affRecord.source || null,
-          location: { zone: affRecord.zone || "", townId: affRecord.townId || "", suburbId: affRecord.suburbId || "", label: affRecord.locationLabel || "" },
+          location: { label: affRecord.locationLabel || "" },
           flyerPromoTag: affRecord.flyerPromoTag || "",
           flyerPrice: affRecord.flyerPrice || "",
           flyerDates: affRecord.flyerDates || "",

@@ -1444,6 +1444,17 @@
           <a class="btn-outline" href="tree-lookup.html" target="_blank" rel="noopener" style="text-decoration:none;">Location tree lookup page</a>
         </div>
         <div class="status" id="adminTreeStatus"></div>
+
+        <div style="margin-top:18px; padding-top:16px; border-top:1.5px solid var(--line);">
+          <h4 style="margin:0 0 6px; font-size:13.5px;">Hooks: change old location names to the new tree</h4>
+          <p style="margin:0 0 10px; font-size:12.5px; color:var(--muted);">Every hook (yours and the affiliates') keeps a location label such as &ldquo;Winelands, Knysna&rdquo;. <strong>Preview</strong> lists each label and what it becomes (old zones become Avante regions, old spellings are fixed) and any name that can't be matched. Nothing changes until you press <strong>Apply</strong>.</p>
+          <div class="btn-row" style="margin-top:0;">
+            <button class="btn-outline" id="hookConvPreviewBtn">Preview</button>
+            <button class="primary" id="hookConvApplyBtn" style="margin-top:0;" disabled>Apply</button>
+          </div>
+          <div class="status" id="hookConvStatus"></div>
+          <div id="hookConvResults" style="display:none; margin-top:12px;"></div>
+        </div>
       </div>
 
       <script>
@@ -1678,6 +1689,46 @@
             })
             .then(function(){ rerunBtn.disabled = false; refreshCounts(); reloadFrame(); })
             .catch(function(e){ rerunBtn.disabled = false; setStatus((e && e.message) || 'Lost the connection. Press Re-run lookup again.', true); });
+        });
+
+        // ---- Hooks: convert location labels (preview, then apply) ----
+        var hcPrev = document.getElementById('hookConvPreviewBtn'), hcApply = document.getElementById('hookConvApplyBtn');
+        var hcStatus = document.getElementById('hookConvStatus'), hcOut = document.getElementById('hookConvResults');
+        function hcSet(t, err){ hcStatus.textContent = t; hcStatus.className = 'status' + (t ? ' show' : '') + (err ? '' : ' ok'); }
+        function hcEsc(v){ return String(v == null ? '' : v).replace(/[&<>"]/g, function(c){ return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]; }); }
+        function hcWho(key){ var k = String(key).split(':'); return (k[0] === '__admin__' ? 'Default hook ' : 'Affiliate ' + k[0].slice(0, 8) + '… hook ') + (k[1] || ''); }
+        function hcRun(dryRun){
+          hcPrev.disabled = true; hcApply.disabled = true;
+          hcSet(dryRun ? 'Checking every hook…' : 'Changing the hooks…');
+          post('/api/tree-lookup', { action: 'convertHooks', dryRun: dryRun }).then(function(res){
+            hcPrev.disabled = false;
+            var d = res.data || {};
+            if(res.status !== 200 || !d.ok){ hcSet(d.error || ('Error ' + res.status), true); return; }
+            var ch = d.changes || [], un = d.unmatched || [];
+            if(!dryRun){
+              hcSet('Done: ' + d.written + ' hooks changed.' + (un.length ? ' ' + un.length + ' still have a name that could not be matched (listed below) — edit those hooks by hand.' : ''));
+            } else {
+              hcSet('Checked ' + d.checked + ' hooks: ' + ch.length + ' would change' + (un.length ? ', ' + un.length + ' have a name that can\u2019t be matched' : '') + '.');
+              hcApply.disabled = ch.length === 0;
+            }
+            var h = '';
+            if(ch.length){
+              h += '<p style="margin:0 0 6px; font-weight:700; font-size:13px;">' + (dryRun ? 'Will change' : 'Changed') + ' (' + ch.length + ')</p><div class="table-wrap"><table class="data-table"><thead><tr><th>Hook</th><th>Now</th><th>Becomes</th></tr></thead><tbody>' +
+                ch.map(function(c){ return '<tr><td>' + hcEsc(hcWho(c.key)) + (c.hook ? '<div style="font-size:12px; color:var(--muted);">' + hcEsc(c.hook) + '</div>' : '') + '</td><td>' + hcEsc(c.from || '\u2014') + '</td><td>' + hcEsc(c.to || '\u2014') + (c.from === c.to ? '<div style="font-size:12px; color:var(--muted);">label unchanged; old zone fields removed</div>' : '') + '</td></tr>'; }).join('') +
+                '</tbody></table></div>';
+            }
+            if(un.length){
+              h += '<p style="margin:14px 0 6px; font-weight:700; font-size:13px;">Can\u2019t be matched (' + un.length + ') \u2014 left as they are</p><div class="table-wrap"><table class="data-table"><thead><tr><th>Hook</th><th>Label</th><th>Name not in the tree</th></tr></thead><tbody>' +
+                un.map(function(u){ return '<tr><td>' + hcEsc(hcWho(u.key)) + (u.hook ? '<div style="font-size:12px; color:var(--muted);">' + hcEsc(u.hook) + '</div>' : '') + '</td><td>' + hcEsc(u.label) + '</td><td>' + hcEsc(u.parts.join(', ')) + '</td></tr>'; }).join('') +
+                '</tbody></table></div>';
+            }
+            hcOut.innerHTML = h; hcOut.style.display = h ? '' : 'none';
+          }).catch(function(){ hcPrev.disabled = false; hcSet('Lost the connection \u2014 try again.', true); });
+        }
+        hcPrev.addEventListener('click', function(){ hcRun(true); });
+        hcApply.addEventListener('click', function(){
+          if(!confirm('Change the location labels on these hooks now? This changes live hooks.')) return;
+          hcRun(false);
         });
 
         // Load the map and counts the first time the Map & Activities tab opens.
