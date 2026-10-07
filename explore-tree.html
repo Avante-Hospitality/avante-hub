@@ -74,11 +74,14 @@
   .map-popup-title{font-family:'Montserrat',sans-serif;font-weight:700;color:var(--navy);font-size:14px}
   .map-popup-desc{font-size:12.5px;line-height:1.45;margin-top:3px}
   .btn-secondary{background:var(--teal);color:#06302d;font-family:'Montserrat',sans-serif;font-weight:700;font-size:12.5px}
+  .embed h1,.embed .sub{display:none}
+  .embed .wrap{padding-block:0 12px;padding-inline:0}
   @media (max-width:900px){ .layout{grid-template-columns:1fr} .panel{height:60vh} }
   @media (prefers-reduced-motion:reduce){ .tw{transition:none} }
 </style>
 </head>
 <body>
+<script>if(/[?&]embed=1/.test(location.search)) document.body.classList.add('embed');</script>
 <div class="wrap">
   <h1>Explore by location</h1>
   <p class="sub">Browse properties or activities by Country, Province, Region, City and Suburb. Select a city, suburb, region or single place to see what is around it, and set how far to look with the slider.</p>

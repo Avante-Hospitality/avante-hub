@@ -1325,23 +1325,21 @@
     <section class="panel" id="panel-exploreMap">
       <div class="hero">
         <h1>Explore Map</h1>
-        <p>Properties and local activities/experiences, plotted on a map — click a pin for photos, details, and how to book</p>
+        <p>Properties and local activities, by Country, Province, Region, City and Suburb. Select a place to see what is around it, then click a pin for photos, details and how to book.</p>
       </div>
-      <div class="card">
-        <p style="margin:0 0 6px; font-weight:600; font-size:13.5px;">Browse by location</p>
-        <p class="hint" style="margin:0 0 10px;">Tick a region, town, or suburb to narrow the map to just that area — leave nothing ticked to see everywhere.</p>
-        <div class="loc-tree-country">South Africa &amp; neighbouring countries</div>
-        <div class="loc-tree-summary" id="em-locTreeSummary"></div>
-        <div id="em-locationTree"></div>
-        <div class="explore-kind-row">
-          <label style="margin:0;"><input type="checkbox" id="em-showProperties" checked> Properties</label>
-          <label style="margin:0;"><input type="checkbox" id="em-showActivities" checked> Activities</label>
-          <label style="margin:0;"><input type="checkbox" id="em-showTowns" checked> Towns</label>
-          <label style="margin:0;"><input type="checkbox" id="em-showZones" checked> Zone areas</label>
-        </div>
-        <div class="status" id="em-status"></div>
-        <div id="exploreMapEl"></div>
-      </div>
+      <!-- New location tree (2026-10-07): the Explore by Location page, loaded the
+           first time this tab opens. The old zone/town map script below finds no
+           #exploreMapEl any more and stays idle. -->
+      <iframe id="exploreTreeFrame" title="Explore by location" data-src="explore-tree.html?embed=1"
+        style="width:100%; height:1150px; border:0; display:block;"></iframe>
+      <script>
+        (function(){
+          var f = document.getElementById('exploreTreeFrame');
+          function load(){ if(f && !f.src) f.src = f.getAttribute('data-src'); }
+          document.addEventListener('click', function(e){ var t = e.target.closest && e.target.closest('.tab[data-panel="exploreMap"]'); if(t) load(); });
+          if(document.getElementById('panel-exploreMap').classList.contains('active')) load();
+        })();
+      </script>
     </section>
 
     <!-- ===================== FLIGHT ===================== -->
@@ -3977,14 +3975,31 @@
       // its Browse box is opened; its own Clear button resets it.
       function renderPropertyPickerTree(containerEl, n){
         containerEl.innerHTML = '<div style="font-size:12px; color:var(--muted); padding:4px 0;">Loading locations…</div>';
-        return Promise.all([fetch('/api/map').then(function(r){ return r.json(); }), loadAllResortsHub()]).then(function(results){
-          var towns = (results[0] && results[0].ok && results[0].towns) || [];
+        // New location tree (2026-10-07): Country › Province › Region › City › Suburb,
+        // placed from each property's coordinates (tree-places.json, built from
+        // Google + the Avante regions). Same tick-box behaviour as before: the
+        // flat Set of resortKeys is the one source of truth.
+        return Promise.all([fetch('tree-places.json').then(function(r){ return r.json(); }), loadAllResortsHub()]).then(function(results){
+          var places = (results[0] && results[0].places) || {};
           var resorts = results[1] || [];
           containerEl.innerHTML = '';
-          if(!towns.length){
-            containerEl.innerHTML = '<div style="font-size:12px; color:var(--muted); padding:4px 0;">No locations on file yet.</div>';
+          if(!resorts.length){
+            containerEl.innerHTML = '<div style="font-size:12px; color:var(--muted); padding:4px 0;">No properties on file yet.</div>';
             return;
           }
+          var LV = ['Country','Province','Region','City','Suburb'];
+          var PROV_ORDER = ['Western Cape','Eastern Cape','Northern Cape','Free State','KwaZulu-Natal','Gauteng','North West','Mpumalanga','Limpopo'];
+          // Build the tree: one path per property (its main region), keys collected on every level.
+          var root = { k:{}, keys:[], props:[] }, seenKey = {};
+          resorts.forEach(function(r){
+            var key = resortKeyOfHub(r); if(!key || seenKey[key]) return; seenKey[key] = 1;
+            var p = places[r.resortId];
+            var path = p ? [p.c || 'Other', p.p || 'Other', (p.r && p.r[0]) || 'Other', p.t || 'Other', (p.s && p.s !== p.t) ? p.s : (p.t || 'Other') + ' & surrounds']
+                         : ['Not placed yet'];
+            var node = root; node.keys.push(key);
+            path.forEach(function(seg, d){ node.k[seg] = node.k[seg] || { name: seg, depth: d, k:{}, keys:[], props:[] }; node = node.k[seg]; node.keys.push(key); });
+            node.props.push(r);
+          });
 
           var selected = hookSelection(n);
           var registry = [];
@@ -3999,26 +4014,6 @@
           function refreshAll(){
             registry.forEach(function(e){ applyAggregate(e.cb, e.keysFn()); });
             updateSummary();
-          }
-
-          // Matches by townId/suburbId — see admin.html's identical
-          // renderPropertyPickerTree fix for the full reasoning (2026-09-22):
-          // this used to match on raw StockNetwork district/suburb TEXT,
-          // which stopped lining up once geocoded town names took over as
-          // the canonical spelling, so towns kept showing (from adminList,
-          // untouched) while every property underneath matched nothing.
-          function propsFor(townId, suburbId){
-            if(!townId) return [];
-            return resorts.filter(function(r){
-              if((r.townId || '') !== townId) return false;
-              if(suburbId === undefined) return true;
-              return (r.suburbId || '') === suburbId;
-            });
-          }
-          function keysFor(list){
-            var out = [];
-            list.forEach(function(r){ var k = resortKeyOfHub(r); if(k) out.push(k); });
-            return out;
           }
           function toggleKeys(keys, on){
             keys.forEach(function(k){ on ? selected.add(k) : selected.delete(k); });
@@ -4041,15 +4036,12 @@
           function updateSummary(){
             var count = selected.size;
             summaryText.textContent = count === 0
-              ? 'Tick one or more properties, or a whole town/suburb/area, below.'
+              ? 'Tick one or more properties, or a whole suburb, city or region, below.'
               : count + ' propert' + (count === 1 ? 'y' : 'ies') + ' selected';
             buildBtn.disabled = count === 0;
             clearBtn.disabled = count === 0;
           }
-          clearBtn.addEventListener('click', function(){
-            selected.clear();
-            refreshAll();
-          });
+          clearBtn.addEventListener('click', function(){ selected.clear(); refreshAll(); });
           buildBtn.addEventListener('click', function(){
             document.getElementById('h' + n + '-autobuildTree').classList.remove('show');
             generateAutobuildDraftFromSelection(n, Array.from(selected), computeSelectionLabel());
@@ -4063,31 +4055,21 @@
           var treeEl = document.createElement('div');
           containerEl.appendChild(treeEl);
 
+          // Label for the hook: the biggest fully-ticked places (region, city or
+          // suburb; "& surrounds" reads as the town), then any loose properties.
           function computeSelectionLabel(){
-            var wholeAreas = [];
-            var usedKeys = new Set();
-            towns.forEach(function(t){
-              var subs = t.suburbs || [];
-              if(subs.length){
-                subs.forEach(function(s){
-                  var ks = keysFor(propsFor(t.id, s.id));
-                  if(ks.length && ks.every(function(k){ return selected.has(k); })){
-                    wholeAreas.push(s.name);
-                    ks.forEach(function(k){ usedKeys.add(k); });
-                  }
-                });
-              } else {
-                var ks2 = keysFor(propsFor(t.id));
-                if(ks2.length && ks2.every(function(k){ return selected.has(k); })){
-                  wholeAreas.push(t.name);
-                  ks2.forEach(function(k){ usedKeys.add(k); });
-                }
-              }
-            });
-            var remaining = Array.from(selected).filter(function(k){ return !usedKeys.has(k); });
-            var parts = wholeAreas.slice();
+            var parts = [], used = new Set();
+            (function walk(node){
+              Object.keys(node.k).forEach(function(name){
+                var c = node.k[name];
+                var whole = c.depth >= 2 && c.keys.length && c.keys.every(function(k){ return selected.has(k) && !used.has(k); });
+                if(whole){ parts.push(c.name.replace(/ & surrounds$/, '')); c.keys.forEach(function(k){ used.add(k); }); }
+                else walk(c);
+              });
+            })(root);
+            var remaining = Array.from(selected).filter(function(k){ return !used.has(k); });
             if(remaining.length){
-              if(!wholeAreas.length && remaining.length <= 3){
+              if(!parts.length && remaining.length <= 3){
                 var byKey = {};
                 resorts.forEach(function(r){ var k = resortKeyOfHub(r); if(k) byKey[k] = r; });
                 remaining.forEach(function(k){ if(byKey[k]) parts.push(byKey[k].name); });
@@ -4099,13 +4081,6 @@
           }
 
           function appendPropertyCheckboxes(parentEl, list){
-            if(!list.length){
-              var none = document.createElement('div');
-              none.style.cssText = 'font-size:12px; color:var(--muted); padding:2px 0 2px 16px;';
-              none.textContent = '(no properties on file here)';
-              parentEl.appendChild(none);
-              return;
-            }
             list.slice().sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); }).forEach(function(r){
               var key = resortKeyOfHub(r);
               var row = document.createElement('label');
@@ -4114,163 +4089,63 @@
               var cb = document.createElement('input');
               cb.type = 'checkbox';
               cb.style.cssText = 'width:auto; flex:none;';
-              if(!key) cb.disabled = true;
-              cb.checked = !!(key && selected.has(key));
-              cb.addEventListener('change', function(){
-                if(key) toggleKeys([key], cb.checked);
-                refreshAll();
-              });
+              cb.checked = selected.has(key);
+              cb.addEventListener('change', function(){ toggleKeys([key], cb.checked); refreshAll(); });
               var span = document.createElement('span');
-              span.textContent = r.name + (!key ? ' (no StockNetwork ID on file)' : '');
+              span.textContent = r.name;
               row.appendChild(cb);
               row.appendChild(span);
               parentEl.appendChild(row);
-              if(key) register(cb, function(){ return [key]; });
+              register(cb, function(){ return [key]; });
             });
           }
 
-          var byZone = {};
-          towns.forEach(function(t){ var z = t.zone || ''; if(!byZone[z]) byZone[z] = []; byZone[z].push(t); });
-          var zoneKeys = HOOK_ZONE_ORDER.filter(function(z){ return byZone[z]; });
-          Object.keys(byZone).filter(function(z){ return z && HOOK_ZONE_ORDER.indexOf(z) === -1; }).sort().forEach(function(z){ zoneKeys.push(z); });
-          if(byZone['']) zoneKeys.push('');
-
-          zoneKeys.forEach(function(zoneKey){
-            var zoneTowns = byZone[zoneKey];
-            function zoneKeysList(){
-              var out = [];
-              zoneTowns.forEach(function(t){ out = out.concat(keysFor(propsFor(t.id))); });
-              return out;
-            }
-
-            var zoneDet = document.createElement('details');
-            zoneDet.className = 'loc-tree-node';
-            var zoneSum = document.createElement('summary');
-            var zoneCb = document.createElement('input');
-            zoneCb.type = 'checkbox';
-            zoneCb.style.cssText = 'width:auto; flex:none;';
-            zoneCb.addEventListener('click', function(e){
+          function sortedKids(node){
+            return Object.keys(node.k).sort(function(a,b){
+              if(node.depth === 0){ var ia = PROV_ORDER.indexOf(a), ib = PROV_ORDER.indexOf(b); if(ia > -1 || ib > -1) return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib); }
+              if(node === root){ if(a === 'South Africa') return -1; if(b === 'South Africa') return 1; }
+              return node.k[b].keys.length - node.k[a].keys.length || a.localeCompare(b);
+            });
+          }
+          function nodeEl(node){
+            var det = document.createElement('details');
+            det.className = 'loc-tree-node';
+            var sum = document.createElement('summary');
+            var cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.style.cssText = 'width:auto; flex:none;';
+            function keysList(){ return node.keys; }
+            cb.addEventListener('click', function(e){
               e.stopPropagation();
-              var keys = zoneKeysList();
+              var keys = keysList();
               var allOn = keys.length > 0 && keys.every(function(k){ return selected.has(k); });
               toggleKeys(keys, !allOn);
               refreshAll();
             });
-            var zoneLabel = document.createElement('span');
-            zoneLabel.className = 'loc-tree-label';
-            zoneLabel.style.fontWeight = '600';
-            zoneLabel.textContent = zoneKey || 'Other (no area set)';
-            zoneSum.appendChild(zoneCb);
-            zoneSum.appendChild(zoneLabel);
-            zoneDet.appendChild(zoneSum);
-            register(zoneCb, zoneKeysList);
-            applyAggregate(zoneCb, zoneKeysList());
-
-            var zoneBody = document.createElement('div');
-            zoneBody.className = 'loc-tree-indent';
-            zoneDet.appendChild(zoneBody);
-
-            byZone[zoneKey].slice().sort(function(a,b){ return a.name.localeCompare(b.name); }).forEach(function(t){
-              var subs = (t.suburbs || []).slice().sort(function(a,b){ return a.name.localeCompare(b.name); });
-
-              if(!subs.length){
-                var flatRow = document.createElement('label');
-                flatRow.className = 'loc-tree-flatrow';
-                var flatCb = document.createElement('input');
-                flatCb.type = 'checkbox';
-                flatCb.style.cssText = 'width:auto; flex:none;';
-                function townKeysList(){ return keysFor(propsFor(t.id)); }
-                flatCb.addEventListener('click', function(e){
-                  e.stopPropagation();
-                  var keys = townKeysList();
-                  var allOn = keys.length > 0 && keys.every(function(k){ return selected.has(k); });
-                  toggleKeys(keys, !allOn);
-                  refreshAll();
-                });
-                var flatLabel = document.createElement('span');
-                flatLabel.textContent = t.name;
-                flatRow.appendChild(flatCb);
-                flatRow.appendChild(flatLabel);
-                zoneBody.appendChild(flatRow);
-                register(flatCb, townKeysList);
-                applyAggregate(flatCb, townKeysList());
-                return;
-              }
-
-              var townDet = document.createElement('details');
-              townDet.className = 'loc-tree-node';
-              var townSum = document.createElement('summary');
-              var townCb = document.createElement('input');
-              townCb.type = 'checkbox';
-              townCb.style.cssText = 'width:auto; flex:none;';
-              function townKeysList2(){ return keysFor(propsFor(t.id)); }
-              townCb.addEventListener('click', function(e){
-                e.stopPropagation();
-                var keys = townKeysList2();
-                var allOn = keys.length > 0 && keys.every(function(k){ return selected.has(k); });
-                toggleKeys(keys, !allOn);
-                refreshAll();
-              });
-              var townLabel = document.createElement('span');
-              townLabel.className = 'loc-tree-label';
-              townLabel.textContent = t.name;
-              townSum.appendChild(townCb);
-              townSum.appendChild(townLabel);
-              townDet.appendChild(townSum);
-              register(townCb, townKeysList2);
-              applyAggregate(townCb, townKeysList2());
-
-              var townBody = document.createElement('div');
-              townBody.className = 'loc-tree-indent';
-              townDet.appendChild(townBody);
-
-              var townBuilt = false;
-              townDet.addEventListener('toggle', function(){
-                if(!townDet.open || townBuilt) return;
-                townBuilt = true;
-                var subIds = subs.map(function(s){ return s.id; });
-                subs.forEach(function(s){
-                  var subRow = document.createElement('label');
-                  subRow.className = 'loc-tree-flatrow';
-                  var subCb = document.createElement('input');
-                  subCb.type = 'checkbox';
-                  subCb.style.cssText = 'width:auto; flex:none;';
-                  function subKeysList(){ return keysFor(propsFor(t.id, s.id)); }
-                  subCb.addEventListener('change', function(){
-                    var keys = subKeysList();
-                    toggleKeys(keys, subCb.checked);
-                    refreshAll();
-                  });
-                  var subLabel = document.createElement('span');
-                  subLabel.textContent = s.name;
-                  subRow.appendChild(subCb);
-                  subRow.appendChild(subLabel);
-                  townBody.appendChild(subRow);
-                  register(subCb, subKeysList);
-                  applyAggregate(subCb, subKeysList());
-
-                  var subPropsWrap = document.createElement('div');
-                  subPropsWrap.style.cssText = 'margin-left:16px;';
-                  appendPropertyCheckboxes(subPropsWrap, propsFor(t.id, s.id));
-                  townBody.appendChild(subPropsWrap);
-                });
-                var otherProps = propsFor(t.id).filter(function(r){
-                  return subIds.indexOf(r.suburbId || '') === -1;
-                });
-                if(otherProps.length){
-                  var otherLabel = document.createElement('div');
-                  otherLabel.style.cssText = 'font-size:12px; color:var(--muted); padding:4px 0 2px;';
-                  otherLabel.textContent = 'Other properties in ' + t.name + ':';
-                  townBody.appendChild(otherLabel);
-                  appendPropertyCheckboxes(townBody, otherProps);
-                }
-              });
-
-              zoneBody.appendChild(townDet);
+            var label = document.createElement('span');
+            label.className = 'loc-tree-label';
+            if(node.depth <= 1) label.style.fontWeight = '600';
+            label.textContent = node.name + ' (' + node.keys.length + ')';
+            label.title = LV[node.depth] || '';
+            sum.appendChild(cb);
+            sum.appendChild(label);
+            det.appendChild(sum);
+            register(cb, keysList);
+            applyAggregate(cb, keysList());
+            var body = document.createElement('div');
+            body.className = 'loc-tree-indent';
+            det.appendChild(body);
+            var built = false;
+            det.addEventListener('toggle', function(){
+              if(!det.open || built) return;
+              built = true;
+              sortedKids(node).forEach(function(k){ body.appendChild(nodeEl(node.k[k])); });
+              if(node.props.length) appendPropertyCheckboxes(body, node.props);
+              refreshAll();
             });
-
-            treeEl.appendChild(zoneDet);
-          });
+            return det;
+          }
+          sortedKids(root).forEach(function(k){ treeEl.appendChild(nodeEl(root.k[k])); });
         }).catch(function(){
           containerEl.innerHTML = '<div style="font-size:12px; color:var(--muted); padding:4px 0;">Could not load locations right now.</div>';
         });
