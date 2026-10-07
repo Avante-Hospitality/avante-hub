@@ -18,6 +18,20 @@ export default async (request) => {
     resortStore: getStore({ name: "resort-list", consistency: "strong" }),
     encKey: env("PA_ENC_KEY"),
     baseUrl: new URL(request.url).origin,
+    // Same stores auth-api.js uses: the affiliate's password hash and profile.
+    affiliates: {
+      getAuth: (aff) => getStore({ name: "affiliate-auth", consistency: "strong" }).get(aff, { type: "json" }),
+      getProfile: (aff) => getStore({ name: "affiliates-directory", consistency: "strong" }).get(aff, { type: "json" }),
+    },
+    sendEmail: async (to, subject, html) => {
+      const key = env("RESEND_API_KEY");
+      if (!key || !to) return false;
+      try {
+        const r = await fetch("https://api.resend.com/emails", { method: "POST", headers: { authorization: "Bearer " + key, "content-type": "application/json" },
+          body: JSON.stringify({ from: "Avante Travel <bookings@go.avantetravel.co.za>", to: [to], subject, html }) });
+        return r.ok;
+      } catch (_) { return false; }
+    },
   });
   try {
     const a = String(body.action || "");
@@ -27,6 +41,9 @@ export default async (request) => {
       return json({ ok: true, result: await core.runSync() });
     }
     if (a === "connect") return json(Object.assign({ ok: true }, await core.connect(body)));
+    // Approval page (approve-cancel.html): no property session, the one-time link is the key.
+    if (a === "approvalInfo") return json(Object.assign({ ok: true }, await core.approvalInfo(body.t)));
+    if (a === "approveCancel") return json(Object.assign({ ok: true }, await core.approveCancel(body.t, body.password)));
     const prop = await core.auth(body.token);
     switch (a) {
       case "status": return json({ ok: true, property: core.publicProperty(prop) });
@@ -38,7 +55,9 @@ export default async (request) => {
       case "cancelUnit": return json(Object.assign({ ok: true }, await core.cancelUnit(prop, body.ref, body.unit)));
       case "edit": return json(Object.assign({ ok: true }, await core.edit(prop, body.ref, body.change || {})));
       case "find": return json(Object.assign({ ok: true }, await core.find(prop, body.q)));
-      case "channels": return json(Object.assign({ ok: true }, core.channelsView(prop)));
+      case "channels": return json(Object.assign({ ok: true }, await core.channelsView(prop)));
+      case "payInfo": return json(Object.assign({ ok: true }, await core.payInfo(prop, body.ref)));
+      case "markPaid": return json(Object.assign({ ok: true }, await core.markPaidEft(prop, body.ref)));
       case "saveSettings": return json(Object.assign({ ok: true }, await core.saveSettings(prop, body)));
       case "channelEvents": return json(Object.assign({ ok: true }, await core.channelEvents(prop)));
       case "addChannelEvent": return json(Object.assign({ ok: true }, await core.addChannelEvent(prop, body.unit, body.channel, body.uid)));
