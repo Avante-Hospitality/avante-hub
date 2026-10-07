@@ -384,7 +384,7 @@
     S.payMsg = pay.message;
     var h = '<div class="pa-pay"><p class="pa-label" style="margin:0">Payment</p>';
     if (pay.noMethod) return h + '<p class="pa-err">No payment method is set up. Add your bank details or allow the payment gateway in Channels → Guest payments.</p></div>';
-    if (pay.gatewayUrl) h += '<div class="pa-actions"><button type="button" class="pa-btn teal" data-act="openPay" data-url="' + esc(pay.gatewayUrl) + '">Pay now</button><button type="button" class="pa-btn small ghost" data-act="copy" data-text="' + esc(pay.gatewayUrl) + '">Copy payment link</button></div>';
+    if (pay.gatewayUrl) h += '<div class="pa-actions"><button type="button" class="pa-btn teal" data-act="openPay" data-ref="' + esc(pay.ref || '') + '" data-url="' + esc(pay.gatewayUrl) + '">Pay now</button><button type="button" class="pa-btn small ghost" data-act="copy" data-text="' + esc(pay.gatewayUrl) + '">Copy payment link</button></div>';
     if (pay.bank) h += '<div class="pa-bankbox"><b>EFT</b><br>' + esc(pay.bank.bankName) + ' · ' + esc(pay.bank.accountHolder) + '<br>Account ' + esc(pay.bank.accountNumber) + ' · Branch ' + esc(pay.bank.branchCode || '') + (pay.bank.accountType ? ' · ' + esc(pay.bank.accountType) : '') + '</div>';
     h += '<p class="pa-label" style="margin:6px 0 0">Send to the guest</p><div class="pa-actions">' +
       '<a class="pa-btn small" style="display:inline-flex;align-items:center;text-decoration:none" href="' + esc(pay.whatsappUrl) + '" target="_blank" rel="noopener">WhatsApp</a>' +
@@ -397,10 +397,16 @@
   function viewModal() {
     var m = S.modal, h = '<div class="pa-modal" data-act="backdrop"><div class="pa-dialog" role="dialog" aria-modal="true" aria-labelledby="pa-dlg-t">';
     var hdr = function (t, s) { return '<header><div><b id="pa-dlg-t">' + esc(t) + '</b><span>' + esc(s || (S.prop.resortName + ' · site ' + S.prop.site)) + '</span></div><button type="button" data-act="close" aria-label="Close">✕</button></header>'; };
-    if (m.type === 'pay') {
-      return h.replace('pa-dialog"', 'pa-dialog pa-dialog-wide"') + '<header><div><b id="pa-dlg-t">Pay booking</b><span>Secure payment page on Stock Network</span></div><button type="button" data-act="payBack" aria-label="Close payment">✕</button></header>' +
-        '<iframe class="pa-payframe" src="' + esc(m.url) + '" title="Stock Network payment"></iframe>' +
-        '<div class="pa-payfoot">Payment page not loading, or your bank asks to leave this window? <a href="' + esc(m.url) + '" target="_blank" rel="noopener">Open it in a new tab</a></div></div></div>';
+    if (m.type === 'paying') {
+      var st = m.state;
+      return h + hdr('Payment for ' + m.ref, 'Secure payment page on Stock Network') + '<div class="body">' +
+        (m.blocked ? '<p style="margin:0;font-size:14px;line-height:1.55">Your browser blocked the payment window. Open it here:</p>' :
+          '<p style="margin:0;font-size:14px;line-height:1.55">The payment page is open in its own window. Complete the payment there, including any bank or Instant EFT steps. When that window closes, the hub checks the payment.</p>') +
+        (st === 'checking' ? '<p class="pa-hint">Checking the payment on Stock Network…</p>' : '') +
+        (st === 'unpaid' ? '<div class="pa-lock">Stock Network doesn\'t show this booking as paid yet. If the payment has just gone through, wait a minute and check again.</div>' : '') +
+        '<div class="pa-actions"><a class="pa-btn teal" style="display:inline-flex;align-items:center;text-decoration:none" href="' + esc(m.url) + '" target="avante-pay" rel="noopener" data-act="reopenPay">' + (m.blocked ? 'Open payment page' : 'Open payment page again') + '</a>' +
+        '<button type="button" class="pa-btn" data-act="checkPay"' + (st === 'checking' ? ' disabled' : '') + '>Check payment now</button>' +
+        '<button type="button" class="pa-btn ghost" data-act="close">Close</button></div></div></div></div>';
     }
     if (m.done) {
       var ap = m.done.approval;
@@ -462,12 +468,25 @@
     if (v === 'chan') Promise.all([api('channels'), api('channelEvents')]).then(function (r) { S.channels = r[0]; S.events = r[1].events; render(); }).catch(fail);
     if (v === 'book') api('find', { q: S.findQ }).then(function (d) { S.bookings = d.bookings; S.payMode = d.payMode; render(); }).catch(fail);
   }
-  function closePay() {
-    var back = S.modal && S.modal.back; S.modal = back || null;
-    // The guest may just have paid: refresh payment status when the bookings list is next shown.
-    S.bookings = null; render();
-    if (S.view === 'book') setView('book');
+  // Pay now opens Stock Network's payment page in its own window: bank and
+  // Instant EFT pages refuse to run inside another site's page.
+  var payTimer = null;
+  function watchPay(win) {
+    clearInterval(payTimer);
+    if (!win) return;
+    payTimer = setInterval(function () { if (win.closed) { clearInterval(payTimer); checkPay(); } }, 1000);
   }
+  function checkPay() {
+    var m = S.modal; if (!m || m.type !== 'paying' || !m.ref) return;
+    m.state = 'checking'; render();
+    api('payInfo', { ref: m.ref }).then(function (d) {
+      if (!S.modal || S.modal.type !== 'paying') return;
+      S.bookings = null; staleAll();
+      if (d.booking.locked) { clearInterval(payTimer); S.modal = { done: { title: d.booking.ref + ' is paid', text: 'Stock Network shows ' + money(d.booking.amountPaid || d.booking.total) + ' paid. The booking is now locked: changes go through the property.' } }; render(); if (S.view === 'book') setView('book'); return; }
+      S.modal.state = 'unpaid'; render();
+    }).catch(function (e) { if (S.modal && S.modal.type === 'paying') { S.modal.state = null; S.err = e.message; render(); } });
+  }
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && S.modal && S.modal.type === 'paying' && S.modal.state !== 'checking') checkPay(); });
   function afterChange(done) {
     S.busy = false; S.modal = { done: done }; S.cart = []; S.sel = null; S.results = null; S.bookings = null;
     staleAll(); loadAvailability(S.from);
@@ -516,16 +535,21 @@
     }
     if (a === 'pickResort') return doConnect(t.dataset.id);
     if (a === 'disconnect') { if (!confirm('Disconnect this property from the hub? Channel sync stops until you connect again.')) return; return api('disconnect').then(function () { setToken(null); S.prop = null; S.av = null; render(); }).catch(fail); }
-    if ((a === 'close' || a === 'backdrop') && S.modal && S.modal.type === 'pay') return closePay();
+    if ((a === 'close' || a === 'backdrop') && S.modal && S.modal.type === 'paying') { clearInterval(payTimer); S.bookings = null; S.modal = null; render(); if (S.view === 'book') setView('book'); return; }
     if (a === 'close' || a === 'backdrop') { S.modal = null; S.edit = null; return render(); }
-    if (a === 'payBack') return closePay();
-    if (a === 'openPay') { S.modal = { type: 'pay', url: t.dataset.url, back: S.modal }; return render(); }
+    if (a === 'openPay') {
+      var pw = window.open(t.dataset.url, 'avante-pay', 'popup,width=560,height=800');
+      S.modal = { type: 'paying', ref: t.dataset.ref, url: t.dataset.url, blocked: !pw };
+      watchPay(pw); return render();
+    }
+    if (a === 'reopenPay') { var pw2 = window.open(t.getAttribute('href'), 'avante-pay', 'popup,width=560,height=800'); if (pw2) { e.preventDefault(); S.modal.blocked = false; S.modal.state = null; watchPay(pw2); render(); } return; }
+    if (a === 'checkPay') return checkPay();
     if (a === 'copyPayMsg') { var pm = S.payMsg || ''; (navigator.clipboard ? navigator.clipboard.writeText(pm) : Promise.reject()).then(function () { t.textContent = 'Copied'; }, function () { prompt('Copy this:', pm); }); return; }
     if (a === 'payLink') {
       t.textContent = 'Loading…';
       return api('payInfo', { ref: t.dataset.ref }).then(function (d) {
         if (d.booking.locked) { S.modal = { done: { title: d.booking.ref + ' is paid', text: 'Stock Network shows this booking as paid, so no payment link is needed.' } }; S.bookings = null; setView(S.view); return; }
-        S.modal = { done: { title: 'Payment for ' + d.booking.ref, text: d.booking.items.filter(function (i) { return !i.cancelled; }).map(function (i) { return i.unit + ' ' + short(i.start) + ' – ' + short(i.end); }).join(', ') + ' · ' + money(d.booking.total), pay: d.pay } }; render();
+        S.modal = { done: { title: 'Payment for ' + d.booking.ref, text: d.booking.items.filter(function (i) { return !i.cancelled; }).map(function (i) { return i.unit + ' ' + short(i.start) + ' – ' + short(i.end); }).join(', ') + ' · ' + money(d.booking.total), pay: Object.assign({ ref: d.booking.ref }, d.pay) } }; render();
       }).catch(fail);
     }
     if (a === 'markPaid') {
@@ -568,7 +592,7 @@
       if (!bookBody.guest.cellphone.trim()) { var gc = document.getElementById('pa-gc'); if (gc) { gc.focus(); gc.setAttribute('aria-invalid', 'true'); } return; }
       busy(true); render();
       return api('book', bookBody)
-        .then(function (d) { var b = d.booking; afterChange({ title: 'Booking ' + b.ref + ' created', text: b.items.map(function (i) { return i.unit + ' ' + short(i.start) + ' – ' + short(i.end); }).join(', ') + ' · ' + money(b.total) + '. Status ' + b.status + ' on Stock Network. Your other channels are blocked within 15 minutes.', pay: d.pay }); })
+        .then(function (d) { var b = d.booking; afterChange({ title: 'Booking ' + b.ref + ' created', text: b.items.map(function (i) { return i.unit + ' ' + short(i.start) + ' – ' + short(i.end); }).join(', ') + ' · ' + money(b.total) + '. Status ' + b.status + ' on Stock Network. Your other channels are blocked within 15 minutes.', pay: d.pay && Object.assign({ ref: b.ref }, d.pay) }); })
         .catch(function (err) { S.busy = false; S.err = err.message; S.modal = null; render(); });
     }
     if (a === 'openFind') { S.modal = { type: 'find' }; return api('find', { q: S.findQ }).then(function (d) { S.found = d.bookings; render(); }).catch(fail); }
@@ -580,7 +604,7 @@
       var editBody = { ref: S.edit.ref, change: { unit: val('pa-eu'), start: val('pa-ei'), end: val('pa-eo'), guest: S.edit.origin === 'channel' ? undefined : { first: val('pa-gf'), last: val('pa-gl'), email: val('pa-ge'), cellphone: val('pa-gc') } } };
       busy(true); render();
       return api('edit', editBody)
-        .then(function (d) { afterChange(d.booking && d.replaced ? { title: 'Booking ' + d.booking.ref + ' created', text: d.replaced + ' was cancelled on Stock Network and replaced by ' + d.booking.ref + ' · ' + money(d.booking.total) + '. Send the guest the new payment link.', pay: d.pay } : { title: 'Details updated', text: 'The unit and dates are unchanged, so ' + S.edit.ref + ' stays as it is on Stock Network.' }); })
+        .then(function (d) { afterChange(d.booking && d.replaced ? { title: 'Booking ' + d.booking.ref + ' created', text: d.replaced + ' was cancelled on Stock Network and replaced by ' + d.booking.ref + ' · ' + money(d.booking.total) + '. Send the guest the new payment link.', pay: d.pay && Object.assign({ ref: d.booking.ref }, d.pay) } : { title: 'Details updated', text: 'The unit and dates are unchanged, so ' + S.edit.ref + ' stays as it is on Stock Network.' }); })
         .catch(function (err) { S.busy = false; S.err = err.message; S.modal = null; staleAll(); render(); loadAvailability(S.from); });
     }
     if (a === 'removeUnit') {
