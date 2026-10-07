@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Location Tree Lookup</title>
+<script>
+  // Admin only: same session token as admin.html.
+  (function(){ var t=''; try{ t=sessionStorage.getItem('avante-admin-token')||''; }catch(e){} if(!t) window.location.replace('admin-login.html'); })();
+</script>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Noto+Sans:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root{ --teal:#0DCDC2; --teal-dark:#0aa89f; --navy:#0e2f44; --ink:#333; --muted:#6b7378; --mint:#f4fbfa; --line:#e3e9e8; --warn:#b5560f; }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--mint);color:var(--ink);font-family:'Noto Sans',system-ui,sans-serif;font-size:14.5px}
+  .wrap{max-width:720px;margin:0 auto;padding:32px 18px}
+  h1{font-family:'Montserrat',sans-serif;color:var(--navy);font-size:24px;margin:0 0 6px}
+  p{line-height:1.6;color:var(--muted);margin:0 0 14px}
+  .card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:20px;margin-top:18px}
+  .bar{height:12px;border-radius:99px;background:var(--line);overflow:hidden;margin:14px 0 8px}
+  .bar i{display:block;height:100%;width:0;background:var(--teal);transition:width .3s}
+  .nums{display:flex;flex-wrap:wrap;gap:6px 22px;font-variant-numeric:tabular-nums;color:var(--navy);font-weight:600}
+  .nums span b{font-family:'Montserrat',sans-serif}
+  .btns{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}
+  button{font-family:'Montserrat',sans-serif;font-weight:700;font-size:13.5px;border-radius:100px;padding:10px 20px;cursor:pointer;border:1.5px solid var(--teal);background:#fff;color:var(--navy)}
+  button.pri{background:var(--teal);color:#06302d}
+  button:disabled{opacity:.45;cursor:default}
+  button:focus-visible{outline:2px solid var(--navy);outline-offset:2px}
+  #msg{margin-top:14px;font-weight:600;color:var(--navy)}
+  #msg.err{color:var(--warn)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Location tree lookup</h1>
+  <p>Looks up every property's coordinates with Google and collects the country, province, municipality, town and suburb for the new location tree. It only reads from Google; nothing in the hub or Stock Network is changed.</p>
+  <p>Each coordinate is looked up once, even when several listings share it. You can close the page and come back: it carries on where it stopped.</p>
+  <div class="card">
+    <div class="nums"><span><b id="done">0</b> of <b id="total">…</b> looked up</span><span><b id="fail">0</b> failed</span></div>
+    <div class="bar"><i id="bar"></i></div>
+    <div class="btns">
+      <button class="pri" id="start" disabled>Start lookup</button>
+      <button id="pause" disabled>Pause</button>
+      <button id="retry" disabled>Retry failed</button>
+      <button id="dl" disabled>Download results</button>
+      <button id="reset">Start over</button>
+    </div>
+    <div id="msg" role="status" aria-live="polite"></div>
+  </div>
+</div>
+<script>
+(function(){
+  var KEY='avante-tree-lookup-v1', BATCH=25;
+  var token=''; try{ token=sessionStorage.getItem('avante-admin-token')||''; }catch(e){}
+  var points=[], ids={}, results={}, running=false;
+  var $=function(id){return document.getElementById(id);};
+  try{ results=JSON.parse(localStorage.getItem(KEY)||'{}')||{}; }catch(e){ results={}; }
+  function save(){ try{ localStorage.setItem(KEY,JSON.stringify(results)); }catch(e){} }
+  function msg(t,err){ $('msg').textContent=t; $('msg').className=err?'err':''; }
+  function counts(){
+    var ok=0,bad=0; points.forEach(function(k){ var r=results[k]; if(r){ if(r.ok) ok++; else bad++; } });
+    $('done').textContent=ok+bad; $('fail').textContent=bad; $('total').textContent=points.length;
+    $('bar').style.width=(points.length?((ok+bad)/points.length*100):0)+'%';
+    $('dl').disabled=!(ok+bad); $('retry').disabled=running||!bad;
+    return {ok:ok,bad:bad};
+  }
+  fetch('tree-lookup-points.json',{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
+    d.points.forEach(function(p){ points.push(p.k); ids[p.k]=p.ids; });
+    $('start').disabled=false; counts();
+    if(Object.keys(results).length) msg('Picked up where the last run stopped.');
+  }).catch(function(){ msg('Could not load the coordinate list (tree-lookup-points.json).',true); });
+
+  function run(onlyFailed){
+    if(running) return; running=true; $('start').disabled=true; $('pause').disabled=false; $('retry').disabled=true;
+    var todo=points.filter(function(k){ return onlyFailed ? (results[k]&&!results[k].ok) : !results[k]; });
+    msg('Looking up '+todo.length+' coordinates…');
+    var i=0;
+    (function step(){
+      if(!running){ msg('Paused. Press Start to carry on.'); return; }
+      if(i>=todo.length){ running=false; $('pause').disabled=true; $('start').disabled=false; var c=counts();
+        msg(c.bad? 'Finished, with '+c.bad+' failed. Press Retry failed, then Download results.' : 'Finished. Press Download results and send the file to Claude.'); return; }
+      var batch=todo.slice(i,i+BATCH);
+      fetch('/api/tree-lookup',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({token:token,points:batch})})
+        .then(function(r){ return r.json().then(function(b){ return {status:r.status,body:b}; }); })
+        .then(function(res){
+          if(res.status!==200){ running=false; $('pause').disabled=true; $('start').disabled=false; counts(); msg(res.body.error||('Stopped: error '+res.status),true); return; }
+          var denied=null;
+          res.body.results.forEach(function(r){ results[r.k]=r; if(!r.ok&&(r.reason==='REQUEST_DENIED'||r.reason==='OVER_QUERY_LIMIT')) denied=r; });
+          save(); counts(); i+=BATCH;
+          if(denied){ running=false; $('pause').disabled=true; $('start').disabled=false; msg('Google refused the lookup ('+denied.reason+(denied.message?': '+denied.message:'')+'). Check the API key and billing in Google Cloud, then press Retry failed.',true); return; }
+          setTimeout(step,150);
+        })
+        .catch(function(){ running=false; $('pause').disabled=true; $('start').disabled=false; counts(); msg('Lost the connection. Press Start to carry on.',true); });
+    })();
+  }
+  $('start').addEventListener('click',function(){ run(false); });
+  $('retry').addEventListener('click',function(){ run(true); });
+  $('pause').addEventListener('click',function(){ running=false; $('pause').disabled=true; $('start').disabled=false; counts(); });
+  $('reset').addEventListener('click',function(){
+    if($('reset').dataset.sure!=='1'){ $('reset').dataset.sure='1'; $('reset').textContent='Press again to clear all results'; return; }
+    running=false; results={}; save(); $('reset').dataset.sure=''; $('reset').textContent='Start over'; counts(); msg('Cleared. Press Start lookup to begin again.');
+  });
+  $('dl').addEventListener('click',function(){
+    var out=[]; points.forEach(function(k){ if(results[k]) out.push(Object.assign({ids:ids[k]},results[k])); });
+    var blob=new Blob([JSON.stringify({generated:new Date().toISOString(),results:out})],{type:'application/json'});
+    var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='tree-lookup-results.json'; document.body.appendChild(a); a.click(); a.remove();
+    msg('Downloaded tree-lookup-results.json. Upload it in the chat with Claude.');
+  });
+})();
+</script>
+</body>
+</html>
