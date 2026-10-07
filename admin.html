@@ -1440,8 +1440,9 @@
         <p style="margin-top:0;">Every place is put in the tree from its pin: Google gives the country, province, town and suburb, and the Avante regions come from the region map. New properties and properties whose pin moved are placed every night by the StockNetwork sync; activities when they are saved. <strong>Re-run lookup</strong> places anything still waiting right now.</p>
         <p id="adminTreeCounts" style="margin:0 0 10px; font-size:13.5px; color:var(--muted);">Counting…</p>
         <div class="btn-row" style="margin-top:0;">
+          <button class="primary" id="adminTreeSeedBtn" style="display:none;">Set up from the approved tree</button>
           <button class="primary" id="adminTreeRerunBtn">Re-run lookup</button>
-          <a class="btn-outline" href="tree-lookup.html" target="_blank" rel="noopener" style="text-decoration:none;">Location tree lookup page</a>
+          <a class="btn-outline" href="tree-lookup.html" style="text-decoration:none;">Location tree lookup page</a>
         </div>
         <div class="status" id="adminTreeStatus"></div>
 
@@ -1485,7 +1486,7 @@
             return post('/api/tree-lookup', { action: 'placeBacklog' }).then(function(res){
               var b = res.data || {};
               if(res.status !== 200) throw new Error(b.error || ('Error ' + res.status));
-              if(typeof b.skipped === 'string') throw new Error('The live tree is not set up yet. Open the Location tree lookup page and press "Set up from the approved tree" first.');
+              if(typeof b.skipped === 'string') throw new Error('The live tree is not set up yet. Press "Set up from the approved tree" first.');
               if(b.denied) throw new Error('Google refused the lookup (' + b.denied + ').');
               placed += b.placed || 0; failed += b.failed || 0;
               if(onStep) onStep(placed);
@@ -1658,12 +1659,25 @@
         function showCounts(s){
           countsEl.textContent = s.props.toLocaleString('en-ZA') + ' properties and ' + s.acts.toLocaleString('en-ZA') + ' activities with a pin · ' +
             (s.waitingProps + s.waitingActs.length ? (s.waitingProps + ' properties and ' + s.waitingActs.length + ' activities waiting to be placed') : 'everything is placed');
-          if(!s.seeded) setStatus('The live tree is not set up yet. Open the Location tree lookup page and press "Set up from the approved tree" once.', true);
+          var seedBtn = document.getElementById('adminTreeSeedBtn');
+          if(seedBtn) seedBtn.style.display = s.seeded ? 'none' : '';
+          if(!s.seeded) setStatus('The live tree is not set up yet. Press "Set up from the approved tree" once.', true);
           if(typeof window.setMapOverviewTreeCount === 'function') window.setMapOverviewTreeCount(s.waitingProps + s.waitingActs.length);
           return s;
         }
         function refreshCounts(){ return treeState().then(showCounts).catch(function(){ countsEl.textContent = 'Could not count the places in the tree.'; }); }
         window.refreshAdminTreeCounts = refreshCounts;
+
+        document.getElementById('adminTreeSeedBtn').addEventListener('click', function(){
+          var b = this; b.disabled = true;
+          setStatus('Setting up the live tree from the approved tree…');
+          post('/api/tree-lookup', { action: 'seedProperties' }).then(function(res){
+            b.disabled = false;
+            if(res.status !== 200 || !(res.data && res.data.ok)){ setStatus((res.data && res.data.error) || ('Error ' + res.status), true); return; }
+            setStatus('Done: ' + res.data.seeded.toLocaleString('en-ZA') + ' properties set up from the approved tree. Now press Re-run lookup to place anything newer.');
+            refreshCounts(); reloadFrame();
+          }).catch(function(){ b.disabled = false; setStatus('Lost the connection — press the button again.', true); });
+        });
 
         rerunBtn.addEventListener('click', function(){
           rerunBtn.disabled = true;
