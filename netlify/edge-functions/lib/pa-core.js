@@ -27,7 +27,6 @@ const WINDOW_MAX_AGE_MS = 5 * 60 * 1000; // a screen window is re-read from SN w
 const MAX_WINDOW_DAYS = 62;             // the screen never asks SN for more than this at once
 const TOKEN_REUSE_MS = 50 * 60 * 1000;
 const FEED_ACTIVE_MS = 48 * 3600 * 1000; // a calendar link fetched by a channel within this time counts as linked
-const SESSION_DAYS = 30;
 const APPROVAL_HOURS = 24;
 const APPROVAL_MAX_TRIES = 5;
 const PAY_MODES = ["both", "gateway", "eft"];
@@ -86,8 +85,8 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     });
     await setJSON("site:" + prop.siteId, prop);
     await setJSON("feed:" + prop.feedToken, { siteId: prop.siteId });
-    const token = randomToken(24);
-    await setJSON("sess:" + token, { siteId: prop.siteId, aff: prop.aff, exp: now().getTime() + SESSION_DAYS * 86400000 });
+    const token = await newSession(prop);
+    if (prop.aff) await setJSON("aff:" + prop.aff, { siteId: prop.siteId });
     // Connecting reads the full year once, to find every unit and its open nights.
     await mergeWindow(prop, snap, today(), addDays(today(), HORIZON_DAYS), { first: true });
     await setJSON("tok:" + prop.siteId, { enc: await encryptJSON(tok, encKey), until: Math.min(tok.expires || Infinity, now().getTime() + TOKEN_REUSE_MS) });
@@ -100,13 +99,22 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     return [...map.values()].sort((x, y) => x.name.localeCompare(y.name, "en", { numeric: true }));
   }
 
+  // A property stays connected until someone presses Disconnect: sessions
+  // don't expire, and they stop working once the property is disconnected.
+  async function newSession(prop) {
+    const token = randomToken(24);
+    await setJSON("sess:" + token, { siteId: prop.siteId, aff: prop.aff || "", createdAt: now().toISOString() });
+    return token;
+  }
+
   async function auth(token) {
     const t = cleanStr(token, 100);
     if (!t) throw new PAError("Not connected.", 401);
     const s = await getJSON("sess:" + t);
-    if (!s || s.exp < now().getTime()) throw new PAError("Your session has expired. Connect your Stock Network site again.", 401);
+    if (!s) throw new PAError("Not connected on this device.", 401);
     const prop = await getJSON("site:" + s.siteId);
     if (!prop) throw new PAError("This property is no longer connected.", 401);
+    if (prop.aff) { const link = await getJSON("aff:" + prop.aff); if (!link) await setJSON("aff:" + prop.aff, { siteId: prop.siteId }); }
     return prop;
   }
 
@@ -115,7 +123,41 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     await store.delete("sess:" + cleanStr(token, 100));
     await store.delete("feed:" + prop.feedToken);
     await store.delete("site:" + prop.siteId);
+    await store.delete("tok:" + prop.siteId);
+    if (prop.aff) { const link = await getJSON("aff:" + prop.aff); if (link && link.siteId === prop.siteId) await store.delete("aff:" + prop.aff); }
     return { ok: true };
+  }
+
+  // The property connected under an affiliate number (falls back to a scan for
+  // properties connected before the link was recorded).
+  async function propertyOfAff(aff) {
+    aff = cleanStr(aff, 40);
+    if (!aff) return null;
+    const link = await getJSON("aff:" + aff);
+    if (link) { const p = await getJSON("site:" + link.siteId); if (p) return p; await store.delete("aff:" + aff); }
+    for (const b of (await store.list({ prefix: "site:" })).blobs) {
+      const p = await getJSON(b.key);
+      if (p && p.aff === aff) { await setJSON("aff:" + aff, { siteId: p.siteId }); return p; }
+    }
+    return null;
+  }
+
+  // Is this affiliate a property affiliate? (Used to open the hub on Property Affiliate.)
+  async function affStatus(aff) {
+    const p = await propertyOfAff(aff);
+    return { linked: !!p, resortName: p ? p.resortName : "" };
+  }
+
+  // Open the connected property on a new device with the affiliate's hub
+  // password (the hub login page does this automatically after logging in).
+  async function resume(aff, password) {
+    aff = cleanStr(aff, 40);
+    const p = await propertyOfAff(aff);
+    if (!p) throw new PAError("No property is connected to this affiliate account.", 404);
+    const rec = affiliates ? await affiliates.getAuth(aff) : null;
+    const stored = rec && rec.passwordHash ? rec.passwordHash : await sha256Hex(DEFAULT_AFFILIATE_PASSWORD);
+    if ((await sha256Hex(String(password || ""))) !== stored) throw new PAError("Incorrect hub password.", 403);
+    return { token: await newSession(p), property: publicProperty(p) };
   }
 
   function publicProperty(p) {
@@ -798,5 +840,5 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     return { event: ev };
   }
 
-  return { connect, auth, disconnect, publicProperty, availability, search, book, cancel, cancelUnit, edit, find, saveSettings, channelsView, payInfo, markPaidEft, approvalInfo, approveCancel, icalFeed, runSync, syncProperty, channelEvents, addChannelEvent, snapshot, ensureWindow, resolveUnitNotice, findResortsForSite };
+  return { connect, auth, disconnect, publicProperty, availability, search, book, cancel, cancelUnit, edit, find, saveSettings, channelsView, payInfo, markPaidEft, approvalInfo, approveCancel, affStatus, resume, icalFeed, runSync, syncProperty, channelEvents, addChannelEvent, snapshot, ensureWindow, resolveUnitNotice, findResortsForSite };
 }
