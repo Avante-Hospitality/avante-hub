@@ -74,6 +74,14 @@
   .map-popup-title{font-family:'Montserrat',sans-serif;font-weight:700;color:var(--navy);font-size:14px}
   .map-popup-desc{font-size:12.5px;line-height:1.45;margin-top:3px}
   .btn-secondary{background:var(--teal);color:#06302d;font-family:'Montserrat',sans-serif;font-weight:700;font-size:12.5px}
+  /* admin popup buttons (admin.html Master map) */
+  .adm-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .adm-btn{display:inline-block;border:1.5px solid var(--teal);background:#fff;color:var(--teal-dark);border-radius:6px;padding:4px 9px;font-family:'Montserrat',sans-serif;font-weight:700;font-size:11.5px;cursor:pointer;text-decoration:none;line-height:1.3}
+  .adm-btn:hover{background:var(--mint)}
+  .adm-btn:disabled{opacity:.6;cursor:default}
+  .adm-panel{margin-top:8px;border-top:1px solid var(--line);padding-top:8px;display:grid;gap:5px;justify-items:start}
+  .adm-panel input{width:100%;padding:5px 7px;border:1.5px solid var(--line);border-radius:6px;font:inherit;font-size:12.5px}
+  .adm-hint{font-size:11.5px;color:var(--muted);line-height:1.4}
   .embed h1,.embed .sub{display:none}
   .embed .wrap{padding-block:0 12px;padding-inline:0}
   @media (max-width:900px){ .layout{grid-template-columns:1fr} .panel{height:60vh} }
@@ -124,6 +132,10 @@ var LEVELS=['Country','Province','Region','City','Suburb'];
 var PROV_ORDER=['Western Cape','Eastern Cape','Northern Cape','Free State','KwaZulu-Natal','Gauteng','North West','Mpumalanga','Limpopo'];
 var DEFAULT_KM=50, MAX_KM=150;
 var $=function(id){return document.getElementById(id);};
+// Admin mode (admin.html Map & Activities tab, ?admin=1): the data, including
+// hidden places, and the popup buttons come from the admin page around it.
+var ADMIN=null;
+try{ if(/[?&]admin=1/.test(location.search) && window.parent!==window && window.parent.adminTree) ADMIN=window.parent.adminTree; }catch(e){}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
 function km(a1,o1,a2,o2){var r=Math.PI/180,dl=(a2-a1)*r,dn=(o2-o1)*r,x=Math.sin(dl/2)*Math.sin(dl/2)+Math.cos(a1*r)*Math.cos(a2*r)*Math.sin(dn/2)*Math.sin(dn/2);return 12742*Math.asin(Math.sqrt(x));}
 function median(a){a=a.slice().sort(function(x,y){return x-y;});var m=a.length>>1;return a.length%2?a[m]:(a[m-1]+a[m])/2;}
@@ -181,7 +193,7 @@ function finishRegions(it){
 var PROPS=[], ACTS=[];
 function loadAll(){
   return Promise.all([
-    fetch('/api/map').then(function(r){return r.json();}),
+    ADMIN?ADMIN.data():fetch('/api/map').then(function(r){return r.json();}),
     fetch('tree-places.json').then(function(r){return r.json();}),
     fetch('tree-regions.json').then(function(r){return r.json();}),
     fetch('/api/tree-lookup?kind=all').then(function(r){return r.json();}).catch(function(){return {activities:{},properties:{}};})
@@ -193,9 +205,9 @@ function loadAll(){
     (map.properties||[]).forEach(function(p){
       if(typeof p.latitude!=='number'||typeof p.longitude!=='number') return;
       var key=p.resortId||p.listingId; if(seen[key]) return; seen[key]=1;
-      var it={kind:'property',raw:p,id:key,name:p.name,lat:p.latitude,lng:p.longitude};
+      var it={kind:'property',raw:p,id:key,name:p.name,lat:p.latitude,lng:p.longitude,hidden:!!p.hidden};
       var pl=p.resortId&&(lplaces[p.resortId]||places[p.resortId]); // live placement wins over the file
-      if(pl){ it.c=pl.c;it.p=pl.p;it.r=pl.r;it.t=pl.t;it.s=pl.s;it.a=pl.a||[];it.placed=true; }
+      if(pl){ it.c=pl.c;it.p=pl.p;it.r=pl.r;it.t=pl.t;it.s=pl.s;it.a=pl.a||[];it.d=pl.d||'';it.placed=true; }
       PROPS.push(it);
     });
     // town centres from placed properties
@@ -210,9 +222,9 @@ function loadAll(){
     // activities: Google answer saved by the lookup page; else copy the nearest placed property
     (map.activities||[]).forEach(function(a){
       if(typeof a.latitude!=='number'||typeof a.longitude!=='number') return;
-      var it={kind:'activity',raw:a,id:a.id,name:a.name,lat:a.latitude,lng:a.longitude};
+      var it={kind:'activity',raw:a,id:a.id,name:a.name,lat:a.latitude,lng:a.longitude,hidden:a.visible===false||!!a.hidden};
       var gp=aplaces[a.id];
-      if(gp && gp.p){ it.c=gp.c;it.p=gp.p;it.t=gp.t;it.s=gp.s;it.a=gp.a||[];it.r=gp.r; } // placed by the hub
+      if(gp && gp.p){ it.c=gp.c;it.p=gp.p;it.t=gp.t;it.s=gp.s;it.a=gp.a||[];it.r=gp.r;it.d=gp.d||''; } // placed by the hub
       else if(gp && gp.country){ var c=cleanPlace(gp,it.lat,it.lng); it.c=c.c;it.p=c.p;it.t=c.t;it.s=c.s;it.a=c.a; }
       else { var nb=nearestPlaced(it.lat,it.lng,10); if(nb){ it.c=nb.c;it.p=nb.p;it.t=nb.t;it.s='';it.a=nb.a; } else { var pv=provinceAt(it.lat,it.lng); it.c=pv?'South Africa':(a.country||'(pin needs checking)'); it.p=pv||'(pin needs checking)'; var nt=nearestTown(it.lat,it.lng,80); it.t=nt?nt.t:'(no town)'; it.s=''; it.a=[]; } it.notLooked=true; }
       finishRegions(it); ACTS.push(it);
@@ -290,7 +302,7 @@ function revealItem(it){
 }
 function itemEl(o,showSub){
   var it=o.it, b=document.createElement('button'); b.type='button'; b.className='row'; b.setAttribute('data-id',it.id);
-  b.innerHTML='<span class="dot'+(it.kind==='activity'?' act':'')+'"></span><span class="nm">'+esc(it.name)+(showSub&&it.s?' <span class="subl">'+esc(it.s)+'</span>':'')+(o.other.length?'<br><span class="also">Also in '+esc(o.other.join(', '))+'</span>':'')+'</span>';
+  b.innerHTML='<span class="dot'+(it.kind==='activity'?' act':'')+'"></span><span class="nm">'+esc(it.name)+(showSub&&it.s?' <span class="subl">'+esc(it.s)+'</span>':'')+(it.hidden?' <span class="subl">(hidden)</span>':'')+(o.other.length?'<br><span class="also">Also in '+esc(o.other.join(', '))+'</span>':'')+'</span>';
   b.addEventListener('click',function(){ pick(b,{item:it}); });
   return b;
 }
@@ -300,8 +312,8 @@ var map=L.map('map').setView([-30.56,22.94],6);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18,attribution:'&copy; OpenStreetMap contributors'}).addTo(map);
 var cluster=L.markerClusterGroup({maxClusterRadius:50}).addTo(map);
 var focusLayer=L.layerGroup().addTo(map), regLayer=null, hiReg=null;
-function icon(kind,big){ var c=kind==='activity'?'#0e7c66':'#1a4d7a', s=big?16:13; return L.divIcon({className:'',html:'<div style="background:'+c+';width:'+s+'px;height:'+s+'px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 2px rgba(0,0,0,.45)"></div>',iconSize:[s,s]}); }
-function marker(it,big){ it.raw._tree=it; var m=L.marker([it.lat,it.lng],{icon:icon(it.kind,big)}); m.bindPopup(function(){return popupContent(it.raw);},{maxWidth:260});
+function icon(kind,big,hidden){ var c=hidden?'#b7b7ae':kind==='activity'?'#0e7c66':'#1a4d7a', s=big?16:13; return L.divIcon({className:'',html:'<div style="background:'+c+';width:'+s+'px;height:'+s+'px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 2px rgba(0,0,0,.45)"></div>',iconSize:[s,s]}); }
+function marker(it,big){ it.raw._tree=it; var m=L.marker([it.lat,it.lng],{icon:icon(it.kind,big,it.hidden)}); m.bindPopup(function(){return popupContent(it.raw);},{maxWidth:ADMIN?320:260});
   // clicking a dot opens the tree to it
   m.on('popupopen',function(){ if(it.kind!==TAB) return; quietMoves(); markInView(revealItem(it)); });
   it._m=m; return m; }
@@ -413,6 +425,14 @@ function popupContent(item){
   if(item.description){ var de=document.createElement('div'); de.className='map-popup-desc'; de.textContent=item.description; wrap.appendChild(de); }
   var url=item.kind==='property'?(item.bookingLink||item.infoLink):item.contactLink;
   if(url){ var a=document.createElement('a'); a.href=url; a.target='_blank'; a.rel='noopener'; a.className='btn-secondary'; a.style.cssText='display:inline-block;margin-top:4px;text-decoration:none;padding:6px 12px;border-radius:6px;'; a.textContent=item.kind==='property'?'Visit / book':'Book / contact'; wrap.appendChild(a); }
+  if(ADMIN){
+    var tp=item._tree;
+    if(tp){ var pe2=document.createElement('div'); pe2.className='map-popup-desc'; pe2.style.cssText='margin-top:6px;font-weight:600;color:#0e2f44';
+      pe2.textContent=[tp.c,tp.p,(tp.r||[]).join(' / '),tp.t,tp.s&&tp.s!==tp.t?tp.s:''].filter(Boolean).join(' › ')+(tp.d?' · District '+tp.d.replace(/ (Local )?Municipality$/,''):'');
+      wrap.appendChild(pe2);
+      if(tp.newItem||tp.notLooked){ var pn=document.createElement('div'); pn.className='map-popup-desc'; pn.style.color='#b5560f'; pn.textContent='Not looked up yet: placed by the nearest place for now.'; wrap.appendChild(pn); } }
+    try{ ADMIN.popup(item,tp||null,wrap); }catch(e){}
+  }
   return wrap;
 }
 
@@ -457,7 +477,7 @@ loadAll().then(function(){
   $('status').hidden=true;
   $('nP').textContent=PROPS.length.toLocaleString('en-ZA'); $('nA').textContent=ACTS.length.toLocaleString('en-ZA');
   var notLooked=ACTS.filter(function(a){return a.notLooked;}).length;
-  if(notLooked){ $('status').hidden=false; $('status').textContent=notLooked+' activities are placed by their nearest property until the activity lookup runs (admin: Location tree lookup page).'; }
+  if(notLooked){ $('status').hidden=false; $('status').textContent=notLooked+' activities are placed by their nearest property until the activity lookup runs'+(ADMIN?' (press Re-run lookup under Location tree).':' (admin: Location tree lookup page).'); }
   drawRegions(); setTab('property');
   var first=treeEl.querySelector('.row'); if(first) first.click();
 }).catch(function(){ $('status').textContent='Could not load the map data. Refresh the page to try again.'; });

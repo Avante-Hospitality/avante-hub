@@ -1283,16 +1283,12 @@
           <option value="" selected>Choose a section&hellip;</option>
           <optgroup label="Map">
             <option value="map-jump-overview">Overview (dashboard)</option>
-            <option value="map-jump-browse">Browse by location</option>
             <option value="map-jump-master">Master map</option>
+            <option value="map-jump-tree">Location tree (Re-run lookup)</option>
             <option value="map-jump-properties-on-map">Properties on the map</option>
           </optgroup>
-          <optgroup label="Zones &amp; coordinates">
-            <option value="map-jump-no-zone">Properties with no zone (incl. "Fix countries with a real coordinate")</option>
+          <optgroup label="Coordinates">
             <option value="map-jump-suggested-coords">Suggested coordinates</option>
-            <option value="map-jump-discover">Discover locations from properties &amp; activities</option>
-            <option value="map-jump-geocode">Geocode locations from coordinates ("Start geocoding")</option>
-            <option value="map-jump-tree-audit">Location tree audit</option>
             <option value="map-jump-improve-coords">Improve property coordinates</option>
             <option value="map-jump-find-fix-coords">Find &amp; fix missing coordinates</option>
           </optgroup>
@@ -1307,11 +1303,6 @@
             <option value="map-jump-bulk-activities">Bulk import activities from CSV</option>
             <option value="map-jump-add-activity">Add an activity</option>
             <option value="map-jump-activities-table">Existing activities</option>
-          </optgroup>
-          <optgroup label="Towns">
-            <option value="map-jump-bulk-towns">Bulk import towns from CSV</option>
-            <option value="map-jump-add-town">Add a popular tourist town</option>
-            <option value="map-jump-towns-table">Towns table</option>
           </optgroup>
         </select>
       </div>
@@ -1418,7 +1409,7 @@
           </button>
           <button type="button" class="stat-card" id="mapOverviewNoZone" style="cursor:pointer; text-align:left; font:inherit; width:100%; margin:0; border-width:1.5px; border-style:solid;">
             <div class="num">0</div>
-            <div class="lbl">Not yet placed (no zone)</div>
+            <div class="lbl">Waiting for the location tree</div>
           </button>
           <button type="button" class="stat-card" id="mapOverviewSnReview" style="cursor:pointer; text-align:left; font:inherit; width:100%; margin:0; border-width:1.5px; border-style:solid;">
             <div class="num">0</div>
@@ -1436,58 +1427,261 @@
         <p id="mapOverviewAllClear" style="display:none; margin:0; font-size:13.5px; color:var(--teal-dark); font-weight:600;">Everything is placed and reviewed — nothing outstanding right now.</p>
       </div>
 
-      <div class="card map-jump-target" id="map-jump-browse" style="margin-top:20px;">
-        <h3 style="margin-top:0;">Browse by location</h3>
-        <p style="margin-top:0;">Tick a region, town, or suburb to narrow the master map below to just that area — cascades down (ticking a region ticks everything under it) the same way the affiliate allocation picker does. Leave nothing ticked to see everything.</p>
-        <div class="loc-tree-country">South Africa</div>
-        <div class="loc-tree-summary" id="mapLocTreeSummary"></div>
-        <div id="mapLocationTree"></div>
-      </div>
-
       <div class="card map-jump-target" id="map-jump-master" style="margin-top:20px;">
         <h3 style="margin-top:0;">Master map</h3>
-        <p style="margin-top:0;">Every property and activity, including hidden ones (shown dimmed). Zone areas are shaded in the zone colours, and town and property pins take the colour of their zone (places outside South Africa are coloured per country) — click a pin to show/hide it on the affiliate-facing map, or to see its exact zone and jump to Edit if it looks wrong.</p>
+        <p style="margin-top:0;">Every property and activity in the location tree (Country › Province › Region › City › Suburb), including hidden ones (grey). Click a pin for its place in the tree and the buttons to view it on StockNetwork, edit it, fix its coordinates or hide it.</p>
         <div class="status" id="missingCoordsSummary" style="margin-top:0;"></div>
-        <div class="map-filter-row" style="display:flex; flex-wrap:wrap; gap:14px; align-items:center; margin-bottom:6px;">
-          <label style="margin:0; display:flex; align-items:center; gap:6px;"><span style="width:10px; height:10px; border-radius:50%; background:conic-gradient(#8074dd 0 25%,#e6a000 0 50%,#1d9e75 0 75%,#d85a30 0); display:inline-block;"></span> Property (shown, coloured by zone)</label>
-          <label style="margin:0; display:flex; align-items:center; gap:6px;"><span style="width:10px; height:10px; border-radius:50%; background:#0e7c66; display:inline-block;"></span> Activity (shown)</label>
-          <label style="margin:0; display:flex; align-items:center; gap:6px;"><span style="width:10px; height:10px; border-radius:50%; background:#b7b7ae; display:inline-block;"></span> Hidden (any type)</label>
-        </div>
-        <p style="margin:0 0 6px; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--muted);">Zone colours</p>
-        <label style="margin:0 0 8px; display:flex; align-items:center; gap:6px; font-size:13px; font-weight:400;"><input type="checkbox" id="zoneShadeToggle" checked style="width:auto; flex:none;"> Shade the zone areas on the map</label>
-        <div id="zoneLegend" style="display:flex; flex-wrap:wrap; gap:8px 16px; margin-bottom:12px; font-size:12.5px;"></div>
-        <div id="adminMapEl" style="width:100%; height:460px; border-radius:10px;"></div>
+        <iframe id="adminTreeFrame" title="Master map" data-src="explore-tree.html?embed=1&amp;admin=1"
+          style="width:100%; height:1150px; border:0; display:block;"></iframe>
       </div>
 
-      <div class="card map-jump-target" id="map-jump-no-zone" style="margin-top:20px;">
-        <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap;">
-          <h3 style="margin-top:0;">Properties with no zone</h3>
-          <div style="display:flex; gap:8px; flex-wrap:wrap;">
-            <button class="how-it-works-btn" type="button" aria-expanded="false" data-panel="noZonePropsHowItWorks">How it works</button>
-            <button class="btn-outline" id="downloadNoZonePropsBtn" style="flex:none;">Download CSV</button>
-          </div>
+      <div class="card map-jump-target" id="map-jump-tree" style="margin-top:20px;">
+        <h3 style="margin-top:0;">Location tree</h3>
+        <p style="margin-top:0;">Every place is put in the tree from its pin: Google gives the country, province, town and suburb, and the Avante regions come from the region map. New properties and properties whose pin moved are placed every night by the StockNetwork sync; activities when they are saved. <strong>Re-run lookup</strong> places anything still waiting right now.</p>
+        <p id="adminTreeCounts" style="margin:0 0 10px; font-size:13.5px; color:var(--muted);">Counting…</p>
+        <div class="btn-row" style="margin-top:0;">
+          <button class="primary" id="adminTreeRerunBtn">Re-run lookup</button>
+          <a class="btn-outline" href="tree-lookup.html" target="_blank" rel="noopener" style="text-decoration:none;">Location tree lookup page</a>
         </div>
-        <div class="how-it-works-panel" id="noZonePropsHowItWorks">Properties and resort rows that already have coordinates but never got a zone &mdash; usually a coordinate that's offshore, right on a zone border, or otherwise not something Google or the zone map can place precisely. Re-running "Start geocoding" or "Re-check all zones" won't change this list on its own. "Source" shows where the row comes from: <strong>resort-list</strong> rows are fixed by correcting your StockNetwork export and re-uploading it; <strong>onboarded</strong> rows are fixed directly in Property Listings. The "Fix countries with a real coordinate" button below handles the rows that already have a usable Latitude/Longitude &mdash; it works out the true country straight from that coordinate and fixes it immediately, no CSV needed. Rows with no usable coordinate at all aren't something this can fix on its own; see "Suggested coordinates" further down for those.</div>
-        <div class="btn-row" style="margin-top:0; margin-bottom:14px;">
-          <button class="btn-outline" id="fixPropertyCountryBtn">Fix countries with a real coordinate</button>
-        </div>
-        <div class="status" id="fixPropertyCountryStatus"></div>
-        <div class="table-wrap">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>Property</th>
-                <th>Source</th>
-                <th>Area / City / Country</th>
-                <th>Coordinates</th>
-                <th>Edit</th>
-              </tr>
-            </thead>
-            <tbody id="noZonePropsTableBody"></tbody>
-          </table>
-        </div>
-        <div class="empty-state" id="noZonePropsEmpty" style="display:none;">Every property and resort row with coordinates has a zone.</div>
+        <div class="status" id="adminTreeStatus"></div>
       </div>
+
+      <script>
+      // Master map bridge (2026-10-07): explore-tree.html?admin=1 reads its data
+      // and builds its popup buttons through window.adminTree.
+      (function(){
+        function post(url, body){
+          return fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(Object.assign({ token: ADMIN_TOKEN }, body)) })
+            .then(function(r){
+              if(r.status === 401 && typeof goToLogin === 'function'){ goToLogin(); return Promise.reject(new Error('unauthenticated')); }
+              return r.json().then(function(d){ return { status: r.status, data: d }; });
+            });
+        }
+        function mapPost(action, body){ return post('/api/map', Object.assign({ action: action }, body || {})); }
+        function num(v){ var n = parseFloat(v); return isFinite(n) ? n : null; }
+        function parseCoord(txt){
+          var m = String(txt || '').match(/(-?\d{1,3}(?:\.\d+)?)\s*[,;\s]\s*(-?\d{1,3}(?:\.\d+)?)/);
+          if(!m) return null;
+          var lat = parseFloat(m[1]), lng = parseFloat(m[2]);
+          if(!isFinite(lat) || !isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+          return { lat: lat, lng: lng };
+        }
+        function placeMovedProperties(onStep){
+          // Repeats "placeBacklog" until nothing is left over (each call has a time budget).
+          var placed = 0, failed = 0;
+          function step(){
+            return post('/api/tree-lookup', { action: 'placeBacklog' }).then(function(res){
+              var b = res.data || {};
+              if(res.status !== 200) throw new Error(b.error || ('Error ' + res.status));
+              if(typeof b.skipped === 'string') throw new Error('The live tree is not set up yet. Open the Location tree lookup page and press "Set up from the approved tree" first.');
+              if(b.denied) throw new Error('Google refused the lookup (' + b.denied + ').');
+              placed += b.placed || 0; failed += b.failed || 0;
+              if(onStep) onStep(placed);
+              if(b.skipped && b.placed) return step();
+              return { placed: placed, failed: failed };
+            });
+          }
+          return step();
+        }
+
+        window.adminTree = {
+          data: function(){
+            return mapPost('adminList').then(function(res){
+              var d = res.data || {};
+              return {
+                properties: (d.properties || []),
+                activities: (d.activities || []).map(function(a){
+                  return Object.assign({}, a, { latitude: num(a.latitude), longitude: num(a.longitude) });
+                })
+              };
+            });
+          },
+          popup: function(item, place, wrap){
+            var doc = wrap.ownerDocument;
+            function el(tag, cls, text){ var e = doc.createElement(tag); if(cls) e.className = cls; if(text) e.textContent = text; return e; }
+            var row = el('div', 'adm-row');
+            wrap.appendChild(row);
+            var panel = el('div', 'adm-panel'); panel.hidden = true;
+            wrap.appendChild(panel);
+            function openPanel(build){ panel.innerHTML = ''; panel.hidden = false; build(panel); }
+
+            if(item.kind === 'property'){
+              if(item.infoLink){
+                var v = el('a', 'adm-btn', item.source === 'resort-list' ? 'View on StockNetwork' : 'View listing info');
+                v.href = item.infoLink; v.target = '_blank'; v.rel = 'noopener'; row.appendChild(v);
+              }
+              var edit = el('button', 'adm-btn', 'Edit'); edit.type = 'button'; row.appendChild(edit);
+              edit.addEventListener('click', function(){
+                if(item.source !== 'resort-list'){
+                  var tab = document.querySelector('.tab[data-panel="propertyListings"]');
+                  if(tab) tab.click();
+                  if(typeof window.openPropertyDetailsModal === 'function') window.openPropertyDetailsModal(item.listingId);
+                  return;
+                }
+                openPanel(function(p){
+                  p.appendChild(el('div', 'adm-hint', 'StockNetwork property: its place comes from the pin. Type a District, City2 or State correction to send to StockNetwork; everything else updates from StockNetwork.'));
+                  var inputs = {};
+                  [['district', 'District'], ['city2', 'City2'], ['state', 'State'], ['note', 'Note (optional)']].forEach(function(f){
+                    var i = el('input'); i.type = 'text'; i.placeholder = f[1]; inputs[f[0]] = i; p.appendChild(i);
+                  });
+                  var st = el('div', 'adm-hint');
+                  var save = el('button', 'adm-btn', 'Save correction'); save.type = 'button';
+                  p.appendChild(save); p.appendChild(st);
+                  save.addEventListener('click', function(){
+                    var vals = {}, any = false;
+                    Object.keys(inputs).forEach(function(k){ vals[k] = inputs[k].value.trim(); if(vals[k] && k !== 'note') any = true; });
+                    if(!any){ st.textContent = 'Type a District, City2 or State first.'; return; }
+                    if(!item.resortId){ st.textContent = 'This row has no StockNetwork ResortID, so it cannot be saved.'; return; }
+                    save.disabled = true; st.textContent = 'Saving…';
+                    mapPost('flagStockNetworkFieldFix', Object.assign({ resortId: item.resortId }, vals)).then(function(res){
+                      save.disabled = false;
+                      if(res.data && res.data.ok){ st.textContent = 'Saved ✓ — listed under "Corrections to send to StockNetwork".'; if(window.refreshSnFieldFixList) window.refreshSnFieldFixList(); }
+                      else st.textContent = (res.data && res.data.error) || 'Could not save.';
+                    }).catch(function(){ save.disabled = false; st.textContent = 'Could not save — check your connection.'; });
+                  });
+                });
+              });
+
+              var fix = el('button', 'adm-btn', 'Fix coordinates'); fix.type = 'button'; row.appendChild(fix);
+              fix.addEventListener('click', function(){
+                openPanel(function(p){
+                  p.appendChild(el('div', 'adm-hint', 'Open Google Maps, right-click the right spot, click the coordinates at the top of the menu to copy them, then paste here.'));
+                  var gm = el('a', 'adm-btn', 'Open in Google Maps');
+                  gm.href = 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent([item.name, item.city || item.area, item.country].filter(Boolean).join(' '));
+                  gm.target = '_blank'; gm.rel = 'noopener'; p.appendChild(gm);
+                  var inp = el('input'); inp.type = 'text'; inp.placeholder = 'Paste e.g. -29.011272, 29.469514'; p.appendChild(inp);
+                  var st = el('div', 'adm-hint', 'Now ' + Number(item.latitude).toFixed(5) + ', ' + Number(item.longitude).toFixed(5));
+                  var save = el('button', 'adm-btn', 'Save and place again'); save.type = 'button';
+                  p.appendChild(save); p.appendChild(st);
+                  save.addEventListener('click', function(){
+                    var c = parseCoord(inp.value);
+                    if(!c){ st.textContent = 'Could not read that — paste two numbers like -29.011272, 29.469514.'; return; }
+                    var body = { lat: c.lat, lng: c.lng };
+                    if(item.source === 'resort-list'){
+                      if(!item.resortId){ st.textContent = 'This row has no StockNetwork ResortID, so it cannot be saved.'; return; }
+                      body.source = 'resort'; body.resortId = item.resortId;
+                    } else { body.source = 'listing'; body.listingId = item.listingId; }
+                    save.disabled = true; st.textContent = 'Saving…';
+                    mapPost('applyPropertyCoordinate', body).then(function(res){
+                      if(!(res.data && res.data.ok)) throw new Error((res.data && res.data.error) || 'Could not save.');
+                      if(item.source !== 'resort-list') return null;
+                      st.textContent = 'Saved ✓ — placing it in the tree…';
+                      return placeMovedProperties();
+                    }).then(function(){
+                      st.textContent = 'Saved ✓ and placed. Reload the map to see it in its new spot.';
+                      var r = el('button', 'adm-btn', 'Reload map'); r.type = 'button';
+                      r.addEventListener('click', reloadFrame); p.appendChild(r);
+                    }).catch(function(e){ save.disabled = false; st.textContent = (e && e.message) || 'Could not save — check your connection.'; });
+                  });
+                });
+              });
+            }
+
+            var hidden = item.kind === 'activity' ? item.visible === false : !!item.hidden;
+            var hide = el('button', 'adm-btn', hidden ? 'Show on map' : 'Hide from map'); hide.type = 'button'; row.appendChild(hide);
+            hide.addEventListener('click', function(){
+              hide.disabled = true;
+              var call = item.kind === 'activity'
+                ? mapPost('updateActivity', { id: item.id, visible: hidden })
+                : mapPost('setPropertyVisibility', { listingId: item.listingId, hidden: !hidden });
+              call.then(function(res){
+                hide.disabled = false;
+                if(res.data && res.data.ok === false){ hide.textContent = (res.data.error || 'Could not save'); return; }
+                hidden = !hidden;
+                if(item.kind === 'activity') item.visible = !hidden; else item.hidden = hidden;
+                hide.textContent = hidden ? 'Show on map ✓ hidden' : 'Hide from map ✓ shown';
+              }).catch(function(){ hide.disabled = false; });
+            });
+          }
+        };
+
+        var frame = document.getElementById('adminTreeFrame');
+        function loadFrame(){ if(frame && !frame.src) frame.src = frame.getAttribute('data-src'); }
+        function reloadFrame(){ if(frame){ frame.src = 'about:blank'; frame.src = frame.getAttribute('data-src'); } }
+        window.reloadAdminTreeMap = reloadFrame;
+
+        // ---- Location tree card: counts + Re-run lookup ----
+        var countsEl = document.getElementById('adminTreeCounts');
+        var statusEl = document.getElementById('adminTreeStatus');
+        var rerunBtn = document.getElementById('adminTreeRerunBtn');
+        function setStatus(t, err){ statusEl.textContent = t; statusEl.className = 'status' + (t ? ' show' : '') + (err ? '' : ' ok'); }
+        function keyOf(lat, lng){ return Number(lat).toFixed(6) + ',' + Number(lng).toFixed(6); }
+        function kmBetween(k1, k2){
+          var a = String(k1 || '').split(',').map(Number), b = String(k2 || '').split(',').map(Number);
+          if(a.length < 2 || b.length < 2) return Infinity;
+          var r = Math.PI / 180, dl = (b[0] - a[0]) * r, dn = (b[1] - a[1]) * r;
+          var x = Math.sin(dl / 2) * Math.sin(dl / 2) + Math.cos(a[0] * r) * Math.cos(b[0] * r) * Math.sin(dn / 2) * Math.sin(dn / 2);
+          return 12742 * Math.asin(Math.sqrt(x));
+        }
+        // Returns { props, acts, waitingProps, waitingActs: [{id,k}] } from the live tree.
+        function treeState(){
+          return Promise.all([
+            window.adminTree.data(),
+            fetch('/api/tree-lookup?kind=all', { cache: 'no-store' }).then(function(r){ return r.json(); })
+          ]).then(function(res){
+            var data = res[0], live = res[1] || {}, pm = live.properties || {}, am = live.activities || {};
+            var seen = {}, waitingProps = 0, props = 0;
+            data.properties.forEach(function(p){
+              if(!p.resortId || seen[p.resortId] || typeof p.latitude !== 'number' || typeof p.longitude !== 'number') return;
+              seen[p.resortId] = 1; props++;
+              var have = pm[p.resortId];
+              if(!have || kmBetween(have.k, keyOf(p.latitude, p.longitude)) >= 0.5) waitingProps++;
+            });
+            var waitingActs = [], acts = 0;
+            data.activities.forEach(function(a){
+              if(a.latitude == null || a.longitude == null) return;
+              acts++;
+              var k = keyOf(a.latitude, a.longitude), have = am[a.id];
+              if(!have || !have.p || kmBetween(have.k, k) >= 0.5) waitingActs.push({ id: a.id, k: k });
+            });
+            return { props: props, acts: acts, waitingProps: waitingProps, waitingActs: waitingActs, seeded: Object.keys(pm).length > 0 };
+          });
+        }
+        function showCounts(s){
+          countsEl.textContent = s.props.toLocaleString('en-ZA') + ' properties and ' + s.acts.toLocaleString('en-ZA') + ' activities with a pin · ' +
+            (s.waitingProps + s.waitingActs.length ? (s.waitingProps + ' properties and ' + s.waitingActs.length + ' activities waiting to be placed') : 'everything is placed');
+          if(!s.seeded) setStatus('The live tree is not set up yet. Open the Location tree lookup page and press "Set up from the approved tree" once.', true);
+          if(typeof window.setMapOverviewTreeCount === 'function') window.setMapOverviewTreeCount(s.waitingProps + s.waitingActs.length);
+          return s;
+        }
+        function refreshCounts(){ return treeState().then(showCounts).catch(function(){ countsEl.textContent = 'Could not count the places in the tree.'; }); }
+        window.refreshAdminTreeCounts = refreshCounts;
+
+        rerunBtn.addEventListener('click', function(){
+          rerunBtn.disabled = true;
+          setStatus('Placing new and moved properties…');
+          var placedProps = 0;
+          placeMovedProperties(function(n){ placedProps = n; setStatus('Placing new and moved properties… ' + n + ' placed'); })
+            .then(function(){ return treeState(); })
+            .then(function(s){
+              var todo = s.waitingActs, i = 0, placedActs = 0, failedActs = 0;
+              function next(){
+                if(i >= todo.length) return Promise.resolve();
+                var batch = todo.slice(i, i + 25); i += 25;
+                setStatus(placedProps + ' properties placed · placing activities ' + Math.min(i, todo.length) + ' of ' + todo.length + '…');
+                return post('/api/tree-lookup', { kind: 'activity', points: batch }).then(function(res){
+                  if(res.status !== 200) throw new Error((res.data && res.data.error) || ('Error ' + res.status));
+                  (res.data.results || []).forEach(function(r){ if(r.ok) placedActs++; else failedActs++; });
+                  return next();
+                });
+              }
+              return next().then(function(){
+                setStatus('Done: ' + placedProps + ' properties and ' + placedActs + ' activities placed' + (failedActs ? ', ' + failedActs + ' activities could not be looked up' : '') + '.');
+              });
+            })
+            .then(function(){ rerunBtn.disabled = false; refreshCounts(); reloadFrame(); })
+            .catch(function(e){ rerunBtn.disabled = false; setStatus((e && e.message) || 'Lost the connection. Press Re-run lookup again.', true); });
+        });
+
+        // Load the map and counts the first time the Map & Activities tab opens.
+        var started = false;
+        function start(){ if(started) return; started = true; loadFrame(); refreshCounts(); }
+        document.addEventListener('click', function(e){ var t = e.target.closest && e.target.closest('.tab[data-panel="mapActivities"]'); if(t) setTimeout(start, 0); });
+        var panel = document.getElementById('panel-mapActivities');
+        if(panel && panel.classList.contains('active')) start();
+      })();
+      </script>
 
       <div class="card map-jump-target" id="map-jump-suggested-coords" style="margin-top:20px;">
         <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap;">
@@ -1596,12 +1790,12 @@
           <div><label for="activityAreaInput">Area (free text)</label><input id="activityAreaInput" placeholder="e.g. Plettenberg Bay"></div>
           <div><label for="activityPriceInput">Price</label><input id="activityPriceInput" placeholder="e.g. R2,800 pp"></div>
         </div>
-        <div class="btn-row" style="flex-wrap:wrap; gap:10px; margin-top:10px;">
+        <div class="btn-row" style="flex-wrap:wrap; gap:10px; margin-top:10px; display:none;">
           <div><label>Location (country › zone › town › suburb)</label>
             <div id="activityLocationPickerHost" style="max-width:340px;"></div>
           </div>
         </div>
-        <div class="hint" style="margin-top:2px;">Tag this activity with a location from your location tree — used for the map's Zone filter and for Discover locations. Separate from the free-text Area field above.</div>
+        <div class="hint" style="margin-top:2px;">The activity is placed in the location tree from its latitude and longitude when you save it.</div><div class="hint" style="display:none;">Tag this activity with a location from your location tree — used for the map's Zone filter and for Discover locations. Separate from the free-text Area field above.</div>
         <div class="btn-row" style="flex-wrap:wrap; gap:10px; margin-top:10px;">
           <div><label for="activityLatInput">Latitude</label><input id="activityLatInput" placeholder="e.g. -34.0033"></div>
           <div><label for="activityLngInput">Longitude</label><input id="activityLngInput" placeholder="e.g. 23.3833"></div>
@@ -1656,144 +1850,6 @@
             </table>
           </div>
           <div class="empty-state" id="activitiesEmpty" style="display:none;">No activities added yet.</div>
-        </div>
-      </div>
-
-      <div class="card map-jump-target" id="map-jump-bulk-towns" style="margin-top:20px;">
-        <h3 style="margin-top:0;">Bulk import towns from CSV</h3>
-        <p style="margin-top:0;">Columns: <code>name, area, zone, description, latitude, longitude, affiliateId</code>. <code>affiliateId</code> is optional — leave it blank to make the town available to every affiliate's Explore Map and area hooks; set it to one affiliate's ID to allocate that town to them specifically. Matches existing towns by name (case-insensitive) and updates them; anything new is added. An optional <code>id</code> column forces an exact match instead.</p>
-        <div class="btn-row" style="margin-top:0;">
-          <button class="btn-outline" id="importTownsBtn">Upload CSV</button>
-          <input type="file" id="importTownsFileInput" accept=".csv" style="display:none;">
-          <button class="btn-outline" id="exportTownsBtn">Download current towns as CSV</button>
-          <button class="btn-outline" id="templateTownsBtn">Download blank template</button>
-        </div>
-        <div class="status" id="importTownsStatus"></div>
-      </div>
-
-      <div class="card map-jump-target" id="map-jump-add-town" style="margin-top:20px;">
-        <h3 id="townFormTitle" style="margin-top:0;">Add a popular tourist town</h3>
-        <p style="margin-top:0;">These are the destinations shown as their own pin on the Explore Map and offered as the destination picker for area hooks — separate from bookable properties and activities.</p>
-        <input type="hidden" id="townIdInput">
-        <div class="btn-row" style="flex-wrap:wrap; gap:10px;">
-          <div><label for="townNameInput">Town name</label><input id="townNameInput" placeholder="e.g. Hermanus"></div>
-          <div><label for="townAreaInput">Area (optional)</label><input id="townAreaInput" placeholder="e.g. Cape Whale Coast"></div>
-          <div style="flex:1 1 280px; min-width:260px;">
-            <label style="display:block;">Location (Country &rsaquo; Zone)</label>
-            <div id="townLocationPickerHost"></div>
-          </div>
-          <div><label for="townAffInput">Allocate to affiliate (optional)</label>
-            <select id="townAffInput">
-              <option value="">— All affiliates (shared) —</option>
-            </select>
-          </div>
-        </div>
-        <div class="btn-row" style="flex-wrap:wrap; gap:10px; margin-top:10px;">
-          <div><label for="townLatInput">Latitude</label><input id="townLatInput" placeholder="e.g. -34.4187"></div>
-          <div><label for="townLngInput">Longitude</label><input id="townLngInput" placeholder="e.g. 19.2345"></div>
-        </div>
-        <label for="townDescInput" style="margin-top:10px; display:block;">Description</label>
-        <textarea id="townDescInput" rows="3" style="width:100%;" placeholder="Short blurb for the map popup and area-hook picker"></textarea>
-        <label style="margin-top:14px; display:block;">Photos (up to 12)</label>
-        <div id="townFormPhotos" style="display:flex; flex-wrap:wrap; gap:8px; margin:6px 0;"></div>
-        <input type="file" id="townPhotoInput" accept="image/*" multiple style="display:block;">
-        <p id="townPhotoHint" style="margin:6px 0 0; font-size:12px; color:var(--muted);">For a new town, save it first — photos then upload automatically right after.</p>
-        <div class="btn-row" style="margin-top:10px;">
-          <button class="primary" id="saveTownBtn">Save town</button>
-          <button class="btn-outline" id="cancelTownEditBtn" style="display:none;">Cancel edit</button>
-        </div>
-        <div class="status" id="townFormStatus"></div>
-      </div>
-
-      <div class="card map-jump-target" id="map-jump-discover" style="margin-top:20px;">
-        <h3 style="margin-top:0;">Discover locations from properties &amp; activities</h3>
-        <p style="margin-top:0;">Scans every onboarded property, the full StockNetwork resort list, and all activities for the areas, towns and suburbs already on file, and adds any that aren't yet a Town or Suburb here — auto-suggesting a zone and coordinates from the source records. Never touches or overwrites a town/suburb you've already added or edited.</p>
-        <div class="btn-row" style="margin-top:0;">
-          <button class="btn-outline" id="discoverLocationsBtn">Discover &amp; add new locations</button>
-        </div>
-        <div class="status" id="discoverLocationsStatus"></div>
-      </div>
-
-      <div class="card map-jump-target" id="map-jump-geocode" style="margin-top:20px;">
-        <h3 style="margin-top:0;">Geocode locations from coordinates</h3>
-        <p style="margin-top:0;">Automatically places every property, StockNetwork resort-list row, and activity that has a latitude/longitude but no location tag yet, using Google's Geocoding API &mdash; no manual entry needed. Never touches anything already tagged, whether that was set by hand or by an earlier run of this.</p>
-        <div class="btn-row" style="margin-top:0;">
-          <button class="btn-outline" id="checkGeocodeBtn">Check how many need geocoding</button>
-          <button class="primary" id="startGeocodeBtn">Start geocoding</button>
-        </div>
-        <div class="status" id="geocodeStatus"></div>
-
-        <div style="margin-top:18px; padding-top:16px; border-top:1.5px solid var(--line);">
-          <h4 style="margin:0 0 6px; font-size:13.5px;">Re-check zones on everything already tagged</h4>
-          <p style="margin:0 0 12px; font-size:13px; color:var(--muted);">Re-sends every coordinate through Google again &mdash; including records already tagged &mdash; and brings the whole hub up to date: each place gets its Country, Zone, Town and Suburb (the <strong>zone now comes from where the coordinates fall on the zone map</strong>, so Garden Route, Eastern Cape and same-named towns such as the two Middelburgs land correctly; outside South Africa the zone is the province/region), places with no town of their own are placed <em>Nearby</em> the closest town, and towns that share a name in different provinces get separate records. Every Google answer is remembered, so a coordinate is only ever paid for once &mdash; running this again later is free. It can overwrite a zone you corrected by hand, so use it as a cleanup, not routinely.</p>
-          <div class="btn-row" style="margin-top:0;">
-            <button class="btn-outline" id="recheckZonesBtn">Re-check all zones</button>
-          </div>
-          <div class="status" id="recheckZonesStatus"></div>
-        </div>
-
-        <div style="margin-top:18px; padding-top:16px; border-top:1.5px solid var(--line);">
-          <h4 style="margin:0 0 6px; font-size:13.5px;">Fix towns with no zone</h4>
-          <p style="margin:0 0 12px; font-size:13px; color:var(--muted);">"Re-check all zones" above only revisits a coordinate that belongs to a current property, resort row, or activity &mdash; a Town added via "Discover &amp; add new locations" with no matching property can be left with a blank zone forever, no matter how many times that runs. This instead looks at every town that already has coordinates but no zone, and works out its zone directly from those coordinates (the zone map first, a Google lookup only as a fallback). Never touches a town that already has a zone set.</p>
-          <div class="btn-row" style="margin-top:0;">
-            <button class="btn-outline" id="fixTownZonesBtn">Fix towns with no zone</button>
-          </div>
-          <div class="status" id="fixTownZonesStatus"></div>
-        </div>
-
-        <div style="margin-top:18px; padding-top:16px; border-top:1.5px solid var(--line);">
-          <h4 style="margin:0 0 6px; font-size:13.5px;">Merge duplicate towns</h4>
-          <p style="margin:0 0 12px; font-size:13px; color:var(--muted);">Finds towns that are the same place recorded more than once (same name, same country, same zone, close together &mdash; for example the four &ldquo;Cape Town&rdquo; entries) and joins them into one. Their suburbs, photos and everything tagged to them (properties, activities, hooks) move to the town that is kept. Towns that only share a name but are in different zones (Heidelberg in the West Coast &amp; Overberg and in Gauteng) are <strong>not</strong> touched. <em>Find duplicates</em> only shows you the list &mdash; nothing changes until you press Merge.</p>
-          <div class="btn-row" style="margin-top:0;">
-            <button class="btn-outline" id="dupFindBtn">Find duplicate towns</button>
-            <button class="primary" id="dupMergeBtn" style="display:none;">Merge them</button>
-          </div>
-          <div class="status" id="dupStatus"></div>
-          <div id="dupList" style="margin-top:10px; font-size:13px;"></div>
-        </div>
-      </div>
-
-      <div class="card map-jump-target" id="map-jump-tree-audit" style="margin-top:20px;">
-        <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap;">
-          <h3 style="margin-top:0;">Location tree audit</h3>
-          <div style="display:flex; gap:8px; flex-wrap:wrap;">
-            <button class="how-it-works-btn" type="button" aria-expanded="false" data-panel="locationAuditHowItWorks">How it works</button>
-            <button class="btn-outline" id="downloadLocationAuditBtn" style="flex:none;">Download CSV</button>
-          </div>
-        </div>
-        <div class="how-it-works-panel" id="locationAuditHowItWorks">"Merge duplicate towns" above only catches two Town records with the <em>exact same</em> name, country and zone &mdash; that's deliberately narrow so it's safe to auto-merge. This audit looks for two patterns it can't see: (1) the same real place recorded under names that differ by a word, like "Inhambane" and "Inhambane Province" &mdash; caught by treating one name as the other plus a qualifier word; (2) a place that exists as its own standalone Town <em>and</em> as a Suburb nested under a different Town, like "Brenton-on-Sea" and "Brenton" (a suburb of Knysna). It also checks that every property, resort row and activity is actually nested under a Town/Suburb that still exists, and flags anything tagged with an area/zone but never linked down to a Town at all. <strong>Nothing here is fixed automatically</strong> &mdash; a name match can occasionally be two genuinely different places that happen to share a word, so every result is for you to check and then fix by hand with the Edit / Delete / Merge tools above.</div>
-        <div class="btn-row" style="margin-top:0;">
-          <button class="btn-outline" id="locationAuditBtn">Run audit</button>
-        </div>
-        <div class="status" id="locationAuditStatus"></div>
-
-        <div id="locationAuditResults" style="display:none; margin-top:14px;">
-          <p style="margin:0 0 6px; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--muted);">Possible duplicate towns</p>
-          <div class="table-wrap">
-            <table class="data-table">
-              <thead><tr><th>Town</th><th>Also recorded as</th><th>Distance apart</th></tr></thead>
-              <tbody id="dupTownsTableBody"></tbody>
-            </table>
-          </div>
-          <div class="empty-state" id="dupTownsEmpty" style="display:none;">No likely duplicate town names found.</div>
-
-          <p style="margin:16px 0 6px; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--muted);">Towns that look like a suburb of another town</p>
-          <div class="table-wrap">
-            <table class="data-table">
-              <thead><tr><th>Standalone town</th><th>Matches suburb</th><th>Of town</th><th>Distance apart</th></tr></thead>
-              <tbody id="townSuburbOverlapTableBody"></tbody>
-            </table>
-          </div>
-          <div class="empty-state" id="townSuburbOverlapEmpty" style="display:none;">No towns that look like a suburb of another town found.</div>
-
-          <p style="margin:16px 0 6px; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--muted);">Properties not correctly nested under a Town/Suburb</p>
-          <div class="table-wrap">
-            <table class="data-table">
-              <thead><tr><th>Property</th><th>Source</th><th>Issue</th></tr></thead>
-              <tbody id="nestingIssuesTableBody"></tbody>
-            </table>
-          </div>
-          <div class="empty-state" id="nestingIssuesEmpty" style="display:none;">Every property, resort row and activity is correctly nested.</div>
         </div>
       </div>
 
@@ -1954,6 +2010,219 @@
         </div>
       </div>
 
+      <div class="card map-jump-target" id="map-jump-properties-on-map" style="margin-top:20px;">
+        <h3 style="margin-top:0;">Properties on the map</h3>
+        <p style="margin-top:0;">Every "Listed" property with a latitude/longitude on file appears on the Explore Map by default. Untick to hide a specific one.</p>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Property</th>
+                <th>Location</th>
+                <th>Has coordinates</th>
+                <th>Show on map</th>
+                <th>Edit</th>
+              </tr>
+            </thead>
+            <tbody id="mapPropertiesTableBody"></tbody>
+          </table>
+        </div>
+        <div class="empty-state" id="mapPropertiesEmpty" style="display:none;">No listed properties yet.</div>
+      </div>
+
+      <!-- Retired 2026-10-07 (location tree, stage 3): the old zone/town tools. Kept out of
+           sight so the page code that still refers to them keeps working; deleted in stage 4. -->
+      <div id="retiredZoneTools" hidden style="display:none;">
+      <div class="card map-jump-target" id="map-jump-browse" style="margin-top:20px;">
+        <h3 style="margin-top:0;">Browse by location</h3>
+        <p style="margin-top:0;">Tick a region, town, or suburb to narrow the master map below to just that area — cascades down (ticking a region ticks everything under it) the same way the affiliate allocation picker does. Leave nothing ticked to see everything.</p>
+        <div class="loc-tree-country">South Africa</div>
+        <div class="loc-tree-summary" id="mapLocTreeSummary"></div>
+        <div id="mapLocationTree"></div>
+      </div>
+
+      <div class="card map-jump-target" id="map-jump-master-old" style="margin-top:20px;">
+        <h3 style="margin-top:0;">Master map</h3>
+        <p style="margin-top:0;">Every property and activity, including hidden ones (shown dimmed). Zone areas are shaded in the zone colours, and town and property pins take the colour of their zone (places outside South Africa are coloured per country) — click a pin to show/hide it on the affiliate-facing map, or to see its exact zone and jump to Edit if it looks wrong.</p>
+        <div class="status" id="missingCoordsSummaryOld" style="margin-top:0;"></div>
+        <div class="map-filter-row" style="display:flex; flex-wrap:wrap; gap:14px; align-items:center; margin-bottom:6px;">
+          <label style="margin:0; display:flex; align-items:center; gap:6px;"><span style="width:10px; height:10px; border-radius:50%; background:conic-gradient(#8074dd 0 25%,#e6a000 0 50%,#1d9e75 0 75%,#d85a30 0); display:inline-block;"></span> Property (shown, coloured by zone)</label>
+          <label style="margin:0; display:flex; align-items:center; gap:6px;"><span style="width:10px; height:10px; border-radius:50%; background:#0e7c66; display:inline-block;"></span> Activity (shown)</label>
+          <label style="margin:0; display:flex; align-items:center; gap:6px;"><span style="width:10px; height:10px; border-radius:50%; background:#b7b7ae; display:inline-block;"></span> Hidden (any type)</label>
+        </div>
+        <p style="margin:0 0 6px; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--muted);">Zone colours</p>
+        <label style="margin:0 0 8px; display:flex; align-items:center; gap:6px; font-size:13px; font-weight:400;"><input type="checkbox" id="zoneShadeToggle" checked style="width:auto; flex:none;"> Shade the zone areas on the map</label>
+        <div id="zoneLegend" style="display:flex; flex-wrap:wrap; gap:8px 16px; margin-bottom:12px; font-size:12.5px;"></div>
+      </div>
+
+      <div class="card map-jump-target" id="map-jump-no-zone" style="margin-top:20px;">
+        <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+          <h3 style="margin-top:0;">Properties with no zone</h3>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button class="how-it-works-btn" type="button" aria-expanded="false" data-panel="noZonePropsHowItWorks">How it works</button>
+            <button class="btn-outline" id="downloadNoZonePropsBtn" style="flex:none;">Download CSV</button>
+          </div>
+        </div>
+        <div class="how-it-works-panel" id="noZonePropsHowItWorks">Properties and resort rows that already have coordinates but never got a zone &mdash; usually a coordinate that's offshore, right on a zone border, or otherwise not something Google or the zone map can place precisely. Re-running "Start geocoding" or "Re-check all zones" won't change this list on its own. "Source" shows where the row comes from: <strong>resort-list</strong> rows are fixed by correcting your StockNetwork export and re-uploading it; <strong>onboarded</strong> rows are fixed directly in Property Listings. The "Fix countries with a real coordinate" button below handles the rows that already have a usable Latitude/Longitude &mdash; it works out the true country straight from that coordinate and fixes it immediately, no CSV needed. Rows with no usable coordinate at all aren't something this can fix on its own; see "Suggested coordinates" further down for those.</div>
+        <div class="btn-row" style="margin-top:0; margin-bottom:14px;">
+          <button class="btn-outline" id="fixPropertyCountryBtn">Fix countries with a real coordinate</button>
+        </div>
+        <div class="status" id="fixPropertyCountryStatus"></div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Property</th>
+                <th>Source</th>
+                <th>Area / City / Country</th>
+                <th>Coordinates</th>
+                <th>Edit</th>
+              </tr>
+            </thead>
+            <tbody id="noZonePropsTableBody"></tbody>
+          </table>
+        </div>
+        <div class="empty-state" id="noZonePropsEmpty" style="display:none;">Every property and resort row with coordinates has a zone.</div>
+      </div>
+
+      <div class="card map-jump-target" id="map-jump-bulk-towns" style="margin-top:20px;">
+        <h3 style="margin-top:0;">Bulk import towns from CSV</h3>
+        <p style="margin-top:0;">Columns: <code>name, area, zone, description, latitude, longitude, affiliateId</code>. <code>affiliateId</code> is optional — leave it blank to make the town available to every affiliate's Explore Map and area hooks; set it to one affiliate's ID to allocate that town to them specifically. Matches existing towns by name (case-insensitive) and updates them; anything new is added. An optional <code>id</code> column forces an exact match instead.</p>
+        <div class="btn-row" style="margin-top:0;">
+          <button class="btn-outline" id="importTownsBtn">Upload CSV</button>
+          <input type="file" id="importTownsFileInput" accept=".csv" style="display:none;">
+          <button class="btn-outline" id="exportTownsBtn">Download current towns as CSV</button>
+          <button class="btn-outline" id="templateTownsBtn">Download blank template</button>
+        </div>
+        <div class="status" id="importTownsStatus"></div>
+      </div>
+
+      <div class="card map-jump-target" id="map-jump-add-town" style="margin-top:20px;">
+        <h3 id="townFormTitle" style="margin-top:0;">Add a popular tourist town</h3>
+        <p style="margin-top:0;">These are the destinations shown as their own pin on the Explore Map and offered as the destination picker for area hooks — separate from bookable properties and activities.</p>
+        <input type="hidden" id="townIdInput">
+        <div class="btn-row" style="flex-wrap:wrap; gap:10px;">
+          <div><label for="townNameInput">Town name</label><input id="townNameInput" placeholder="e.g. Hermanus"></div>
+          <div><label for="townAreaInput">Area (optional)</label><input id="townAreaInput" placeholder="e.g. Cape Whale Coast"></div>
+          <div style="flex:1 1 280px; min-width:260px;">
+            <label style="display:block;">Location (Country &rsaquo; Zone)</label>
+            <div id="townLocationPickerHost"></div>
+          </div>
+          <div><label for="townAffInput">Allocate to affiliate (optional)</label>
+            <select id="townAffInput">
+              <option value="">— All affiliates (shared) —</option>
+            </select>
+          </div>
+        </div>
+        <div class="btn-row" style="flex-wrap:wrap; gap:10px; margin-top:10px;">
+          <div><label for="townLatInput">Latitude</label><input id="townLatInput" placeholder="e.g. -34.4187"></div>
+          <div><label for="townLngInput">Longitude</label><input id="townLngInput" placeholder="e.g. 19.2345"></div>
+        </div>
+        <label for="townDescInput" style="margin-top:10px; display:block;">Description</label>
+        <textarea id="townDescInput" rows="3" style="width:100%;" placeholder="Short blurb for the map popup and area-hook picker"></textarea>
+        <label style="margin-top:14px; display:block;">Photos (up to 12)</label>
+        <div id="townFormPhotos" style="display:flex; flex-wrap:wrap; gap:8px; margin:6px 0;"></div>
+        <input type="file" id="townPhotoInput" accept="image/*" multiple style="display:block;">
+        <p id="townPhotoHint" style="margin:6px 0 0; font-size:12px; color:var(--muted);">For a new town, save it first — photos then upload automatically right after.</p>
+        <div class="btn-row" style="margin-top:10px;">
+          <button class="primary" id="saveTownBtn">Save town</button>
+          <button class="btn-outline" id="cancelTownEditBtn" style="display:none;">Cancel edit</button>
+        </div>
+        <div class="status" id="townFormStatus"></div>
+      </div>
+
+      <div class="card map-jump-target" id="map-jump-discover" style="margin-top:20px;">
+        <h3 style="margin-top:0;">Discover locations from properties &amp; activities</h3>
+        <p style="margin-top:0;">Scans every onboarded property, the full StockNetwork resort list, and all activities for the areas, towns and suburbs already on file, and adds any that aren't yet a Town or Suburb here — auto-suggesting a zone and coordinates from the source records. Never touches or overwrites a town/suburb you've already added or edited.</p>
+        <div class="btn-row" style="margin-top:0;">
+          <button class="btn-outline" id="discoverLocationsBtn">Discover &amp; add new locations</button>
+        </div>
+        <div class="status" id="discoverLocationsStatus"></div>
+      </div>
+
+      <div class="card map-jump-target" id="map-jump-geocode" style="margin-top:20px;">
+        <h3 style="margin-top:0;">Geocode locations from coordinates</h3>
+        <p style="margin-top:0;">Automatically places every property, StockNetwork resort-list row, and activity that has a latitude/longitude but no location tag yet, using Google's Geocoding API &mdash; no manual entry needed. Never touches anything already tagged, whether that was set by hand or by an earlier run of this.</p>
+        <div class="btn-row" style="margin-top:0;">
+          <button class="btn-outline" id="checkGeocodeBtn">Check how many need geocoding</button>
+          <button class="primary" id="startGeocodeBtn">Start geocoding</button>
+        </div>
+        <div class="status" id="geocodeStatus"></div>
+
+        <div style="margin-top:18px; padding-top:16px; border-top:1.5px solid var(--line);">
+          <h4 style="margin:0 0 6px; font-size:13.5px;">Re-check zones on everything already tagged</h4>
+          <p style="margin:0 0 12px; font-size:13px; color:var(--muted);">Re-sends every coordinate through Google again &mdash; including records already tagged &mdash; and brings the whole hub up to date: each place gets its Country, Zone, Town and Suburb (the <strong>zone now comes from where the coordinates fall on the zone map</strong>, so Garden Route, Eastern Cape and same-named towns such as the two Middelburgs land correctly; outside South Africa the zone is the province/region), places with no town of their own are placed <em>Nearby</em> the closest town, and towns that share a name in different provinces get separate records. Every Google answer is remembered, so a coordinate is only ever paid for once &mdash; running this again later is free. It can overwrite a zone you corrected by hand, so use it as a cleanup, not routinely.</p>
+          <div class="btn-row" style="margin-top:0;">
+            <button class="btn-outline" id="recheckZonesBtn">Re-check all zones</button>
+          </div>
+          <div class="status" id="recheckZonesStatus"></div>
+        </div>
+
+        <div style="margin-top:18px; padding-top:16px; border-top:1.5px solid var(--line);">
+          <h4 style="margin:0 0 6px; font-size:13.5px;">Fix towns with no zone</h4>
+          <p style="margin:0 0 12px; font-size:13px; color:var(--muted);">"Re-check all zones" above only revisits a coordinate that belongs to a current property, resort row, or activity &mdash; a Town added via "Discover &amp; add new locations" with no matching property can be left with a blank zone forever, no matter how many times that runs. This instead looks at every town that already has coordinates but no zone, and works out its zone directly from those coordinates (the zone map first, a Google lookup only as a fallback). Never touches a town that already has a zone set.</p>
+          <div class="btn-row" style="margin-top:0;">
+            <button class="btn-outline" id="fixTownZonesBtn">Fix towns with no zone</button>
+          </div>
+          <div class="status" id="fixTownZonesStatus"></div>
+        </div>
+
+        <div style="margin-top:18px; padding-top:16px; border-top:1.5px solid var(--line);">
+          <h4 style="margin:0 0 6px; font-size:13.5px;">Merge duplicate towns</h4>
+          <p style="margin:0 0 12px; font-size:13px; color:var(--muted);">Finds towns that are the same place recorded more than once (same name, same country, same zone, close together &mdash; for example the four &ldquo;Cape Town&rdquo; entries) and joins them into one. Their suburbs, photos and everything tagged to them (properties, activities, hooks) move to the town that is kept. Towns that only share a name but are in different zones (Heidelberg in the West Coast &amp; Overberg and in Gauteng) are <strong>not</strong> touched. <em>Find duplicates</em> only shows you the list &mdash; nothing changes until you press Merge.</p>
+          <div class="btn-row" style="margin-top:0;">
+            <button class="btn-outline" id="dupFindBtn">Find duplicate towns</button>
+            <button class="primary" id="dupMergeBtn" style="display:none;">Merge them</button>
+          </div>
+          <div class="status" id="dupStatus"></div>
+          <div id="dupList" style="margin-top:10px; font-size:13px;"></div>
+        </div>
+      </div>
+
+      <div class="card map-jump-target" id="map-jump-tree-audit" style="margin-top:20px;">
+        <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+          <h3 style="margin-top:0;">Location tree audit</h3>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button class="how-it-works-btn" type="button" aria-expanded="false" data-panel="locationAuditHowItWorks">How it works</button>
+            <button class="btn-outline" id="downloadLocationAuditBtn" style="flex:none;">Download CSV</button>
+          </div>
+        </div>
+        <div class="how-it-works-panel" id="locationAuditHowItWorks">"Merge duplicate towns" above only catches two Town records with the <em>exact same</em> name, country and zone &mdash; that's deliberately narrow so it's safe to auto-merge. This audit looks for two patterns it can't see: (1) the same real place recorded under names that differ by a word, like "Inhambane" and "Inhambane Province" &mdash; caught by treating one name as the other plus a qualifier word; (2) a place that exists as its own standalone Town <em>and</em> as a Suburb nested under a different Town, like "Brenton-on-Sea" and "Brenton" (a suburb of Knysna). It also checks that every property, resort row and activity is actually nested under a Town/Suburb that still exists, and flags anything tagged with an area/zone but never linked down to a Town at all. <strong>Nothing here is fixed automatically</strong> &mdash; a name match can occasionally be two genuinely different places that happen to share a word, so every result is for you to check and then fix by hand with the Edit / Delete / Merge tools above.</div>
+        <div class="btn-row" style="margin-top:0;">
+          <button class="btn-outline" id="locationAuditBtn">Run audit</button>
+        </div>
+        <div class="status" id="locationAuditStatus"></div>
+
+        <div id="locationAuditResults" style="display:none; margin-top:14px;">
+          <p style="margin:0 0 6px; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--muted);">Possible duplicate towns</p>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead><tr><th>Town</th><th>Also recorded as</th><th>Distance apart</th></tr></thead>
+              <tbody id="dupTownsTableBody"></tbody>
+            </table>
+          </div>
+          <div class="empty-state" id="dupTownsEmpty" style="display:none;">No likely duplicate town names found.</div>
+
+          <p style="margin:16px 0 6px; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--muted);">Towns that look like a suburb of another town</p>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead><tr><th>Standalone town</th><th>Matches suburb</th><th>Of town</th><th>Distance apart</th></tr></thead>
+              <tbody id="townSuburbOverlapTableBody"></tbody>
+            </table>
+          </div>
+          <div class="empty-state" id="townSuburbOverlapEmpty" style="display:none;">No towns that look like a suburb of another town found.</div>
+
+          <p style="margin:16px 0 6px; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--muted);">Properties not correctly nested under a Town/Suburb</p>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead><tr><th>Property</th><th>Source</th><th>Issue</th></tr></thead>
+              <tbody id="nestingIssuesTableBody"></tbody>
+            </table>
+          </div>
+          <div class="empty-state" id="nestingIssuesEmpty" style="display:none;">Every property, resort row and activity is correctly nested.</div>
+        </div>
+      </div>
+
       <div class="card map-jump-target" id="map-jump-towns-table" style="margin-top:20px;">
         <div class="btn-row" style="margin-top:0;">
           <button class="btn-outline" id="refreshTownsBtn">Refresh</button>
@@ -2001,24 +2270,6 @@
         </details>
       </div>
 
-      <div class="card map-jump-target" id="map-jump-properties-on-map" style="margin-top:20px;">
-        <h3 style="margin-top:0;">Properties on the map</h3>
-        <p style="margin-top:0;">Every "Listed" property with a latitude/longitude on file appears on the Explore Map by default. Untick to hide a specific one.</p>
-        <div class="table-wrap">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>Property</th>
-                <th>Location</th>
-                <th>Has coordinates</th>
-                <th>Show on map</th>
-                <th>Edit</th>
-              </tr>
-            </thead>
-            <tbody id="mapPropertiesTableBody"></tbody>
-          </table>
-        </div>
-        <div class="empty-state" id="mapPropertiesEmpty" style="display:none;">No listed properties yet.</div>
       </div>
     </section>
 
@@ -12066,6 +12317,14 @@
         btn.classList.toggle('outstanding', count > 0);
       }
 
+      window.setMapOverviewTreeCount = function(n){
+        window.__adminTreeWaiting = n;
+        setOverviewTile('mapOverviewNoZone', n);
+        var gridEl = document.getElementById('mapOverviewGrid');
+        var allClearEl = document.getElementById('mapOverviewAllClear');
+        if(n > 0 && gridEl && allClearEl){ gridEl.style.display = ''; allClearEl.style.display = 'none'; }
+      };
+
       function loadMapOverviewStats(adminData){
         var statusEl = document.getElementById('mapOverviewStatus');
         var gridEl = document.getElementById('mapOverviewGrid');
@@ -12083,9 +12342,9 @@
         }).length;
         var missingCoordsTotal = missingListed + missingResortList + missingActivities;
 
-        var noZoneTotal = (adminData.properties || []).filter(function(p){
-          return typeof p.latitude === 'number' && typeof p.longitude === 'number' && !p.zone;
-        }).length;
+        // Places still waiting for the location tree (counted by the Location
+        // tree card, which calls setMapOverviewTreeCount when it has counted).
+        var noZoneTotal = window.__adminTreeWaiting || 0;
 
         Promise.all([
           mapAdminPost('listPendingNewStockNetworkProperties', {}).catch(function(){ return null; }),
@@ -12100,6 +12359,7 @@
 
           setOverviewTile('mapOverviewNewSn', newSn);
           setOverviewTile('mapOverviewMissingCoords', missingCoordsTotal);
+          noZoneTotal = window.__adminTreeWaiting || 0; // the tree count may have arrived meanwhile
           setOverviewTile('mapOverviewNoZone', noZoneTotal);
           setOverviewTile('mapOverviewSnReview', snReview);
           setOverviewTile('mapOverviewInactive', inactive);
@@ -12127,7 +12387,7 @@
         var tileTargets = {
           mapOverviewNewSn: 'map-jump-new-sn-properties',
           mapOverviewMissingCoords: 'map-jump-master',
-          mapOverviewNoZone: 'map-jump-no-zone',
+          mapOverviewNoZone: 'map-jump-tree',
           mapOverviewSnReview: 'map-jump-sn-review',
           mapOverviewInactive: 'map-jump-find-fix-coords',
           mapOverviewFieldFix: 'map-jump-sn-review'
