@@ -11,10 +11,10 @@
   var DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   var MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   var MONTH_FULL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-  var LOAD_DAYS = 180;
+  var FRESH_MS = 5 * 60 * 1000; // a loaded window is reused for 5 minutes
   function isPhone() { return window.innerWidth < 700; }
   var WINDOW = isPhone() ? 7 : 14;
-  window.addEventListener('resize', function () { var w = isPhone() ? 7 : 14; if (w !== WINDOW) { WINDOW = w; if (S.view === 'avail' && S.av) render(); } });
+  window.addEventListener('resize', function () { var w = isPhone() ? 7 : 14; if (w !== WINDOW) { WINDOW = w; if (S.view === 'avail' && S.av) loadAvailability(S.from); } });
   var aff = new URLSearchParams(location.search).get('aff') || '';
 
   var S = { token: null, prop: null, view: 'avail', av: null, from: null, sel: null, cart: [], searched: null, results: null,
@@ -50,21 +50,44 @@
   function fail(e) { S.err = e.message || String(e); S.busy = false; render(); }
 
   // ---------- data ----------
-  function loadAvailability(from) {
-    var start = from || today();
+  // Only the days on screen are read from Stock Network: the grid's 7 or 14
+  // days, or the calendar's month. Everything read is kept here (merged), so
+  // units picked in one window stay selected while moving Earlier / Later.
+  function isLoaded(a, b) { if (!S.av) return false; var lim = Date.now() - FRESH_MS; return each(a, b).every(function (n) { return (S.av.loaded[n] || 0) >= lim; }); }
+  function staleAll() { if (S.av) S.av.loaded = {}; }
+  function staleRange(a, b) { if (S.av) each(a, b).forEach(function (n) { delete S.av.loaded[n]; }); }
+  var inFlight = null;
+  function loadWindow(a, b) {
+    if (b <= today()) return render();
+    if (a < today()) a = today();
+    if (isLoaded(a, b)) return render();
+    var key = a + '|' + b; if (inFlight === key) return; inFlight = key;
     busy(true); render();
-    return api('availability', { from: start, to: add(start, LOAD_DAYS) }).then(function (d) {
-      S.av = d; S.busy = false;
-      if (!S.from || S.from < d.from || add(S.from, WINDOW) > d.to) S.from = firstOpen(d) || d.from;
+    return api('availability', { from: a, to: b }).then(function (d) {
+      inFlight = null; S.busy = false;
+      var av = S.av || { nights: {}, nightRates: {}, loaded: {} };
+      av.units = d.units; av.minStay = d.minStay; av.snapshotAt = d.snapshotAt;
+      d.units.forEach(function (u) {
+        var n = (av.nights[u.name] = av.nights[u.name] || {}), r = (av.nightRates[u.name] = av.nightRates[u.name] || {});
+        Object.keys(d.nights[u.name] || {}).forEach(function (k) { n[k] = d.nights[u.name][k]; delete r[k]; });
+        Object.keys(d.nightRates[u.name] || {}).forEach(function (k) { r[k] = d.nightRates[u.name][k]; });
+      });
+      var ms = Date.now(); each(a, b).forEach(function (k) { av.loaded[k] = ms; });
+      S.av = av;
       if (!S.calUnit && d.units.length) S.calUnit = d.units[0].name;
-      if (!S.calMonth) S.calMonth = S.from.slice(0, 7);
       render();
-    }).catch(fail);
+    }).catch(function (e) { inFlight = null; fail(e); });
   }
-  function firstOpen(d) {
-    var days = each(d.from, d.to);
-    for (var i = 0; i < days.length; i++) for (var u = 0; u < d.units.length; u++) { var c = d.nights[d.units[u].name][days[i]]; if (c && c.s === 'open') return days[i]; }
-    return null;
+  function loadAvailability(from) {
+    S.from = from || S.from || today();
+    if (S.from < today()) S.from = today();
+    if (!S.calMonth) S.calMonth = S.from.slice(0, 7);
+    return loadWindow(S.from, add(S.from, WINDOW));
+  }
+  function loadMonth() {
+    var first = S.calMonth + '-01', y = +S.calMonth.slice(0, 4), m = +S.calMonth.slice(5, 7);
+    var next = new Date(Date.UTC(y, m, 1)).toISOString().slice(0, 10);
+    return loadWindow(first, next);
   }
   function stateOf(unit, n) { var r = S.av && S.av.nights[unit]; return (r && r[n]) || { s: 'na' }; }
   function inCart(unit, n) { return S.cart.some(function (c) { return c.unit === unit && n >= c.start && n < c.end; }); }
@@ -169,7 +192,7 @@
     });
     days.forEach(function (d) { if (dow(d) === 'Fri' || dow(d) === 'Sat') weekendAll += units.length; });
     h += '<div class="pa-label" style="align-self:center;color:#0e2f44">Units open</div>' + days.map(function (d) { var n = perNight[d] || 0; return '<div style="text-align:center;font:700 13px Montserrat,sans-serif;color:' + (n ? '#0e2f44' : '#8a3a00') + '">' + n + '/' + units.length + '</div>'; }).join('');
-    h += '</div></div></section>';
+    h += '</div></div>' + (totalOpen ? '' : '<p class="pa-hint" style="margin-top:10px">Nothing open on Stock Network in these days. Use Later ›, or search your dates above.</p>') + '</section>';
     // cart
     if (S.cart.length) {
       var tot = S.cart.reduce(function (t, c) { return t + (priceOf(c.unit, c.start, c.end) || 0); }, 0);
@@ -221,7 +244,8 @@
     for (var d = 1; d <= days; d++) {
       var iso = ym + '-' + (d < 10 ? '0' + d : d), c = stateOf(S.calUnit, iso), past = iso < today();
       var look = { open: ['#ffffff', '#0e2f44', 'Open'], na: ['#f3f5f5', '#6b7477', 'Not on SN'], sn: ['#0e2f44', '#ffffff', 'Booked on SN'], hub: ['#0e2f44', '#ffffff', c.ref || 'Booked'], pending: ['#fff4e5', '#6b3a00', (CH[c.ch] || '') + ' · not on SN yet'], clash: ['#fff4e5', '#6b3a00', 'Clash'], airbnb: ['#ffe0da', '#7a1f12', 'Airbnb ' + (c.ref || '')], bcom: ['#dbe6ff', '#0b2f80', 'Booking.com ' + (c.ref || '')], lekke: ['#d9f2e3', '#0f5a32', 'LekkeSlaap ' + (c.ref || '')] }[c.s] || ['#fff', '#0e2f44', ''];
-      if (!S.av.nights[S.calUnit] || iso < S.av.from || iso >= S.av.to) look = ['#fff', '#8a9699', past ? '' : '…'];
+      if (past) look = ['#fff', '#8a9699', ''];
+      else if (!S.av.nights[S.calUnit] || !S.av.loaded[iso]) look = ['#fff', '#8a9699', '…'];
       h += '<div class="day" style="background:' + look[0] + ';color:' + look[1] + (past ? ';opacity:.55' : '') + '"><b>' + d + '</b><span>' + esc(look[2]) + '</span></div>';
     }
     h += '</div></div><p class="pa-hint" style="margin-top:10px">Change availability or rates on Stock Network. The hub picks up changes within 15 minutes.</p></div>';
@@ -232,6 +256,15 @@
   function viewChan() {
     if (!S.channels) return propHeader() + '<div class="pa-card pa-hint">Loading channels…</div>';
     var st = S.channels.settings || {}, h = propHeader();
+    (S.channels.unitNotices || []).forEach(function (n) {
+      var fresh = (S.channels.unitNotices || []).map(function (x) { return x.name; }), linked = S.channels.linkedUnits || [];
+      var others = S.channels.units.map(function (u) { return u.name; }).filter(function (x) { return fresh.indexOf(x) < 0; }).sort(function (x, y) { return (linked.indexOf(y) >= 0) - (linked.indexOf(x) >= 0); });
+      h += '<section class="pa-card" style="border-color:#f5c98a;background:#fff4e5" aria-label="New unit"><p class="pa-h2" style="color:#6b3a00">New unit on Stock Network: ' + esc(n.name) + '</p>' +
+        '<p class="pa-hint" style="color:#6b3a00">If this is a unit that was renamed on Stock Network, move its channel links across so its calendars keep working (its old Avante links keep working too).</p>' +
+        '<div class="pa-row" style="margin-top:8px">' + (others.length ? '<div class="pa-field" style="flex:1 1 200px"><label class="pa-label" for="pa-mv-' + esc(n.name) + '">Renamed from</label><select id="pa-mv-' + esc(n.name) + '">' + others.map(function (o) { return '<option>' + esc(o) + '</option>'; }).join('') + '</select></div>' +
+        '<button type="button" class="pa-btn" data-act="unitMove" data-u="' + esc(n.name) + '">Move links to ' + esc(n.name) + '</button>' : '') +
+        '<button type="button" class="pa-btn ghost" data-act="unitNew" data-u="' + esc(n.name) + '">It\'s a new unit</button></div></section>';
+    });
     h += '<section class="pa-card" aria-label="Reservation settings"><p class="pa-h2">Reservation settings</p><p class="pa-hint">Used when the hub books another channel\'s reservation onto Stock Network (client name = the channel).</p><div class="pa-form" style="margin-top:10px">' +
       '<div class="pa-field"><label class="pa-label" for="pa-se">Email on SN reservations</label><input id="pa-se" type="email" value="' + esc(st.email || '') + '" placeholder="Your reservations inbox"></div>' +
       '<div class="pa-field"><label class="pa-label" for="pa-sp">Phone on SN reservations (required)</label><input id="pa-sp" type="tel" value="' + esc(st.phone || '') + '"></div>' +
@@ -264,7 +297,8 @@
         h += '<div class="pa-card" style="margin:0;box-shadow:none"><div class="pa-row" style="justify-content:space-between;align-items:center"><b style="font:700 14px Montserrat,sans-serif;color:#0e2f44">' + esc(c.label) + '</b><span class="pa-pill" style="background:' + badge[0] + ';color:' + badge[1] + '">' + esc(badge[2]) + '</span></div>' +
           '<label class="pa-label" style="display:block;margin-top:10px">Avante link for ' + esc(c.label) + '</label><div class="pa-copy"><input type="text" readonly value="' + esc(c.exportUrl) + '" aria-label="Avante link for ' + esc(u.name) + ' on ' + esc(c.label) + '"><button type="button" class="pa-btn small" data-act="copy" data-text="' + esc(c.exportUrl) + '">Copy</button></div>' +
           '<label class="pa-label" style="display:block;margin-top:10px" for="pa-imp-' + esc(u.name + c.key) + '">' + esc(c.label) + '\'s calendar link</label><input id="pa-imp-' + esc(u.name + c.key) + '" type="url" data-imp="' + esc(u.name) + '|' + c.key + '" value="' + esc(c.importUrl) + '" placeholder="https://… .ics">' +
-          (c.error ? '<p class="pa-err" style="margin-top:8px">' + esc(c.error) + '</p>' : '') + '</div>';
+          (c.error ? '<p class="pa-err" style="margin-top:8px">' + esc(c.error) + '</p>' : '') +
+          (c.status === 'ok' ? '<p class="pa-hint" style="margin:8px 0 0">' + (c.next && c.next.length ? 'Next on this link: <b style="color:#0e2f44">' + c.next.map(function (x) { return short(x.start) + ' – ' + short(x.end); }).join(', ') + '</b>. Check these match ' + esc(u.name) + ' on ' + esc(c.label) + '.' : 'No upcoming bookings on this link.') + '</p>' : '') + '</div>';
       });
       h += '</div>';
     });
@@ -407,7 +441,8 @@
   function setView(v) {
     S.view = v; S.err = null; S.msg = null; render();
     if (!S.prop) return;
-    if ((v === 'avail' || v === 'cal') && !S.av) loadAvailability();
+    if (v === 'avail') loadAvailability(S.from);
+    if (v === 'cal') { if (!S.calMonth) S.calMonth = (S.from || today()).slice(0, 7); loadMonth(); }
     if (v === 'chan') Promise.all([api('channels'), api('channelEvents')]).then(function (r) { S.channels = r[0]; S.events = r[1].events; render(); }).catch(fail);
     if (v === 'book') api('find', { q: S.findQ }).then(function (d) { S.bookings = d.bookings; S.payMode = d.payMode; render(); }).catch(fail);
   }
@@ -419,7 +454,7 @@
   }
   function afterChange(done) {
     S.busy = false; S.modal = { done: done }; S.cart = []; S.sel = null; S.results = null; S.bookings = null;
-    loadAvailability(S.av ? S.av.from : null);
+    staleAll(); loadAvailability(S.from);
   }
   var findTimer = null;
 
@@ -475,14 +510,14 @@
       if (!confirm('Mark ' + t.dataset.ref + ' as paid by EFT?\n\nOnly do this once the money is in your account. A paid booking is locked: it can\'t be changed in the hub, and cancelling needs the affiliate\'s approval.\n\nAlso mark it paid in Stock Network, so SN doesn\'t auto-cancel the request.')) return;
       return api('markPaid', { ref: t.dataset.ref }).then(function () { S.msg = t.dataset.ref + ' marked as paid (EFT). Remember to mark it paid in Stock Network too.'; return api('find', { q: S.findQ }).then(function (d) { S.bookings = d.bookings; S.payMode = d.payMode; render(); }); }).catch(fail);
     }
-    if (a === 'shift') { var nf = add(S.from, +t.dataset.n); if (nf < today()) nf = today(); S.from = nf; S.sel = null; if (add(nf, WINDOW) > S.av.to || nf < S.av.from) return loadAvailability(nf); return render(); }
+    if (a === 'shift') { var nf = add(S.from, +t.dataset.n); if (nf < today()) nf = today(); return loadAvailability(nf); }
     if (a === 'search') {
       var ci = val('pa-qin'), co = val('pa-qout'); S.searched = { ci: ci, co: co };
       return api('search', { checkIn: ci, checkOut: co }).then(function (d) {
         S.results = d;
-        if (ci < S.from || ci >= add(S.from, WINDOW)) S.from = ci;
-        if (ci < S.av.from || co > S.av.to) return loadAvailability(ci);
-        render();
+        // The search read the stay and the next 2 weeks, so showing them costs no extra call to SN.
+        if (ci < S.from || ci >= add(S.from, WINDOW)) { staleRange(ci, co > add(ci, 14) ? co : add(ci, 14)); return loadAvailability(ci); }
+        staleRange(ci, co); loadWindow(ci, co);
       }).catch(fail);
     }
     if (a === 'selectResult') { S.cart.push({ unit: t.dataset.u, start: S.results.checkIn, end: S.results.checkOut }); S.results = null; return render(); }
@@ -499,7 +534,7 @@
     if (a === 'calUnit') { S.calUnit = t.dataset.u; return render(); }
     if (a === 'calMonth') {
       var y = +S.calMonth.slice(0, 4), mo = +S.calMonth.slice(5, 7) - 1 + (+t.dataset.n); var dt = new Date(Date.UTC(y, mo, 1)); S.calMonth = dt.toISOString().slice(0, 7);
-      var mStart = S.calMonth + '-01'; if (mStart < S.av.from || add(mStart, 31) > S.av.to) return loadAvailability(mStart < today() ? today() : mStart); return render();
+      return loadMonth();
     }
     if (a === 'copy' || a === 'copyShare') {
       var text = a === 'copy' ? t.dataset.text : val('pa-share');
@@ -517,14 +552,14 @@
     if (a === 'openFind') { S.modal = { type: 'find' }; return api('find', { q: S.findQ }).then(function (d) { S.found = d.bookings; render(); }).catch(fail); }
     if (a === 'editBooking') {
       var list = (S.found || []).concat(S.bookings || []); var bk = list.find(function (x) { return x.ref === t.dataset.ref; });
-      if (!bk) return; S.edit = bk; S.modal = { type: 'edit' }; if (!S.av) loadAvailability(); return render();
+      if (!bk) return; S.edit = bk; S.modal = { type: 'edit' }; if (!S.av) loadAvailability(S.from); return render();
     }
     if (a === 'saveEdit') {
       var editBody = { ref: S.edit.ref, change: { unit: val('pa-eu'), start: val('pa-ei'), end: val('pa-eo'), guest: S.edit.origin === 'channel' ? undefined : { first: val('pa-gf'), last: val('pa-gl'), email: val('pa-ge'), cellphone: val('pa-gc') } } };
       busy(true); render();
       return api('edit', editBody)
         .then(function (d) { afterChange(d.booking && d.replaced ? { title: 'Booking ' + d.booking.ref + ' created', text: d.replaced + ' was cancelled on Stock Network and replaced by ' + d.booking.ref + ' · ' + money(d.booking.total) + '. Send the guest the new payment link.', pay: d.pay } : { title: 'Details updated', text: 'The unit and dates are unchanged, so ' + S.edit.ref + ' stays as it is on Stock Network.' }); })
-        .catch(function (err) { S.busy = false; S.err = err.message; S.modal = null; render(); loadAvailability(S.av && S.av.from); });
+        .catch(function (err) { S.busy = false; S.err = err.message; S.modal = null; staleAll(); render(); loadAvailability(S.from); });
     }
     if (a === 'removeUnit') {
       if (!confirm('Cancel ' + t.dataset.u + ' on ' + S.edit.ref + '? The other units stay booked.')) return;
@@ -548,13 +583,18 @@
         payMode: pmEl ? pmEl.value : 'both', bank: { bankName: val('pa-bn'), accountHolder: val('pa-bh'), accountNumber: val('pa-ba'), branchCode: val('pa-bb'), accountType: val('pa-bt'), note: val('pa-bx') } })
         .then(function (d) { S.channels = d; S.msg = 'Saved. The hub reads your channel links every 15 minutes.'; render(); window.scrollTo(0, 0); }).catch(function (e) { fail(e); window.scrollTo(0, 0); });
     }
+    if (a === 'unitMove' || a === 'unitNew') {
+      var from = a === 'unitMove' ? val('pa-mv-' + t.dataset.u) : '';
+      if (from && !confirm('Move the channel links, prices and hub bookings of ' + from + ' to ' + t.dataset.u + '? ' + from + ' will no longer show in the hub.')) return;
+      return api('unitNotice', { name: t.dataset.u, from: from }).then(function (d) { S.channels = d; S.msg = from ? 'Moved ' + from + ' to ' + t.dataset.u + '.' : t.dataset.u + ' added as a new unit.'; staleAll(); render(); }).catch(fail);
+    }
     if (a === 'syncNow') {
       t.textContent = 'Checking…';
-      return api('syncNow').then(function (d) { return Promise.all([api('channels'), api('channelEvents')]).then(function (r) { S.channels = r[0]; S.events = r[1].events; S.msg = 'Checked: ' + d.result.read + ' links read, ' + d.result.added + ' added, ' + d.result.cancelled + ' cancelled' + (d.result.clashes ? ', ' + d.result.clashes + ' clashes' : '') + '.'; S.av = null; render(); }); }).catch(fail);
+      return api('syncNow').then(function (d) { return Promise.all([api('channels'), api('channelEvents')]).then(function (r) { S.channels = r[0]; S.events = r[1].events; S.msg = 'Checked: ' + d.result.read + ' links read, ' + d.result.added + ' added, ' + d.result.cancelled + ' cancelled' + (d.result.clashes ? ', ' + d.result.clashes + ' clashes' : '') + '.'; staleAll(); render(); }); }).catch(fail);
     }
     if (a === 'addEvent') {
       t.textContent = 'Adding…';
-      return api('addChannelEvent', { unit: t.dataset.u, channel: t.dataset.c, uid: t.dataset.uid }).then(function (d) { return api('channelEvents').then(function (r) { S.events = r.events; S.av = null; S.msg = 'Added to Stock Network as ' + d.event.ref + '.'; render(); }); }).catch(fail);
+      return api('addChannelEvent', { unit: t.dataset.u, channel: t.dataset.c, uid: t.dataset.uid }).then(function (d) { return api('channelEvents').then(function (r) { S.events = r.events; staleAll(); S.msg = 'Added to Stock Network as ' + d.event.ref + '.'; render(); }); }).catch(fail);
     }
   });
 
