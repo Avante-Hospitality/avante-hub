@@ -156,6 +156,7 @@ export class SNClient {
     if (d.status && d.status !== "Success") throw new SNError("Stock Network answered: " + d.status, r.status, d);
     return {
       reservationId: d.reservationId, refNo: d.reservationRefNo, status: d.reservationStatus, total: d.totalAmountIncl,
+      paymentUrl: d.paymentUrl || null, infoUrl: d.reservationInformationUrl || null, amountPaid: Number(d.amountPaid) || 0,
       details: (d.successfulItems || []).map((x) => ({ detailId: x.id, unit: x.unitName, start: isoDay(x.checkInDate), end: isoDay(x.checkOutDate) })),
       failed: d.failedItems || [],
     };

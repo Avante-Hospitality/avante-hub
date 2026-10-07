@@ -30,3 +30,8 @@ export function randomToken(bytes = 24) {
   const a = crypto.getRandomValues(new Uint8Array(bytes));
   return Array.from(a, (b) => b.toString(16).padStart(2, "0")).join("");
 }
+
+export async function sha256Hex(str) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(String(str)));
+  return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, "0")).join("");
+}
