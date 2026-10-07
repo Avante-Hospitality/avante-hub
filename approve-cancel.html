@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Approve cancellation · Avante Travel Hub</title>
+<link rel="preconnect" href="https://fonts.gstatic.com">
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Noto+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{ --teal:#0DCDC2; --teal-text:#08776f; --navy:#0e2f44; --mint:#f4fbfa; --line:#e3e9e8; --muted:#5f6b6e; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; font-family:'Noto Sans',sans-serif; color:#333; background:var(--mint); }
+  header{ background:#fff; border-bottom:1px solid var(--line); padding:14px 20px; font:800 20px Montserrat,sans-serif; color:var(--teal-text); }
+  header span{ color:var(--navy); font-weight:700; }
+  main{ max-width:520px; margin:24px auto; padding:0 16px; }
+  .card{ background:#fff; border:1.5px solid var(--line); border-radius:14px; padding:22px; box-shadow:0 10px 30px rgba(14,47,68,.06); }
+  h1{ font:700 20px Montserrat,sans-serif; color:var(--navy); margin:0 0 6px; }
+  .muted{ color:var(--muted); font-size:13.5px; line-height:1.5; }
+  .box{ background:var(--mint); border-radius:10px; padding:12px 14px; margin:14px 0; font-size:14px; line-height:1.6; }
+  .box b{ color:var(--navy); }
+  label{ display:block; font:700 11.5px Montserrat,sans-serif; text-transform:uppercase; letter-spacing:.06em; color:var(--teal-text); margin:16px 0 6px; }
+  input{ width:100%; min-height:46px; padding:0 12px; border:1.5px solid #dcdcdc; border-radius:8px; font-size:15px; }
+  button{ margin-top:14px; width:100%; min-height:48px; border:none; border-radius:8px; background:var(--navy); color:#fff; font:700 14.5px Montserrat,sans-serif; cursor:pointer; }
+  button[disabled]{ opacity:.5; }
+  .err{ margin-top:12px; color:#8a3a00; background:#fff4e5; border:1px solid #f5c98a; border-radius:8px; padding:10px 12px; font-size:13.5px; font-weight:600; }
+  .ok{ color:#065e58; background:#d4f5f2; border-radius:8px; padding:12px 14px; font-size:14px; font-weight:600; }
+  .warn{ color:#6b3a00; font-size:13px; margin-top:10px; }
+</style>
+</head>
+<body>
+<header>AVANTE <span>TRAVEL HUB</span></header>
+<main><div class="card" id="app"><p class="muted">Loading…</p></div></main>
+<script>
+(function(){
+  var app = document.getElementById('app');
+  var t = new URLSearchParams(location.search).get('t') || '';
+  function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function money(n){ return 'R' + String(Math.round(Number(n) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+  function api(action, extra){
+    return fetch('/api/property', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(Object.assign({ action: action, t: t }, extra || {})) })
+      .then(function(r){ return r.json(); });
+  }
+  function fail(msg){ app.innerHTML = '<h1>Approve cancellation</h1><div class="err">' + esc(msg) + '</div>'; }
+  if (!t) return fail('This approval link is incomplete.');
+  api('approvalInfo').then(function(d){
+    if (!d.ok) return fail(d.error);
+    if (d.status === 'Cancelled') return fail('Booking ' + d.ref + ' is already cancelled.');
+    app.innerHTML = '<h1>Approve cancellation</h1>' +
+      '<p class="muted"><b>' + esc(d.resortName) + '</b> asks you to approve cancelling this <b>paid</b> booking.</p>' +
+      '<div class="box"><b>Booking ' + esc(d.ref) + '</b><br>' + d.items.map(function(i){ return esc(i.unit) + ' · ' + esc(i.start) + ' to ' + esc(i.end); }).join('<br>') +
+      '<br>Guest: ' + esc(d.guest) + '<br>Paid: ' + money(d.amountPaid || d.total) + (d.paidEft ? ' (EFT)' : '') + '</div>' +
+      '<form id="f"><label for="pw">Your Avante hub password (affiliate ' + esc(d.aff) + ')</label>' +
+      '<input id="pw" type="password" autocomplete="current-password" required>' +
+      '<button type="submit" id="go">Approve and cancel on Stock Network</button>' +
+      '<p class="warn">This cancels the booking on Stock Network. Any refund to the guest is handled outside the hub.</p><div id="msg"></div></form>' +
+      '<p class="muted" style="margin-top:14px">Link valid until ' + esc(new Date(d.expiresAt).toLocaleString()) + '. If you didn\'t expect this, close this page: nothing is cancelled.</p>';
+    document.getElementById('f').addEventListener('submit', function(e){
+      e.preventDefault();
+      var btn = document.getElementById('go'), msg = document.getElementById('msg');
+      btn.disabled = true; btn.textContent = 'Cancelling…'; msg.innerHTML = '';
+      api('approveCancel', { password: document.getElementById('pw').value }).then(function(r){
+        if (r.ok) { app.innerHTML = '<h1>Cancellation approved</h1><div class="ok">Booking ' + esc(r.ref) + ' at ' + esc(r.resortName) + ' is now cancelled on Stock Network. The property has been notified.</div>'; return; }
+        btn.disabled = false; btn.textContent = 'Approve and cancel on Stock Network';
+        msg.innerHTML = '<div class="err">' + esc(r.error) + '</div>';
+      }).catch(function(){ btn.disabled = false; btn.textContent = 'Approve and cancel on Stock Network'; msg.innerHTML = '<div class="err">Connection problem. Try again.</div>'; });
+    });
+  }).catch(function(){ fail('Connection problem. Reload the page to try again.'); });
+})();
+</script>
+</body>
+</html>

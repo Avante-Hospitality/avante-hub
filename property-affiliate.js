@@ -11,7 +11,10 @@
   var DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   var MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   var MONTH_FULL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-  var WINDOW = 14, LOAD_DAYS = 180;
+  var LOAD_DAYS = 180;
+  function isPhone() { return window.innerWidth < 700; }
+  var WINDOW = isPhone() ? 7 : 14;
+  window.addEventListener('resize', function () { var w = isPhone() ? 7 : 14; if (w !== WINDOW) { WINDOW = w; if (S.view === 'avail' && S.av) render(); } });
   var aff = new URLSearchParams(location.search).get('aff') || '';
 
   var S = { token: null, prop: null, view: 'avail', av: null, from: null, sel: null, cart: [], searched: null, results: null,
@@ -139,13 +142,14 @@
     }
     h += '</section>';
     // grid
-    var cols = '150px repeat(' + WINDOW + ', minmax(0,1fr))';
+    var phone = isPhone();
+    var cols = (phone ? '62px' : '150px') + ' repeat(' + WINDOW + ', minmax(0,1fr))';
     h += '<section class="pa-card" aria-label="Unit by unit"><div class="pa-row" style="justify-content:space-between;align-items:center">' +
       '<div><p class="pa-h2">Unit by unit</p><div class="pa-hint">' + (S.sel ? 'Check-in ' + nice(S.sel.start) + ' on ' + esc(S.sel.unit) + '. Now click the last night of the stay.' : 'Click an open night to set check-in, then the last night of the stay. Repeat on other units to book several together.') + '</div></div>' +
-      '<div class="pa-row" style="gap:8px"><button type="button" class="pa-btn small ghost" data-act="shift" data-n="-' + WINDOW + '" aria-label="Previous two weeks">‹ Earlier</button><button type="button" class="pa-btn small ghost" data-act="shift" data-n="' + WINDOW + '" aria-label="Next two weeks">Later ›</button></div></div>';
+      '<div class="pa-row" style="gap:8px"><button type="button" class="pa-btn small ghost" data-act="shift" data-n="-' + WINDOW + '" aria-label="Previous ' + WINDOW + ' days">‹ Earlier</button><button type="button" class="pa-btn small ghost" data-act="shift" data-n="' + WINDOW + '" aria-label="Next ' + WINDOW + ' days">Later ›</button></div></div>';
     h += '<div class="pa-legend"><span><i style="background:#0DCDC2"></i>Open</span><span><i style="background:#e7ebeb"></i>Booked</span><span><i style="background:#fff4e5;border:2px dashed #ED8B00"></i>Channel booking not yet on SN</span><span><i style="background:#f3f5f5;border:1.5px dashed #c9d3d3"></i>Not on SN</span></div>';
-    h += '<div class="pa-grid-wrap"><div class="pa-grid" style="grid-template-columns:' + cols + '"><div class="pa-label" style="align-self:end">Unit</div>';
-    h += days.map(function (d) { return '<div class="hd">' + dow(d) + '<b>' + dObj(d).getUTCDate() + '</b>' + (dObj(d).getUTCDate() === 1 || d === days[0] ? MON[dObj(d).getUTCMonth()] : '') + '</div>'; }).join('');
+    h += '<div class="pa-grid-wrap"><div class="pa-grid' + (phone ? ' phone' : '') + '" style="grid-template-columns:' + cols + '"><div class="pa-label" style="align-self:end">Unit</div>';
+    h += days.map(function (d) { return '<div class="hd">' + (phone ? dow(d).slice(0, 2) : dow(d)) + '<b>' + dObj(d).getUTCDate() + '</b>' + (dObj(d).getUTCDate() === 1 || d === days[0] ? MON[dObj(d).getUTCMonth()] : '') + '</div>'; }).join('');
     var perNight = {}, totalOpen = 0, weekend = 0, weekendAll = 0;
     units.forEach(function (u) {
       var open = 0, cells = '';
@@ -157,10 +161,11 @@
         else if (st === 'pending' || st === 'clash') { cls = 'warn'; lbl = st === 'clash' ? 'Clash' : 'Pending'; }
         else { cls = 'booked'; lbl = 'Booked'; }
         if (isOpen || cls === 'sel') { open++; totalOpen++; perNight[d] = (perNight[d] || 0) + 1; if (dow(d) === 'Fri' || dow(d) === 'Sat') weekend++; }
-        cells += isOpen ? '<button type="button" class="pa-cell ' + cls + '" data-act="cell" data-u="' + esc(u.name) + '" data-d="' + d + '" aria-label="' + esc(u.name) + ', ' + nice(d) + ', open">' + lbl + '</button>'
-          : '<div class="pa-cell ' + cls + '" aria-label="' + esc(u.name) + ', ' + nice(d) + ', ' + lbl + '">' + lbl + '</div>';
+        var shown = phone ? ({ Selected: '✓', 'Check-in': 'In', Clash: '!', Pending: '!' }[lbl] || '') : lbl;
+        cells += isOpen ? '<button type="button" class="pa-cell ' + cls + '" data-act="cell" data-u="' + esc(u.name) + '" data-d="' + d + '" aria-label="' + esc(u.name) + ', ' + nice(d) + ', open">' + shown + '</button>'
+          : '<div class="pa-cell ' + cls + '" aria-label="' + esc(u.name) + ', ' + nice(d) + ', ' + lbl + '" title="' + lbl + '">' + shown + '</div>';
       });
-      h += '<div class="unit"><b>' + esc(u.name) + '</b><span>' + open + ' of ' + WINDOW + ' open</span></div>' + cells;
+      h += '<div class="unit"><b>' + esc(u.name) + '</b><span>' + open + (phone ? '/' + WINDOW : ' of ' + WINDOW + ' open') + '</span></div>' + cells;
     });
     days.forEach(function (d) { if (dow(d) === 'Fri' || dow(d) === 'Sat') weekendAll += units.length; });
     h += '<div class="pa-label" style="align-self:center;color:#0e2f44">Units open</div>' + days.map(function (d) { var n = perNight[d] || 0; return '<div style="text-align:center;font:700 13px Montserrat,sans-serif;color:' + (n ? '#0e2f44' : '#8a3a00') + '">' + n + '/' + units.length + '</div>'; }).join('');
@@ -175,7 +180,7 @@
         '<button type="button" class="pa-btn teal" data-act="openBook">' + (S.cart.length === 1 ? 'Book this unit' : 'Book ' + S.cart.length + ' units together') + '</button></section>';
     }
     // stats
-    h += '<div class="pa-stats"><div class="pa-stat" style="background:#0e2f44;color:#fff"><b>' + totalOpen + ' <small style="font-size:16px;color:#d6e2e9">of ' + units.length * WINDOW + '</small></b><span style="color:#d6e2e9">unit-nights open to sell in these 14 days</span></div>' +
+    h += '<div class="pa-stats"><div class="pa-stat" style="background:#0e2f44;color:#fff"><b>' + totalOpen + ' <small style="font-size:16px;color:#d6e2e9">of ' + units.length * WINDOW + '</small></b><span style="color:#d6e2e9">unit-nights open to sell in these ' + WINDOW + ' days</span></div>' +
       '<div class="pa-stat" style="background:#f4fbfa;border:1.5px solid #e3e9e8"><b style="color:#0e2f44">' + (perNight[days[0]] || 0) + ' <small style="font-size:16px">of ' + units.length + '</small></b><span>units open on ' + nice(days[0]) + '</span></div>' +
       '<div class="pa-stat" style="background:#fff4e5;border:1.5px solid #f5c98a;color:#6b3a00"><b>' + weekend + ' <small style="font-size:16px">of ' + weekendAll + '</small></b><span>Friday and Saturday unit-nights open</span></div></div>';
     // sell these + share
@@ -195,7 +200,7 @@
     h += '<div class="pa-two"><section aria-label="Sell these"><div class="pa-row" style="justify-content:space-between;align-items:center;margin-bottom:10px"><p class="pa-h2" style="margin:0">Sell these</p><div class="pa-seg" role="group" aria-label="Filter by unit">' +
       ['All units'].concat(units.map(function (u) { return u.name; })).map(function (n) { return '<button type="button" data-act="filter" data-u="' + esc(n) + '" aria-pressed="' + (S.unitFilter === n) + '">' + esc(n) + '</button>'; }).join('') + '</div></div>' +
       (stretches.length ? stretches.map(function (s) { return '<div class="pa-stretch"><div class="n"><b>' + s.n + '</b><span class="pa-hint">' + (s.n === 1 ? 'night' : 'nights') + '</span></div><div class="grow"><div class="pa-label">' + esc(s.unit) + '</div><b style="color:#0e2f44">' + nice(s.a) + ' – ' + nice(s.b) + '</b><div class="pa-hint">' + (s.n < (S.av.minStay || 2) ? 'Below the ' + (S.av.minStay || 2) + '-night minimum' : nw(s.n) + ' in a row') + '</div></div>' +
-        '<button type="button" class="pa-btn small" data-act="copy" data-text="' + esc(link(s.unit, s.a, s.b)) + '">Copy booking link</button></div>'; }).join('') : '<p class="pa-hint">Nothing open in these 14 days.</p>') +
+        '<button type="button" class="pa-btn small" data-act="copy" data-text="' + esc(link(s.unit, s.a, s.b)) + '">Copy booking link</button></div>'; }).join('') : '<p class="pa-hint">Nothing open in these ' + WINDOW + ' days.</p>') +
       '</section><section class="pa-card pa-soft" aria-label="Share your open dates"><p class="pa-h2">Share your open dates</p><p class="pa-hint">A ready-made message for WhatsApp, Facebook or email. It follows the unit filter.</p>' +
       '<label class="pa-label" for="pa-share">Message</label><textarea id="pa-share" rows="10">' + esc(lines.join('\n')) + '</textarea><button type="button" class="pa-btn teal" style="margin-top:10px" data-act="copyShare">Copy message</button></section></div>';
     return h;
@@ -235,6 +240,22 @@
       S.channels.units.map(function (u) { return '<div class="pa-field"><label class="pa-label" for="pa-pr-' + esc(u.name) + '" style="color:#0e2f44">' + esc(u.name) + '</label><input id="pa-pr-' + esc(u.name) + '" data-price="' + esc(u.name) + '" type="number" min="0" value="' + esc((st.prices || {})[u.name] || '') + '" placeholder="Uses the SN rate if empty"></div>'; }).join('') + '</div>' +
       '<label class="pa-check" style="display:flex;align-items:center;gap:10px;margin-top:14px"><input id="pa-auto" type="checkbox"' + (st.autoBook ? ' checked' : '') + ' style="width:18px;height:18px">Book other channels\' reservations onto Stock Network automatically</label>' +
       '<p class="pa-hint">Leave this off at first: new channel bookings then wait below for you to add them with one click, so you can check everything is right.</p></section>';
+    var bk = S.channels.bank || {}, pm = st.payMode || 'both';
+    var pmOpt = function (v, label, hint) { return '<label class="pa-check pa-radio"><input type="radio" name="pa-pm" value="' + v + '"' + (pm === v ? ' checked' : '') + '><span><b>' + label + '</b><br><span class="pa-hint">' + hint + '</span></span></label>'; };
+    h += '<section class="pa-card" aria-label="Guest payments"><p class="pa-h2">Guest payments</p><p class="pa-hint">How guests pay for bookings you make in the hub. Bookings from Airbnb, Booking.com and LekkeSlaap are paid on those channels.</p>' +
+      '<fieldset class="pa-fieldset"><legend class="pa-label">How guests can pay</legend>' +
+      pmOpt('both', 'Both (recommended)', 'Avante payment gateway link and EFT to your bank account.') +
+      pmOpt('gateway', 'Avante payment gateway only', 'Stock Network sets the booking to Paid automatically.') +
+      pmOpt('eft', 'EFT to our bank account only', 'You mark EFT payments as paid in the hub, and in Stock Network.') + '</fieldset>' +
+      '<p class="pa-label" style="margin:16px 0 6px">Your bank account for EFT</p><div class="pa-form">' +
+      '<div class="pa-field"><label class="pa-label" for="pa-bn" style="color:#0e2f44">Bank</label><input id="pa-bn" type="text" value="' + esc(bk.bankName || '') + '" placeholder="e.g. FNB"></div>' +
+      '<div class="pa-field"><label class="pa-label" for="pa-bh" style="color:#0e2f44">Account holder</label><input id="pa-bh" type="text" value="' + esc(bk.accountHolder || '') + '"></div>' +
+      '<div class="pa-field"><label class="pa-label" for="pa-ba" style="color:#0e2f44">Account number</label><input id="pa-ba" type="text" inputmode="numeric" autocomplete="off" value="' + esc(bk.accountNumber || '') + '"></div>' +
+      '<div class="pa-field"><label class="pa-label" for="pa-bb" style="color:#0e2f44">Branch code</label><input id="pa-bb" type="text" inputmode="numeric" value="' + esc(bk.branchCode || '') + '"></div>' +
+      '<div class="pa-field"><label class="pa-label" for="pa-bt" style="color:#0e2f44">Account type</label><select id="pa-bt">' + ['', 'Cheque / Current', 'Savings', 'Business'].map(function (o) { return '<option' + ((bk.accountType || '') === o ? ' selected' : '') + ' value="' + esc(o) + '">' + (o || 'Choose…') + '</option>'; }).join('') + '</select></div>' +
+      '<div class="pa-field"><label class="pa-label" for="pa-bx" style="color:#0e2f44">Note for guests (optional)</label><input id="pa-bx" type="text" value="' + esc(bk.note || '') + '" placeholder="e.g. Send proof of payment to …"></div></div>' +
+      '<p class="pa-hint">Kept encrypted. Guests see these only in the payment message you send them, with the booking reference to use.</p>' +
+      '<div class="pa-row" style="margin-top:12px"><button type="button" class="pa-btn" data-act="saveChannels">Save payment settings</button></div></section>';
     h += '<section class="pa-card" aria-label="Channel links"><div class="pa-row" style="justify-content:space-between;align-items:center"><div><p class="pa-h2">Channel links per unit</p><p class="pa-hint">Step 1: copy the Avante link into that unit\'s listing on the channel. Step 2: paste the channel\'s own calendar link back here.</p></div><button type="button" class="pa-btn ghost small" data-act="syncNow">Check channels now</button></div>';
     S.channels.units.forEach(function (u) {
       h += '<h3 style="font:700 15px Montserrat,sans-serif;color:#0e2f44;margin:18px 0 0">' + esc(u.name) + ' <span class="pa-hint" style="font-weight:600">· ' + esc(u.size) + '</span></h3><div class="pa-chan">';
@@ -257,19 +278,45 @@
   }
 
   // ---- Bookings ----
+  var PAY_PILL = { paid: ['#d4f5f2', '#065e58', 'Paid'], 'paid-eft': ['#d4f5f2', '#065e58', 'Paid (EFT)'], 'part-paid': ['#fff4e5', '#6b3a00', 'Part paid'], unpaid: ['#fff4e5', '#6b3a00', 'Unpaid'], channel: ['#eef2f2', '#333', 'Paid on channel'] };
+  function payPill(b) {
+    if (b.status === 'Cancelled') return '';
+    var p = PAY_PILL[b.payState] || PAY_PILL.unpaid;
+    return '<span class="pa-pill" style="background:' + p[0] + ';color:' + p[1] + '">' + p[2] + (b.payState === 'part-paid' ? ' ' + money(b.amountPaid) : '') + '</span>';
+  }
+  function statusPill(b) { var c = b.status === 'Cancelled' ? ['#e7ebeb', '#333'] : ['#dbe6ff', '#0b2f80']; return '<span class="pa-pill" style="background:' + c[0] + ';color:' + c[1] + '">' + esc(b.status) + '</span>'; }
+  function whoOf(b) { return b.origin === 'channel' ? (b.source || '') : ((b.guest && (b.guest.first + ' ' + b.guest.last).trim()) || ''); }
+  function bookingActions(b) {
+    var live = b.items.filter(function (i) { return !i.cancelled; });
+    if (b.status === 'Cancelled' || !live.length) return '';
+    var h = '<button type="button" class="pa-btn small" data-act="editBooking" data-ref="' + esc(b.ref) + '">' + (b.locked ? 'View' : 'Edit') + '</button>';
+    if (b.origin !== 'channel' && !b.locked) {
+      h += '<button type="button" class="pa-btn small ghost" data-act="payLink" data-ref="' + esc(b.ref) + '">Payment link</button>';
+      if (S.payMode !== 'gateway') h += '<button type="button" class="pa-btn small ghost" data-act="markPaid" data-ref="' + esc(b.ref) + '">Mark paid (EFT)</button>';
+    }
+    if (b.cancelRequest) h += '<span class="pa-hint" style="width:100%">Cancellation waiting for affiliate approval</span>';
+    return '<div class="pa-actions">' + h + '</div>';
+  }
   function viewBookings() {
     var h = propHeader();
     h += '<section class="pa-card"><div class="pa-row" style="justify-content:space-between;align-items:center"><p class="pa-h2">Bookings made or synced by the hub</p><div class="pa-field" style="flex:0 1 280px"><label class="pa-label" for="pa-bq">Search</label><input id="pa-bq" type="search" value="' + esc(S.findQ) + '" placeholder="Reference, guest, unit or channel"></div></div>';
     if (!S.bookings) return h + '<p class="pa-hint">Loading…</p></section>';
-    h += '<div class="pa-grid-wrap" style="margin-top:10px"><table class="pa-table"><thead><tr><th>Ref</th><th>Units and dates</th><th>Guest / channel</th><th>Amount</th><th>Status</th><th></th></tr></thead><tbody>';
-    h += S.bookings.length ? S.bookings.map(function (b) {
-      var live = b.items.filter(function (i) { return !i.cancelled; });
-      var stc = b.status === 'Cancelled' ? ['#e7ebeb', '#333'] : ['#d4f5f2', '#065e58'];
-      return '<tr><td><b>' + esc(b.ref) + '</b>' + (b.replaces ? '<div class="pa-hint">replaces ' + esc(b.replaces) + '</div>' : '') + '</td><td>' + b.items.map(function (i) { return (i.cancelled ? '<s>' : '') + esc(i.unit) + ' · ' + short(i.start) + ' – ' + short(i.end) + (i.cancelled ? '</s>' : ''); }).join('<br>') + '</td>' +
-        '<td>' + esc(b.origin === 'channel' ? (b.source || '') : ((b.guest && (b.guest.first + ' ' + b.guest.last)) || '')) + (b.origin !== 'channel' && b.source && b.source !== 'Direct' ? '<div class="pa-hint">via ' + esc(b.source) + '</div>' : '') + '</td><td>' + money(b.total) + '</td>' +
-        '<td><span class="pa-pill" style="background:' + stc[0] + ';color:' + stc[1] + '">' + esc(b.status) + '</span></td><td>' + (b.status !== 'Cancelled' && live.length ? '<button type="button" class="pa-btn small" data-act="editBooking" data-ref="' + esc(b.ref) + '">Edit</button>' : '') + '</td></tr>';
-    }).join('') : '<tr><td colspan="6" class="pa-hint">No bookings yet.</td></tr>';
-    h += '</tbody></table></div><p class="pa-hint">Stock Network bookings made outside the hub show on the Availability grid as Booked; manage those in Stock Network.</p></section>';
+    var units = function (b) { return b.items.map(function (i) { return (i.cancelled ? '<s>' : '') + esc(i.unit) + ' · ' + short(i.start) + ' – ' + short(i.end) + (i.cancelled ? '</s>' : ''); }).join('<br>'); };
+    if (!S.bookings.length) h += '<p class="pa-hint" style="margin-top:12px">No bookings yet.</p>';
+    else if (isPhone()) {
+      h += '<div class="pa-bk-list">' + S.bookings.map(function (b) {
+        return '<article class="pa-bk"><div class="pa-row" style="justify-content:space-between;align-items:center;gap:6px"><b style="font:700 15px Montserrat,sans-serif;color:#0e2f44">' + esc(b.ref) + '</b><span>' + statusPill(b) + ' ' + payPill(b) + '</span></div>' +
+          '<div style="font-size:13px;margin-top:6px;line-height:1.5">' + units(b) + '</div><div class="pa-hint">' + esc(whoOf(b)) + ' · ' + money(b.total) + (b.replaces ? ' · replaces ' + esc(b.replaces) : '') + '</div>' + bookingActions(b) + '</article>';
+      }).join('') + '</div>';
+    } else {
+      h += '<div class="pa-grid-wrap" style="margin-top:10px"><table class="pa-table"><thead><tr><th>Ref</th><th>Units and dates</th><th>Guest / channel</th><th>Amount</th><th>Status</th><th>Payment</th><th></th></tr></thead><tbody>';
+      h += S.bookings.map(function (b) {
+        return '<tr><td><b>' + esc(b.ref) + '</b>' + (b.replaces ? '<div class="pa-hint">replaces ' + esc(b.replaces) + '</div>' : '') + '</td><td>' + units(b) + '</td>' +
+          '<td>' + esc(whoOf(b)) + (b.origin !== 'channel' && b.source && b.source !== 'Direct' ? '<div class="pa-hint">via ' + esc(b.source) + '</div>' : '') + '</td><td>' + money(b.total) + '</td>' +
+          '<td>' + statusPill(b) + '</td><td>' + payPill(b) + '</td><td>' + bookingActions(b) + '</td></tr>';
+      }).join('') + '</tbody></table></div>';
+    }
+    h += '<p class="pa-hint">Paid bookings are locked: the guest contacts the property to change them, and cancelling needs the linked affiliate\'s approval. Stock Network bookings made outside the hub show on the Availability grid as Booked; manage those in Stock Network.</p></section>';
     return h;
   }
 
@@ -281,17 +328,53 @@
       '<div class="pa-card pa-soft"><p class="pa-h2">Rate your guests</p><p class="pa-hint">Coming after the hub launches: rate guests after their stay, shared only with Avante partner properties.</p></div>';
   }
 
+  // ---- Payment block (after booking, or "Payment link") ----
+  function payBlock(pay) {
+    if (!pay) return '';
+    S.payMsg = pay.message;
+    var h = '<div class="pa-pay"><p class="pa-label" style="margin:0">Payment</p>';
+    if (pay.noMethod) return h + '<p class="pa-err">No payment method is set up. Add your bank details or allow the payment gateway in Channels → Guest payments.</p></div>';
+    if (pay.gatewayUrl) h += '<div class="pa-actions"><button type="button" class="pa-btn teal" data-act="openPay" data-url="' + esc(pay.gatewayUrl) + '">Pay now</button><button type="button" class="pa-btn small ghost" data-act="copy" data-text="' + esc(pay.gatewayUrl) + '">Copy payment link</button></div>';
+    if (pay.bank) h += '<div class="pa-bankbox"><b>EFT</b><br>' + esc(pay.bank.bankName) + ' · ' + esc(pay.bank.accountHolder) + '<br>Account ' + esc(pay.bank.accountNumber) + ' · Branch ' + esc(pay.bank.branchCode || '') + (pay.bank.accountType ? ' · ' + esc(pay.bank.accountType) : '') + '</div>';
+    h += '<p class="pa-label" style="margin:6px 0 0">Send to the guest</p><div class="pa-actions">' +
+      '<a class="pa-btn small" style="display:inline-flex;align-items:center;text-decoration:none" href="' + esc(pay.whatsappUrl) + '" target="_blank" rel="noopener">WhatsApp</a>' +
+      (pay.emailUrl ? '<a class="pa-btn small ghost" style="display:inline-flex;align-items:center;text-decoration:none" href="' + esc(pay.emailUrl) + '">Email</a>' : '') +
+      '<button type="button" class="pa-btn small ghost" data-act="copyPayMsg">Copy message</button></div></div>';
+    return h;
+  }
+
   // ---- Modals ----
   function viewModal() {
     var m = S.modal, h = '<div class="pa-modal" data-act="backdrop"><div class="pa-dialog" role="dialog" aria-modal="true" aria-labelledby="pa-dlg-t">';
     var hdr = function (t, s) { return '<header><div><b id="pa-dlg-t">' + esc(t) + '</b><span>' + esc(s || (S.prop.resortName + ' · site ' + S.prop.site)) + '</span></div><button type="button" data-act="close" aria-label="Close">✕</button></header>'; };
-    if (m.done) return h + hdr(m.done.title) + '<div class="body"><p style="margin:0;font-size:14px;line-height:1.55">' + esc(m.done.text) + '</p><button type="button" class="pa-btn" style="align-self:flex-start" data-act="close">Done</button></div></div></div>';
+    if (m.type === 'pay') {
+      return h.replace('pa-dialog"', 'pa-dialog pa-dialog-wide"') + '<header><div><b id="pa-dlg-t">Pay booking</b><span>Secure payment page on Stock Network</span></div><button type="button" data-act="payBack" aria-label="Close payment">✕</button></header>' +
+        '<iframe class="pa-payframe" src="' + esc(m.url) + '" title="Stock Network payment"></iframe>' +
+        '<div class="pa-payfoot">Payment page not loading, or your bank asks to leave this window? <a href="' + esc(m.url) + '" target="_blank" rel="noopener">Open it in a new tab</a></div></div></div>';
+    }
+    if (m.done) {
+      var ap = m.done.approval;
+      return h + hdr(m.done.title) + '<div class="body"><p style="margin:0;font-size:14px;line-height:1.55">' + esc(m.done.text) + '</p>' +
+        payBlock(m.done.pay) +
+        (ap ? '<div class="pa-pay"><p class="pa-label" style="margin:0">Affiliate approval</p><p style="margin:0;font-size:13.5px;line-height:1.5">' + (ap.emailedTo ? 'Approval link emailed to ' + esc(ap.emailedTo) + '.' : 'The approval email could not be sent (no email on the affiliate\'s account).') + ' The link is valid for 24 hours and needs the affiliate\'s hub password.</p>' +
+          '<div class="pa-actions"><a class="pa-btn small" style="display:inline-flex;align-items:center;text-decoration:none" href="' + esc(ap.whatsappUrl) + '" target="_blank" rel="noopener">Send by WhatsApp' + (ap.hasPhone ? '' : ' (choose contact)') + '</a></div></div>' : '') +
+        '<button type="button" class="pa-btn" style="align-self:flex-start" data-act="close">Done</button></div></div></div>';
+    }
     if (m.type === 'find') {
       h += hdr('Find a Booking') + '<div class="body"><div class="pa-field"><label class="pa-label" for="pa-fq">Reference, guest name, unit or channel</label><input id="pa-fq" type="search" value="' + esc(S.findQ) + '" placeholder="e.g. J111672, Airbnb, FV10"></div>';
       h += (S.found || []).filter(function (b) { return b.status !== 'Cancelled'; }).map(function (b) { return '<div class="pa-result"><div class="grow"><b>' + esc(b.ref) + ' · ' + esc(b.items.filter(function (i) { return !i.cancelled; }).map(function (i) { return i.unit; }).join(', ')) + '</b><div class="pa-hint">' + esc(b.origin === 'channel' ? b.source : ((b.guest && (b.guest.first + ' ' + b.guest.last)) || '')) + ' · ' + b.items.filter(function (i) { return !i.cancelled; }).map(function (i) { return short(i.start) + ' – ' + short(i.end); }).join(', ') + '</div></div><button type="button" class="pa-btn small" data-act="editBooking" data-ref="' + esc(b.ref) + '">Edit</button></div>'; }).join('') || '<p class="pa-hint">No active booking matches.</p>';
       return h + '<p class="pa-hint">Stock Network can\'t edit a booking. Changing the unit or dates cancels it on SN and makes a new booking with a new reference.</p></div></div></div>';
     }
     var editing = m.type === 'edit', b = S.edit, live = editing ? b.items.filter(function (i) { return !i.cancelled; }) : null;
+    if (editing && b.locked) {
+      h += hdr('Booking ' + b.ref + ' · ' + (PAY_PILL[b.payState] || PAY_PILL.paid)[2]);
+      h += '<div class="body"><div class="pa-items">' + live.map(function (it) { return '<div class="pa-item"><b style="flex:1 1 140px;color:#0e2f44">' + esc(it.unit) + '</b><span style="flex:1 1 170px;font-size:13px">' + short(it.start) + ' – ' + short(it.end) + ' · ' + nw(nightsBetween(it.start, it.end)) + '</span></div>'; }).join('') +
+        '<div class="pa-row" style="justify-content:space-between"><span class="pa-label">' + esc(whoOf(b)) + '</span><b>' + money(b.total) + '</b></div></div>' +
+        '<div class="pa-lock"><b>Paid: locked</b><br>This booking can\'t be changed in the hub. The guest must contact the property, and changes are made in Stock Network. To cancel it, request cancellation: the affiliate linked to this property approves it with their hub password.</div>' +
+        (b.cancelRequest ? '<p class="pa-hint">Cancellation already requested ' + esc(new Date(b.cancelRequest.at).toLocaleString()) + '. Requesting again sends a new link.</p>' : '') +
+        '<div class="pa-row"><button type="button" class="pa-btn danger" data-act="cancelBooking"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'Sending…' : 'Request cancellation') + '</button><button type="button" class="pa-btn ghost" data-act="close">Close</button></div></div></div></div>';
+      return h;
+    }
     var items = editing ? live : S.cart, total = 0, short2 = false, g = editing ? (b.guest || {}) : {};
     h += hdr(editing ? 'Edit booking ' + b.ref : (S.cart.length > 1 ? 'New booking · ' + S.cart.length + ' units' : 'New booking on Stock Network'));
     h += '<div class="body"><div class="pa-items">' + items.map(function (it, i) {
@@ -313,6 +396,7 @@
       if (!editing) h += '<div class="pa-field"><label class="pa-label" for="pa-gn">Notes</label><textarea id="pa-gn" rows="2"></textarea></div>';
     }
     h += '<p class="pa-hint">' + (editing ? (live.length === 1 ? 'Saving a new unit or new dates cancels ' + b.ref + ' on Stock Network and makes a new booking with a new reference.' : 'Removing a unit cancels only that unit on Stock Network; the booking keeps its reference. To change dates, cancel and book again.') : (items.length > 1 ? 'All units go on one Stock Network reservation with one reference.' : 'Created on Stock Network as a Request, then blocked on your other channels within 15 minutes.')) + '</p>';
+    if (editing && b.origin !== 'channel') h += '<div class="pa-row"><button type="button" class="pa-btn small ghost" data-act="payLink" data-ref="' + esc(b.ref) + '">Payment link</button></div>';
     h += '<div class="pa-row">' + (editing ? (live.length === 1 ? '<button type="button" class="pa-btn" data-act="saveEdit"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'Saving…' : 'Save changes') + '</button>' : '') + '<button type="button" class="pa-btn danger" data-act="cancelBooking">Cancel this booking</button>'
       : '<button type="button" class="pa-btn" data-act="confirmBook"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'Booking…' : (items.length > 1 ? 'Book ' + items.length + ' units on Stock Network' : 'Make booking on Stock Network')) + '</button>') + '<button type="button" class="pa-btn ghost" data-act="close">Close</button></div>';
     return h + '</div></div></div>';
@@ -325,7 +409,13 @@
     if (!S.prop) return;
     if ((v === 'avail' || v === 'cal') && !S.av) loadAvailability();
     if (v === 'chan') Promise.all([api('channels'), api('channelEvents')]).then(function (r) { S.channels = r[0]; S.events = r[1].events; render(); }).catch(fail);
-    if (v === 'book') api('find', { q: S.findQ }).then(function (d) { S.bookings = d.bookings; render(); }).catch(fail);
+    if (v === 'book') api('find', { q: S.findQ }).then(function (d) { S.bookings = d.bookings; S.payMode = d.payMode; render(); }).catch(fail);
+  }
+  function closePay() {
+    var back = S.modal && S.modal.back; S.modal = back || null;
+    // The guest may just have paid: refresh payment status when the bookings list is next shown.
+    S.bookings = null; render();
+    if (S.view === 'book') setView('book');
   }
   function afterChange(done) {
     S.busy = false; S.modal = { done: done }; S.cart = []; S.sel = null; S.results = null; S.bookings = null;
@@ -369,7 +459,22 @@
     if (a === 'connect') return doConnect();
     if (a === 'pickResort') return doConnect(t.dataset.id);
     if (a === 'disconnect') { if (!confirm('Disconnect this property from the hub? Channel sync stops until you connect again.')) return; return api('disconnect').then(function () { setToken(null); S.prop = null; S.av = null; render(); }).catch(fail); }
+    if ((a === 'close' || a === 'backdrop') && S.modal && S.modal.type === 'pay') return closePay();
     if (a === 'close' || a === 'backdrop') { S.modal = null; S.edit = null; return render(); }
+    if (a === 'payBack') return closePay();
+    if (a === 'openPay') { S.modal = { type: 'pay', url: t.dataset.url, back: S.modal }; return render(); }
+    if (a === 'copyPayMsg') { var pm = S.payMsg || ''; (navigator.clipboard ? navigator.clipboard.writeText(pm) : Promise.reject()).then(function () { t.textContent = 'Copied'; }, function () { prompt('Copy this:', pm); }); return; }
+    if (a === 'payLink') {
+      t.textContent = 'Loading…';
+      return api('payInfo', { ref: t.dataset.ref }).then(function (d) {
+        if (d.booking.locked) { S.modal = { done: { title: d.booking.ref + ' is paid', text: 'Stock Network shows this booking as paid, so no payment link is needed.' } }; S.bookings = null; setView(S.view); return; }
+        S.modal = { done: { title: 'Payment for ' + d.booking.ref, text: d.booking.items.filter(function (i) { return !i.cancelled; }).map(function (i) { return i.unit + ' ' + short(i.start) + ' – ' + short(i.end); }).join(', ') + ' · ' + money(d.booking.total), pay: d.pay } }; render();
+      }).catch(fail);
+    }
+    if (a === 'markPaid') {
+      if (!confirm('Mark ' + t.dataset.ref + ' as paid by EFT?\n\nOnly do this once the money is in your account. A paid booking is locked: it can\'t be changed in the hub, and cancelling needs the affiliate\'s approval.\n\nAlso mark it paid in Stock Network, so SN doesn\'t auto-cancel the request.')) return;
+      return api('markPaid', { ref: t.dataset.ref }).then(function () { S.msg = t.dataset.ref + ' marked as paid (EFT). Remember to mark it paid in Stock Network too.'; return api('find', { q: S.findQ }).then(function (d) { S.bookings = d.bookings; S.payMode = d.payMode; render(); }); }).catch(fail);
+    }
     if (a === 'shift') { var nf = add(S.from, +t.dataset.n); if (nf < today()) nf = today(); S.from = nf; S.sel = null; if (add(nf, WINDOW) > S.av.to || nf < S.av.from) return loadAvailability(nf); return render(); }
     if (a === 'search') {
       var ci = val('pa-qin'), co = val('pa-qout'); S.searched = { ci: ci, co: co };
@@ -406,7 +511,7 @@
       if (!bookBody.guest.cellphone.trim()) { var gc = document.getElementById('pa-gc'); if (gc) { gc.focus(); gc.setAttribute('aria-invalid', 'true'); } return; }
       busy(true); render();
       return api('book', bookBody)
-        .then(function (d) { var b = d.booking; afterChange({ title: 'Booking ' + b.ref + ' created', text: b.items.map(function (i) { return i.unit + ' ' + short(i.start) + ' – ' + short(i.end); }).join(', ') + '. Status ' + b.status + ' on Stock Network. Your other channels are blocked within 15 minutes.' }); })
+        .then(function (d) { var b = d.booking; afterChange({ title: 'Booking ' + b.ref + ' created', text: b.items.map(function (i) { return i.unit + ' ' + short(i.start) + ' – ' + short(i.end); }).join(', ') + ' · ' + money(b.total) + '. Status ' + b.status + ' on Stock Network. Your other channels are blocked within 15 minutes.', pay: d.pay }); })
         .catch(function (err) { S.busy = false; S.err = err.message; S.modal = null; render(); });
     }
     if (a === 'openFind') { S.modal = { type: 'find' }; return api('find', { q: S.findQ }).then(function (d) { S.found = d.bookings; render(); }).catch(fail); }
@@ -418,7 +523,7 @@
       var editBody = { ref: S.edit.ref, change: { unit: val('pa-eu'), start: val('pa-ei'), end: val('pa-eo'), guest: S.edit.origin === 'channel' ? undefined : { first: val('pa-gf'), last: val('pa-gl'), email: val('pa-ge'), cellphone: val('pa-gc') } } };
       busy(true); render();
       return api('edit', editBody)
-        .then(function (d) { afterChange(d.booking && d.replaced ? { title: 'Booking ' + d.booking.ref + ' created', text: d.replaced + ' was cancelled on Stock Network and replaced by ' + d.booking.ref + '.' } : { title: 'Details updated', text: 'The unit and dates are unchanged, so ' + S.edit.ref + ' stays as it is on Stock Network.' }); })
+        .then(function (d) { afterChange(d.booking && d.replaced ? { title: 'Booking ' + d.booking.ref + ' created', text: d.replaced + ' was cancelled on Stock Network and replaced by ' + d.booking.ref + ' · ' + money(d.booking.total) + '. Send the guest the new payment link.', pay: d.pay } : { title: 'Details updated', text: 'The unit and dates are unchanged, so ' + S.edit.ref + ' stays as it is on Stock Network.' }); })
         .catch(function (err) { S.busy = false; S.err = err.message; S.modal = null; render(); loadAvailability(S.av && S.av.from); });
     }
     if (a === 'removeUnit') {
@@ -427,15 +532,21 @@
       return api('cancelUnit', { ref: S.edit.ref, unit: t.dataset.u }).then(function () { afterChange({ title: t.dataset.u + ' removed from ' + S.edit.ref, text: 'Only ' + t.dataset.u + ' was cancelled on Stock Network. The booking keeps its other units and its reference.' }); }).catch(fail);
     }
     if (a === 'cancelBooking') {
-      if (!confirm('Cancel ' + S.edit.ref + ' on Stock Network?')) return;
+      var locked = S.edit.locked;
+      if (!confirm(locked ? 'Request cancellation of PAID booking ' + S.edit.ref + '?\n\nThe affiliate linked to this property gets a link by email (and WhatsApp if you send it) and must approve with their hub password. Refunds are handled outside the hub.' : 'Cancel ' + S.edit.ref + ' on Stock Network?')) return;
       busy(true); render();
-      return api('cancel', { ref: S.edit.ref }).then(function () { afterChange({ title: 'Booking ' + S.edit.ref + ' cancelled', text: 'Cancelled on Stock Network. The nights are open again and your other channels are unblocked within 15 minutes.' }); }).catch(fail);
+      return api('cancel', { ref: S.edit.ref }).then(function (d) {
+        if (d.needsApproval) { S.busy = false; S.bookings = null; S.modal = { done: { title: 'Approval requested for ' + S.edit.ref, text: 'This booking is paid, so it is NOT cancelled yet. It will be cancelled on Stock Network as soon as the affiliate approves.', approval: d.approval } }; S.edit = null; render(); return; }
+        afterChange({ title: 'Booking ' + S.edit.ref + ' cancelled', text: d.alreadyCancelled ? 'It had already been cancelled in Stock Network.' : 'Cancelled on Stock Network. The nights are open again and your other channels are unblocked within 15 minutes.' });
+      }).catch(function (err) { S.busy = false; S.err = err.message; S.modal = null; render(); });
     }
     if (a === 'saveChannels') {
       var prices = {}; root.querySelectorAll('[data-price]').forEach(function (el) { prices[el.dataset.price] = el.value; });
       var channels = {}; root.querySelectorAll('[data-imp]').forEach(function (el) { var p = el.dataset.imp.split('|'); (channels[p[0]] = channels[p[0]] || {})[p[1]] = el.value.trim(); });
-      return api('saveSettings', { email: val('pa-se'), phone: val('pa-sp'), minStay: val('pa-sm'), autoBook: document.getElementById('pa-auto').checked, prices: prices, channels: channels })
-        .then(function (d) { S.channels = d; S.msg = 'Saved. The hub reads your channel links every 15 minutes.'; render(); }).catch(fail);
+      var pmEl = root.querySelector('input[name="pa-pm"]:checked');
+      return api('saveSettings', { email: val('pa-se'), phone: val('pa-sp'), minStay: val('pa-sm'), autoBook: document.getElementById('pa-auto').checked, prices: prices, channels: channels,
+        payMode: pmEl ? pmEl.value : 'both', bank: { bankName: val('pa-bn'), accountHolder: val('pa-bh'), accountNumber: val('pa-ba'), branchCode: val('pa-bb'), accountType: val('pa-bt'), note: val('pa-bx') } })
+        .then(function (d) { S.channels = d; S.msg = 'Saved. The hub reads your channel links every 15 minutes.'; render(); window.scrollTo(0, 0); }).catch(function (e) { fail(e); window.scrollTo(0, 0); });
     }
     if (a === 'syncNow') {
       t.textContent = 'Checking…';

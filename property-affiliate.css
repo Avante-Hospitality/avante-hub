@@ -29,7 +29,7 @@
 .pa-result .grow{ flex:1 1 200px; min-width:0; }
 .pa-price{ font:800 15px 'Montserrat',sans-serif; color:var(--pa-ink); }
 .pa-grid-wrap{ overflow-x:auto; }
-.pa-grid{ min-width:960px; display:grid; gap:4px; }
+.pa-grid{ min-width:0; display:grid; gap:4px; }
 .pa-grid .hd{ display:flex; flex-direction:column; align-items:center; font-size:11px; font-weight:600; color:var(--pa-ink); padding:4px 0; }
 .pa-grid .hd b{ font:800 15px 'Montserrat',sans-serif; }
 .pa-grid .unit{ display:flex; flex-direction:column; justify-content:center; padding-right:8px; }
@@ -89,9 +89,17 @@
 .pa label.pa-check input{ width:20px; height:20px; flex:none; }
 /* Unit names stay visible while the 14-day grid scrolls sideways */
 .pa-grid .unit, .pa-grid > .pa-label{ position:sticky; left:0; z-index:2; background:#fff; }
+/* Phones: 7 days that fit the screen, no sideways scrolling */
+.pa-grid.phone{ min-width:0; gap:3px; }
+.pa-grid.phone .hd{ font-size:10px; padding:2px 0; }
+.pa-grid.phone .hd b{ font-size:14px; }
+.pa-grid.phone .unit{ padding-right:4px; }
+.pa-grid.phone .unit b{ font-size:12.5px; line-height:1.15; word-break:break-word; }
+.pa-grid.phone .unit span{ font-size:11px; }
+.pa-grid.phone > .pa-label{ font-size:9.5px; letter-spacing:.03em; }
+.pa-grid.phone .pa-cell{ min-height:40px; font-size:12px; font-weight:700; border-radius:6px; }
+.pa-grid.phone .pa-cell.na{ border-width:1.5px; }
 @media (max-width:600px){
-  .pa-grid{ min-width:820px; }
-  .pa-grid .unit{ padding-right:6px; }
   .pa-cal{ min-width:0; gap:3px; }
   .pa-cal .dow{ font-size:10px; padding:0 2px 2px; }
   .pa-cal .day{ min-height:52px; padding:4px; border-radius:6px; }
@@ -100,4 +108,28 @@
   .pa-dialog header{ padding:14px 16px; }
   .pa-modal{ padding:16px 10px; }
   .pa-cart{ bottom:8px; }
+}
+
+/* ---- Payments ---- */
+.pa-fieldset{ border:none; margin:12px 0 0; padding:0; display:flex; flex-direction:column; gap:8px; min-width:0; }
+.pa-radio{ display:flex; gap:10px; align-items:flex-start; padding:10px 12px; border:1.5px solid #e3e9e8; border-radius:10px; cursor:pointer; text-transform:none; letter-spacing:0; font:400 14px 'Noto Sans',sans-serif; color:#333; }
+.pa-radio input{ margin-top:3px; width:18px; height:18px; flex:0 0 auto; accent-color:#0e2f44; }
+.pa-radio b{ color:#0e2f44; }
+.pa-radio:has(input:checked){ border-color:#0e2f44; background:#f4fbfa; }
+.pa-pay{ border:1.5px solid #e3e9e8; border-radius:12px; padding:14px; display:flex; flex-direction:column; gap:10px; background:#f9fdfc; }
+.pa-actions{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.pa-bankbox{ background:#fff; border:1px dashed #b9cfcc; border-radius:8px; padding:10px 12px; font-size:13.5px; line-height:1.55; overflow-wrap:anywhere; }
+.pa-lock{ background:#fff4e5; border:1px solid #f5c98a; color:#6b3a00; border-radius:10px; padding:12px 14px; font-size:13.5px; line-height:1.55; }
+.pa-dialog-wide{ max-width:820px; display:flex; flex-direction:column; }
+.pa-payframe{ display:block; width:100%; height:min(72vh,720px); border:0; background:#fff; }
+.pa-payfoot{ padding:10px 16px; font-size:12.5px; color:#5f6b6e; border-top:1px solid #e3e9e8; }
+.pa-payfoot a{ color:#08776f; font-weight:700; }
+.pa-bk-list{ display:flex; flex-direction:column; gap:10px; margin-top:12px; }
+.pa-bk{ border:1.5px solid #e3e9e8; border-radius:12px; padding:12px; min-width:0; overflow-wrap:anywhere; }
+.pa-bk .pa-actions{ margin-top:10px; }
+.pa-table .pa-actions{ flex-direction:column; align-items:stretch; }
+@media (max-width:600px){
+  .pa-modal:has(.pa-dialog-wide){ padding:0; }
+  .pa-dialog-wide{ border-radius:0; min-height:100vh; }
+  .pa-payframe{ flex:1 1 auto; height:calc(100vh - 120px); }
 }
