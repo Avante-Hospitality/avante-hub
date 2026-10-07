@@ -29,12 +29,13 @@
   .tab[aria-selected="true"]{color:var(--navy);border-bottom-color:var(--teal)}
   .tab .n{font-weight:600;color:var(--muted);margin-left:4px}
   .ptop{padding:10px 12px;border-bottom:1px solid var(--line);display:grid;gap:6px}
-  #q{width:100%;padding:9px 12px;border:1.5px solid var(--line);border-radius:8px;font:inherit;background:var(--mint)}
-  #q:focus{outline:none;border-color:var(--teal)}
+  #q,#pick{width:100%;padding:9px 12px;border:1.5px solid var(--line);border-radius:8px;font:inherit;background:var(--mint)}
+  #q:focus,#pick:focus{outline:none;border-color:var(--teal)}
   .crumbs{font-size:12.5px;color:var(--muted);min-height:17px}
   .tree{overflow-y:auto;padding:6px 6px 14px;flex:1}
   .row{display:flex;align-items:center;gap:6px;width:100%;border:0;background:none;text-align:left;padding:5px 6px;border-radius:7px;cursor:pointer;color:var(--ink);font:inherit;font-size:13.5px}
   .row:hover{background:var(--mint)}
+  .row.inview{box-shadow:inset 3px 0 0 var(--teal-dark);background:#e9f8f6}
   .row.sel{background:var(--mint);box-shadow:inset 3px 0 0 var(--teal)}
   .row:focus-visible,.tab:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(--teal);outline-offset:1px}
   .tw{width:14px;flex:none;color:var(--muted);font-size:11px;transition:transform .15s}
@@ -88,7 +89,9 @@
         <button class="tab" role="tab" id="tabA" aria-selected="false">Activities<span class="n" id="nA"></span></button>
       </div>
       <div class="ptop">
-        <input id="q" type="search" placeholder="Search a place, property or activity" aria-label="Search the tree">
+        <input id="pick" list="names" placeholder="Choose a property or activity by name" aria-label="Choose a property or activity by name" autocomplete="off">
+        <datalist id="names"></datalist>
+        <input id="q" type="search" placeholder="Search places in this tree" aria-label="Search the tree">
         <div class="crumbs" id="crumbs"></div>
       </div>
       <div class="status" id="status">Loading properties and activities…</div>
@@ -157,9 +160,16 @@ function cleanPlace(g,lat,lng){ // Google answer -> tree levels, same rules as t
   if(RULES.parent[t]){ s=t; t=RULES.parent[t]; }
   if(s && (s.toLowerCase()===t.toLowerCase() || /[0-9&@]/.test(s) || /^(central|resort)$/i.test(s))) s='';
   var m=RULES.metro[d], alt=(m && m!==t && g.country==='South Africa')?[[m,t]]:[];
-  return {c:g.country||'',p:g.province||'',t:t,s:s,a:alt};
+  var pr=(RULES.provEn||{})[g.province]||g.province||provinceAt(lat,lng)||'(pin needs checking)';
+  return {c:g.country||'',p:pr,t:t,s:s,a:alt};
 }
 function nearestPlaced(lat,lng,maxKm){ var b=null,bd=maxKm; PROPS.forEach(function(p){ if(!p.placed)return; var d=km(lat,lng,p.lat,p.lng); if(d<bd){bd=d;b=p;} }); return b; }
+function provinceAt(lat,lng){ // from the province borders in tree-regions.json
+  var names=Object.keys(REG.provs||{});
+  for(var i=0;i<names.length;i++){ var n=names[i], c=REG.provs[n], polys=REG.provt[n]==='Polygon'?[c]:c;
+    for(var j=0;j<polys.length;j++) if(inPoly(lng,lat,polys[j])) return n; }
+  return '';
+}
 function finishRegions(it){
   if(it.c==='South Africa'){ it.r=regionsAt(it.lat,it.lng); if(!it.r.length) it.r=['(no region)']; }
   else if(!it.r||!it.r.length) it.r=[it.p||'(unknown)'];
@@ -192,7 +202,7 @@ function loadAll(){
     PROPS.forEach(function(it){ if(it.placed) return;
       var nb=nearestPlaced(it.lat,it.lng,5);
       if(nb){ it.c=nb.c;it.p=nb.p;it.t=nb.t;it.s='';it.a=nb.a;it.r=null; }
-      else { var nt=nearestTown(it.lat,it.lng,80); it.c=it.raw.country||'South Africa'; it.p=nt?(nearestPlaced(nt.lat,nt.lng,20)||{}).p||'':''; it.t=nt?nt.t:(it.raw.city||'(no town)'); it.s=''; it.a=[]; }
+      else { var pv=provinceAt(it.lat,it.lng), nt=nearestTown(it.lat,it.lng,80); it.c=pv?'South Africa':(it.raw.country||'(pin needs checking)'); it.p=pv||'(pin needs checking)'; it.t=nt?nt.t:(it.raw.city||'(no town)'); it.s=''; it.a=[]; }
       it.newItem=true; finishRegions(it); });
     // activities: Google answer saved by the lookup page; else copy the nearest placed property
     (map.activities||[]).forEach(function(a){
@@ -200,7 +210,7 @@ function loadAll(){
       var it={kind:'activity',raw:a,id:a.id,name:a.name,lat:a.latitude,lng:a.longitude};
       var gp=aplaces[a.id];
       if(gp && gp.country){ var c=cleanPlace(gp,it.lat,it.lng); it.c=c.c;it.p=c.p;it.t=c.t;it.s=c.s;it.a=c.a; }
-      else { var nb=nearestPlaced(it.lat,it.lng,10); if(nb){ it.c=nb.c;it.p=nb.p;it.t=nb.t;it.s='';it.a=nb.a; } else { it.c=a.country||'South Africa'; it.p=''; var nt=nearestTown(it.lat,it.lng,80); it.t=nt?nt.t:'(no town)'; it.s=''; it.a=[]; } it.notLooked=true; }
+      else { var nb=nearestPlaced(it.lat,it.lng,10); if(nb){ it.c=nb.c;it.p=nb.p;it.t=nb.t;it.s='';it.a=nb.a; } else { var pv=provinceAt(it.lat,it.lng); it.c=pv?'South Africa':(a.country||'(pin needs checking)'); it.p=pv||'(pin needs checking)'; var nt=nearestTown(it.lat,it.lng,80); it.t=nt?nt.t:'(no town)'; it.s=''; it.a=[]; } it.notLooked=true; }
       finishRegions(it); ACTS.push(it);
     });
   });
@@ -253,11 +263,29 @@ function nodeEl(node){
   }
   b.addEventListener('click',function(){ var open=kids.hidden; if(open)fill(); kids.hidden=!open; wrap.classList.toggle('open',open); b.setAttribute('aria-expanded',open); pick(b,{node:node}); });
   wrap.appendChild(b); wrap.appendChild(kids);
+  // used when the map or the name picker opens the tree to a place
+  node._btn=b; node._kids=kids; node._open=function(){ fill(); kids.hidden=false; wrap.classList.add('open'); b.setAttribute('aria-expanded',true); };
   if(openAll){ fill(); kids.hidden=false; wrap.classList.add('open'); }
   return wrap;
 }
+// Path of an item in the tree (its main region / town / suburb), same as build()
+function itemPath(it){ return [it.c||'(unknown)',it.p||'(unknown)',(it.r&&it.r[0])||'(no region)',it.t||'(no town)',(it.s&&it.s!==it.t)?it.s:(it.t||'(no town)')+' & surrounds']; }
+// Opens the tree along a path; returns the deepest node reached.
+function revealPath(path,fresh){
+  if(fresh) render();
+  var node=ROOT, last=null;
+  for(var i=0;i<path.length;i++){ var c=node.k[path[i]]; if(!c||!c._btn) break; c._open(); last=c; node=c; }
+  return last;
+}
+var viewEl=null;
+function markInView(el){ if(viewEl) viewEl.classList.remove('inview'); viewEl=el; if(el){ el.classList.add('inview'); el.scrollIntoView({block:'nearest'}); } }
+function revealItem(it){
+  var n=revealPath(itemPath(it),false); if(!n) return null;
+  var row=n._kids.querySelector('[data-id="'+CSS.escape(it.id)+'"]');
+  return row||n._btn;
+}
 function itemEl(o,showSub){
-  var it=o.it, b=document.createElement('button'); b.type='button'; b.className='row';
+  var it=o.it, b=document.createElement('button'); b.type='button'; b.className='row'; b.setAttribute('data-id',it.id);
   b.innerHTML='<span class="dot'+(it.kind==='activity'?' act':'')+'"></span><span class="nm">'+esc(it.name)+(showSub&&it.s?' <span class="subl">'+esc(it.s)+'</span>':'')+(o.other.length?'<br><span class="also">Also in '+esc(o.other.join(', '))+'</span>':'')+'</span>';
   b.addEventListener('click',function(){ pick(b,{item:it}); });
   return b;
@@ -269,7 +297,31 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18,att
 var cluster=L.markerClusterGroup({maxClusterRadius:50}).addTo(map);
 var focusLayer=L.layerGroup().addTo(map), regLayer=null, hiReg=null;
 function icon(kind,big){ var c=kind==='activity'?'#0e7c66':'#1a4d7a', s=big?16:13; return L.divIcon({className:'',html:'<div style="background:'+c+';width:'+s+'px;height:'+s+'px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 2px rgba(0,0,0,.45)"></div>',iconSize:[s,s]}); }
-function marker(it,big){ var m=L.marker([it.lat,it.lng],{icon:icon(it.kind,big)}); m.bindPopup(function(){return popupContent(it.raw);},{maxWidth:260}); it._m=m; return m; }
+function marker(it,big){ var m=L.marker([it.lat,it.lng],{icon:icon(it.kind,big)}); m.bindPopup(function(){return popupContent(it.raw);},{maxWidth:260});
+  // clicking a dot opens the tree to it
+  m.on('popupopen',function(){ if(it.kind!==TAB) return; quietMoves(); markInView(revealItem(it)); });
+  it._m=m; return m; }
+
+// ---- the tree follows the map ----
+// Moves the page makes itself (after a tree click) are not followed back.
+var quietUntil=0; function quietMoves(){ quietUntil=Date.now()+1500; }
+map.on('moveend',function(){
+  if(Date.now()<quietUntil || !ROOT || $('q').value.trim().length>=2) return;
+  var b=map.getBounds(), vis=listFor(TAB).filter(function(x){ return b.contains([x.lat,x.lng]); });
+  if(!vis.length) return;
+  // deepest place that most of what is on screen shares
+  var path=[];
+  for(var d=0; d<5; d++){
+    var cnt={}, best=null, bn=0;
+    vis.forEach(function(x){ var p=itemPath(x); if(path.every(function(s,i){return p[i]===s;})){ cnt[p[d]]=(cnt[p[d]]||0)+1; } });
+    Object.keys(cnt).forEach(function(k){ if(cnt[k]>bn){bn=cnt[k];best=k;} });
+    if(!best || bn<vis.length*0.7) break;
+    path.push(best);
+  }
+  if(!path.length) return;
+  var n=revealPath(path,true);
+  if(n){ markInView(n._btn); $('crumbs').textContent='Map shows: '+path.join(' › '); }
+});
 function drawRegions(){
   if(regLayer){ map.removeLayer(regLayer); regLayer=null; }
   if(!$('tRegs').checked) return;
@@ -320,6 +372,7 @@ function update(fit){
   if(SEL.region && regLayer){ regLayer.eachLayer(function(l){ if(l._name===SEL.region){ hiReg=l; l._w=l.options.style.weight; l.setStyle({fillOpacity:.2,weight:2.4}); } }); }
   if(showOther) near.forEach(function(n){ focusLayer.addLayer(marker(n.it)); });
   if(fit){
+    quietMoves();
     if(SEL.center){ var c=L.circle([SEL.center.lat,SEL.center.lng],{radius:R*1000}).addTo(map); var bb=c.getBounds(); map.removeLayer(c); map.fitBounds(pts.length>1?bb.extend(L.latLngBounds(pts)):bb,{padding:[20,20]}); }
     else if(pts.length) map.fitBounds(pts,{padding:[24,24],maxZoom:13});
   }
@@ -339,7 +392,7 @@ function card(near){
     var nl=$('nlist');
     near.slice(0,300).forEach(function(n){ var b=document.createElement('button'); b.type='button'; b.className='ni';
       b.innerHTML='<span class="dot'+(n.it.kind==='activity'?' act':'')+'"></span><span>'+esc(n.it.name)+' <span class="subl">'+esc(n.it.t)+'</span></span><span class="km">'+(SEL.region&&n.d===0?'In region':(n.d<1?'<1':Math.round(n.d))+' km')+'</span>';
-      b.addEventListener('click',function(){ map.setView([n.it.lat,n.it.lng],Math.max(map.getZoom(),13)); if(n.it._m) n.it._m.openPopup(); }); nl.appendChild(b); });
+      b.addEventListener('click',function(){ quietMoves(); map.setView([n.it.lat,n.it.lng],Math.max(map.getZoom(),13)); if(n.it._m) n.it._m.openPopup(); }); nl.appendChild(b); });
     if(near.length>300){ var p=document.createElement('p'); p.className='hint'; p.textContent='Showing the closest 300. Make the distance smaller to see fewer.'; nl.appendChild(p); }
   }
 }
@@ -377,7 +430,30 @@ var qt; $('q').addEventListener('input',function(e){ clearTimeout(qt); qt=setTim
 ['tProps','tActs'].forEach(function(id){ $(id).addEventListener('change',function(){ update(false); }); });
 $('tRegs').addEventListener('change',function(){ drawRegions(); update(false); });
 
+// ---------- name picker ----------
+var NAMES={};
+function fillPicker(){
+  var dl=$('names'), html=[], used={};
+  PROPS.concat(ACTS).slice().sort(function(a,b){return a.name.localeCompare(b.name);}).forEach(function(it){
+    var label=it.name+' · '+(it.t||'')+' ('+(it.kind==='activity'?'activity':'property')+')';
+    if(used[label]){ used[label]++; label+=' '+used[label]; } else used[label]=1;
+    NAMES[label]=it; html.push('<option value="'+esc(label)+'"></option>');
+  });
+  dl.innerHTML=html.join('');
+}
+function choose(it){
+  if(it.kind!==TAB) setTab(it.kind);
+  else if($('q').value){ $('q').value=''; ROOT=build(listFor(TAB)); }
+  render();
+  var row=revealItem(it); if(!row) return;
+  markInView(row); pick(row,{item:it});
+  if(it._m) setTimeout(function(){ quietMoves(); it._m.openPopup(); },400);
+}
+$('pick').addEventListener('change',function(e){ var it=NAMES[e.target.value]; if(it){ choose(it); e.target.blur(); } });
+$('pick').addEventListener('keydown',function(e){ if(e.key==='Enter'){ var it=NAMES[e.target.value]; if(it){ e.preventDefault(); choose(it); } } });
+
 loadAll().then(function(){
+  fillPicker();
   $('status').hidden=true;
   $('nP').textContent=PROPS.length.toLocaleString('en-ZA'); $('nA').textContent=ACTS.length.toLocaleString('en-ZA');
   var notLooked=ACTS.filter(function(a){return a.notLooked;}).length;
