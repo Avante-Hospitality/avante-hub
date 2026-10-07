@@ -5,9 +5,11 @@
 // (administrative_area_level_1), municipality (administrative_area_level_2),
 // town (locality / postal_town) and suburb (sublocality / neighborhood).
 //
-// It only READS from Google and returns the answer to the admin page
-// (tree-lookup.html). It writes nothing to any store, so it cannot change
-// any property, zone, affiliate or anything else in the hub. Admin-only.
+// Property lookups only READ from Google and return the answer to the admin
+// page (tree-lookup.html). Activity lookups also save the answer in the new
+// "tree-places" store, which only this endpoint writes and only the Explore
+// tree reads, so no property, zone, affiliate or activity record changes.
+// Lookups are admin-only; GET returns the saved activity places.
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
 
 const MAX_POINTS = 25;
@@ -69,13 +71,50 @@ async function lookup(lat, lng, apiKey) {
   };
 }
 
+// Activity results (kind: "activity") are kept in their own store so the
+// Explore tree can place activities live. One JSON map { activityId: place },
+// written only by this endpoint; nothing else in the hub reads or writes it.
+const PLACES_STORE = "tree-places";
+const ACTIVITY_KEY = "activities";
+
 export default async (request) => {
-  if (request.method !== "POST") return json({ error: "Use POST." }, 405);
+  if (request.method === "GET") {
+    // Public read of saved activity places (activity locations are already
+    // public on the map), used by explore-tree.html.
+    const store = getStore({ name: PLACES_STORE, consistency: "strong" });
+    const map = (await store.get(ACTIVITY_KEY, { type: "json" })) || {};
+    return json({ ok: true, activities: map });
+  }
+  if (request.method !== "POST") return json({ error: "Use GET or POST." }, 405);
   let body;
   try { body = await request.json(); } catch (e) { return json({ error: "Body must be JSON." }, 400); }
   if (!(await verifyAdminToken(body.token))) return json({ error: "Your admin session has expired. Log in again." }, 401);
   const apiKey = Deno.env.get("GOOGLE_GEOCODING_API_KEY") || "";
   if (!apiKey) return json({ error: "GOOGLE_GEOCODING_API_KEY isn't set in this site's environment variables." }, 400);
+
+  if (body.kind === "activity") {
+    // points: [{ id, k: "lat,lng" }]
+    const items = Array.isArray(body.points) ? body.points.slice(0, MAX_POINTS) : [];
+    const out = new Array(items.length);
+    let n = 0;
+    async function aw() {
+      while (n < items.length) {
+        const i = n++;
+        const it = items[i] || {};
+        const [lat, lng] = String(it.k || "").split(",").map(Number);
+        out[i] = isFinite(lat) && isFinite(lng)
+          ? { id: String(it.id || ""), k: it.k, ...(await lookup(lat, lng, apiKey)) }
+          : { id: String(it.id || ""), k: it.k, ok: false, reason: "bad_coordinate" };
+      }
+    }
+    await Promise.all(Array.from({ length: CONCURRENCY }, aw));
+    const store = getStore({ name: PLACES_STORE, consistency: "strong" });
+    const map = (await store.get(ACTIVITY_KEY, { type: "json" })) || {};
+    const at = new Date().toISOString();
+    out.forEach((r) => { if (r.id && r.ok) map[r.id] = { k: r.k, country: r.country, province: r.province, district: r.district, town: r.town, suburb: r.suburb, at }; });
+    await store.setJSON(ACTIVITY_KEY, map);
+    return json({ ok: true, results: out, saved: Object.keys(map).length });
+  }
 
   const points = Array.isArray(body.points) ? body.points.slice(0, MAX_POINTS) : [];
   const results = new Array(points.length);

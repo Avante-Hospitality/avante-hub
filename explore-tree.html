@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Explore by Location</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.css">
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Noto+Sans:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  /* Hub colours. Layout: browse panel (Properties / Activities trees) beside map, radius bar and nearby list. */
+  :root{
+    --teal:#0DCDC2; --teal-dark:#0aa89f; --navy:#0e2f44; --ink:#333; --muted:#6b7378; --mint:#f4fbfa; --line:#e3e9e8;
+    --prop:#1a4d7a; --act:#0e7c66; --warn:#b5560f;
+  }
+  *,*::before,*::after{box-sizing:border-box}
+  [hidden]{display:none!important}
+  body{margin:0;background:var(--mint);color:var(--ink);font-family:'Noto Sans',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:14px}
+  h1,h2,h3,button,.tab{font-family:'Montserrat','Segoe UI',system-ui,sans-serif}
+  .wrap{max-width:1400px;margin:0 auto;padding-inline:16px;padding-block:18px 28px}
+  h1{margin:0;color:var(--navy);font-size:22px;font-weight:800}
+  .sub{margin:4px 0 14px;color:var(--muted);line-height:1.5;max-width:75ch}
+  .layout{display:grid;grid-template-columns:minmax(0,400px) minmax(0,1fr);gap:14px;align-items:start}
+  .panel{background:#fff;border:1px solid var(--line);border-radius:12px;display:flex;flex-direction:column;height:min(82vh,820px);min-width:0}
+  .tabs{display:flex;border-bottom:1px solid var(--line)}
+  .tab{flex:1;border:0;background:none;padding:12px 8px;font-weight:700;font-size:13.5px;color:var(--muted);border-bottom:2.5px solid transparent;cursor:pointer}
+  .tab[aria-selected="true"]{color:var(--navy);border-bottom-color:var(--teal)}
+  .tab .n{font-weight:600;color:var(--muted);margin-left:4px}
+  .ptop{padding:10px 12px;border-bottom:1px solid var(--line);display:grid;gap:6px}
+  #q{width:100%;padding:9px 12px;border:1.5px solid var(--line);border-radius:8px;font:inherit;background:var(--mint)}
+  #q:focus{outline:none;border-color:var(--teal)}
+  .crumbs{font-size:12.5px;color:var(--muted);min-height:17px}
+  .tree{overflow-y:auto;padding:6px 6px 14px;flex:1}
+  .row{display:flex;align-items:center;gap:6px;width:100%;border:0;background:none;text-align:left;padding:5px 6px;border-radius:7px;cursor:pointer;color:var(--ink);font:inherit;font-size:13.5px}
+  .row:hover{background:var(--mint)}
+  .row.sel{background:var(--mint);box-shadow:inset 3px 0 0 var(--teal)}
+  .row:focus-visible,.tab:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(--teal);outline-offset:1px}
+  .tw{width:14px;flex:none;color:var(--muted);font-size:11px;transition:transform .15s}
+  .open>.row .tw{transform:rotate(90deg)}
+  .nm{flex:1;min-width:0;overflow-wrap:anywhere}
+  .lv{font-size:10.5px;letter-spacing:.04em;color:var(--muted);font-family:'Montserrat',sans-serif;font-weight:700;flex:none}
+  .ct{font-variant-numeric:tabular-nums;color:var(--muted);font-size:12.5px;flex:none}
+  .kids{padding-left:14px;border-left:1px dashed var(--line);margin-left:12px}
+  .dot{width:9px;height:9px;border-radius:50%;flex:none;background:var(--prop)}
+  .dot.act{background:var(--act)}
+  .subl{font-size:12px;color:var(--muted)}
+  .also{font-size:11.5px;color:var(--teal-dark);font-weight:600}
+  .allhead{margin:8px 6px 2px;font-family:'Montserrat',sans-serif;font-weight:700;font-size:12px;color:var(--muted)}
+  .right{display:grid;gap:12px;min-width:0}
+  .mapcard{background:#fff;border:1px solid var(--line);border-radius:12px;padding:6px}
+  #map{height:min(52vh,520px);min-height:320px;border-radius:9px}
+  .toggles{display:flex;flex-wrap:wrap;gap:6px 16px;padding:8px 6px 2px;font-size:13px;color:var(--navy);font-weight:600}
+  .toggles label{display:flex;gap:6px;align-items:center;cursor:pointer}
+  .toggles input{accent-color:var(--teal-dark)}
+  .card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px;min-width:0}
+  .card h2{margin:0;font-size:16px;color:var(--navy)}
+  .meta{color:var(--muted);font-size:12.5px;margin-top:2px}
+  .radius{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;margin-top:12px}
+  .radius label{font-weight:600;color:var(--navy);font-size:13px}
+  #radSlider{width:100%;accent-color:var(--teal-dark)}
+  #radv{font-family:'Montserrat',sans-serif;font-weight:800;color:var(--navy);font-variant-numeric:tabular-nums;min-width:62px;text-align:right}
+  .near{margin-top:12px;border-top:1px solid var(--line);padding-top:10px}
+  .near h3{margin:0 0 6px;font-size:13.5px;color:var(--navy)}
+  .nlist{max-height:300px;overflow-y:auto}
+  .ni{display:flex;gap:8px;align-items:center;width:100%;border:0;background:none;text-align:left;padding:6px;border-radius:7px;cursor:pointer;font:inherit;color:var(--ink)}
+  .ni:hover{background:var(--mint)}
+  .ni .km{margin-left:auto;color:var(--muted);font-size:12.5px;font-variant-numeric:tabular-nums;flex:none}
+  .hint{color:var(--muted);line-height:1.5;margin:8px 0 0}
+  .status{padding:10px 12px;color:var(--warn);font-weight:600}
+  .map-popup-photo{width:100%;height:120px;object-fit:cover;border-radius:6px;margin-bottom:6px;display:block}
+  .map-popup-title{font-family:'Montserrat',sans-serif;font-weight:700;color:var(--navy);font-size:14px}
+  .map-popup-desc{font-size:12.5px;line-height:1.45;margin-top:3px}
+  .btn-secondary{background:var(--teal);color:#06302d;font-family:'Montserrat',sans-serif;font-weight:700;font-size:12.5px}
+  @media (max-width:900px){ .layout{grid-template-columns:1fr} .panel{height:60vh} }
+  @media (prefers-reduced-motion:reduce){ .tw{transition:none} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Explore by location</h1>
+  <p class="sub">Browse properties or activities by Country, Province, Region, City and Suburb. Select a city, suburb, region or single place to see what is around it, and set how far to look with the slider.</p>
+  <div class="layout">
+    <section class="panel">
+      <div class="tabs" role="tablist">
+        <button class="tab" role="tab" id="tabP" aria-selected="true">Properties<span class="n" id="nP"></span></button>
+        <button class="tab" role="tab" id="tabA" aria-selected="false">Activities<span class="n" id="nA"></span></button>
+      </div>
+      <div class="ptop">
+        <input id="q" type="search" placeholder="Search a place, property or activity" aria-label="Search the tree">
+        <div class="crumbs" id="crumbs"></div>
+      </div>
+      <div class="status" id="status">Loading properties and activities…</div>
+      <div class="tree" id="tree" role="tree"></div>
+    </section>
+    <div class="right">
+      <div class="mapcard">
+        <div id="map" role="region" aria-label="Map"></div>
+        <div class="toggles">
+          <label><input type="checkbox" id="tProps" checked> Properties</label>
+          <label><input type="checkbox" id="tActs" checked> Activities</label>
+          <label><input type="checkbox" id="tRegs" checked> Region areas</label>
+        </div>
+      </div>
+      <div class="card" id="card">
+        <h2>Nothing selected</h2>
+        <p class="hint">Select a place in the tree. For a city, suburb, region or single place you can then see the activities (or, from the Activities tab, the properties) around it.</p>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.js"></script>
+<script>
+(function(){
+var LEVELS=['Country','Province','Region','City','Suburb'];
+var PROV_ORDER=['Western Cape','Eastern Cape','Northern Cape','Free State','KwaZulu-Natal','Gauteng','North West','Mpumalanga','Limpopo'];
+var DEFAULT_KM=50, MAX_KM=150;
+var $=function(id){return document.getElementById(id);};
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function km(a1,o1,a2,o2){var r=Math.PI/180,dl=(a2-a1)*r,dn=(o2-o1)*r,x=Math.sin(dl/2)*Math.sin(dl/2)+Math.cos(a1*r)*Math.cos(a2*r)*Math.sin(dn/2)*Math.sin(dn/2);return 12742*Math.asin(Math.sqrt(x));}
+function median(a){a=a.slice().sort(function(x,y){return x-y;});var m=a.length>>1;return a.length%2?a[m]:(a[m-1]+a[m])/2;}
+
+// ---------- regions (same shapes as the tree / SN Area) ----------
+var REG={}, IDX=[], OVERLAY={}, RULES={};
+function inRing(x,y,r){var c=false;for(var i=0,j=r.length-1;i<r.length;j=i++){var xi=r[i][0],yi=r[i][1],xj=r[j][0],yj=r[j][1];if((yi>y)!==(yj>y)&&x<(xj-xi)*(y-yi)/(yj-yi)+xi)c=!c;}return c;}
+function inPoly(x,y,p){if(!inRing(x,y,p[0]))return false;for(var h=1;h<p.length;h++)if(inRing(x,y,p[h]))return false;return true;}
+function segKm(px,py,ax,ay,bx,by){var kx=111.32*Math.cos(py*Math.PI/180),Ax=ax*kx,Bx=bx*kx,Px=px*kx,Ay=ay*110.57,By=by*110.57,Py=py*110.57,dx=Bx-Ax,dy=By-Ay,l=dx*dx+dy*dy,t=l?((Px-Ax)*dx+(Py-Ay)*dy)/l:0;t=Math.max(0,Math.min(1,t));return Math.hypot(Px-(Ax+t*dx),Py-(Ay+t*dy));}
+function buildRegionIndex(shapes){
+  Object.keys(shapes).forEach(function(n){ shapes[n].forEach(function(poly){
+    var b=[1e9,1e9,-1e9,-1e9]; poly[0].forEach(function(p){b[0]=Math.min(b[0],p[0]);b[1]=Math.min(b[1],p[1]);b[2]=Math.max(b[2],p[0]);b[3]=Math.max(b[3],p[1]);});
+    IDX.push({n:n,poly:poly,b:b}); }); });
+}
+function regionsAt(lat,lng){
+  var hit={}; IDX.forEach(function(s){ if(lng<s.b[0]||lng>s.b[2]||lat<s.b[1]||lat>s.b[3])return; if(inPoly(lng,lat,s.poly))hit[s.n]=1; });
+  var r=Object.keys(hit);
+  if(!r.length){ var best=null,bd=3; IDX.forEach(function(s){ var ring=s.poly[0]; for(var i=1;i<ring.length;i++){var d=segKm(lng,lat,ring[i-1][0],ring[i-1][1],ring[i][0],ring[i][1]); if(d<bd){bd=d;best=s.n;}} }); if(best) r=[best]; }
+  return r.sort(function(a,b){return (OVERLAY[b]?1:0)-(OVERLAY[a]?1:0)||a.localeCompare(b);});
+}
+function kmToRegion(name,lat,lng,limit){ // 0 if inside
+  var best=Infinity; IDX.forEach(function(s){ if(s.n!==name)return;
+    var padLat=limit/110, padLng=limit/(111*Math.cos(lat*Math.PI/180));
+    if(lng<s.b[0]-padLng||lng>s.b[2]+padLng||lat<s.b[1]-padLat||lat>s.b[3]+padLat)return;
+    if(inPoly(lng,lat,s.poly)){best=0;return;}
+    var ring=s.poly[0]; for(var i=1;i<ring.length&&best>0;i++){var d=segKm(lng,lat,ring[i-1][0],ring[i-1][1],ring[i][0],ring[i][1]); if(d<best)best=d;} });
+  return best;
+}
+
+// ---------- placing items ----------
+var TOWNS=[]; // [{t,lat,lng,n}] from placed properties, for "nearest town"
+function nearestTown(lat,lng,maxKm){ var b=null,bd=maxKm||25; TOWNS.forEach(function(t){ if(t.n<3)return; var d=km(lat,lng,t.lat,t.lng); if(d<bd){bd=d;b=t;} }); return b; }
+function isNotTown(t){ return !t || /municipality|munisipaliteit|district/i.test(t) || (RULES.notTown||[]).indexOf(t)>-1; }
+function cleanPlace(g,lat,lng){ // Google answer -> tree levels, same rules as the property tree
+  var t=(RULES.spell[g.town]||g.town||''), s=(RULES.spell[g.suburb]||g.suburb||''), d=RULES.afr[g.district]||g.district||'';
+  if(isNotTown(t)){ var nt=nearestTown(lat,lng,25)||nearestTown(lat,lng,80); t=nt?nt.t:'(no town)'; }
+  if(RULES.parent[t]){ s=t; t=RULES.parent[t]; }
+  if(s && (s.toLowerCase()===t.toLowerCase() || /[0-9&@]/.test(s) || /^(central|resort)$/i.test(s))) s='';
+  var m=RULES.metro[d], alt=(m && m!==t && g.country==='South Africa')?[[m,t]]:[];
+  return {c:g.country||'',p:g.province||'',t:t,s:s,a:alt};
+}
+function nearestPlaced(lat,lng,maxKm){ var b=null,bd=maxKm; PROPS.forEach(function(p){ if(!p.placed)return; var d=km(lat,lng,p.lat,p.lng); if(d<bd){bd=d;b=p;} }); return b; }
+function finishRegions(it){
+  if(it.c==='South Africa'){ it.r=regionsAt(it.lat,it.lng); if(!it.r.length) it.r=['(no region)']; }
+  else if(!it.r||!it.r.length) it.r=[it.p||'(unknown)'];
+}
+
+var PROPS=[], ACTS=[];
+function loadAll(){
+  return Promise.all([
+    fetch('/api/map').then(function(r){return r.json();}),
+    fetch('tree-places.json').then(function(r){return r.json();}),
+    fetch('tree-regions.json').then(function(r){return r.json();}),
+    fetch('/api/tree-lookup').then(function(r){return r.json();}).catch(function(){return {activities:{}};})
+  ]).then(function(res){
+    var map=res[0], places=res[1].places, reg=res[2], aplaces=(res[3]&&res[3].activities)||{};
+    REG=reg; RULES=reg.rules; reg.regions.forEach(function(r){ if(r.overlay) OVERLAY[r.name]=1; }); buildRegionIndex(reg.shapes);
+    // properties: one per ResortID (onboarded listings by listingId)
+    var seen={};
+    (map.properties||[]).forEach(function(p){
+      if(typeof p.latitude!=='number'||typeof p.longitude!=='number') return;
+      var key=p.resortId||p.listingId; if(seen[key]) return; seen[key]=1;
+      var it={kind:'property',raw:p,id:key,name:p.name,lat:p.latitude,lng:p.longitude};
+      var pl=p.resortId&&places[p.resortId];
+      if(pl){ it.c=pl.c;it.p=pl.p;it.r=pl.r;it.t=pl.t;it.s=pl.s;it.a=pl.a||[];it.placed=true; }
+      PROPS.push(it);
+    });
+    // town centres from placed properties
+    var g={}; PROPS.forEach(function(p){ if(!p.placed||p.c!=='South Africa')return; (g[p.t]=g[p.t]||[]).push(p); });
+    TOWNS=Object.keys(g).map(function(t){ return {t:t,n:g[t].length,lat:median(g[t].map(function(p){return p.lat;})),lng:median(g[t].map(function(p){return p.lng;}))}; });
+    // properties not in the placement file (new since the last SN import): copy the nearest placed neighbour
+    PROPS.forEach(function(it){ if(it.placed) return;
+      var nb=nearestPlaced(it.lat,it.lng,5);
+      if(nb){ it.c=nb.c;it.p=nb.p;it.t=nb.t;it.s='';it.a=nb.a;it.r=null; }
+      else { var nt=nearestTown(it.lat,it.lng,80); it.c=it.raw.country||'South Africa'; it.p=nt?(nearestPlaced(nt.lat,nt.lng,20)||{}).p||'':''; it.t=nt?nt.t:(it.raw.city||'(no town)'); it.s=''; it.a=[]; }
+      it.newItem=true; finishRegions(it); });
+    // activities: Google answer saved by the lookup page; else copy the nearest placed property
+    (map.activities||[]).forEach(function(a){
+      if(typeof a.latitude!=='number'||typeof a.longitude!=='number') return;
+      var it={kind:'activity',raw:a,id:a.id,name:a.name,lat:a.latitude,lng:a.longitude};
+      var gp=aplaces[a.id];
+      if(gp && gp.country){ var c=cleanPlace(gp,it.lat,it.lng); it.c=c.c;it.p=c.p;it.t=c.t;it.s=c.s;it.a=c.a; }
+      else { var nb=nearestPlaced(it.lat,it.lng,10); if(nb){ it.c=nb.c;it.p=nb.p;it.t=nb.t;it.s='';it.a=nb.a; } else { it.c=a.country||'South Africa'; it.p=''; var nt=nearestTown(it.lat,it.lng,80); it.t=nt?nt.t:'(no town)'; it.s=''; it.a=[]; } it.notLooked=true; }
+      finishRegions(it); ACTS.push(it);
+    });
+  });
+}
+
+// ---------- tree ----------
+function build(list){
+  var root={k:{},n:new Set(),props:[]};
+  list.forEach(function(it){
+    (it.r&&it.r.length?it.r:['(no region)']).forEach(function(reg){
+      var paths=[[it.c||'(unknown)',it.p||'(unknown)',reg,it.t||'(no town)',(it.s&&it.s!==it.t)?it.s:(it.t||'(no town)')+' & surrounds']];
+      (it.a||[]).forEach(function(x){ paths.push([it.c,it.p,reg,x[0],x[1]]); });
+      paths.forEach(function(path){
+        var node=root; node.n.add(it.id);
+        path.forEach(function(seg,d){ node.k[seg]=node.k[seg]||{name:seg,depth:d,k:{},n:new Set(),props:[],path:path.slice(0,d+1)}; node=node.k[seg]; node.n.add(it.id); });
+        var o={it:it,other:it.r.filter(function(x){return x!==reg;})};
+        node.props.push(o);
+        var cityNode=root.k[path[0]].k[path[1]].k[path[2]].k[path[3]];
+        (cityNode.all=cityNode.all||[]).push(o);
+      });
+    });
+  });
+  return root;
+}
+function sortKeys(node){
+  return Object.keys(node.k).sort(function(a,b){
+    if(node.depth===0){var ia=PROV_ORDER.indexOf(a),ib=PROV_ORDER.indexOf(b); if(ia>-1||ib>-1) return (ia<0?99:ia)-(ib<0?99:ib);}
+    if(node.depth===undefined){ if(a==='South Africa')return -1; if(b==='South Africa')return 1; }
+    return node.k[b].n.size-node.k[a].n.size || a.localeCompare(b);
+  });
+}
+var TAB='property', ROOT=null, openAll=false, selEl=null, treeEl=$('tree');
+function listFor(tab){ return tab==='property'?PROPS:ACTS; }
+function render(){
+  treeEl.innerHTML='';
+  var ks=sortKeys(ROOT);
+  if(!ks.length){ treeEl.innerHTML='<p class="hint" style="padding:12px">Nothing matches that search. Try part of a town or name.</p>'; return; }
+  ks.forEach(function(k){ treeEl.appendChild(nodeEl(ROOT.k[k])); });
+}
+function nodeEl(node){
+  var wrap=document.createElement('div'); wrap.setAttribute('role','treeitem');
+  var b=document.createElement('button'); b.type='button'; b.className='row';
+  b.innerHTML='<span class="tw">▶</span><span class="nm">'+esc(node.name)+'</span><span class="lv">'+LEVELS[node.depth]+'</span><span class="ct">'+node.n.size+'</span>';
+  var kids=document.createElement('div'); kids.className='kids'; kids.hidden=true; var filled=false;
+  function fill(){ if(filled)return; filled=true;
+    sortKeys(node).forEach(function(k){ kids.appendChild(nodeEl(node.k[k])); });
+    var hasSubs=Object.keys(node.k).length>0, city=node.depth===3&&hasSubs, list=city?node.all:node.props;
+    if(city){ var h=document.createElement('div'); h.className='allhead'; h.textContent='All '+list.length+' '+(TAB==='property'?'properties':'activities')+' in '+node.name; kids.appendChild(h); }
+    list.slice().sort(function(a,b){return a.it.name.localeCompare(b.it.name);}).forEach(function(o){ kids.appendChild(itemEl(o,city)); });
+  }
+  b.addEventListener('click',function(){ var open=kids.hidden; if(open)fill(); kids.hidden=!open; wrap.classList.toggle('open',open); b.setAttribute('aria-expanded',open); pick(b,{node:node}); });
+  wrap.appendChild(b); wrap.appendChild(kids);
+  if(openAll){ fill(); kids.hidden=false; wrap.classList.add('open'); }
+  return wrap;
+}
+function itemEl(o,showSub){
+  var it=o.it, b=document.createElement('button'); b.type='button'; b.className='row';
+  b.innerHTML='<span class="dot'+(it.kind==='activity'?' act':'')+'"></span><span class="nm">'+esc(it.name)+(showSub&&it.s?' <span class="subl">'+esc(it.s)+'</span>':'')+(o.other.length?'<br><span class="also">Also in '+esc(o.other.join(', '))+'</span>':'')+'</span>';
+  b.addEventListener('click',function(){ pick(b,{item:it}); });
+  return b;
+}
+
+// ---------- map ----------
+var map=L.map('map').setView([-30.56,22.94],6);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18,attribution:'&copy; OpenStreetMap contributors'}).addTo(map);
+var cluster=L.markerClusterGroup({maxClusterRadius:50}).addTo(map);
+var focusLayer=L.layerGroup().addTo(map), regLayer=null, hiReg=null;
+function icon(kind,big){ var c=kind==='activity'?'#0e7c66':'#1a4d7a', s=big?16:13; return L.divIcon({className:'',html:'<div style="background:'+c+';width:'+s+'px;height:'+s+'px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 2px rgba(0,0,0,.45)"></div>',iconSize:[s,s]}); }
+function marker(it,big){ var m=L.marker([it.lat,it.lng],{icon:icon(it.kind,big)}); m.bindPopup(function(){return popupContent(it.raw);},{maxWidth:260}); it._m=m; return m; }
+function drawRegions(){
+  if(regLayer){ map.removeLayer(regLayer); regLayer=null; }
+  if(!$('tRegs').checked) return;
+  regLayer=L.layerGroup();
+  Object.keys(REG.shapes).forEach(function(n){
+    var gl=L.geoJSON({type:'MultiPolygon',coordinates:REG.shapes[n]},{style:{color:'#0aa89f',weight:OVERLAY[n]?1.6:.8,opacity:.65,dashArray:OVERLAY[n]?'3 4':null,fillColor:'#0DCDC2',fillOpacity:.05},interactive:false});
+    gl._name=n; regLayer.addLayer(gl); });
+  regLayer.addTo(map); regLayer.eachLayer(function(l){ if(l.bringToBack) l.bringToBack(); });
+}
+function showAll(){
+  focusLayer.clearLayers(); cluster.clearLayers();
+  var ms=[]; if($('tProps').checked) PROPS.forEach(function(p){ms.push(marker(p));}); if($('tActs').checked) ACTS.forEach(function(a){ms.push(marker(a));});
+  cluster.addLayers(ms);
+}
+
+// ---------- selection + radius ----------
+var SEL=null; // {members:[], center:{lat,lng}|null, region:name|null, label}
+function pick(el,what){
+  if(selEl) selEl.classList.remove('sel'); selEl=el; el.classList.add('sel');
+  var members, center=null, region=null, label, level;
+  if(what.item){ members=[what.item]; center={lat:what.item.lat,lng:what.item.lng}; label=what.item.name; level=what.item.kind==='activity'?'Activity':'Property'; }
+  else { var n=what.node, ids=n.n; members=listFor(TAB).filter(function(x){return ids.has(x.id);}); label=n.name; level=LEVELS[n.depth];
+    if(n.depth>=3){ center={lat:median(members.map(function(x){return x.lat;})),lng:median(members.map(function(x){return x.lng;}))}; }
+    else if(n.depth===2 && REG.shapes[n.name]){ region=n.name; } }
+  $('crumbs').textContent=what.node?what.node.path.join(' › '):'';
+  SEL={members:members,center:center,region:region,label:label,level:level};
+  update(true);
+}
+function nearby(){
+  if(!SEL||(!SEL.center&&!SEL.region)) return [];
+  var R=+$('rad').value, other=TAB==='property'?ACTS:PROPS, out=[];
+  other.forEach(function(x){
+    var d=SEL.center?km(SEL.center.lat,SEL.center.lng,x.lat,x.lng):kmToRegion(SEL.region,x.lat,x.lng,R);
+    if(d<=R) out.push({it:x,d:d});
+  });
+  return out.sort(function(a,b){return a.d-b.d;});
+}
+function update(fit){
+  cluster.clearLayers(); focusLayer.clearLayers();
+  if(hiReg){ hiReg.setStyle({fillOpacity:.05,weight:hiReg._w}); hiReg=null; }
+  if(!SEL){ showAll(); return; }
+  var showSelKind=TAB==='property'?$('tProps').checked:$('tActs').checked, showOther=TAB==='property'?$('tActs').checked:$('tProps').checked;
+  var pts=[], ms=[];
+  if(showSelKind) SEL.members.forEach(function(x){ ms.push(marker(x,SEL.members.length===1)); pts.push([x.lat,x.lng]); });
+  cluster.addLayers(ms);
+  var near=nearby(), R=+$('rad').value;
+  if(SEL.center){ L.circle([SEL.center.lat,SEL.center.lng],{radius:R*1000,color:'#0aa89f',weight:1.5,fillColor:'#0DCDC2',fillOpacity:.07,interactive:false}).addTo(focusLayer); }
+  if(SEL.region && regLayer){ regLayer.eachLayer(function(l){ if(l._name===SEL.region){ hiReg=l; l._w=l.options.style.weight; l.setStyle({fillOpacity:.2,weight:2.4}); } }); }
+  if(showOther) near.forEach(function(n){ focusLayer.addLayer(marker(n.it)); });
+  if(fit){
+    if(SEL.center){ var c=L.circle([SEL.center.lat,SEL.center.lng],{radius:R*1000}).addTo(map); var bb=c.getBounds(); map.removeLayer(c); map.fitBounds(pts.length>1?bb.extend(L.latLngBounds(pts)):bb,{padding:[20,20]}); }
+    else if(pts.length) map.fitBounds(pts,{padding:[24,24],maxZoom:13});
+  }
+  card(near);
+}
+function card(near){
+  var otherName=TAB==='property'?'activities':'properties', R=+$('rad').value;
+  var canRadius=!!(SEL.center||SEL.region);
+  var h='<h2>'+esc(SEL.label)+'</h2><div class="meta">'+esc(SEL.level)+' · '+SEL.members.length+' '+(TAB==='property'?'properties':'activities')+'</div>';
+  if(canRadius){
+    h+='<div class="radius"><label for="rad">'+(SEL.region?'Region plus':'Within')+'</label><input type="range" id="radSlider" min="1" max="'+MAX_KM+'" step="1" value="'+R+'" aria-label="Distance in kilometres"><span id="radv">'+R+' km</span></div>';
+    h+='<div class="near"><h3>'+near.length+' '+otherName+' '+(SEL.region?'in '+esc(SEL.label)+' or within '+R+' km of it':'within '+R+' km')+'</h3><div class="nlist" id="nlist"></div></div>';
+  } else h+='<p class="hint">Select a region, city, suburb or single place to see the '+otherName+' around it.</p>';
+  $('card').innerHTML=h;
+  if(canRadius){
+    var s=$('radSlider'); s.addEventListener('input',function(){ $('rad').value=s.value; $('radv').textContent=s.value+' km'; clearTimeout(window._rt); window._rt=setTimeout(function(){ update(false); var n=$('radSlider'); if(n){ n.focus(); } },120); });
+    var nl=$('nlist');
+    near.slice(0,300).forEach(function(n){ var b=document.createElement('button'); b.type='button'; b.className='ni';
+      b.innerHTML='<span class="dot'+(n.it.kind==='activity'?' act':'')+'"></span><span>'+esc(n.it.name)+' <span class="subl">'+esc(n.it.t)+'</span></span><span class="km">'+(SEL.region&&n.d===0?'In region':(n.d<1?'<1':Math.round(n.d))+' km')+'</span>';
+      b.addEventListener('click',function(){ map.setView([n.it.lat,n.it.lng],Math.max(map.getZoom(),13)); if(n.it._m) n.it._m.openPopup(); }); nl.appendChild(b); });
+    if(near.length>300){ var p=document.createElement('p'); p.className='hint'; p.textContent='Showing the closest 300. Make the distance smaller to see fewer.'; nl.appendChild(p); }
+  }
+}
+
+// ---------- popups: same as the hub's Explore Map ----------
+function popupContent(item){
+  var wrap=document.createElement('div');
+  var photos=(item.kind==='activity'||item.kind==='town')&&Array.isArray(item.photos)&&item.photos.length?item.photos:(item.photo?[item.photo]:[]);
+  if(photos.length){ var pw=document.createElement('div'); pw.style.position='relative'; var img=document.createElement('img'); img.className='map-popup-photo'; img.src=photos[0]; pw.appendChild(img);
+    if(photos.length>1){ var idx=0, counter=document.createElement('div'); counter.style.cssText='position:absolute;bottom:6px;right:6px;background:rgba(0,0,0,.55);color:#fff;font-size:11px;padding:1px 6px;border-radius:10px;'; counter.textContent='1 / '+photos.length; pw.appendChild(counter);
+      ['left','right'].forEach(function(dir){ var bb=document.createElement('button'); bb.type='button'; bb.textContent=dir==='left'?'‹':'›'; bb.style.cssText='position:absolute;top:50%;transform:translateY(-50%);'+dir+':2px;background:rgba(0,0,0,.45);color:#fff;border:none;width:22px;height:22px;border-radius:50%;cursor:pointer;font-size:12px;line-height:1;';
+        bb.addEventListener('click',function(e){ e.stopPropagation(); idx=(idx+(dir==='left'?-1:1)+photos.length)%photos.length; img.src=photos[idx]; counter.textContent=(idx+1)+' / '+photos.length; }); pw.appendChild(bb); }); }
+    wrap.appendChild(pw); }
+  var t=document.createElement('div'); t.className='map-popup-title'; t.textContent=item.name||'Untitled'; wrap.appendChild(t);
+  var sub=item.kind==='property'?[item.city,item.country].filter(Boolean).join(', '):item.area;
+  if(sub){ var se=document.createElement('div'); se.className='map-popup-desc'; se.style.color='#777'; se.textContent=sub; wrap.appendChild(se); }
+  if(item.kind==='activity'&&item.price){ var pe=document.createElement('div'); pe.className='map-popup-desc'; var st=document.createElement('strong'); st.textContent=item.price; pe.appendChild(st); wrap.appendChild(pe); }
+  if(item.description){ var de=document.createElement('div'); de.className='map-popup-desc'; de.textContent=item.description; wrap.appendChild(de); }
+  var url=item.kind==='property'?(item.bookingLink||item.infoLink):item.contactLink;
+  if(url){ var a=document.createElement('a'); a.href=url; a.target='_blank'; a.rel='noopener'; a.className='btn-secondary'; a.style.cssText='display:inline-block;margin-top:4px;text-decoration:none;padding:6px 12px;border-radius:6px;'; a.textContent=item.kind==='property'?'Visit / book':'Book / contact'; wrap.appendChild(a); }
+  return wrap;
+}
+
+// ---------- tabs, search, toggles ----------
+var rad=document.createElement('input'); rad.type='hidden'; rad.id='rad'; rad.value=DEFAULT_KM; document.body.appendChild(rad);
+function setTab(t){ TAB=t; $('tabP').setAttribute('aria-selected',t==='property'); $('tabA').setAttribute('aria-selected',t==='activity'); $('q').value=''; openAll=false; SEL=null; ROOT=build(listFor(t)); render(); $('crumbs').textContent='';
+  $('card').innerHTML='<h2>Nothing selected</h2><p class="hint">Select a place in the tree. For a city, suburb, region or single '+(t==='property'?'property':'activity')+' you can then see the '+(t==='property'?'activities':'properties')+' around it.</p>'; update(); }
+$('tabP').addEventListener('click',function(){setTab('property');});
+$('tabA').addEventListener('click',function(){setTab('activity');});
+var qt; $('q').addEventListener('input',function(e){ clearTimeout(qt); qt=setTimeout(function(){
+  var q=e.target.value.trim().toLowerCase(), all=listFor(TAB);
+  var list=q.length<2?all:all.filter(function(x){ return [x.name,x.c,x.p,x.t,x.s].concat(x.r||[],(x.a||[]).map(function(a){return a[0];})).some(function(v){return v&&String(v).toLowerCase().indexOf(q)>-1;}); });
+  openAll=q.length>=2&&list.length<=150; ROOT=build(list); render(); $('crumbs').textContent=q.length<2?'':list.length+' match';
+},180); });
+['tProps','tActs'].forEach(function(id){ $(id).addEventListener('change',function(){ update(false); }); });
+$('tRegs').addEventListener('change',function(){ drawRegions(); update(false); });
+
+loadAll().then(function(){
+  $('status').hidden=true;
+  $('nP').textContent=PROPS.length.toLocaleString('en-ZA'); $('nA').textContent=ACTS.length.toLocaleString('en-ZA');
+  var notLooked=ACTS.filter(function(a){return a.notLooked;}).length;
+  if(notLooked){ $('status').hidden=false; $('status').textContent=notLooked+' activities are placed by their nearest property until the activity lookup runs (admin: Location tree lookup page).'; }
+  drawRegions(); setTab('property');
+  var first=treeEl.querySelector('.row'); if(first) first.click();
+}).catch(function(){ $('status').textContent='Could not load the map data. Refresh the page to try again.'; });
+})();
+</script>
+</body>
+</html>

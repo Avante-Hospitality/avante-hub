@@ -47,6 +47,14 @@
     </div>
     <div id="msg" role="status" aria-live="polite"></div>
   </div>
+  <div class="card">
+    <h2 style="font-family:'Montserrat',sans-serif;color:var(--navy);font-size:17px;margin:0 0 6px">Activities</h2>
+    <p style="margin:0">Looks up the activities on the map that haven't been looked up yet and saves the result in the hub, so the Explore tree can place them. Run it again after adding activities.</p>
+    <div class="nums" style="margin-top:12px"><span><b id="aDone">…</b> of <b id="aTotal">…</b> placed</span><span><b id="aFail">0</b> failed this run</span></div>
+    <div class="bar"><i id="aBar"></i></div>
+    <div class="btns"><button class="pri" id="aStart" disabled>Look up activities</button></div>
+    <div id="aMsg" role="status" aria-live="polite" style="margin-top:14px;font-weight:600;color:var(--navy)"></div>
+  </div>
 </div>
 <script>
 (function(){
@@ -105,6 +113,45 @@
     var blob=new Blob([JSON.stringify({generated:new Date().toISOString(),results:out})],{type:'application/json'});
     var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='tree-lookup-results.json'; document.body.appendChild(a); a.click(); a.remove();
     msg('Downloaded tree-lookup-results.json. Upload it in the chat with Claude.');
+  });
+
+  // ---- Activities: look up the ones not saved yet, save in the hub
+  var acts=[], placed={}, aRunning=false;
+  function aCounts(fail){
+    var done=acts.filter(function(a){ return placed[a.id]; }).length;
+    $('aDone').textContent=done; $('aTotal').textContent=acts.length; if(fail!=null) $('aFail').textContent=fail;
+    $('aBar').style.width=(acts.length?done/acts.length*100:0)+'%';
+    return done;
+  }
+  function aMsg(t,err){ $('aMsg').textContent=t; $('aMsg').style.color=err?'var(--warn)':'var(--navy)'; }
+  Promise.all([fetch('/api/map',{cache:'no-store'}).then(function(r){return r.json();}), fetch('/api/tree-lookup',{cache:'no-store'}).then(function(r){return r.json();})])
+    .then(function(res){
+      acts=(res[0].activities||[]).filter(function(a){ return typeof a.latitude==='number' && typeof a.longitude==='number'; });
+      placed=(res[1]&&res[1].activities)||{};
+      // an activity whose pin moved since its lookup counts as not placed
+      Object.keys(placed).forEach(function(id){ var a=acts.find(function(x){return x.id===id;}); if(a && placed[id].k!==a.latitude.toFixed(6)+','+a.longitude.toFixed(6)) delete placed[id]; });
+      var done=aCounts(0); $('aStart').disabled=done>=acts.length;
+      aMsg(done>=acts.length?'All activities are placed.':'');
+    }).catch(function(){ aMsg('Could not load the activities.',true); });
+  $('aStart').addEventListener('click',function(){
+    if(aRunning) return; aRunning=true; $('aStart').disabled=true;
+    var todo=acts.filter(function(a){ return !placed[a.id]; }), i=0, fail=0;
+    aMsg('Looking up '+todo.length+' activities…');
+    (function step(){
+      if(i>=todo.length){ aRunning=false; var d=aCounts(fail); $('aStart').disabled=d>=acts.length; aMsg(fail?'Finished, with '+fail+' failed. Press the button again to retry them.':'Finished. All activities are placed in the Explore tree.'); return; }
+      var batch=todo.slice(i,i+BATCH).map(function(a){ return {id:a.id,k:a.latitude.toFixed(6)+','+a.longitude.toFixed(6)}; });
+      fetch('/api/tree-lookup',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({token:token,kind:'activity',points:batch})})
+        .then(function(r){ return r.json().then(function(b){ return {status:r.status,body:b}; }); })
+        .then(function(res){
+          if(res.status!==200){ aRunning=false; $('aStart').disabled=false; aMsg(res.body.error||('Stopped: error '+res.status),true); return; }
+          var denied=null;
+          res.body.results.forEach(function(r){ if(r.ok) placed[r.id]=r; else { fail++; if(r.reason==='REQUEST_DENIED'||r.reason==='OVER_QUERY_LIMIT') denied=r; } });
+          aCounts(fail); i+=BATCH;
+          if(denied){ aRunning=false; $('aStart').disabled=false; aMsg('Google refused the lookup ('+denied.reason+').',true); return; }
+          setTimeout(step,150);
+        })
+        .catch(function(){ aRunning=false; $('aStart').disabled=false; aMsg('Lost the connection. Press the button to carry on.',true); });
+    })();
   });
 })();
 </script>
