@@ -307,18 +307,14 @@ function marker(it,big){ var m=L.marker([it.lat,it.lng],{icon:icon(it.kind,big)}
 var quietUntil=0; function quietMoves(){ quietUntil=Date.now()+1500; }
 map.on('moveend',function(){
   if(Date.now()<quietUntil || !ROOT || $('q').value.trim().length>=2) return;
-  var b=map.getBounds(), vis=listFor(TAB).filter(function(x){ return b.contains([x.lat,x.lng]); });
+  var b=map.getBounds(), c=map.getCenter(), z=map.getZoom();
+  var vis=listFor(TAB).filter(function(x){ return b.contains([x.lat,x.lng]); });
   if(!vis.length) return;
-  // deepest place that most of what is on screen shares
-  var path=[];
-  for(var d=0; d<5; d++){
-    var cnt={}, best=null, bn=0;
-    vis.forEach(function(x){ var p=itemPath(x); if(path.every(function(s,i){return p[i]===s;})){ cnt[p[d]]=(cnt[p[d]]||0)+1; } });
-    Object.keys(cnt).forEach(function(k){ if(cnt[k]>bn){bn=cnt[k];best=k;} });
-    if(!best || bn<vis.length*0.7) break;
-    path.push(best);
-  }
-  if(!path.length) return;
+  // follow the place at the centre of the map; the closer the zoom, the deeper the tree opens
+  var depth = z<=5?1 : z<=6?2 : z<=8?3 : z<=11?4 : 5;   // country, province, region, city, suburb
+  var near=null, nd=Infinity;
+  vis.forEach(function(x){ var d=km(c.lat,c.lng,x.lat,x.lng); if(d<nd){nd=d;near=x;} });
+  var path=itemPath(near).slice(0,depth);
   var n=revealPath(path,true);
   if(n){ markInView(n._btn); $('crumbs').textContent='Map shows: '+path.join(' › '); }
 });
