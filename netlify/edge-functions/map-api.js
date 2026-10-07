@@ -6,6 +6,7 @@ import { ZONES, LEGACY_ZONES, provinceToZone, districtToZone, normalizeZone, isV
 // free-text place NAME for the "does this coordinate match this property's
 // name" check. Same underlying Google Geocoding API, different job.
 import { reverseGeocode, forwardGeocode as forwardGeocodeAddress } from "./lib/geocode.js";
+import { placeCoordinate, keyOf, sameSpot, PLACES_STORE, ACTIVITY_KEY } from "./lib/tree.js";
 // Same Google Places photo search admin-api.js's Event hook "Find area
 // photo"/"Find theme photo" pickers use (see lib/places-images.js) — reused
 // here for the Map & Activities form's own "Find photo" button, so Jean
@@ -325,6 +326,26 @@ async function mapWithConcurrency(items, limit, fn) {
 // now lives in lib/geolocate.js as forwardGeocodeByName /
 // checkNameAgainstCoordinate — extracted 2026-09-29 so both call sites
 // share one implementation. See that file's header comment.
+
+// New location tree (2026-10-07): place an activity in Country > Province >
+// Region > City > Suburb when it is added or its pin moves, in the
+// "tree-places" store the Explore page reads. Best-effort: never blocks a save.
+async function placeActivityInTree(record) {
+  try {
+    const lat = parseFloat(record.latitude), lng = parseFloat(record.longitude);
+    if (!record.id || !isFinite(lat) || !isFinite(lng) || (lat === 0 && lng === 0)) return;
+    const apiKey = Deno.env.get("GOOGLE_GEOCODING_API_KEY") || "";
+    if (!apiKey) return;
+    const store = getStore({ name: PLACES_STORE, consistency: "strong" });
+    const map = (await store.get(ACTIVITY_KEY, { type: "json" })) || {};
+    const have = map[record.id];
+    if (have && have.p && sameSpot(have.k, keyOf(lat, lng))) return;
+    const r = await placeCoordinate(lat, lng, apiKey);
+    if (!r.ok) return;
+    map[record.id] = r.place;
+    await store.setJSON(ACTIVITY_KEY, map);
+  } catch (e) { /* placement is retried by the lookup page's activity run */ }
+}
 
 async function verifyAdminToken(token) {
   if (!token) return false;
@@ -3475,6 +3496,7 @@ const locationListStore = getStore({ name: "map-location-lists", consistency: "s
       await autoGeocodeRecord(record, Deno.env.get("GOOGLE_GEOCODING_API_KEY") || "", townsStore, geoCacheStore);
       all.push(record);
       await saveActivities(activitiesStore, all);
+      await placeActivityInTree(record);
       return json({ ok: true, activity: record });
     }
 
@@ -3491,6 +3513,7 @@ const locationListStore = getStore({ name: "map-location-lists", consistency: "s
       await autoGeocodeRecord(record, Deno.env.get("GOOGLE_GEOCODING_API_KEY") || "", townsStore, geoCacheStore);
       all[idx] = record;
       await saveActivities(activitiesStore, all);
+      await placeActivityInTree(record);
       return json({ ok: true, activity: record });
     }
 

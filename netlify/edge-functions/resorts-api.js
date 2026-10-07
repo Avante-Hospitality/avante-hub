@@ -1,5 +1,6 @@
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
 import { mergeResorts } from "./lib/resort-key.js";
+import { placeResortBacklog, PLACES_STORE } from "./lib/tree.js";
 // Case A of the full-hub-coordinate-geocoding-scope build (2026-09-29):
 // after this sync lands a new/changed coordinate from StockNetwork, place
 // that property in the hub's own Zone/Town/Suburb/Nearby tree right away —
@@ -539,6 +540,12 @@ async function handleApiSync(request, store, cors) {
     Object.assign({}, record, { resorts, apiSyncedAt: new Date().toISOString() })
   );
 
+  // New location tree (2026-10-07): place any property that is new or whose pin
+  // moved, plus a little backlog, in the "tree-places" store. Best-effort: a
+  // failure here never fails the sync, and anything left over is picked up next
+  // night or with "Place now" on the lookup page.
+  const treePlace = await placeTreeBacklog(resorts);
+
   // Save this run's unmatched-row list, minus anything Jean has explicitly
   // dismissed (dismissPendingNewStockNetworkProperty in map-api.js) — that
   // set is read back here and carried forward since this whole list is a
@@ -577,9 +584,20 @@ async function handleApiSync(request, store, cors) {
       coordProtectedFromOverwrite,
       coordAwaitingSn,
       snCoordCaughtUp,
+      treePlace,
     }),
     { headers: { "content-type": "application/json", ...cors } }
   );
+}
+
+async function placeTreeBacklog(resorts) {
+  try {
+    const apiKey = Deno.env.get("GOOGLE_GEOCODING_API_KEY") || "";
+    if (!apiKey) return { skipped: "no api key" };
+    return await placeResortBacklog(getStore({ name: PLACES_STORE, consistency: "strong" }), resorts, apiKey, 6000);
+  } catch (e) {
+    return { error: String((e && e.message) || e) };
+  }
 }
 
 export default async (request, context) => {
@@ -652,8 +670,9 @@ export default async (request, context) => {
 
       const updatedAt = new Date().toISOString();
       await store.setJSON("current", { resorts, updatedAt });
+      const treePlace = await placeTreeBacklog(resorts);
 
-      return new Response(JSON.stringify({ ok: true, count: resorts.length, updatedAt, resorts }), {
+      return new Response(JSON.stringify({ ok: true, count: resorts.length, updatedAt, resorts, treePlace }), {
         headers: { "content-type": "application/json", ...cors },
       });
     }

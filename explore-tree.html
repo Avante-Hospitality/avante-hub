@@ -184,9 +184,9 @@ function loadAll(){
     fetch('/api/map').then(function(r){return r.json();}),
     fetch('tree-places.json').then(function(r){return r.json();}),
     fetch('tree-regions.json').then(function(r){return r.json();}),
-    fetch('/api/tree-lookup').then(function(r){return r.json();}).catch(function(){return {activities:{}};})
+    fetch('/api/tree-lookup?kind=all').then(function(r){return r.json();}).catch(function(){return {activities:{},properties:{}};})
   ]).then(function(res){
-    var map=res[0], places=res[1].places, reg=res[2], aplaces=(res[3]&&res[3].activities)||{};
+    var map=res[0], places=res[1].places, reg=res[2], aplaces=(res[3]&&res[3].activities)||{}, lplaces=(res[3]&&res[3].properties)||{};
     REG=reg; RULES=reg.rules; reg.regions.forEach(function(r){ if(r.overlay) OVERLAY[r.name]=1; }); buildRegionIndex(reg.shapes);
     // properties: one per ResortID (onboarded listings by listingId)
     var seen={};
@@ -194,7 +194,7 @@ function loadAll(){
       if(typeof p.latitude!=='number'||typeof p.longitude!=='number') return;
       var key=p.resortId||p.listingId; if(seen[key]) return; seen[key]=1;
       var it={kind:'property',raw:p,id:key,name:p.name,lat:p.latitude,lng:p.longitude};
-      var pl=p.resortId&&places[p.resortId];
+      var pl=p.resortId&&(lplaces[p.resortId]||places[p.resortId]); // live placement wins over the file
       if(pl){ it.c=pl.c;it.p=pl.p;it.r=pl.r;it.t=pl.t;it.s=pl.s;it.a=pl.a||[];it.placed=true; }
       PROPS.push(it);
     });
@@ -212,7 +212,8 @@ function loadAll(){
       if(typeof a.latitude!=='number'||typeof a.longitude!=='number') return;
       var it={kind:'activity',raw:a,id:a.id,name:a.name,lat:a.latitude,lng:a.longitude};
       var gp=aplaces[a.id];
-      if(gp && gp.country){ var c=cleanPlace(gp,it.lat,it.lng); it.c=c.c;it.p=c.p;it.t=c.t;it.s=c.s;it.a=c.a; }
+      if(gp && gp.p){ it.c=gp.c;it.p=gp.p;it.t=gp.t;it.s=gp.s;it.a=gp.a||[];it.r=gp.r; } // placed by the hub
+      else if(gp && gp.country){ var c=cleanPlace(gp,it.lat,it.lng); it.c=c.c;it.p=c.p;it.t=c.t;it.s=c.s;it.a=c.a; }
       else { var nb=nearestPlaced(it.lat,it.lng,10); if(nb){ it.c=nb.c;it.p=nb.p;it.t=nb.t;it.s='';it.a=nb.a; } else { var pv=provinceAt(it.lat,it.lng); it.c=pv?'South Africa':(a.country||'(pin needs checking)'); it.p=pv||'(pin needs checking)'; var nt=nearestTown(it.lat,it.lng,80); it.t=nt?nt.t:'(no town)'; it.s=''; it.a=[]; } it.notLooked=true; }
       finishRegions(it); ACTS.push(it);
     });
@@ -300,7 +301,7 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18,att
 var cluster=L.markerClusterGroup({maxClusterRadius:50}).addTo(map);
 var focusLayer=L.layerGroup().addTo(map), regLayer=null, hiReg=null;
 function icon(kind,big){ var c=kind==='activity'?'#0e7c66':'#1a4d7a', s=big?16:13; return L.divIcon({className:'',html:'<div style="background:'+c+';width:'+s+'px;height:'+s+'px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 2px rgba(0,0,0,.45)"></div>',iconSize:[s,s]}); }
-function marker(it,big){ var m=L.marker([it.lat,it.lng],{icon:icon(it.kind,big)}); m.bindPopup(function(){return popupContent(it.raw);},{maxWidth:260});
+function marker(it,big){ it.raw._tree=it; var m=L.marker([it.lat,it.lng],{icon:icon(it.kind,big)}); m.bindPopup(function(){return popupContent(it.raw);},{maxWidth:260});
   // clicking a dot opens the tree to it
   m.on('popupopen',function(){ if(it.kind!==TAB) return; quietMoves(); markInView(revealItem(it)); });
   it._m=m; return m; }
@@ -406,7 +407,7 @@ function popupContent(item){
         bb.addEventListener('click',function(e){ e.stopPropagation(); idx=(idx+(dir==='left'?-1:1)+photos.length)%photos.length; img.src=photos[idx]; counter.textContent=(idx+1)+' / '+photos.length; }); pw.appendChild(bb); }); }
     wrap.appendChild(pw); }
   var t=document.createElement('div'); t.className='map-popup-title'; t.textContent=item.name||'Untitled'; wrap.appendChild(t);
-  var sub=item.kind==='property'?[item.city,item.country].filter(Boolean).join(', '):item.area;
+  var pl=item._tree, sub=pl&&pl.t?[pl.s&&pl.s!==pl.t?pl.s:'',pl.t,(pl.r&&pl.r[0])||pl.p].filter(Boolean).join(', '):(item.kind==='property'?[item.city,item.country].filter(Boolean).join(', '):item.area);
   if(sub){ var se=document.createElement('div'); se.className='map-popup-desc'; se.style.color='#777'; se.textContent=sub; wrap.appendChild(se); }
   if(item.kind==='activity'&&item.price){ var pe=document.createElement('div'); pe.className='map-popup-desc'; var st=document.createElement('strong'); st.textContent=item.price; pe.appendChild(st); wrap.appendChild(pe); }
   if(item.description){ var de=document.createElement('div'); de.className='map-popup-desc'; de.textContent=item.description; wrap.appendChild(de); }

@@ -1,20 +1,26 @@
-// Location tree lookup (standalone, 2026-10-07).
+// Location tree lookups and live placements (2026-10-07).
 //
-// Reverse-geocodes a small batch of coordinates with Google and returns the
-// raw levels the new location tree needs: country, province
-// (administrative_area_level_1), municipality (administrative_area_level_2),
-// town (locality / postal_town) and suburb (sublocality / neighborhood).
+// GET  /api/tree-lookup?kind=activities|properties|all
+//      Public read of the live placements in the "tree-places" store (places
+//      are already public on the map). Default kind=activities.
+// POST (admin only)
+//      { points:[ "lat,lng" ] }                  property lookups for the one-off
+//                                                Google run; returns answers, saves nothing
+//      { kind:"activity", points:[{id,k}] }      look up activities and save their place
+//      { action:"seedProperties" }               copy tree-places.json (the approved
+//                                                tree) into the live store, with each
+//                                                property's current pin
+//      { action:"placeBacklog" }                 place properties that are new or whose
+//                                                pin moved, within a time budget
 //
-// Property lookups only READ from Google and return the answer to the admin
-// page (tree-lookup.html). Activity lookups also save the answer in the new
-// "tree-places" store, which only this endpoint writes and only the Explore
-// tree reads, so no property, zone, affiliate or activity record changes.
-// Lookups are admin-only; GET returns the saved activity places.
+// Only this endpoint, the nightly SN sync and map-api.js's activity save write
+// the "tree-places" store. No property, activity, zone or affiliate record is
+// changed here.
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
+import { googleLookup, placeCoordinate, placeResortBacklog, keyOf, PLACES_STORE, ACTIVITY_KEY, PROPERTY_KEY } from "./lib/tree.js";
 
 const MAX_POINTS = 25;
 const CONCURRENCY = 5;
-const FETCH_TIMEOUT_MS = 8000;
 
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -31,104 +37,85 @@ async function verifyAdminToken(token) {
   return new Date(session.expiresAt).getTime() >= Date.now();
 }
 
-async function lookup(lat, lng, apiKey) {
-  const url = "https://maps.googleapis.com/maps/api/geocode/json?latlng=" +
-    encodeURIComponent(lat) + "," + encodeURIComponent(lng) + "&key=" + encodeURIComponent(apiKey);
-  let res;
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-    try { res = await fetch(url, { signal: controller.signal }); } finally { clearTimeout(timer); }
-  } catch (e) {
-    return { ok: false, reason: e && e.name === "AbortError" ? "timeout" : "network" };
-  }
-  if (!res.ok) return { ok: false, reason: "HTTP " + res.status };
-  let data;
-  try { data = await res.json(); } catch (e) { return { ok: false, reason: "bad_response" }; }
-  if (!data || data.status !== "OK" || !Array.isArray(data.results) || !data.results.length) {
-    return { ok: false, reason: (data && data.status) || "unknown", message: (data && data.error_message) || "" };
-  }
-  // results[0] is the most specific match; fill any level it lacks from the
-  // broader results that follow (rural points often have no suburb there).
-  function find(...types) {
-    for (const r of data.results) {
-      for (const type of types) {
-        const c = (r.address_components || []).find((c) => Array.isArray(c.types) && c.types.includes(type));
-        if (c && c.long_name) return c.long_name;
-      }
-    }
-    return "";
-  }
-  return {
-    ok: true,
-    country: find("country"),
-    province: find("administrative_area_level_1"),
-    municipality: find("administrative_area_level_3", "administrative_area_level_2"),
-    district: find("administrative_area_level_2"),
-    town: find("locality", "postal_town"),
-    suburb: find("sublocality_level_1", "sublocality", "neighborhood"),
-    address: data.results[0].formatted_address || "",
-  };
+async function pool(items, fn) {
+  const out = new Array(items.length);
+  let n = 0;
+  async function w() { while (n < items.length) { const i = n++; out[i] = await fn(items[i], i); } }
+  await Promise.all(Array.from({ length: CONCURRENCY }, w));
+  return out;
 }
 
-// Activity results (kind: "activity") are kept in their own store so the
-// Explore tree can place activities live. One JSON map { activityId: place },
-// written only by this endpoint; nothing else in the hub reads or writes it.
-const PLACES_STORE = "tree-places";
-const ACTIVITY_KEY = "activities";
-
 export default async (request) => {
+  const places = getStore({ name: PLACES_STORE, consistency: "strong" });
+
   if (request.method === "GET") {
-    // Public read of saved activity places (activity locations are already
-    // public on the map), used by explore-tree.html.
-    const store = getStore({ name: PLACES_STORE, consistency: "strong" });
-    const map = (await store.get(ACTIVITY_KEY, { type: "json" })) || {};
-    return json({ ok: true, activities: map });
+    const kind = new URL(request.url).searchParams.get("kind") || "activities";
+    const body = { ok: true };
+    if (kind === "activities" || kind === "all") body.activities = (await places.get(ACTIVITY_KEY, { type: "json" })) || {};
+    if (kind === "properties" || kind === "all") body.properties = (await places.get(PROPERTY_KEY, { type: "json" })) || {};
+    return json(body);
   }
   if (request.method !== "POST") return json({ error: "Use GET or POST." }, 405);
+
   let body;
   try { body = await request.json(); } catch (e) { return json({ error: "Body must be JSON." }, 400); }
   if (!(await verifyAdminToken(body.token))) return json({ error: "Your admin session has expired. Log in again." }, 401);
+
+  if (body.action === "seedProperties") {
+    // The approved tree, keyed by ResortID, plus each property's current pin so
+    // later runs can tell when a pin has moved.
+    const res = await fetch(new URL("/tree-places.json", request.url));
+    if (!res.ok) return json({ error: "Could not read tree-places.json (" + res.status + ")." }, 500);
+    const file = (await res.json()).places || {};
+    const resorts = (((await getStore({ name: "resort-list", consistency: "strong" }).get("current", { type: "json" })) || {}).resorts || []);
+    const pin = {};
+    for (const r of resorts) {
+      const lat = parseFloat(r.latitude), lng = parseFloat(r.longitude);
+      if (r.resortId && !pin[r.resortId] && isFinite(lat) && isFinite(lng)) pin[r.resortId] = keyOf(lat, lng);
+    }
+    const map = (await places.get(PROPERTY_KEY, { type: "json" })) || {};
+    let added = 0;
+    const at = new Date().toISOString();
+    for (const id of Object.keys(file)) {
+      if (map[id] && map[id].src !== "file") continue; // never overwrite a newer live placement
+      map[id] = { ...file[id], k: pin[id] || "", at, src: "file" };
+      added++;
+    }
+    await places.setJSON(PROPERTY_KEY, map);
+    return json({ ok: true, seeded: added, total: Object.keys(map).length, resortRows: resorts.length });
+  }
+
   const apiKey = Deno.env.get("GOOGLE_GEOCODING_API_KEY") || "";
   if (!apiKey) return json({ error: "GOOGLE_GEOCODING_API_KEY isn't set in this site's environment variables." }, 400);
+
+  if (body.action === "placeBacklog") {
+    const resorts = (((await getStore({ name: "resort-list", consistency: "strong" }).get("current", { type: "json" })) || {}).resorts || []);
+    const r = await placeResortBacklog(places, resorts, apiKey, 9000);
+    return json({ ok: true, ...r });
+  }
 
   if (body.kind === "activity") {
     // points: [{ id, k: "lat,lng" }]
     const items = Array.isArray(body.points) ? body.points.slice(0, MAX_POINTS) : [];
-    const out = new Array(items.length);
-    let n = 0;
-    async function aw() {
-      while (n < items.length) {
-        const i = n++;
-        const it = items[i] || {};
-        const [lat, lng] = String(it.k || "").split(",").map(Number);
-        out[i] = isFinite(lat) && isFinite(lng)
-          ? { id: String(it.id || ""), k: it.k, ...(await lookup(lat, lng, apiKey)) }
-          : { id: String(it.id || ""), k: it.k, ok: false, reason: "bad_coordinate" };
-      }
-    }
-    await Promise.all(Array.from({ length: CONCURRENCY }, aw));
-    const store = getStore({ name: PLACES_STORE, consistency: "strong" });
-    const map = (await store.get(ACTIVITY_KEY, { type: "json" })) || {};
-    const at = new Date().toISOString();
-    out.forEach((r) => { if (r.id && r.ok) map[r.id] = { k: r.k, country: r.country, province: r.province, district: r.district, town: r.town, suburb: r.suburb, at }; });
-    await store.setJSON(ACTIVITY_KEY, map);
-    return json({ ok: true, results: out, saved: Object.keys(map).length });
+    const out = await pool(items, async (it) => {
+      it = it || {};
+      const [lat, lng] = String(it.k || "").split(",").map(Number);
+      if (!isFinite(lat) || !isFinite(lng)) return { id: String(it.id || ""), k: it.k, ok: false, reason: "bad_coordinate" };
+      const r = await placeCoordinate(lat, lng, apiKey);
+      return r.ok ? { id: String(it.id || ""), ok: true, place: r.place } : { id: String(it.id || ""), k: it.k, ok: false, reason: r.reason };
+    });
+    const map = (await places.get(ACTIVITY_KEY, { type: "json" })) || {};
+    out.forEach((r) => { if (r.id && r.ok) map[r.id] = r.place; });
+    await places.setJSON(ACTIVITY_KEY, map);
+    return json({ ok: true, results: out.map((r) => ({ id: r.id, ok: r.ok, reason: r.reason, k: r.place ? r.place.k : r.k })), saved: Object.keys(map).length });
   }
 
+  // Property lookups for the one-off run: answers only, nothing saved.
   const points = Array.isArray(body.points) ? body.points.slice(0, MAX_POINTS) : [];
-  const results = new Array(points.length);
-  let next = 0;
-  async function worker() {
-    while (next < points.length) {
-      const i = next++;
-      const [lat, lng] = String(points[i]).split(",").map(Number);
-      results[i] = isFinite(lat) && isFinite(lng)
-        ? { k: points[i], ...(await lookup(lat, lng, apiKey)) }
-        : { k: points[i], ok: false, reason: "bad_coordinate" };
-    }
-  }
-  await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+  const results = await pool(points, async (k) => {
+    const [lat, lng] = String(k).split(",").map(Number);
+    return isFinite(lat) && isFinite(lng) ? { k, ...(await googleLookup(lat, lng, apiKey)) } : { k, ok: false, reason: "bad_coordinate" };
+  });
   return json({ ok: true, results });
 };
 

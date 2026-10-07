@@ -55,6 +55,13 @@
     <div class="btns"><button class="pri" id="aStart" disabled>Look up activities</button></div>
     <div id="aMsg" role="status" aria-live="polite" style="margin-top:14px;font-weight:600;color:var(--navy)"></div>
   </div>
+  <div class="card">
+    <h2 style="font-family:'Montserrat',sans-serif;color:var(--navy);font-size:17px;margin:0 0 6px">Properties in the live tree</h2>
+    <p style="margin:0">The hub keeps every property's place in the tree and places new properties, and ones whose pin moved, by itself every night. Set it up once from the approved tree, and use Place now when you don't want to wait for the night.</p>
+    <div class="nums" style="margin-top:12px"><span><b id="pTotal">…</b> properties placed</span></div>
+    <div class="btns"><button id="pSeed" disabled>Set up from the approved tree</button><button class="pri" id="pPlace" disabled>Place new and moved properties now</button></div>
+    <div id="pMsg" role="status" aria-live="polite" style="margin-top:14px;font-weight:600;color:var(--navy)"></div>
+  </div>
 </div>
 <script>
 (function(){
@@ -133,6 +140,35 @@
       var done=aCounts(0); $('aStart').disabled=done>=acts.length;
       aMsg(done>=acts.length?'All activities are placed.':'');
     }).catch(function(){ aMsg('Could not load the activities.',true); });
+  // ---- Properties: live tree setup and placement
+  function pMsg(t,err){ $('pMsg').textContent=t; $('pMsg').style.color=err?'var(--warn)':'var(--navy)'; }
+  function post(body){ return fetch('/api/tree-lookup',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(Object.assign({token:token},body))}).then(function(r){ return r.json().then(function(b){ return {status:r.status,body:b}; }); }); }
+  function pLoad(){ return fetch('/api/tree-lookup?kind=properties',{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
+    var n=Object.keys((d&&d.properties)||{}).length; $('pTotal').textContent=n.toLocaleString('en-ZA');
+    $('pSeed').disabled=false; $('pPlace').disabled=!n; if(!n) pMsg('Not set up yet. Press "Set up from the approved tree" first.'); return n; }).catch(function(){ pMsg('Could not read the live tree.',true); }); }
+  pLoad();
+  $('pSeed').addEventListener('click',function(){
+    $('pSeed').disabled=true; pMsg('Setting up…');
+    post({action:'seedProperties'}).then(function(res){
+      if(res.status!==200){ pMsg(res.body.error||('Error '+res.status),true); $('pSeed').disabled=false; return; }
+      pMsg('Done: '+res.body.seeded.toLocaleString('en-ZA')+' properties set up from the approved tree.'); pLoad();
+    }).catch(function(){ pMsg('Lost the connection. Press the button again.',true); $('pSeed').disabled=false; });
+  });
+  $('pPlace').addEventListener('click',function(){
+    $('pPlace').disabled=true; var placed=0, failed=0;
+    (function step(){
+      pMsg('Placing… '+placed+' placed so far');
+      post({action:'placeBacklog'}).then(function(res){
+        if(res.status!==200){ pMsg(res.body.error||('Error '+res.status),true); $('pPlace').disabled=false; return; }
+        var b=res.body; placed+=b.placed||0; failed+=b.failed||0;
+        if(b.denied){ pMsg('Google refused the lookup ('+b.denied+').',true); $('pPlace').disabled=false; return; }
+        if(b.skipped && b.placed){ setTimeout(step,300); return; }
+        pMsg(placed||failed ? 'Finished: '+placed+' placed'+(failed?', '+failed+' failed':'')+'.' : 'Nothing to place: every property with a pin is in the tree.');
+        $('pPlace').disabled=false; pLoad();
+      }).catch(function(){ pMsg('Lost the connection. Press the button again.',true); $('pPlace').disabled=false; });
+    })();
+  });
+
   $('aStart').addEventListener('click',function(){
     if(aRunning) return; aRunning=true; $('aStart').disabled=true;
     var todo=acts.filter(function(a){ return !placed[a.id]; }), i=0, fail=0;
