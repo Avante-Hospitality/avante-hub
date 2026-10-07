@@ -6,7 +6,7 @@ import { ZONES, LEGACY_ZONES, provinceToZone, districtToZone, normalizeZone, isV
 // free-text place NAME for the "does this coordinate match this property's
 // name" check. Same underlying Google Geocoding API, different job.
 import { reverseGeocode, forwardGeocode as forwardGeocodeAddress } from "./lib/geocode.js";
-import { placeCoordinate, keyOf, sameSpot, PLACES_STORE, ACTIVITY_KEY } from "./lib/tree.js";
+import { placeCoordinate, keyOf, sameSpot, provinceAt, nearestTownName, placeText, snFieldsFromPlace, PLACES_STORE, ACTIVITY_KEY, PROPERTY_KEY } from "./lib/tree.js";
 // Same Google Places photo search admin-api.js's Event hook "Find area
 // photo"/"Find theme photo" pickers use (see lib/places-images.js) — reused
 // here for the Map & Activities form's own "Find photo" button, so Jean
@@ -2082,30 +2082,19 @@ const locationListStore = getStore({ name: "map-location-lists", consistency: "s
 
     if (action === "stocknetworkReview") {
       // Backs the "StockNetwork location review" card. Compares each
-      // resort-list property's raw StockNetwork fields — landed by the
-      // nightly API sync (resorts-api.js's handleApiSync) or a StockNetwork
-      // CSV upload — against the hub's own Zone > Town > Suburb tree, and
-      // flags where they disagree or StockNetwork's side is blank. The hub
-      // is the master (per Jean's explicit 2026-09-29 instruction): this
-      // never writes anything, it only lists what to look at. A property
-      // with no StockNetwork field landed yet (never synced/uploaded) has
-      // nothing to compare and is skipped, not flagged.
+      // resort-list property's StockNetwork fields (from the nightly sync or a
+      // CSV upload) with its place in the location tree (2026-10-07):
+      // Country, State = province, Area = main Avante region, City, Suburb.
+      // Read-only. A property with no StockNetwork data yet is skipped.
       const resortRecord = await resortListStore.get("current", { type: "json" });
       const resortList = (resortRecord && Array.isArray(resortRecord.resorts)) ? resortRecord.resorts : [];
-      const allTowns = await loadTowns(townsStore);
-      const townById = new Map(allTowns.map((t) => [t.id, t]));
+      const placed = (await getStore({ name: PLACES_STORE, consistency: "strong" }).get(PROPERTY_KEY, { type: "json" })) || {};
 
       function norm(v) {
         return String(v || "").trim().toLowerCase();
       }
-      // Deliberately loose — a whole-string containment match, not exact —
-      // since "Garden Route" (hub zone) vs "Garden Route Area" (SN's own
-      // text) or "Cape Town" vs "Cape Town Central" are the same place
-      // written slightly differently on each side, and this tool's job is
-      // to surface genuine disagreements for a person to judge, not to
-      // silently auto-match variants. False positives just mean an extra
-      // row to glance at and dismiss; a missed real mismatch is the worse
-      // failure this tool exists to avoid.
+      // Loose on purpose ("Cape Town" vs "Cape Town Central"): this lists
+      // disagreements for a person to judge.
       function likelyMatch(a, b) {
         const x = norm(a), y = norm(b);
         if (!x || !y) return false;
@@ -2115,34 +2104,27 @@ const locationListStore = getStore({ name: "map-location-lists", consistency: "s
       const flags = [];
       resortList.forEach((r, i) => {
         if (!r || !r.resortId) return;
-        const hasSnData = r.snCountry || r.area || r.city || r.suburb;
-        // A coordinate flagged by Case B (resorts-api.js's nightly sync,
-        // full-hub-coordinate-geocoding-scope 2026-09-29) is always worth
-        // showing even when there's no other StockNetwork text to compare —
-        // it's not a text disagreement, it's "this pin may not actually be
-        // this property".
+        const hasSnData = r.snCountry || r.area || r.city || r.suburb || r.state;
         if (!hasSnData && !r.coordSuspicious) return;
 
-        const town = r.townId ? townById.get(r.townId) : null;
-        const suburb = town && r.suburbId && Array.isArray(town.suburbs) ? town.suburbs.find((s) => s.id === r.suburbId) : null;
-        const hubCountry = r.country || "";
-        const hubZone = (town ? townZone(town) : "") || r.zone || "";
-        const hubTownName = town ? town.name : (r.locationLabel || "");
-        const hubSuburbName = suburb ? suburb.name : "";
+        const pl = placed[r.resortId];
+        const lat = parseFloat(r.latitude), lng = parseFloat(r.longitude);
+        const current = pl && isFinite(lat) && isFinite(lng) && sameSpot(pl.k, keyOf(lat, lng));
+        const hub = current ? snFieldsFromPlace(pl) : { country: "", state: "", area: "", city: "", suburb: "", district: "" };
 
         const reasons = [];
-        if (hasSnData) {
+        if (!current && isFinite(lat) && isFinite(lng)) reasons.push("not-placed");
+        if (hasSnData && current) {
           if (!r.snCountry) reasons.push("country-blank");
-          else if (!likelyMatch(r.snCountry, hubCountry)) reasons.push("country");
-          if (!r.area) reasons.push("zone-blank");
-          else if (!likelyMatch(r.area, hubZone)) reasons.push("zone");
+          else if (!likelyMatch(r.snCountry, hub.country)) reasons.push("country");
+          if (!r.state) reasons.push("state-blank");
+          else if (hub.state && !likelyMatch(r.state, hub.state)) reasons.push("state");
+          if (!r.area) reasons.push("region-blank");
+          else if (hub.area && !likelyMatch(r.area, hub.area)) reasons.push("region");
           if (!r.city) reasons.push("town-blank");
-          else if (!likelyMatch(r.city, hubTownName)) reasons.push("town");
-          if (r.suburb && hubSuburbName && !likelyMatch(r.suburb, hubSuburbName)) reasons.push("suburb");
+          else if (!likelyMatch(r.city, hub.city)) reasons.push("town");
+          if (r.suburb && hub.suburb && !likelyMatch(r.suburb, hub.suburb)) reasons.push("suburb");
         }
-        // Case B: the property's own name doesn't look like it matches the
-        // coordinate StockNetwork just sent — see resorts-api.js's
-        // handleApiSync / lib/geolocate.js's checkNameAgainstCoordinate.
         if (r.coordSuspicious) reasons.push("coordinate");
 
         if (!reasons.length) return;
@@ -2151,17 +2133,10 @@ const locationListStore = getStore({ name: "map-location-lists", consistency: "s
           resortId: r.resortId,
           siteId: r.siteId || "",
           name: r.name || "",
-          snCountry: r.snCountry || "", hubCountry,
-          snArea: r.area || "", hubZone,
-          snCity: r.city || "", hubTown: hubTownName,
-          snSuburb: r.suburb || "", hubSuburb: hubSuburbName,
-          hubTownId: r.townId || "", hubSuburbId: r.suburbId || "",
-          // Read-only display fields Jean asked for (2026-09-29) — StockNetwork's
-          // own District/City2/State never feed the hub's tree (that's still
-          // purely coordinate-geocoding driven), they're shown here purely so
-          // she can see everything StockNetwork sent for this property while
-          // reviewing a flag.
-          snDistrict: r.district || "", snCity2: r.city2 || "", snState: r.state || "",
+          snCountry: r.snCountry || "", snState: r.state || "", snArea: r.area || "", snCity: r.city || "", snSuburb: r.suburb || "",
+          snDistrict: r.district || "", snCity2: r.city2 || "",
+          hubCountry: hub.country, hubState: hub.state, hubRegion: hub.area, hubTown: hub.city, hubSuburb: hub.suburb, hubDistrict: hub.district,
+          hubPlace: current ? placeText(pl) : "",
           latitude: r.latitude || "", longitude: r.longitude || "",
           coordSuspicious: !!r.coordSuspicious,
           coordSuspiciousNote: r.coordSuspiciousNote || "",
@@ -2185,68 +2160,9 @@ const locationListStore = getStore({ name: "map-location-lists", consistency: "s
     }
 
     if (action === "resolveStocknetworkLocation") {
-      // The only action that writes a hub correction prompted by the
-      // StockNetwork review above — per the standing project rule, nothing
-      // from StockNetwork is ever applied automatically. A person reviews a
-      // flag and either accepts the suggested country, or picks the correct
-      // Town/Suburb/Zone from the tree (same encoding readLocationSelect/
-      // applyLocationSelect use in admin.html), and only this action, on
-      // that explicit save, writes it onto the resort-list row.
-      const resortRecord = await resortListStore.get("current", { type: "json" });
-      const resortList = (resortRecord && Array.isArray(resortRecord.resorts)) ? resortRecord.resorts : [];
-
-      // Two ways to point at the row to fix: the "StockNetwork location
-      // review" card (sn-review rows) already knows its raw array index.
-      // The map popup's new "Edit location" action (2026-10-03) doesn't —
-      // a pin only carries the pin's own resortId — and a raw index would
-      // be unsafe there anyway since it can shift between the map's last
-      // fetch and this save. resortId (StockNetwork's own ResortID) is
-      // stable across both, so it's looked up fresh here instead.
-      let index = parseInt(body.index, 10);
-      if (!isFinite(index) || index < 0) {
-        const resortId = typeof body.resortId === "string" ? body.resortId.trim() : "";
-        if (!resortId) return json({ error: "Missing index or resortId." }, 400);
-        index = resortList.findIndex((r) => r && String(r.resortId || "") === resortId);
-        if (index < 0) return json({ error: "Property not found — the list may have changed, refresh and try again." }, 404);
-      }
-
-      const rec = resortList[index];
-      if (!rec) return json({ error: "Property not found — the list may have changed, refresh and try again." }, 404);
-
-      let changed = false;
-      if (typeof body.country === "string" && body.country.trim()) {
-        rec.country = clean(body.country, 120);
-        changed = true;
-      }
-      if (body.clearLocation) {
-        rec.zone = ""; rec.townId = ""; rec.suburbId = ""; rec.locationLabel = ""; rec.nearby = false;
-        changed = true;
-      } else if (body.townId || body.suburbId || body.zone) {
-        rec.zone = body.zone ? okZone(body.zone) : "";
-        rec.townId = typeof body.townId === "string" ? body.townId : "";
-        rec.suburbId = typeof body.suburbId === "string" ? body.suburbId : "";
-        // Picking a Town/Suburb from the tree used to leave the zone blank
-        // and the country untouched (the picker only encodes a zone for a
-        // zone-level pick). Now the chosen town's own zone and country are
-        // copied across — unless a country was typed explicitly above, or
-        // a zone was sent explicitly, which win (Jean 2026-10-04).
-        if (rec.townId) {
-          const pickedTowns = await loadTowns(townsStore);
-          const picked = pickedTowns.find((t) => t.id === rec.townId);
-          if (picked) {
-            if (!body.zone) rec.zone = okZone(townZone(picked)) || rec.zone;
-            if (!(typeof body.country === "string" && body.country.trim())) rec.country = townCountry(picked);
-          }
-        }
-        rec.locationLabel = typeof body.locationLabel === "string" ? clean(body.locationLabel, 200) : "";
-        rec.nearby = false;
-        rec.locV = LOCATION_TAG_VERSION;
-        changed = true;
-      }
-      if (!changed) return json({ error: "Nothing to save." }, 400);
-
-      await resortListStore.setJSON("current", Object.assign({}, resortRecord, { resorts: resortList }));
-      return json({ ok: true, country: rec.country || "", zone: rec.zone || "", townId: rec.townId || "", suburbId: rec.suburbId || "", locationLabel: rec.locationLabel || "" });
+      // Retired 2026-10-07: a property's place now comes from its pin (the
+      // location tree), not from a Zone/Town/Suburb picked by hand.
+      return json({ error: "Places are now set from the pin. Use Fix coordinates instead." }, 410);
     }
 
     if (action === "listMissingCoordinateProperties") {
@@ -2611,36 +2527,26 @@ const locationListStore = getStore({ name: "map-location-lists", consistency: "s
     }
 
     if (action === "exportLocations") {
-      // Backs the "Corrected StockNetwork file" tool. Given a batch of rows
-      // from a StockNetwork resort export ({ i, name, resortId, siteId,
-      // lat, lng, csvCountry }), returns what Country / Area / City /
-      // Suburb each should be according to the HUB's own location tree, so
-      // the file that goes back to StockNetwork matches the hub exactly.
+      // Backs the "Corrected StockNetwork file" tool and the SN cleanup
+      // wizard. Given rows from a StockNetwork resort export ({ i, name,
+      // resortId, siteId, lat, lng, csvCountry }), returns what each row's
+      // location columns should say according to the location tree
+      // (2026-10-07): Country, State = province, Area = main Avante region,
+      // City = town, Suburb = suburb (the town when there is none), District
+      // = local municipality. City2 is never touched.
       //
-      //  * Area = the hub ZONE (e.g. "Garden Route", "Eastern Cape",
-      //    "Erongo Region"), per Jean's rule (2026-09-29, corrected from an
-      //    earlier "State = hub zone" assumption — State is StockNetwork's
-      //    own separate province/region column and is never written here) —
-      //    not the province.
-      //  * City = the hub Town. Suburb = the hub Suburb; when the place has
-      //    no suburb the town name is repeated; when it has no town of its
-      //    own and was placed with the nearest town, "Nearby <Town>".
-      //  * A row whose stored hub tag is current (locV 2, same coordinates)
-      //    costs nothing. Anything else is resolved live through the same
-      //    resolveLocationForCoordinate step Re-check all zones uses (cache
-      //    first, so a coordinate is never paid for twice) — at most
-      //    LIVE_PER_CALL per call, then `nextIndex` tells the caller where
-      //    to resume. Read-only for the hub except for any brand-new towns
-      //    a live lookup creates, and the resort row it tags.
+      // A property already placed in the live tree at the same spot costs
+      // nothing; anything else is looked up with Google (at most
+      // LIVE_PER_CALL per call, then `nextIndex` says where to resume) and
+      // saved in the live tree.
       const apiKey = Deno.env.get("GOOGLE_GEOCODING_API_KEY") || "";
       const startedAt = Date.now();
       const rows = Array.isArray(body.rows) ? body.rows.slice(0, body.dryRun ? 8000 : 400) : [];
       const LIVE_PER_CALL = 12;
       const LIVE_BUDGET_MS = 11000;
 
-      const allTowns = await loadTowns(townsStore);
-      const existingIds = new Set(allTowns.map((t) => t.id));
-      const townById = new Map(allTowns.map((t) => [t.id, t]));
+      const placesStore = getStore({ name: PLACES_STORE, consistency: "strong" });
+      const placed = (await placesStore.get(PROPERTY_KEY, { type: "json" })) || {};
       const resortRecord = await resortListStore.get("current", { type: "json" });
       const resortList = (resortRecord && Array.isArray(resortRecord.resorts)) ? resortRecord.resorts : [];
       const rowKey = (name, siteId, resortId) => String(name || "").trim().toLowerCase() + "|" + String(siteId || "").trim() + "|" + String(resortId || "").trim();
@@ -2661,207 +2567,130 @@ const locationListStore = getStore({ name: "map-location-lists", consistency: "s
         if (!google) return csv || "";
         return countryMatches(google, csv) && csv ? csv : google;
       }
-      // The StockNetwork row says one country and the coordinates say another:
-      // one of them is wrong and the hub can't tell which, so the row is left
-      // exactly as it is and listed in the report for a person to decide.
-      function flagCountryClash(item, lat, lng, csvCountry, resolvedCountry) {
-        item.status = "check";
-        item.note = "StockNetwork says \"" + csvCountry + "\" but the coordinates are in \"" + resolvedCountry + "\" — left unchanged. Check the country or the coordinates.";
-        addFlipNote(item, lat, lng, csvCountry);
-      }
-
-      // foldAH (SN cleanup wizard only, 2026-10-06, Jean's choice): when the
-      // hub town is an agricultural holding ("Renosterkop AH"), StockNetwork's
-      // City gets the nearest non-AH hub town within 40 km instead and the AH
-      // name moves to Suburb — City is what guests search on. The hub's own
-      // tree is untouched, and without the flag this behaves as before.
-      const AH_NAME = /\b(AH|A\.H\.|agricultural holdings?)$/i;
-      const FOLD_AH_MAX_KM = 40;
-      function fieldsFromTown(town, suburbName, nearby, country, lat, lng) {
-        const cityName = town.name || "";
-        const f = {
-          country,
-          area: townZone(town),
-          city: cityName,
-          suburb: suburbName || (nearby ? "Nearby " + cityName : cityName),
-        };
-        if (body.foldAH && AH_NAME.test(cityName.trim()) && isFinite(lat) && isFinite(lng)) {
-          let best = null, bestKm = Infinity;
-          for (const t of allTowns) {
-            if (t === town || AH_NAME.test(String(t.name || "").trim()) || townCountry(t) !== townCountry(town)) continue;
-            const d = townDistanceKm(t, lat, lng);
-            if (d < bestKm) { bestKm = d; best = t; }
-          }
-          if (best && bestKm <= FOLD_AH_MAX_KM) {
-            f.city = best.name || "";
-            f.suburb = cityName;
-            f.foldNote = cityName + " is an agricultural holding — City is the nearest town, " + f.city + " (" + Math.round(bestKm) + " km).";
-          }
-        }
-        return f;
-      }
-      function addFoldNote(item) {
-        if (!item.foldNote) return;
-        item.note = item.note ? item.note + " " + item.foldNote : item.foldNote;
-        delete item.foldNote;
-      }
-
-      function seaNote(km) {
-        return km <= 100
-          ? "These coordinates are in the sea, about " + km + " km off the coast."
-          : "These coordinates aren't on any land Google recognises (in the sea, or well away from any town).";
-      }
-
-      // A likely fix for coordinates that landed nowhere: latitude/longitude
-      // with a flipped sign or swapped. Only ever suggested in the report,
-      // never applied.
-      function suggestFlip(lat, lng) {
+      // A likely fix for a pin that landed nowhere in South Africa: latitude/
+      // longitude with a flipped sign or swapped. Only suggested, never applied.
+      function addFlipNote(item, lat, lng, csvCountry) {
+        if (!/^south africa$/i.test(csvCountry || "South Africa")) return;
         const tries = [[-lat, lng], [lat, -lng], [-lat, -lng], [lng, lat], [-lng, lat], [lng, -lat], [-lng, -lat]];
         for (const [a, b] of tries) {
-          const at = locateZone(a, b);
-          if (at.km <= 2) return { lat: a, lng: b, zone: at.zone };
-        }
-        return null;
-      }
-
-      function addFlipNote(item, lat, lng, csvCountry) {
-        const flip = suggestFlip(lat, lng);
-        if (flip && /^south africa$/i.test(csvCountry || "South Africa")) {
-          item.suggestion = { lat: flip.lat, lng: flip.lng, zone: flip.zone };
-          item.note += " Looks like the latitude/longitude may be swapped or have a flipped sign — as " + flip.lat + ", " + flip.lng + " it would be in " + flip.zone + ".";
+          const prov = provinceAt(a, b);
+          if (prov) {
+            item.suggestion = { lat: a, lng: b, province: prov };
+            item.note += " Looks like the latitude/longitude may be swapped or have a flipped sign — as " + a + ", " + b + " it would be in " + prov + ".";
+            return;
+          }
         }
       }
+      // foldAH (SN cleanup wizard only): when the town is an agricultural
+      // holding ("Renosterkop AH"), City gets the nearest real town within
+      // 40 km and the AH name moves to Suburb — City is what guests search on.
+      const AH_NAME = /\b(AH|A\.H\.|agricultural holdings?)$/i;
+      function fill(item, pl, csvCountry, lat, lng) {
+        const f = snFieldsFromPlace(pl);
+        f.country = pickCountry(f.country, csvCountry);
+        if (body.foldAH && AH_NAME.test(f.city.trim())) {
+          const near = nearestTownName(lat, lng, 40, AH_NAME);
+          if (near) {
+            item.note = (item.note ? item.note + " " : "") + f.city + " is an agricultural holding — City is the nearest town, " + near.name + " (" + Math.round(near.km) + " km).";
+            f.suburb = f.city;
+            f.city = near.name;
+          }
+        }
+        Object.assign(item, f);
+        if (pl.c === "South Africa" && (!f.area || !f.state)) {
+          item.status = "sea";
+          item.note = (item.note ? item.note + " " : "") + "The pin is not inside any Avante region — it may be in the sea or just over a border. Check the coordinates.";
+          addFlipNote(item, lat, lng, csvCountry);
+        } else item.status = "ok";
+      }
+      const usable = (lat, lng) => isFinite(lat) && isFinite(lng) && !(lat === 0 && lng === 0) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
+      const placeFor = (r, lat, lng) => {
+        const ri = byKey.get(rowKey(r.name, r.siteId, r.resortId));
+        const rec = ri === undefined ? null : resortList[ri];
+        const id = String(r.resortId || (rec && rec.resortId) || "").trim();
+        const have = id ? placed[id] : null;
+        return { id, have: have && sameSpot(have.k, keyOf(lat, lng)) ? have : null };
+      };
 
-      // dryRun: no lookups, nothing written — just how many rows already have a
-      // current tag in the hub and how many would need a fresh look-up.
+      // dryRun: no lookups, nothing written — how many rows are already in
+      // the tree and how many would need a fresh lookup.
       if (body.dryRun) {
         let fromHub = 0, needLookup = 0, unusable = 0;
         rows.forEach((r) => {
           const lat = parseFloat(r.lat), lng = parseFloat(r.lng);
-          if (!isFinite(lat) || !isFinite(lng) || (lat === 0 && lng === 0) || Math.abs(lat) > 90 || Math.abs(lng) > 180) { unusable++; return; }
-          const ri = byKey.get(rowKey(r.name, r.siteId, r.resortId));
-          const rec = ri === undefined ? null : resortList[ri];
-          const same = rec && Math.abs(parseFloat(rec.latitude) - lat) < 0.00002 && Math.abs(parseFloat(rec.longitude) - lng) < 0.00002;
-          if (same && rec.locV === LOCATION_TAG_VERSION && townById.get(rec.townId)) fromHub++; else needLookup++;
+          if (!usable(lat, lng)) { unusable++; return; }
+          if (placeFor(r, lat, lng).have) fromHub++; else needLookup++;
         });
         return json({ ok: true, dryRun: true, total: rows.length, fromHub, needLookup, unusable });
       }
 
       const out = [];
-      let liveUsed = 0;
-      let resortChanged = false;
-      let townsChanged = false;
-      let idx = 0;
+      let liveUsed = 0, placedChanged = false, idx = 0;
       for (; idx < rows.length; idx++) {
         const r = rows[idx];
-        const lat = parseFloat(r.lat);
-        const lng = parseFloat(r.lng);
+        const lat = parseFloat(r.lat), lng = parseFloat(r.lng);
         const item = { i: r.i, status: "", note: "" };
-        if (!isFinite(lat) || !isFinite(lng) || (lat === 0 && lng === 0) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+        if (!usable(lat, lng)) {
           item.status = "skip";
-          item.note = "No usable coordinates (blank, 0,0 or out of range) — location can't be worked out from the hub.";
+          item.note = "No usable coordinates (blank, 0,0 or out of range) — the location can't be worked out.";
           out.push(item);
           continue;
         }
         const csvCountry = r.csvCountry || "";
-        const ri = byKey.get(rowKey(r.name, r.siteId, r.resortId));
-        const rec = ri === undefined ? null : resortList[ri];
-        const same = rec && Math.abs(parseFloat(rec.latitude) - lat) < 0.00002 && Math.abs(parseFloat(rec.longitude) - lng) < 0.00002;
-        const stored = same && rec.locV === LOCATION_TAG_VERSION && townById.get(rec.townId);
-
-        if (stored) {
-          const town = stored;
-          const sub = rec.suburbId && (Array.isArray(town.suburbs) ? town.suburbs.find((s) => s.id === rec.suburbId) : null);
-          const resolvedCountry = rec.country || townCountry(town);
-          if (!countryMatches(resolvedCountry, csvCountry)) {
-            flagCountryClash(item, lat, lng, csvCountry, resolvedCountry);
+        const { id, have } = placeFor(r, lat, lng);
+        let pl = have;
+        if (!pl) {
+          if (liveUsed >= LIVE_PER_CALL || Date.now() - startedAt > LIVE_BUDGET_MS) break;
+          if (!apiKey) {
+            item.status = "fail";
+            item.note = "GOOGLE_GEOCODING_API_KEY isn't set, so this row can't be looked up.";
             out.push(item);
             continue;
           }
-          const country = pickCountry(resolvedCountry, csvCountry);
-          Object.assign(item, fieldsFromTown(town, sub ? sub.name : "", !!rec.nearby, country, lat, lng));
-          item.status = rec.nearby ? "nearby" : "ok";
-          item.source = "hub";
-          if (rec.nearby) item.note = "No town of its own here — placed with the nearest town.";
-          if (rec.offshoreKm > 0) {
-            item.status = "sea";
-            item.note = seaNote(rec.offshoreKm) + (rec.nearby ? " Placed with the nearest town." : "");
+          liveUsed++;
+          const res = await placeCoordinate(lat, lng, apiKey);
+          if (!res.ok) {
+            item.status = "fail";
+            item.note = "Google couldn't place this coordinate (" + res.reason + ")" + (res.message ? ": " + res.message : ".");
             addFlipNote(item, lat, lng, csvCountry);
-          }
-          out.push(item);
-          continue;
-        }
-
-        // Needs a live lookup. Stop here (and report where) if this call has
-        // used its share, so the caller resumes at exactly this row.
-        if (liveUsed >= LIVE_PER_CALL || Date.now() - startedAt > LIVE_BUDGET_MS) break;
-        if (!apiKey) {
-          item.status = "fail";
-          item.note = "GOOGLE_GEOCODING_API_KEY isn't set, so this row can't be looked up.";
-          out.push(item);
-          continue;
-        }
-        liveUsed++;
-        const { result, failureReason, failureMessage, offshoreKm } =
-          await resolveLocationForCoordinate(Number(lat.toFixed(4)), Number(lng.toFixed(4)), apiKey, allTowns, existingIds, false, geoCacheStore);
-        if (result) {
-          townsChanged = true;
-          const town = allTowns.find((t) => t.id === result.townId);
-          allTowns.forEach((t) => { if (!townById.has(t.id)) townById.set(t.id, t); });
-          if (!countryMatches(result.country, csvCountry)) {
-            flagCountryClash(item, lat, lng, csvCountry, result.country);
             out.push(item);
             continue;
           }
-          const country = pickCountry(result.country, csvCountry);
-          Object.assign(item, fieldsFromTown(town, result.suburbName, !!result.nearby, country, lat, lng));
+          pl = res.place;
+          // Only the property's own current pin goes into the live tree.
+          const ri = byKey.get(rowKey(r.name, r.siteId, r.resortId));
+          const rec = ri === undefined ? null : resortList[ri];
+          if (id && rec && sameSpot(keyOf(parseFloat(rec.latitude), parseFloat(rec.longitude)), keyOf(lat, lng))) {
+            placed[id] = pl;
+            placedChanged = true;
+          }
           item.source = "live";
-          item.status = result.nearby ? "nearby" : "ok";
-          if (result.nearby) item.note = "No town of its own here — placed with the nearest town (" + result.nearbyKm + " km away).";
-          if (offshoreKm > 0) {
-            item.status = "sea";
-            item.note = seaNote(offshoreKm) + (result.nearby ? " Placed with the nearest town." : "");
-          }
-          // snCoordPending (SN cleanup wizard, 2026-10-06): the hub's own
-          // coordinate for this property was deliberately set ahead of
-          // StockNetwork's, so an older export's coordinate must never be
-          // written back over it here — only re-tag when it's the same point.
-          if (rec && (!rec.snCoordPending || same)) {
-            applyLocationTag(rec, result);
-            rec.latitude = String(lat);
-            rec.longitude = String(lng);
-            resortChanged = true;
-          }
-        } else {
-          item.status = "fail";
-          item.note = "Couldn't place this coordinate" + (failureReason ? " (" + failureReason + ")" : "") + (failureMessage ? ": " + failureMessage : ".");
-          if (offshoreKm > 0) item.note = seaNote(offshoreKm) + " No town is within " + NEAREST_TOWN_MAX_KM + " km.";
+        } else item.source = "hub";
+        if (!countryMatches(pl.c, csvCountry)) {
+          item.status = "check";
+          item.note = "StockNetwork says \"" + csvCountry + "\" but the coordinates are in \"" + pl.c + "\" — left unchanged. Check the country or the coordinates.";
+          addFlipNote(item, lat, lng, csvCountry);
+          out.push(item);
+          continue;
         }
-        if (item.status === "sea" || item.status === "fail") addFlipNote(item, lat, lng, csvCountry);
+        fill(item, pl, csvCountry, lat, lng);
         out.push(item);
       }
 
-      if (townsChanged) await saveTowns(townsStore, allTowns);
-      if (resortChanged) {
-        await resortListStore.setJSON("current", Object.assign({}, resortRecord, { resorts: resortList }));
-      }
-      out.forEach(addFoldNote);
+      if (placedChanged) await placesStore.setJSON(PROPERTY_KEY, placed);
       return json({ ok: true, results: out, nextIndex: idx, liveLookups: liveUsed, totalMs: Date.now() - startedAt });
     }
 
     if (action === "snCleanupApply") {
-      // SN cleanup wizard, step 3 ("Place in hub"). For each { id,
-      // resortId, lat, lng, pending } sets that coordinate on EVERY
-      // resort-list row sharing the ResortID (one physical property can be
-      // listed under several SiteIDs) and places it in the hub's tree via
-      // the same resolveLocationForCoordinate/applyLocationTag engine
-      // applyPropertyCoordinate uses (force:true — an explicit admin
-      // choice). Rows whose coordinate and tag are already current are
-      // settled for free. pending:true means StockNetwork doesn't have this
-      // coordinate yet: the row gets snCoordPending, which makes the
-      // nightly sync, a resort-list CSV re-upload and exportLocations keep
-      // the hub's coordinate (without raising a review flag) until
-      // StockNetwork sends the same point — then the marker clears itself.
+      // SN cleanup wizard, step 3 ("Place in hub"). For each { id, resortId,
+      // lat, lng, pending } sets that coordinate on EVERY resort-list row
+      // sharing the ResortID (one property can be listed under several
+      // SiteIDs) and places it in the location tree (2026-10-07). A
+      // property already placed at that spot costs nothing. pending:true
+      // means StockNetwork doesn't have this coordinate yet: the row gets
+      // snCoordPending, which makes the nightly sync, a resort-list CSV
+      // re-upload and exportLocations keep the hub's coordinate (without
+      // raising a review flag) until StockNetwork sends the same point.
       // Items not finished inside this call's budget come back done:false;
       // the caller re-sends them.
       const apiKey = Deno.env.get("GOOGLE_GEOCODING_API_KEY") || "";
@@ -2870,8 +2699,8 @@ const locationListStore = getStore({ name: "map-location-lists", consistency: "s
       const LIVE_BUDGET_MS = 10000;
       const startedAt = Date.now();
 
-      const allTowns = await loadTowns(townsStore);
-      const existingIds = new Set(allTowns.map((t) => t.id));
+      const placesStore = getStore({ name: PLACES_STORE, consistency: "strong" });
+      const placed = (await placesStore.get(PROPERTY_KEY, { type: "json" })) || {};
       const resortRecord = await resortListStore.get("current", { type: "json" });
       const resortList = (resortRecord && Array.isArray(resortRecord.resorts)) ? resortRecord.resorts : [];
       const byResortId = new Map();
@@ -2881,27 +2710,21 @@ const locationListStore = getStore({ name: "map-location-lists", consistency: "s
         if (!byResortId.has(k)) byResortId.set(k, []);
         byResortId.get(k).push(i);
       });
-      const near = (a, b) => Math.abs(parseFloat(a) - b) < 0.00002;
-      const tagCurrent = (r, lat, lng) =>
-        near(r.latitude, lat) && near(r.longitude, lng) && r.locV === LOCATION_TAG_VERSION && r.townId && allTowns.some((t) => t.id === r.townId);
 
       const out = new Array(items.length);
       const live = [];
-      let changed = false;
+      let changed = false, placedChanged = false;
       const setAt = new Date().toISOString();
+      // The old zone/town tags on a resort row are no longer used (location
+      // tree, 2026-10-07): dropped from every row this touches.
+      const OLD_TAGS = ["zone", "townId", "suburbId", "locationLabel", "nearby", "offshoreKm", "locV"];
 
-      function writeRows(idxs, lat, lng, pending, result, moved) {
+      function writeRows(idxs, lat, lng, pending) {
         idxs.forEach((ri) => {
           const r = resortList[ri];
-          const rowMoved = !(near(r.latitude, lat) && near(r.longitude, lng));
           r.latitude = String(lat);
           r.longitude = String(lng);
-          if (result) applyLocationTag(r, result);
-          else if (moved && rowMoved) {
-            // Placement failed for a NEW point: the old tag belongs to the old
-            // point, so drop it and let "Properties with no zone" pick it up.
-            ["zone", "townId", "suburbId", "locationLabel", "country", "nearby", "offshoreKm", "locV"].forEach((f) => delete r[f]);
-          }
+          OLD_TAGS.forEach((f) => delete r[f]);
           delete r.coordSuspicious;
           delete r.coordSuspiciousNote;
           delete r.coordSuggested;
@@ -2910,10 +2733,7 @@ const locationListStore = getStore({ name: "map-location-lists", consistency: "s
         });
         changed = true;
       }
-      function placedInfo(ri) {
-        const r = resortList[ri];
-        return { locationLabel: r.locationLabel || "", country: r.country || "", zone: r.zone || "" };
-      }
+      const info = (pl) => ({ locationLabel: placeText(pl), country: pl.c || "", region: (pl.r && pl.r[0]) || "" });
 
       items.forEach((it, n) => {
         const id = it && it.id;
@@ -2926,26 +2746,31 @@ const locationListStore = getStore({ name: "map-location-lists", consistency: "s
           out[n] = { id, done: true, status: "error", error: "Invalid coordinate" };
           return;
         }
-        if (idxs.every((ri) => tagCurrent(resortList[ri], lat, lng))) {
-          writeRows(idxs, lat, lng, pending, null, false);
-          out[n] = Object.assign({ id, done: true, status: "placed", lookup: false }, placedInfo(idxs[0]));
+        const have = placed[resortId];
+        if (have && sameSpot(have.k, keyOf(lat, lng))) {
+          writeRows(idxs, lat, lng, pending);
+          out[n] = Object.assign({ id, done: true, status: "placed", lookup: false }, info(have));
           return;
         }
         if (!apiKey) { out[n] = { id, done: true, status: "error", error: "GOOGLE_GEOCODING_API_KEY isn't set." }; return; }
         if (live.length >= LIVE_PER_CALL) { out[n] = { id, done: false }; return; }
-        live.push({ n, id, idxs, lat, lng, pending });
+        live.push({ n, id, resortId, idxs, lat, lng, pending });
       });
 
       await mapWithConcurrency(live, 6, async (w) => {
         if (Date.now() - startedAt > LIVE_BUDGET_MS) { out[w.n] = { id: w.id, done: false }; return; }
-        const { result, failureReason } = await resolveLocationForCoordinate(w.lat, w.lng, apiKey, allTowns, existingIds, true, geoCacheStore);
-        writeRows(w.idxs, w.lat, w.lng, w.pending, result || null, true);
-        out[w.n] = result
-          ? Object.assign({ id: w.id, done: true, status: "placed", lookup: true }, placedInfo(w.idxs[0]))
-          : { id: w.id, done: true, status: "notPlaced", lookup: true, error: failureReason || "Couldn't place this coordinate" };
+        const res = await placeCoordinate(w.lat, w.lng, apiKey);
+        writeRows(w.idxs, w.lat, w.lng, w.pending);
+        if (res.ok) {
+          placed[w.resortId] = res.place;
+          placedChanged = true;
+          out[w.n] = Object.assign({ id: w.id, done: true, status: "placed", lookup: true }, info(res.place));
+        } else {
+          out[w.n] = { id: w.id, done: true, status: "notPlaced", lookup: true, error: res.reason || "Couldn't place this coordinate" };
+        }
       });
 
-      if (live.length) await saveTowns(townsStore, allTowns);
+      if (placedChanged) await placesStore.setJSON(PROPERTY_KEY, placed);
       if (changed) await resortListStore.setJSON("current", Object.assign({}, resortRecord, { resorts: resortList }));
       return json({ ok: true, results: out, totalMs: Date.now() - startedAt });
     }

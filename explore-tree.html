@@ -206,7 +206,7 @@ function loadAll(){
       if(typeof p.latitude!=='number'||typeof p.longitude!=='number') return;
       var key=p.resortId||p.listingId; if(seen[key]) return; seen[key]=1;
       var it={kind:'property',raw:p,id:key,name:p.name,lat:p.latitude,lng:p.longitude,hidden:!!p.hidden};
-      var pl=p.resortId&&(lplaces[p.resortId]||places[p.resortId]); // live placement wins over the file
+      var pl=p.resortId?(lplaces[p.resortId]||places[p.resortId]):lplaces['listing:'+p.listingId]; // live placement wins over the file
       if(pl){ it.c=pl.c;it.p=pl.p;it.r=pl.r;it.t=pl.t;it.s=pl.s;it.a=pl.a||[];it.d=pl.d||'';it.placed=true; }
       PROPS.push(it);
     });

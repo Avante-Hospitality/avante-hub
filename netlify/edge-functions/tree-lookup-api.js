@@ -12,6 +12,8 @@
 //                                                property's current pin
 //      { action:"placeBacklog" }                 place properties that are new or whose
 //                                                pin moved, within a time budget
+//      { action:"placeListing", listingId, lat, lng }  place an onboarded listing
+//                                                (stored as "listing:<listingId>")
 //
 // Only this endpoint, the nightly SN sync and map-api.js's activity save write
 // the "tree-places" store. No property, activity, zone or affiliate record is
@@ -92,6 +94,20 @@ export default async (request) => {
     const resorts = (((await getStore({ name: "resort-list", consistency: "strong" }).get("current", { type: "json" })) || {}).resorts || []);
     const r = await placeResortBacklog(places, resorts, apiKey, 9000);
     return json({ ok: true, ...r });
+  }
+
+  if (body.action === "placeListing") {
+    // An onboarded listing (no StockNetwork ResortID): look its pin up and keep
+    // its place in the live store under "listing:<listingId>".
+    const id = typeof body.listingId === "string" ? body.listingId.trim() : "";
+    const lat = parseFloat(body.lat), lng = parseFloat(body.lng);
+    if (!id || !isFinite(lat) || !isFinite(lng) || (lat === 0 && lng === 0)) return json({ error: "This listing has no usable latitude and longitude." }, 400);
+    const r = await placeCoordinate(lat, lng, apiKey);
+    if (!r.ok) return json({ error: "Google could not place this pin (" + r.reason + ")." }, 502);
+    const map = (await places.get(PROPERTY_KEY, { type: "json" })) || {};
+    map["listing:" + id] = r.place;
+    await places.setJSON(PROPERTY_KEY, map);
+    return json({ ok: true, place: r.place });
   }
 
   if (body.kind === "activity") {

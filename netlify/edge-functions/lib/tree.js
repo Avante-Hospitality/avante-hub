@@ -90,6 +90,36 @@ function nearestTown(lat, lng, maxKm, minN = 3) {
   }
   return best;
 }
+// Nearest town centre whose name doesn't match `skip` (e.g. agricultural holdings).
+export function nearestTownName(lat, lng, maxKm, skip) {
+  let best = null, bd = maxKm;
+  for (const [t, la, lo, n] of TREE.towns || []) {
+    if (n < 3 || (skip && skip.test(t))) continue;
+    const d = km(lat, lng, la, lo);
+    if (d < bd) { bd = d; best = t; }
+  }
+  return best ? { name: best, km: bd } : null;
+}
+// "South Africa › Western Cape › Garden Route › Plettenberg Bay › Keurboomstrand"
+export function placeText(pl) {
+  if (!pl) return "";
+  return [pl.c, pl.p, (pl.r || []).join(" / "), pl.t, pl.s && pl.s !== pl.t ? pl.s : ""].filter(Boolean).join(" › ");
+}
+// What a StockNetwork row should say for a place: Country, State (province),
+// Area (main Avante region), City, Suburb (the town when there is none),
+// District (local municipality).
+export function snFieldsFromPlace(pl) {
+  const t = pl.t && !/^\(/.test(pl.t) ? pl.t : "";
+  return {
+    country: pl.c || "",
+    state: pl.p && !/^\(/.test(pl.p) ? pl.p : "",
+    area: (pl.r && pl.r[0] && !/^\(/.test(pl.r[0])) ? pl.r[0] : "",
+    city: t,
+    suburb: pl.s && pl.s !== t ? pl.s : t,
+    district: String(pl.d || "").replace(/ (Local )?Municipality$/, ""),
+  };
+}
+
 function isNotTown(t) {
   return !t || /municipality|munisipaliteit|district/i.test(t) || (RULES.notTown || []).includes(t);
 }

@@ -706,9 +706,9 @@
       <h2 id="propertyDetailsModalTitle">Property Listing</h2>
       <p class="modal-sub">Edit the listing details below, set commission &amp; agreement terms, then save. Send the agreement to the owner/affiliate for acceptance before marking a listing as Listed.</p>
       <div id="propertyDetailsModalBody"></div>
-      <label>Location (country › zone › town › suburb)</label>
-      <div id="propertyLocationPickerHost" style="max-width:340px;"></div>
-      <div class="hint" style="margin-top:2px;">Tag this property with its real location from your location tree — separate from the Suburb/City/State fields above, which are as submitted by the owner/agent.</div>
+      <label>Place in the location tree</label>
+      <div id="propertyLocationPickerHost"></div>
+      <div class="hint" style="margin-top:2px;">Worked out from the listing's latitude and longitude — separate from the Suburb/City/State fields above, which are as submitted by the owner/agent. Change the coordinates and save, then press Look up again.</div>
       <label for="propCommissionInput" style="margin-top:14px;">Commission / Revenue Share</label>
       <input id="propCommissionInput" placeholder="e.g. 15% of booking value">
       <label for="propDurationInput">Listing Duration</label>
@@ -1621,6 +1621,12 @@
             fetch('/api/tree-lookup?kind=all', { cache: 'no-store' }).then(function(r){ return r.json(); })
           ]).then(function(res){
             var data = res[0], live = res[1] || {}, pm = live.properties || {}, am = live.activities || {};
+            window.__adminTreeActText = function(id){
+              var pl = am[id];
+              if(!pl || !pl.p) return 'Not placed yet';
+              return [pl.p, (pl.r || [])[0], pl.t, pl.s && pl.s !== pl.t ? pl.s : ''].filter(Boolean).join(' \u203a ');
+            };
+            Array.prototype.forEach.call(document.querySelectorAll('[data-act-place]'), function(td){ td.textContent = window.__adminTreeActText(td.getAttribute('data-act-place')); });
             var seen = {}, waitingProps = 0, props = 0;
             data.properties.forEach(function(p){
               if(!p.resortId || seen[p.resortId] || typeof p.latitude !== 'number' || typeof p.longitude !== 'number') return;
@@ -1772,7 +1778,7 @@
 
       <div class="card map-jump-target" id="map-jump-bulk-activities" style="margin-top:20px;">
         <h3 style="margin-top:0;">Bulk import activities from CSV</h3>
-        <p style="margin-top:0;">Columns: <code>name, area, zone, price, contactLink, description, latitude, longitude</code>. Matches existing activities by name (case-insensitive) and updates them; anything new is added. An optional <code>id</code> column forces an exact match instead.</p>
+        <p style="margin-top:0;">Columns: <code>name, area, country, price, contactLink, description, latitude, longitude</code>. Each activity is placed in the location tree from its latitude and longitude. Matches existing activities by name (case-insensitive) and updates them; anything new is added. An optional <code>id</code> column forces an exact match instead.</p>
         <div class="btn-row" style="margin-top:0;">
           <button class="btn-outline" id="importActivitiesBtn">Upload CSV</button>
           <input type="file" id="importActivitiesFileInput" accept=".csv" style="display:none;">
@@ -1879,7 +1885,7 @@
             <button class="how-it-works-btn" type="button" aria-expanded="false" data-panel="snReviewHowItWorks">How it works</button>
           </div>
         </div>
-        <div class="how-it-works-panel" id="snReviewHowItWorks">Every night, StockNetwork's own API refreshes each property's Country, Area, District, City, City2, State, Suburb, ratings and a few other fields directly in the hub &mdash; informational only, alongside (never replacing) the hub's own Zone &gt; Town &gt; Suburb tree, which stays driven purely by the property's coordinates. Whenever StockNetwork sends a new coordinate for a property, the hub also checks that property's own name against Google right then, and flags it here — "coordinate may be wrong" — if the name doesn't look like it belongs near that point. This tool compares the rest the same way it always has: any property where StockNetwork's Country/Area/City/Suburb disagrees with the hub's tree, or is blank, shows up below. The hub is the master &mdash; for each flagged property, either accept StockNetwork's country as correct, accept a suggested coordinate when one is offered, or pick the right Town/Suburb from the tree yourself if the hub's own placement needs fixing, then save. Nothing changes until you save a row. Once you've worked through the list, use "Corrected StockNetwork file" below to download a file with the hub's (now-corrected) Country/Area/City/Suburb values, ready to load back into StockNetwork — that file never touches District, City2 or State, though, since StockNetwork uses those for their own availability search and only they can fix them; when Save'ing a row here you can also say what those three should be, and it's queued below to send to StockNetwork's team directly.</div>
+        <div class="how-it-works-panel" id="snReviewHowItWorks">Every night StockNetwork's own API refreshes each property's Country, State, Area, District, City, City2 and Suburb in the hub. This compares them with the property's place in the location tree, which comes from its pin: Country, State = province, Area = Avante region, City and Suburb. Anything that differs, is blank on StockNetwork, or isn't placed yet is listed here. When StockNetwork sends a new coordinate, the hub also checks the property's name against Google and flags it here &mdash; "coordinate may be wrong" &mdash; if the name doesn't look like it belongs near that point. To fix a row, accept the suggested coordinate (or use Fix coordinates on the Master map), or queue a District, City2 or State correction for StockNetwork's team. "Corrected StockNetwork file" below then writes Country, State, Area, City, Suburb and District from the tree for every property. Nothing changes until you save.</div>
         <div class="btn-row" style="margin-top:0;">
           <button class="btn-outline" id="snReviewLoadBtn">Load flagged properties</button>
         </div>
@@ -1904,7 +1910,7 @@
 
         <div style="margin-top:18px; padding-top:16px; border-top:1.5px solid var(--line);">
           <h4 style="margin:0 0 6px; font-size:13.5px;">Corrections to send to StockNetwork</h4>
-          <p style="margin:0 0 10px; font-size:12.5px; color:var(--muted);">District, City2 and State aren't touched by "Corrected StockNetwork file" below — StockNetwork uses them for their own availability search, so only StockNetwork can fix them. Flag what they should say next to a row's Save button above and it lands here; download the CSV and send it to their team. It's fine to do this a batch at a time, whatever you can get sent before their next nightly run.</p>
+          <p style="margin:0 0 10px; font-size:12.5px; color:var(--muted);">Corrections you queue for StockNetwork's team, for example a City2 search name. "Corrected StockNetwork file" never changes City2.</p>
           <div class="btn-row">
             <button class="btn-outline" id="snFieldFixLoadBtn">Refresh list</button>
             <button class="btn-outline" id="snFieldFixDownloadBtn" style="display:none;">Download CSV</button>
@@ -1995,9 +2001,9 @@
       </div>
 
       <div class="card map-jump-target" id="map-jump-corrected-file" style="margin-top:20px;">
-        <h3 style="margin-top:0;">Corrected StockNetwork file (Country / Area / City / Suburb from the hub)</h3>
-        <p style="margin-top:0;">Makes the file you send to StockNetwork match this hub. Choose your StockNetwork resort export and you get a copy in exactly the same format where, for every property, <strong>Country</strong>, <strong>Area</strong>, <strong>City</strong> and <strong>Suburb</strong> are filled in from the hub's Zone &gt; Town &gt; Suburb, worked out from the property's coordinates. <strong>Area is the hub zone</strong> (for example Garden Route, Eastern Cape, or the province/region for places outside South Africa) — StockNetwork's own State column is left exactly as it was, untouched. When a place has no suburb, the town name is repeated; when it has no town of its own but is close to one, the Suburb reads <em>Nearby &lt;Town&gt;</em>. Every other column is left exactly as it was.</p>
-        <p style="margin-top:0; font-size:13px; color:var(--muted);">Run <strong>Re-check all zones</strong> (above) first so the hub is up to date &mdash; then this is quick and needs no new Google lookups. Rows the hub can't settle (coordinates missing or in the sea, or the country in the file disagreeing with where the coordinates are) are left as they were and listed in the report for you to decide. Nothing is sent to StockNetwork from here.</p>
+        <h3 style="margin-top:0;">Corrected StockNetwork file (location columns from the location tree)</h3>
+        <p style="margin-top:0;">Makes the file you send to StockNetwork match the location tree. Choose your StockNetwork resort export and you get a copy in exactly the same format where, for every property, <strong>Country</strong>, <strong>State</strong> (province), <strong>Area</strong> (Avante region), <strong>City</strong>, <strong>Suburb</strong> (the town when there is no suburb) and <strong>District</strong> (local municipality) come from its place in the tree, worked out from its coordinates. <strong>City2</strong> and every other column are left exactly as they were.</p>
+        <p style="margin-top:0; font-size:13px; color:var(--muted);">Properties already in the tree need no new Google lookups. Rows that can't be settled (coordinates missing or outside any Avante region, or the country in the file disagreeing with where the coordinates are) are left as they were and listed in the report for you to decide. Nothing is sent to StockNetwork from here.</p>
         <div class="btn-row" style="margin-top:0; align-items:center;">
           <button class="btn-outline" id="fixFileBtn">Choose StockNetwork export (.csv)…</button>
           <input type="file" id="fixFileInput" accept=".csv,text/csv" style="display:none;">
@@ -2362,7 +2368,7 @@
       <!-- Step 3 -->
       <div class="card snw-step" data-step="3">
         <h3 style="margin-top:0;">Step 3 &mdash; Place in the hub</h3>
-        <p style="margin-top:0;">Saves each property's coordinate in the hub (Google's where you accepted it, otherwise the best one already on file) and places it straight away in the hub's Country &gt; Zone &gt; Town &gt; Suburb tree, the same way &ldquo;Find &amp; fix missing coordinates&rdquo; does. Where the hub's coordinate now differs from StockNetwork's, the property is marked <em>waiting for StockNetwork</em>: until StockNetwork sends the same coordinate, the nightly sync, a resort-list CSV re-upload and the &ldquo;Corrected StockNetwork file&rdquo; tool all keep the hub's coordinate instead of going back to StockNetwork's old one. The mark clears itself once StockNetwork matches.</p>
+        <p style="margin-top:0;">Saves each property's coordinate in the hub (Google's where you accepted it, otherwise the best one already on file) and places it straight away in the location tree (Country &gt; Province &gt; Region &gt; City &gt; Suburb), the same way &ldquo;Find &amp; fix missing coordinates&rdquo; does. Where the hub's coordinate now differs from StockNetwork's, the property is marked <em>waiting for StockNetwork</em>: until StockNetwork sends the same coordinate, the nightly sync, a resort-list CSV re-upload and the &ldquo;Corrected StockNetwork file&rdquo; tool all keep the hub's coordinate instead of going back to StockNetwork's old one. The mark clears itself once StockNetwork matches.</p>
         <div id="snwApplyPlan" class="snw-note" style="color:var(--navy);"></div>
         <div class="btn-row">
           <button class="primary" id="snwApplyBtn" style="margin-top:0;">Save coordinates and place in hub</button>
@@ -2375,9 +2381,9 @@
       <div class="card snw-step" data-step="4">
         <h3 style="margin-top:0;">Step 4 &mdash; What should StockNetwork's Area column say?</h3>
         <label class="snw-choice"><input type="radio" name="snwArea" value="hub" checked>
-          <span>Replace with the hub zone (default &mdash; the hub is master)<small>Area becomes the hub's zone for each property (e.g. &ldquo;Garden Route&rdquo;, &ldquo;Eastern Cape&rdquo;) &mdash; the same rule &ldquo;Corrected StockNetwork file&rdquo; uses.</small></span></label>
+          <span>Replace with the Avante region (default &mdash; the hub is master)<small>Area becomes the property's Avante region in the location tree (e.g. &ldquo;Garden Route&rdquo;, &ldquo;Cape Winelands&rdquo;) &mdash; the same rule &ldquo;Corrected StockNetwork file&rdquo; uses.</small></span></label>
         <label class="snw-choice"><input type="radio" name="snwArea" value="sn">
-          <span>Keep StockNetwork's own regions<small>The Area column stays exactly as it is in your export (e.g. &ldquo;KZN Midlands&rdquo;). Country, City and Suburb still come from the hub.</small></span></label>
+          <span>Keep StockNetwork's own regions<small>The Area column stays exactly as it is in your export (e.g. &ldquo;KZN Midlands&rdquo;). Country, State, City, Suburb and District still come from the location tree.</small></span></label>
         <div id="snwAreaExamples" class="snw-note" style="margin-top:10px;"></div>
       </div>
 
@@ -5067,34 +5073,43 @@
         return autobuildSelection[n];
       }
 
-      // A checkbox zone → town → suburb → property tree for picking one or
-      // more properties (or whole areas) to auto-build this hook from —
-      // same zone/town/suburb grouping and lazy per-node building as the
-      // Add/Edit Affiliate modal's assignment tree (populateAffTownCheckboxes),
-      // but the selection here just feeds "Build draft from selection"
-      // below rather than assigning an affiliate. Rendered once per hook
-      // card the first time its Browse box is opened; its own Clear button
-      // resets and re-opens it fresh.
+      // Country › Province › Region › City › Suburb tree (the new location tree,
+      // same picker as the Hub's Auto-build). Ticking a place adds its properties
+      // to this hook's flat selection of resortKeys.
       function renderPropertyPickerTree(containerEl, n){
         containerEl.innerHTML = '<div style="font-size:12px; color:var(--muted); padding:4px 0;">Loading locations…</div>';
-        return Promise.all([affSectionMapPost('adminList'), loadAllResorts()]).then(function(results){
-          var towns = (results[0].data && results[0].data.ok && results[0].data.towns) || [];
+        // New location tree (2026-10-07): Country › Province › Region › City › Suburb,
+        // placed from each property's coordinates (tree-places.json, built from
+        // Google + the Avante regions). Same tick-box behaviour as before: the
+        // flat Set of resortKeys is the one source of truth.
+        return Promise.all([
+          fetch('tree-places.json').then(function(r){ return r.json(); }),
+          loadAllResorts(),
+          fetch('/api/tree-lookup?kind=properties').then(function(r){ return r.json(); }).catch(function(){ return {}; })
+        ]).then(function(results){
+          // the hub's live placements (new or moved properties) win over the file
+          var places = Object.assign({}, (results[0] && results[0].places) || {}, (results[2] && results[2].properties) || {});
           var resorts = results[1] || [];
           containerEl.innerHTML = '';
-          if(!towns.length){
-            containerEl.innerHTML = '<div style="font-size:12px; color:var(--muted); padding:4px 0;">No locations on file yet.</div>';
+          if(!resorts.length){
+            containerEl.innerHTML = '<div style="font-size:12px; color:var(--muted); padding:4px 0;">No properties on file yet.</div>';
             return;
           }
+          var LV = ['Country','Province','Region','City','Suburb'];
+          var PROV_ORDER = ['Western Cape','Eastern Cape','Northern Cape','Free State','KwaZulu-Natal','Gauteng','North West','Mpumalanga','Limpopo'];
+          // Build the tree: one path per property (its main region), keys collected on every level.
+          var root = { k:{}, keys:[], props:[] }, seenKey = {};
+          resorts.forEach(function(r){
+            var key = resortKeyOf(r); if(!key || seenKey[key]) return; seenKey[key] = 1;
+            var p = places[r.resortId];
+            var path = p ? [p.c || 'Other', p.p || 'Other', (p.r && p.r[0]) || 'Other', p.t || 'Other', (p.s && p.s !== p.t) ? p.s : (p.t || 'Other') + ' & surrounds']
+                         : ['Not placed yet'];
+            var node = root; node.keys.push(key);
+            path.forEach(function(seg, d){ node.k[seg] = node.k[seg] || { name: seg, depth: d, k:{}, keys:[], props:[] }; node = node.k[seg]; node.keys.push(key); });
+            node.props.push(r);
+          });
 
           var selected = hookSelection(n);
-          // Every checkbox ever built for this tree instance registers
-          // itself here so a toggle anywhere (a single property, or a
-          // whole zone/town/suburb "select all") can refresh every other
-          // checkbox's checked/indeterminate state from the one source of
-          // truth (`selected`) without needing to rebuild the DOM or walk
-          // ancestor/descendant relationships by hand — cheap even at
-          // ~5,900 properties since only already-rendered (expanded) rows
-          // are ever registered.
           var registry = [];
           function register(cb, keysFn){ registry.push({ cb: cb, keysFn: keysFn }); }
           function applyAggregate(cb, keys){
@@ -5108,39 +5123,10 @@
             registry.forEach(function(e){ applyAggregate(e.cb, e.keysFn()); });
             updateSummary();
           }
-
-          // Matches properties to a town/suburb by townId/suburbId — the
-          // same geocoded id links map-api.js's zone/geocoding pass writes
-          // onto each resort-list row (rec.townId/rec.suburbId — see
-          // map-api.js's applyLocationTag) and createLocationBrowseTree
-          // already keys off elsewhere. Originally this matched on the raw
-          // StockNetwork district/suburb TEXT instead, which is how this
-          // tree looked before the zone/geocoding rework — that stopped
-          // working once geocoded town names (Google's canonical spelling)
-          // no longer line up 1:1 with whatever district/suburb text
-          // happened to be in the StockNetwork CSV, so towns kept showing
-          // in the tree (that list comes from adminList, untouched) while
-          // every property underneath them silently matched nothing. Fixed
-          // 2026-09-22 per Jean's "the properties are not coming up in the
-          // tree" report.
-          function propsFor(townId, suburbId){
-            if(!townId) return [];
-            return resorts.filter(function(r){
-              if((r.townId || '') !== townId) return false;
-              if(suburbId === undefined) return true;
-              return (r.suburbId || '') === suburbId;
-            });
-          }
-          function keysFor(list){
-            var out = [];
-            list.forEach(function(r){ var k = resortKeyOf(r); if(k) out.push(k); });
-            return out;
-          }
           function toggleKeys(keys, on){
             keys.forEach(function(k){ on ? selected.add(k) : selected.delete(k); });
           }
 
-          // --- Selection summary + actions bar, shown above the tree ---
           var bar = document.createElement('div');
           bar.style.cssText = 'display:flex; align-items:center; gap:8px; padding:2px 0 8px; flex-wrap:wrap;';
           var summaryText = document.createElement('span');
@@ -5158,15 +5144,12 @@
           function updateSummary(){
             var count = selected.size;
             summaryText.textContent = count === 0
-              ? 'Tick one or more properties, or a whole town/suburb/area, below.'
+              ? 'Tick one or more properties, or a whole suburb, city or region, below.'
               : count + ' propert' + (count === 1 ? 'y' : 'ies') + ' selected';
             buildBtn.disabled = count === 0;
             clearBtn.disabled = count === 0;
           }
-          clearBtn.addEventListener('click', function(){
-            selected.clear();
-            refreshAll();
-          });
+          clearBtn.addEventListener('click', function(){ selected.clear(); refreshAll(); });
           buildBtn.addEventListener('click', function(){
             document.getElementById('dh' + n + '-autobuildTree').classList.remove('show');
             generateAutobuildDraftFromSelection(n, Array.from(selected), computeSelectionLabel());
@@ -5180,38 +5163,21 @@
           var treeEl = document.createElement('div');
           containerEl.appendChild(treeEl);
 
-          // A human description of the current selection — whichever whole
-          // towns/suburbs are fully ticked, named directly ("Hermanus,
-          // Voëlklip"), plus a count of anything else picked outside those
-          // ("+ 2 more properties") once naming every individual property
-          // would get unwieldy. Sent to the server as-is (it has no town/
-          // suburb name data of its own) and saved as the hook's
-          // locationLabel once the resulting draft is used.
+          // Label for the hook: the biggest fully-ticked places (region, city or
+          // suburb; "& surrounds" reads as the town), then any loose properties.
           function computeSelectionLabel(){
-            var wholeAreas = [];
-            var usedKeys = new Set();
-            towns.forEach(function(t){
-              var subs = t.suburbs || [];
-              if(subs.length){
-                subs.forEach(function(s){
-                  var ks = keysFor(propsFor(t.id, s.id));
-                  if(ks.length && ks.every(function(k){ return selected.has(k); })){
-                    wholeAreas.push(s.name);
-                    ks.forEach(function(k){ usedKeys.add(k); });
-                  }
-                });
-              } else {
-                var ks2 = keysFor(propsFor(t.id));
-                if(ks2.length && ks2.every(function(k){ return selected.has(k); })){
-                  wholeAreas.push(t.name);
-                  ks2.forEach(function(k){ usedKeys.add(k); });
-                }
-              }
-            });
-            var remaining = Array.from(selected).filter(function(k){ return !usedKeys.has(k); });
-            var parts = wholeAreas.slice();
+            var parts = [], used = new Set();
+            (function walk(node){
+              Object.keys(node.k).forEach(function(name){
+                var c = node.k[name];
+                var whole = c.depth >= 2 && c.keys.length && c.keys.every(function(k){ return selected.has(k) && !used.has(k); });
+                if(whole){ parts.push(c.name.replace(/ & surrounds$/, '')); c.keys.forEach(function(k){ used.add(k); }); }
+                else walk(c);
+              });
+            })(root);
+            var remaining = Array.from(selected).filter(function(k){ return !used.has(k); });
             if(remaining.length){
-              if(!wholeAreas.length && remaining.length <= 3){
+              if(!parts.length && remaining.length <= 3){
                 var byKey = {};
                 resorts.forEach(function(r){ var k = resortKeyOf(r); if(k) byKey[k] = r; });
                 remaining.forEach(function(k){ if(byKey[k]) parts.push(byKey[k].name); });
@@ -5223,13 +5189,6 @@
           }
 
           function appendPropertyCheckboxes(parentEl, list){
-            if(!list.length){
-              var none = document.createElement('div');
-              none.style.cssText = 'font-size:12px; color:var(--muted); padding:2px 0 2px 16px;';
-              none.textContent = '(no properties on file here)';
-              parentEl.appendChild(none);
-              return;
-            }
             list.slice().sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); }).forEach(function(r){
               var key = resortKeyOf(r);
               var row = document.createElement('label');
@@ -5238,165 +5197,63 @@
               var cb = document.createElement('input');
               cb.type = 'checkbox';
               cb.style.cssText = 'width:auto; flex:none;';
-              if(!key) cb.disabled = true;
-              cb.checked = !!(key && selected.has(key));
-              cb.addEventListener('change', function(){
-                if(key) toggleKeys([key], cb.checked);
-                refreshAll();
-              });
+              cb.checked = selected.has(key);
+              cb.addEventListener('change', function(){ toggleKeys([key], cb.checked); refreshAll(); });
               var span = document.createElement('span');
-              span.textContent = r.name + (!key ? ' (no StockNetwork ID on file)' : '');
+              span.textContent = r.name;
               row.appendChild(cb);
               row.appendChild(span);
               parentEl.appendChild(row);
-              if(key) register(cb, function(){ return [key]; });
+              register(cb, function(){ return [key]; });
             });
           }
 
-          var byZone = {};
-          towns.forEach(function(t){ var z = t.zone || ''; if(!byZone[z]) byZone[z] = []; byZone[z].push(t); });
-          var zoneKeys = AFF_ZONE_ORDER.filter(function(z){ return byZone[z]; }).concat(affZoneExtras(towns).filter(function(z){ return byZone[z]; }));
-          if(byZone['']) zoneKeys.push('');
-
-          zoneKeys.forEach(function(zoneKey){
-            var zoneTowns = byZone[zoneKey];
-            function zoneKeysList(){
-              var out = [];
-              zoneTowns.forEach(function(t){ out = out.concat(keysFor(propsFor(t.id))); });
-              return out;
-            }
-
-            var zoneDet = document.createElement('details');
-            zoneDet.className = 'loc-tree-node';
-            var zoneSum = document.createElement('summary');
-            var zoneCb = document.createElement('input');
-            zoneCb.type = 'checkbox';
-            zoneCb.style.cssText = 'width:auto; flex:none;';
-            zoneCb.addEventListener('click', function(e){
+          function sortedKids(node){
+            return Object.keys(node.k).sort(function(a,b){
+              if(node.depth === 0){ var ia = PROV_ORDER.indexOf(a), ib = PROV_ORDER.indexOf(b); if(ia > -1 || ib > -1) return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib); }
+              if(node === root){ if(a === 'South Africa') return -1; if(b === 'South Africa') return 1; }
+              return node.k[b].keys.length - node.k[a].keys.length || a.localeCompare(b);
+            });
+          }
+          function nodeEl(node){
+            var det = document.createElement('details');
+            det.className = 'loc-tree-node';
+            var sum = document.createElement('summary');
+            var cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.style.cssText = 'width:auto; flex:none;';
+            function keysList(){ return node.keys; }
+            cb.addEventListener('click', function(e){
               e.stopPropagation();
-              var keys = zoneKeysList();
+              var keys = keysList();
               var allOn = keys.length > 0 && keys.every(function(k){ return selected.has(k); });
               toggleKeys(keys, !allOn);
               refreshAll();
             });
-            var zoneLabel = document.createElement('span');
-            zoneLabel.className = 'loc-tree-label';
-            zoneLabel.style.fontWeight = '600';
-            zoneLabel.textContent = zoneKey || 'Other (no area set)';
-            zoneSum.appendChild(zoneCb);
-            zoneSum.appendChild(zoneLabel);
-            zoneDet.appendChild(zoneSum);
-            register(zoneCb, zoneKeysList);
-            applyAggregate(zoneCb, zoneKeysList());
-
-            var zoneBody = document.createElement('div');
-            zoneBody.className = 'loc-tree-indent';
-            zoneDet.appendChild(zoneBody);
-
-            byZone[zoneKey].slice().sort(function(a,b){ return a.name.localeCompare(b.name); }).forEach(function(t){
-              var subs = (t.suburbs || []).slice().sort(function(a,b){ return a.name.localeCompare(b.name); });
-
-              if(!subs.length){
-                // A suburb-less town is itself the leaf "select all"
-                // level — its own checkbox toggles every property
-                // matching it directly, with no intermediate suburb row.
-                var flatRow = document.createElement('label');
-                flatRow.className = 'loc-tree-flatrow';
-                var flatCb = document.createElement('input');
-                flatCb.type = 'checkbox';
-                flatCb.style.cssText = 'width:auto; flex:none;';
-                function townKeysList(){ return keysFor(propsFor(t.id)); }
-                flatCb.addEventListener('click', function(e){
-                  e.stopPropagation();
-                  var keys = townKeysList();
-                  var allOn = keys.length > 0 && keys.every(function(k){ return selected.has(k); });
-                  toggleKeys(keys, !allOn);
-                  refreshAll();
-                });
-                var flatLabel = document.createElement('span');
-                flatLabel.textContent = t.name;
-                flatRow.appendChild(flatCb);
-                flatRow.appendChild(flatLabel);
-                zoneBody.appendChild(flatRow);
-                register(flatCb, townKeysList);
-                applyAggregate(flatCb, townKeysList());
-                return;
-              }
-
-              var townDet = document.createElement('details');
-              townDet.className = 'loc-tree-node';
-              var townSum = document.createElement('summary');
-              var townCb = document.createElement('input');
-              townCb.type = 'checkbox';
-              townCb.style.cssText = 'width:auto; flex:none;';
-              function townKeysList2(){ return keysFor(propsFor(t.id)); }
-              townCb.addEventListener('click', function(e){
-                e.stopPropagation();
-                var keys = townKeysList2();
-                var allOn = keys.length > 0 && keys.every(function(k){ return selected.has(k); });
-                toggleKeys(keys, !allOn);
-                refreshAll();
-              });
-              var townLabel = document.createElement('span');
-              townLabel.className = 'loc-tree-label';
-              townLabel.textContent = t.name;
-              townSum.appendChild(townCb);
-              townSum.appendChild(townLabel);
-              townDet.appendChild(townSum);
-              register(townCb, townKeysList2);
-              applyAggregate(townCb, townKeysList2());
-
-              var townBody = document.createElement('div');
-              townBody.className = 'loc-tree-indent';
-              townDet.appendChild(townBody);
-
-              var townBuilt = false;
-              townDet.addEventListener('toggle', function(){
-                if(!townDet.open || townBuilt) return;
-                townBuilt = true;
-                var subIds = subs.map(function(s){ return s.id; });
-                subs.forEach(function(s){
-                  var subRow = document.createElement('label');
-                  subRow.className = 'loc-tree-flatrow';
-                  var subCb = document.createElement('input');
-                  subCb.type = 'checkbox';
-                  subCb.style.cssText = 'width:auto; flex:none;';
-                  function subKeysList(){ return keysFor(propsFor(t.id, s.id)); }
-                  subCb.addEventListener('change', function(){
-                    var keys = subKeysList();
-                    toggleKeys(keys, subCb.checked);
-                    refreshAll();
-                  });
-                  var subLabel = document.createElement('span');
-                  subLabel.textContent = s.name;
-                  subRow.appendChild(subCb);
-                  subRow.appendChild(subLabel);
-                  townBody.appendChild(subRow);
-                  register(subCb, subKeysList);
-                  applyAggregate(subCb, subKeysList());
-
-                  var subPropsWrap = document.createElement('div');
-                  subPropsWrap.style.cssText = 'margin-left:16px;';
-                  appendPropertyCheckboxes(subPropsWrap, propsFor(t.id, s.id));
-                  townBody.appendChild(subPropsWrap);
-                });
-                var otherProps = propsFor(t.id).filter(function(r){
-                  return subIds.indexOf(r.suburbId || '') === -1;
-                });
-                if(otherProps.length){
-                  var otherLabel = document.createElement('div');
-                  otherLabel.style.cssText = 'font-size:12px; color:var(--muted); padding:4px 0 2px;';
-                  otherLabel.textContent = 'Other properties in ' + t.name + ':';
-                  townBody.appendChild(otherLabel);
-                  appendPropertyCheckboxes(townBody, otherProps);
-                }
-              });
-
-              zoneBody.appendChild(townDet);
+            var label = document.createElement('span');
+            label.className = 'loc-tree-label';
+            if(node.depth <= 1) label.style.fontWeight = '600';
+            label.textContent = node.name + ' (' + node.keys.length + ')';
+            label.title = LV[node.depth] || '';
+            sum.appendChild(cb);
+            sum.appendChild(label);
+            det.appendChild(sum);
+            register(cb, keysList);
+            applyAggregate(cb, keysList());
+            var body = document.createElement('div');
+            body.className = 'loc-tree-indent';
+            det.appendChild(body);
+            var built = false;
+            det.addEventListener('toggle', function(){
+              if(!det.open || built) return;
+              built = true;
+              sortedKids(node).forEach(function(k){ body.appendChild(nodeEl(node.k[k])); });
+              if(node.props.length) appendPropertyCheckboxes(body, node.props);
+              refreshAll();
             });
-
-            treeEl.appendChild(zoneDet);
-          });
+            return det;
+          }
+          sortedKids(root).forEach(function(k){ treeEl.appendChild(nodeEl(root.k[k])); });
         }).catch(function(){
           containerEl.innerHTML = '<div style="font-size:12px; color:var(--muted); padding:4px 0;">Could not load locations right now.</div>';
         });
@@ -7049,7 +6906,7 @@
           // review modal) once set \u2014 it's the curated, matched-to-the-
           // location-tree value; fall back to the owner/agent's own free-
           // text city/country from onboarding when nothing's been tagged yet.
-          tdLoc.textContent = l.locationLabel || [l.city, l.country].filter(Boolean).join(', ') || '\u2014';
+          tdLoc.textContent = [l.city, l.country].filter(Boolean).join(', ') || '\u2014';
           tr.appendChild(tdLoc);
 
           var tdStatus = document.createElement('td');
@@ -7144,6 +7001,47 @@
       // popup can open this same modal for an onboarded ("Listed") pin's
       // Edit button, from a different <script> block/IIFE.
       window.openPropertyDetailsModal = openPropertyDetailsModal;
+
+      function treePlaceText(pl){
+        if(!pl) return '';
+        return [pl.c, pl.p, (pl.r || []).join(' / '), pl.t, pl.s && pl.s !== pl.t ? pl.s : ''].filter(Boolean).join(' \u203a ') +
+          (pl.d ? ' \u00b7 District ' + String(pl.d).replace(/ (Local )?Municipality$/, '') : '');
+      }
+      function renderListingTreePlace(host, l, listingId){
+        var lat = parseFloat(l.latitude), lng = parseFloat(l.longitude);
+        host.innerHTML = '';
+        var line = document.createElement('div');
+        line.style.cssText = 'font-size:13.5px; color:var(--navy); font-weight:600; margin:2px 0 6px;';
+        var btn = document.createElement('button');
+        btn.type = 'button'; btn.className = 'btn-outline'; btn.style.cssText = 'width:auto; padding:6px 12px; font-size:12.5px;';
+        btn.textContent = 'Look up again';
+        host.appendChild(line); host.appendChild(btn);
+        if(!isFinite(lat) || !isFinite(lng) || (lat === 0 && lng === 0)){
+          line.textContent = 'No latitude and longitude yet, so it is not in the tree.';
+          btn.disabled = true;
+          return;
+        }
+        line.textContent = 'Loading\u2026';
+        fetch('/api/tree-lookup?kind=properties', { cache: 'no-store' }).then(function(r){ return r.json(); }).then(function(d){
+          if(currentListingId !== listingId) return;
+          var pl = d && d.properties && d.properties['listing:' + listingId];
+          var here = lat.toFixed(6) + ',' + lng.toFixed(6);
+          if(pl && pl.k === here) line.textContent = treePlaceText(pl);
+          else { line.textContent = pl ? 'The pin has moved since it was placed \u2014 press Look up again.' : 'Not looked up yet \u2014 press Look up again.'; }
+        }).catch(function(){ line.textContent = 'Could not read the location tree.'; });
+        btn.addEventListener('click', function(){
+          btn.disabled = true; line.textContent = 'Looking up\u2026';
+          fetch('/api/tree-lookup', { method: 'POST', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ token: ADMIN_TOKEN, action: 'placeListing', listingId: listingId, lat: lat, lng: lng }) })
+            .then(function(r){ return r.json().then(function(b){ return { status: r.status, body: b }; }); })
+            .then(function(res){
+              btn.disabled = false;
+              if(currentListingId !== listingId) return;
+              line.textContent = res.body && res.body.ok ? treePlaceText(res.body.place) : ((res.body && res.body.error) || 'Could not look it up.');
+            }).catch(function(){ btn.disabled = false; line.textContent = 'Lost the connection \u2014 try again.'; });
+        });
+      }
+
       function openPropertyDetailsModal(listingId){
         currentListingId = listingId;
         propertyLocationReady = false;
@@ -7177,48 +7075,12 @@
           });
           bodyEl.innerHTML = html;
 
-          // Country > Zone > Town > Suburb picker (2026-10-04) replaces the
-          // old single tree dropdown. The picker lives in the Map &
-          // Activities script (it needs that tab's tree data), so it is
-          // reached through window.createLocationPicker /
-          // window.ensureLocationPickerData.
+          // Place in the location tree (2026-10-07): read-only, from the pin.
           var pickerHost = document.getElementById('propertyLocationPickerHost');
           var saveBtnEl = document.getElementById('propertyDetailsSaveBtn');
           if(saveBtnEl) saveBtnEl.disabled = false;
           propPicker = null;
-          pickerHost.innerHTML = '<div class="hint">Loading the location tree\u2026</div>';
-          var pickerDataReady = (typeof window.ensureLocationPickerData === 'function') ? window.ensureLocationPickerData() : Promise.resolve();
-          pickerDataReady.then(function(){
-            // A newer openPropertyDetailsModal call may have fired while
-            // this fetch was in flight (admin clicked View on a different
-            // row before this one loaded) — only apply/arm if we're still
-            // looking at the listing this fetch was actually for.
-            if(currentListingId !== listingId) return;
-            if(typeof window.createLocationPicker !== 'function'){
-              pickerHost.innerHTML = '<div class="hint">The location picker is not available \u2014 reload the page.</div>';
-              return;
-            }
-            pickerHost.innerHTML = '';
-            var lat0 = parseFloat(l.latitude), lng0 = parseFloat(l.longitude);
-            propPicker = window.createLocationPicker({
-              levels: ['country', 'zone', 'town', 'suburb'],
-              defaultLat: lat0,
-              defaultLng: lng0,
-              onChange: function(){
-                // Only block Save when the picker was CHANGED and has an
-                // unsaved new level \u2014 an old listing whose stored place
-                // doesn't match the tree must still be able to save its
-                // commission/agreement details untouched.
-                var b = document.getElementById('propertyDetailsSaveBtn');
-                if(b && propPicker) b.disabled = propPicker.isChanged() && propPicker.hasPending();
-              }
-            });
-            pickerHost.appendChild(propPicker.el);
-            // The owner-typed country on a listing is free text, so it is
-            // NOT used to pre-fill; the tree works it out from the town/zone.
-            propPicker.setValue({ zone: l.zone || '', townId: l.townId || '', suburbId: l.suburbId || '' });
-            propertyLocationReady = true;
-          });
+          renderListingTreePlace(pickerHost, l, listingId);
 
           document.getElementById('propCommissionInput').value = l.commissionRate || '';
           document.getElementById('propDurationInput').value = l.listingDuration || '';
@@ -9521,17 +9383,12 @@
       })();
 
       // ---- StockNetwork location review ----
-      // Loads properties where the nightly StockNetwork sync's raw fields
-      // (Country/Area/City/Suburb) disagree with, or are blank against, the
-      // hub's own Zone > Town > Suburb tree (map-api.js's stocknetworkReview
-      // action — read-only). For each flagged row: "Use SN's country" is a
-      // one-click accept of StockNetwork's own value; the location <select>
-      // (same shared tree used by Default Hooks/Activities/Property
-      // Listings) lets a person pick the correct Town/Suburb if the hub's
-      // own placement is actually what's wrong. Either way, nothing changes
-      // until "Save" is clicked (resolveStocknetworkLocation) — per the
-      // standing rule, StockNetwork's data never overwrites the hub
-      // automatically.
+      // Loads properties where StockNetwork's fields (Country/State/Area/
+      // City/Suburb) disagree with, or are blank against, the property's place
+      // in the location tree (map-api.js's stocknetworkReview — read-only).
+      // The hub place comes from the pin, so a row is fixed either by
+      // accepting a suggested coordinate, or by queueing a District/City2/
+      // State correction for StockNetwork's team.
       (function(){
         var loadBtn = document.getElementById('snReviewLoadBtn');
         var moreBtn = document.getElementById('snReviewLoadMoreBtn');
@@ -9552,26 +9409,13 @@
 
         var FLAG_LABEL = {
           'country': 'country differs', 'country-blank': 'country blank on SN',
-          'zone': 'area/zone differs', 'zone-blank': 'area blank on SN',
+          'state': 'state/province differs', 'state-blank': 'state blank on SN',
+          'region': 'area/region differs', 'region-blank': 'area blank on SN',
+          'not-placed': 'not in the location tree yet',
           'town': 'town/city differs', 'town-blank': 'city blank on SN',
           'suburb': 'suburb differs',
           'coordinate': 'coordinate may be wrong'
         };
-
-        function selectIdFor(index){ return 'snReviewSel_' + index; }
-        function snFixTreeSelectIdFor(index){ return 'snFixTreeSel_' + index; }
-
-        // Turns a location <select>'s reading (from readLocationSelect) into
-        // the bare name to drop into City2 — strips the "— " suburb prefix
-        // and the " (entire area)" zone suffix that the shared tree-options
-        // HTML adds for display, neither of which belongs in a value typed
-        // for StockNetwork.
-        function cleanTreeLabelForFix(loc){
-          var label = loc.locationLabel || '';
-          if(loc.suburbId && label.indexOf('— ') === 0) label = label.slice(2);
-          if(loc.zone) label = label.replace(/ \(entire area\)$/, '');
-          return label;
-        }
 
         function renderRow(f){
           var tr = document.createElement('tr');
@@ -9580,10 +9424,11 @@
             var cls = r === 'coordinate' ? 'badge requested' : 'badge inactive';
             return '<span class="' + cls + '" style="margin:0 4px 4px 0; display:inline-block;">' + escapeHtml(FLAG_LABEL[r] || r) + '</span>';
           }).join('');
-          var snHtml = '<div>' + escapeHtml(f.snCountry || '—') + ' / ' + escapeHtml(f.snArea || '—') + ' / ' + escapeHtml(f.snCity || '—') + ' / ' + escapeHtml(f.snSuburb || '—') + '</div>' +
-            '<div style="margin-top:4px; font-size:12px; color:var(--muted);">District: ' + escapeHtml(f.snDistrict || '—') + ' &middot; City2: ' + escapeHtml(f.snCity2 || '—') + ' &middot; State: ' + escapeHtml(f.snState || '—') + '</div>';
-          var hubHtml = '<div>' + escapeHtml(f.hubCountry || '—') + ' / ' + escapeHtml(f.hubZone || '—') + ' / ' + escapeHtml(f.hubTown || '—') + ' / ' + escapeHtml(f.hubSuburb || '—') + '</div>';
-          var acceptCountryBtn = f.snCountry ? '<button type="button" class="btn-outline btn-small" data-act="country">Use SN’s country (' + escapeHtml(f.snCountry) + ')</button>' : '';
+          var snHtml = '<div>' + escapeHtml(f.snCountry || '—') + ' / ' + escapeHtml(f.snState || '—') + ' / ' + escapeHtml(f.snArea || '—') + ' / ' + escapeHtml(f.snCity || '—') + ' / ' + escapeHtml(f.snSuburb || '—') + '</div>' +
+            '<div style="margin-top:4px; font-size:12px; color:var(--muted);">District: ' + escapeHtml(f.snDistrict || '—') + ' &middot; City2: ' + escapeHtml(f.snCity2 || '—') + '</div>';
+          var hubHtml = f.hubPlace
+            ? '<div>' + escapeHtml(f.hubPlace) + '</div><div style="margin-top:4px; font-size:12px; color:var(--muted);">District: ' + escapeHtml(f.hubDistrict || '—') + '</div>'
+            : '<div style="color:var(--muted);">Not placed yet — press Re-run lookup under Location tree.</div>';
           // Case B (full-hub-coordinate-geocoding-scope, 2026-09-29): a
           // coordinate the nightly sync's name-check couldn't confirm — show
           // why, and, when Google offered an alternate point, an explicit
@@ -9612,7 +9457,6 @@
             '<div style="font-size:11px; color:var(--muted); margin-bottom:4px;">Tell StockNetwork to fix (optional):</div>' +
             '<input type="text" class="sn-fix-district" placeholder="District should be (SN has: ' + escapeHtml(f.snDistrict || '—') + ')" style="width:100%; max-width:260px; margin-bottom:4px; font-size:12px;"> ' +
             '<input type="text" class="sn-fix-city2" placeholder="City2 should be (SN has: ' + escapeHtml(f.snCity2 || '—') + ')" style="width:100%; max-width:260px; margin-bottom:4px; font-size:12px;"> ' +
-            '<select id="' + snFixTreeSelectIdFor(f.index) + '" style="width:100%; max-width:260px; margin-bottom:4px; font-size:12px; color:var(--muted);"><option value="">— or pick from tree, fills City2 —</option></select> ' +
             '<input type="text" class="sn-fix-state" placeholder="State should be (SN has: ' + escapeHtml(f.snState || '—') + ')" style="width:100%; max-width:260px; margin-bottom:4px; font-size:12px;"> ' +
             '<input type="text" class="sn-fix-note" placeholder="Note for StockNetwork (optional)" style="width:100%; max-width:260px; font-size:12px;">' +
           '</div>';
@@ -9623,68 +9467,16 @@
             '<td>' + hubHtml + '</td>' +
             '<td>' +
               coordBlockHtml +
-              '<div class="btn-row" style="margin:0 0 6px;">' + acceptCountryBtn + '</div>' +
-              '<div class="sn-loc-picker-host" style="max-width:280px;"></div>' +
-              '<button type="button" class="primary btn-small" data-act="save" style="margin-top:6px;">Save</button>' +
-              '<div class="status" style="margin-top:6px;"></div>' +
               snFixHtml +
+              '<button type="button" class="primary btn-small" data-act="save" style="margin-top:6px;">Save correction</button>' +
+              '<div class="status" style="margin-top:6px;"></div>' +
             '</td>';
           tbody.appendChild(tr);
 
           var rowStatusEl = tr.querySelector('.status');
           function setRowStatus(t, isError){ rowStatusEl.textContent = t; rowStatusEl.className = 'status show' + (isError ? '' : ' ok'); }
 
-          // Country > Zone > Town > Suburb picker (2026-10-04) replaces the
-          // old single tree dropdown here, pre-filled with the hub's current
-          // placement. Save is blocked while a new level is typed but not yet
-          // saved to the tree.
           var rowSaved = false;
-          var saveBtnRef = null;
-          var rowPicker = createLocationPicker({
-            levels: ['country', 'zone', 'town', 'suburb'],
-            defaultLat: parseFloat(f.latitude),
-            defaultLng: parseFloat(f.longitude),
-            onChange: function(){
-              if(saveBtnRef && !rowSaved) saveBtnRef.disabled = rowPicker ? rowPicker.hasPending() : false;
-            }
-          });
-          tr.querySelector('.sn-loc-picker-host').appendChild(rowPicker.el);
-          rowPicker.setValue({ country: f.hubCountry || '', zone: f.hubZone || '', townId: f.hubTownId || '', suburbId: f.hubSuburbId || '' });
-
-          var snFixTreeSel = document.getElementById(snFixTreeSelectIdFor(f.index));
-          if(snFixTreeSel){
-            snFixTreeSel.addEventListener('change', function(){
-              var loc = readLocationSelect(snFixTreeSel);
-              var name = cleanTreeLabelForFix(loc);
-              if(name){
-                var city2Input = tr.querySelector('.sn-fix-city2');
-                if(city2Input) city2Input.value = name;
-              }
-              snFixTreeSel.value = ''; // one-shot fill, not a persistent selection like the hub-location picker above
-            });
-          }
-
-          // Every Save-type button below follows the same pattern: change
-          // the BUTTON'S OWN LABEL for "working"/"done", not just the small
-          // status line underneath it. A disabled grey button with no label
-          // change looks identical whether it's mid-request or finished, and
-          // since the button is exactly where the eye is right after a
-          // click, that's what read as a hang (Jean hit this live,
-          // 2026-10-02) — a status line a few pixels below wasn't enough on
-          // its own.
-          var acceptBtn = tr.querySelector('[data-act="country"]');
-          if(acceptBtn){
-            var acceptBtnLabel = acceptBtn.textContent;
-            acceptBtn.addEventListener('click', function(){
-              acceptBtn.disabled = true;
-              acceptBtn.textContent = 'Saving…';
-              setRowStatus('Saving…');
-              mapAdminPost('resolveStocknetworkLocation', { index: f.index, country: f.snCountry }).then(function(res){
-                if(res.data && res.data.ok){ acceptBtn.textContent = 'Saved ✓'; setRowStatus('Saved — country set to ' + f.snCountry + '.'); tr.style.opacity = '0.55'; savedCount++; }
-                else { acceptBtn.textContent = acceptBtnLabel; setRowStatus((res.data && res.data.error) || 'Could not save.', true); acceptBtn.disabled = false; }
-              }).catch(function(){ acceptBtn.textContent = acceptBtnLabel; setRowStatus('Request failed.', true); acceptBtn.disabled = false; });
-            });
-          }
 
           var acceptCoordBtn = tr.querySelector('[data-act="acceptCoord"]');
           if(acceptCoordBtn && f.coordSuggested){
@@ -9701,60 +9493,27 @@
           }
 
           var saveBtn = tr.querySelector('[data-act="save"]');
-          saveBtnRef = saveBtn;
-          saveBtn.disabled = rowPicker.hasPending();
           var saveBtnLabel = saveBtn.textContent;
           saveBtn.addEventListener('click', function(){
-            var loc = rowPicker.getValue();
             var districtVal = (tr.querySelector('.sn-fix-district') || {}).value || '';
             var city2Val = (tr.querySelector('.sn-fix-city2') || {}).value || '';
             var stateVal = (tr.querySelector('.sn-fix-state') || {}).value || '';
             var noteVal = (tr.querySelector('.sn-fix-note') || {}).value || '';
-            var hasFixFields = !!(districtVal.trim() || city2Val.trim() || stateVal.trim() || noteVal.trim());
-            var hasTreePick = rowPicker.isChanged() && !!loc.country;
-            // A tree pick and the District/City2/State fields are now
-            // independent — picking the hub's own Town/Suburb/Area fixes
-            // the hub's placement; filling in District/City2/State (which
-            // the hub never shows a tree for — see snFixHtml above) instead
-            // queues a correction for StockNetwork's team. Either on its
-            // own is a valid Save; needing both would block the common case
-            // of the hub's placement already being right while only
-            // StockNetwork's search fields are wrong.
-            if(!hasTreePick && !hasFixFields){ setRowStatus('Change the location (Country down to Suburb), or fill in a StockNetwork field to fix, first.', true); return; }
+            if(!(districtVal.trim() || city2Val.trim() || stateVal.trim())){ setRowStatus('Fill in a District, City2 or State correction for StockNetwork first. The hub place itself comes from the pin — use Accept suggested coordinate, or Fix coordinates on the Master map.', true); return; }
             saveBtn.disabled = true;
             saveBtn.textContent = 'Saving…';
             setRowStatus('Saving…');
-
-            var hubSave = hasTreePick
-              ? mapAdminPost('resolveStocknetworkLocation', {
-                  index: f.index, country: loc.country, zone: loc.zone, townId: loc.townId, suburbId: loc.suburbId, locationLabel: loc.locationLabel,
-                  // A country-only result that CHANGES the country makes the old zone/town tag stale, so clear it; a
-                  // country-only result that matches what's already there must not wipe a valid tag.
-                  clearLocation: !loc.zone && !loc.townId && loc.country !== (f.hubCountry || '')
-                })
-              : Promise.resolve({ data: { ok: true, skipped: true } });
-            var fixSave = hasFixFields
-              ? mapAdminPost('flagStockNetworkFieldFix', { index: f.index, district: districtVal, city2: city2Val, state: stateVal, note: noteVal })
-              : Promise.resolve({ data: { ok: true, skipped: true } });
-
-            Promise.all([hubSave, fixSave]).then(function(results){
-              var hubRes = results[0], fixRes = results[1];
-              var hubOk = hubRes.data && hubRes.data.ok;
-              var fixOk = fixRes.data && fixRes.data.ok;
-              if(hubOk && fixOk){
-                var parts = [];
-                if(hasTreePick) parts.push('hub location updated');
-                if(hasFixFields) parts.push('flagged for StockNetwork to fix District/City2/State');
+            mapAdminPost('flagStockNetworkFieldFix', { index: f.index, district: districtVal, city2: city2Val, state: stateVal, note: noteVal }).then(function(res){
+              if(res.data && res.data.ok){
                 saveBtn.textContent = 'Saved ✓';
                 rowSaved = true;
-                setRowStatus('Saved — ' + parts.join(', ') + '.');
+                setRowStatus('Saved — listed under “Corrections to send to StockNetwork”.');
                 tr.style.opacity = '0.55';
                 savedCount++;
-                if(hasFixFields && typeof window.refreshSnFieldFixList === 'function') window.refreshSnFieldFixList();
+                if(typeof window.refreshSnFieldFixList === 'function') window.refreshSnFieldFixList();
               } else {
-                var err = (!hubOk && hubRes.data && hubRes.data.error) || (!fixOk && fixRes.data && fixRes.data.error) || 'Could not save.';
                 saveBtn.textContent = saveBtnLabel;
-                setRowStatus(err, true);
+                setRowStatus((res.data && res.data.error) || 'Could not save.', true);
                 saveBtn.disabled = false;
               }
             }).catch(function(){ saveBtn.textContent = saveBtnLabel; setRowStatus('Request failed.', true); saveBtn.disabled = false; });
@@ -9779,18 +9538,6 @@
             newRows.forEach(renderRow);
             rowsShown += newRows.length;
             offset = d.offset + newRows.length;
-            var pendingSelectIds = [];
-            var pendingTreeFixSelectIds = newRows.map(function(f){ return snFixTreeSelectIdFor(f.index); });
-            populateLocationSelects(pendingSelectIds.concat(pendingTreeFixSelectIds)).then(function(){
-              // populateLocationSelects stamps the one shared tree-options
-              // HTML onto every id it's given, including the default "—
-              // None selected —" first option — fix that id's wording back
-              // to what it's actually for on the sn-fix dropdowns.
-              pendingTreeFixSelectIds.forEach(function(id){
-                var sel = document.getElementById(id);
-                if(sel && sel.options[0]) sel.options[0].textContent = '— or pick from tree, fills City2 —';
-              });
-            });
             moreRow.style.display = d.remaining > 0 ? 'flex' : 'none';
             lastTotalFlagged = d.totalFlagged || 0;
             lastTotalProperties = d.totalProperties || 0;
@@ -10311,14 +10058,12 @@
         downloadBtn.addEventListener('click', downloadNewSnPropsCsv);
       })();
 
-      // ---- Corrected StockNetwork file (Country / Area / City / Suburb from the hub) ----
+      // ---- Corrected StockNetwork file (location columns from the location tree) ----
       // Reads the admin's StockNetwork resort export in the browser, asks
-      // map-api.js's exportLocations action what Country / Area (= hub zone,
-      // corrected 2026-09-29 from an earlier State-based mapping — StockNetwork's
-      // own State column is a different field and is never touched here) /
-      // City / Suburb each row should have (hub-tagged rows are free; anything
-      // else is looked up through the same cached resolver Re-check uses), then
-      // builds the corrected CSV and a change report entirely client-side.
+      // map-api.js's exportLocations action what Country / State / Area /
+      // City / Suburb / District each row should have (from the location
+      // tree; properties already placed are free), then builds the corrected
+      // CSV and a change report entirely client-side. City2 is never touched.
       // Nothing is sent to StockNetwork from here.
       (function(){
         var fileBtn = document.getElementById('fixFileBtn');
@@ -10407,7 +10152,7 @@
             var header = rows.shift();
             var lower = header.map(function(h){ return h.trim().toLowerCase(); });
             function ix(){ for(var a = 0; a < arguments.length; a++){ var j = lower.indexOf(arguments[a]); if(j > -1) return j; } return -1; }
-            var col = { name: ix('resort','name'), country: ix('country'), area: ix('area'), city: ix('city'), suburb: ix('suburb'), lat: ix('latitude'), lng: ix('longitude'), resortId: ix('resortid'), siteId: ix('siteid') };
+            var col = { name: ix('resort','name'), country: ix('country'), state: ix('state'), area: ix('area'), city: ix('city'), suburb: ix('suburb'), district: ix('district'), lat: ix('latitude'), lng: ix('longitude'), resortId: ix('resortid'), siteId: ix('siteid') };
             if(col.name < 0 || col.lat < 0 || col.lng < 0){ setStatus('This doesn’t look like the StockNetwork resort export — I need "Resort", "Latitude" and "Longitude" columns.', true); return; }
             if(col.country < 0 || col.area < 0 || col.city < 0 || col.suburb < 0){ setStatus('This export is missing one of the Country, Area, City or Suburb columns, so there is nothing for me to fill in.', true); return; }
             rows = rows.filter(function(r){ return r.length > 1 || (r[0] || '').trim() !== ''; });
@@ -10495,7 +10240,7 @@
         });
 
         var APPLY = { ok: 1, nearby: 1, sea: 1 };
-        var LABEL = { ok: 'OK', nearby: 'Nearby a town', sea: 'Coordinates in the sea', check: 'Country clash — left unchanged', fail: 'Couldn’t place — left unchanged', skip: 'No usable coordinates — left unchanged' };
+        var LABEL = { ok: 'OK', nearby: 'Nearby a town', sea: 'Outside every Avante region — check the pin', check: 'Country clash — left unchanged', fail: 'Couldn’t place — left unchanged', skip: 'No usable coordinates — left unchanged' };
         var ORDER = { check: 0, fail: 1, skip: 2, sea: 3, nearby: 4, ok: 5 };
 
         dlFileBtn.addEventListener('click', function(){
@@ -10505,13 +10250,15 @@
             if(it && APPLY[it.status]){
               var nr = r.slice();
               nr[c.country] = it.country; nr[c.area] = it.area; nr[c.city] = it.city; nr[c.suburb] = it.suburb;
-              if(nr[c.country] !== r[c.country] || nr[c.area] !== r[c.area] || nr[c.city] !== r[c.city] || nr[c.suburb] !== r[c.suburb]) changed++;
+              if(c.state > -1 && it.state) nr[c.state] = it.state;
+              if(c.district > -1 && it.district) nr[c.district] = it.district;
+              if(nr.some(function(v, k){ return v !== r[k]; })) changed++;
               r = nr;
             }
             out.push(r);
           });
           download('Resort Information - hub corrected.csv', toStockNetworkCsv(out));
-          setStatus('Downloaded the corrected file: ' + changed + ' of ' + state.rows.length + ' rows had Country, Area, City or Suburb changed; every other column and row is exactly as it was. Have a look through the change report before loading it into StockNetwork.');
+          setStatus('Downloaded the corrected file: ' + changed + ' of ' + state.rows.length + ' rows had a location column changed (Country, State, Area, City, Suburb or District); City2 and every other column are exactly as they were. Have a look through the change report before loading it into StockNetwork.');
           // This is the last card in the 8-step workflow — the natural
           // "done" moment is downloading the corrected file itself (same
           // pattern as the other CSV-download steps above), not an earlier
@@ -10524,20 +10271,20 @@
             showStepResultModal({
               title: 'Corrected StockNetwork file — downloaded',
               message: changed + ' of ' + state.rows.length + ' rows were corrected. Have a look through the change report, then load this file into StockNetwork whenever you’re ready — nothing was sent from here. That’s the full workflow; next time, start again from the top.',
-              nextId: 'map-jump-geocode',
-              nextLabel: 'Start geocoding'
+              nextId: 'map-jump-tree',
+              nextLabel: 'Location tree'
             });
           }
         });
 
         dlReportBtn.addEventListener('click', function(){
           var c = state.col;
-          var out = [['Status','Changed','Resort','ResortID','SiteID','Latitude','Longitude','Old Country','New Country','Old Area','New Area','Old City','New City','Old Suburb','New Suburb','Note','Suggested Latitude','Suggested Longitude','Check on Google Maps']];
+          var out = [['Status','Changed','Resort','ResortID','SiteID','Latitude','Longitude','Old Country','New Country','Old State','New State','Old Area','New Area','Old City','New City','Old Suburb','New Suburb','Old District','New District','Note','Suggested Latitude','Suggested Longitude','Check on Google Maps']];
           var idx = [];
           state.rows.forEach(function(r, i){ if(state.results[i]) idx.push(i); });
           function didChange(i){
             var it = state.results[i], r = state.rows[i];
-            return !!(APPLY[it.status] && (it.country !== g(r, c.country) || it.area !== g(r, c.area) || it.city !== g(r, c.city) || it.suburb !== g(r, c.suburb)));
+            return !!(APPLY[it.status] && (it.country !== g(r, c.country) || it.area !== g(r, c.area) || it.city !== g(r, c.city) || it.suburb !== g(r, c.suburb) || (c.state > -1 && it.state && it.state !== g(r, c.state)) || (c.district > -1 && it.district && it.district !== g(r, c.district))));
           }
           idx.sort(function(a, b){
             var d = ORDER[state.results[a].status] - ORDER[state.results[b].status];
@@ -10552,7 +10299,7 @@
             var link = (sug ? 'https://www.google.com/maps/search/?api=1&query=' + sug.lat + ',' + sug.lng : (la && ln ? 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(la + ',' + ln) : ''));
             out.push([
               LABEL[it.status] || it.status, didChange(i) ? 'Yes' : 'No', g(r, c.name), g(r, c.resortId), g(r, c.siteId), la, ln,
-              g(r, c.country), apply ? it.country : '', g(r, c.area), apply ? it.area : '', g(r, c.city), apply ? it.city : '', g(r, c.suburb), apply ? it.suburb : '',
+              g(r, c.country), apply ? it.country : '', g(r, c.state), apply && c.state > -1 ? it.state : '', g(r, c.area), apply ? it.area : '', g(r, c.city), apply ? it.city : '', g(r, c.suburb), apply ? it.suburb : '', g(r, c.district), apply && c.district > -1 ? it.district : '',
               it.note || '', sug ? sug.lat : '', sug ? sug.lng : '', link
             ]);
           });
@@ -11738,7 +11485,8 @@
           tr.appendChild(tdArea);
 
           var tdLocation = document.createElement('td');
-          tdLocation.textContent = a.locationLabel || a.zone || '\u2014';
+          tdLocation.textContent = (window.__adminTreeActText && window.__adminTreeActText(a.id)) || '\u2026';
+          tdLocation.setAttribute('data-act-place', a.id);
           tdLocation.style.fontSize = '12px';
           tr.appendChild(tdLocation);
 
@@ -12673,11 +12421,10 @@
       }
 
       document.getElementById('templateActivitiesBtn').addEventListener('click', function(){
-        downloadCsv('avante-activities-template.csv', ['name', 'area', 'country', 'zone', 'price', 'contactLink', 'description', 'latitude', 'longitude'], {
+        downloadCsv('avante-activities-template.csv', ['name', 'area', 'country', 'price', 'contactLink', 'description', 'latitude', 'longitude'], {
           name: 'e.g. Bloukrans Bungy',
           area: 'e.g. Plettenberg Bay',
           country: 'South Africa',
-          zone: 'Garden Route',
           price: 'e.g. R2,800 pp',
           contactLink: 'https://example.com/book',
           description: 'Short blurb for the map popup',
@@ -12689,7 +12436,7 @@
       document.getElementById('exportActivitiesBtn').addEventListener('click', function(){
         mapAdminPost('adminList').then(function(res){
           if(!res.data || !res.data.ok) return;
-          var cols = ['id', 'name', 'area', 'country', 'zone', 'price', 'contactLink', 'description', 'latitude', 'longitude', 'visible'];
+          var cols = ['id', 'name', 'area', 'country', 'price', 'contactLink', 'description', 'latitude', 'longitude', 'visible'];
           var lines = [cols.join(',')];
           (res.data.activities || []).forEach(function(a){
             lines.push(cols.map(function(c){
@@ -12989,8 +12736,12 @@
           S.F = F; S.col = col;
           S.storeKey = 'snw-lookups:' + f.name + ':' + F.bytes.length;
           setStatus(statusEl, 'Read ' + (F.rows.length - 1) + ' rows. Checking what the hub already has…');
-          return fetch('/api/resorts').then(function(r){ return r.json(); }).then(function(d){
-            indexHub(d && Array.isArray(d.resorts) ? d.resorts : []);
+          return Promise.all([
+            fetch('/api/resorts').then(function(r){ return r.json(); }),
+            fetch('/api/tree-lookup?kind=properties', { cache: 'no-store' }).then(function(r){ return r.json(); }).catch(function(){ return {}; })
+          ]).then(function(res){
+            var d = res[0];
+            indexHub(d && Array.isArray(d.resorts) ? d.resorts : [], (res[1] && res[1].properties) || {});
             buildGroups();
             var restored = loadLookups();
             done[1] = true;
@@ -13000,7 +12751,16 @@
         }).catch(function(e){ setStatus(statusEl, 'Could not read that file or the hub’s property list: ' + e.message, true); });
       });
 
-      function indexHub(resorts){
+      // A property is "placed" when the live location tree has it at the same
+      // spot as the hub's coordinate (within ~500 m).
+      function treeSameSpot(k, ci){
+        if(!k || !valid(ci)) return false;
+        var a = String(k).split(',').map(Number);
+        var r = Math.PI / 180, dl = (ci.lat - a[0]) * r, dn = (ci.lng - a[1]) * r;
+        var x = Math.sin(dl / 2) * Math.sin(dl / 2) + Math.cos(a[0] * r) * Math.cos(ci.lat * r) * Math.sin(dn / 2) * Math.sin(dn / 2);
+        return 12742 * Math.asin(Math.sqrt(x)) < 0.5;
+      }
+      function indexHub(resorts, placed){
         resorts.forEach(function(r){
           var rid = String(r.resortId || '').trim();
           if(!rid) return;
@@ -13009,10 +12769,15 @@
           h.rows++;
           var ci = coordInfo(r.latitude, r.longitude);
           if(valid(ci) && (!h.ci || (h.ci.kind === 'rounded' && ci.kind === 'precise'))) h.ci = ci;
-          if(!(r.locV === 2 && r.townId)) h.tagCurrent = false;
           if(r.snCoordPending) h.pending = true;
-          if(!h.zone && r.zone) h.zone = r.zone;
-          if(!h.label && r.locationLabel) h.label = r.locationLabel;
+        });
+        Object.keys(S.hub).forEach(function(rid){
+          var h = S.hub[rid], pl = placed[rid];
+          h.tagCurrent = !!(pl && treeSameSpot(pl.k, h.ci));
+          if(pl){
+            h.zone = (pl.r && pl.r[0]) || '';
+            h.label = [pl.c, pl.p, (pl.r || []).join(' / '), pl.t, pl.s && pl.s !== pl.t ? pl.s : ''].filter(Boolean).join(' \u203a ');
+          }
         });
       }
 
@@ -13075,7 +12840,7 @@
           rowsIn += g.rows.length;
           if(g.needLookup){ if(S.results[g.key] && !S.results[g.key].failed) already++; else fwd++; }
           // Placement lookup: the coordinate may change (lookups) or the hub
-          // has no current Town/Suburb for it. Usually fewer — cached.
+          // has no current place in the location tree for it.
           if(g.needLookup || !g.hub || !g.hub.tagCurrent || !g.hub.ci) place++;
         });
         var total = fwd + place;
@@ -13314,7 +13079,7 @@
         var queue = applyItems();
         var statusEl = $('snwApplyStatus');
         if(!queue.length){ setStatus(statusEl, 'Nothing to save.'); done[3] = true; refreshNav(); return; }
-        if(!confirm('Save ' + plural(queue.length, 'coordinate') + ' to the hub and place each property in Country > Zone > Town > Suburb? This changes the hub’s live data.')) return;
+        if(!confirm('Save ' + plural(queue.length, 'coordinate') + ' to the hub and place each property in the location tree (Country › Province › Region › City › Suburb)? This changes the hub’s live data.')) return;
         setBusy(true); $('snwApplyBtn').disabled = true;
         var total = queue.length, stuck = 0;
         S.applied = {};
@@ -13354,11 +13119,11 @@
         if(problems.length){
           html += '<p class="snw-section-title">Couldn’t be placed (' + problems.length + ')</p><div class="table-wrap"><table class="data-table snw-table"><thead><tr><th>Property</th><th>Why</th></tr></thead><tbody>'
             + problems.map(function(x){ return '<tr><td>' + esc(x.g.name) + '</td><td>' + esc(x.r.status === 'notInHub' ? 'Not in the hub’s resort list' : (x.r.error || x.r.status)) + '</td></tr>'; }).join('')
-            + '</tbody></table></div><p class="snw-note">Their coordinate is saved; they’ll show under &ldquo;Properties with no zone&rdquo; on the Map &amp; Activities tab.</p>';
+            + '</tbody></table></div><p class="snw-note">Their coordinate is saved; press Re-run lookup under Location tree on the Map &amp; Activities tab to try again.</p>';
         }
         if(placed.length){
           html += '<details style="margin-top:12px;"><summary class="snw-section-title" style="cursor:pointer; display:list-item;">Placed (' + placed.length + ')</summary><div class="table-wrap"><table class="data-table snw-table"><thead><tr><th>Property</th><th>Now in the hub as</th></tr></thead><tbody>'
-            + placed.map(function(x){ return '<tr><td>' + esc(x.g.name) + '</td><td>' + esc([x.r.country, x.r.zone, x.r.locationLabel].filter(Boolean).join(' › ')) + '</td></tr>'; }).join('')
+            + placed.map(function(x){ return '<tr><td>' + esc(x.g.name) + '</td><td>' + esc(x.r.locationLabel || x.r.country || '') + '</td></tr>'; }).join('')
             + '</tbody></table></div></details>';
         }
         $('snwApplyResults').innerHTML = html;
@@ -13376,14 +13141,14 @@
         if(!S || !S.F) return;
         var ex = [], seen = {};
         S.scope.forEach(function(g){
-          var r = S.applied[g.key], zone = (r && r.zone) || (g.hub && g.hub.zone) || '';
+          var r = S.applied[g.key], zone = (r && r.region) || (g.hub && g.hub.zone) || '';
           var area = (S.F.rows[g.rows[0]].cells[S.col.area] || '').trim();
           var k = area + '|' + zone;
           if(zone && area.toLowerCase() !== zone.toLowerCase() && !seen[k] && ex.length < 6){ seen[k] = 1; ex.push([area || '(blank)', zone]); }
         });
         $('snwAreaExamples').innerHTML = ex.length
-          ? 'Examples from this run where they differ — StockNetwork’s Area → hub zone:<br>' + ex.map(function(e){ return '&bull; ' + esc(e[0]) + ' → ' + esc(e[1]); }).join('<br>')
-          : 'In this run StockNetwork’s Area already matches the hub zone wherever both are known.';
+          ? 'Examples from this run where they differ — StockNetwork’s Area → Avante region:<br>' + ex.map(function(e){ return '&bull; ' + esc(e[0]) + ' → ' + esc(e[1]); }).join('<br>')
+          : 'In this run StockNetwork’s Area already matches the Avante region wherever both are known.';
       }
 
       // =====================================================================
@@ -13459,7 +13224,7 @@
         var report = [['Resort', 'ResortID', 'SiteID', 'Field', 'Old value', 'New value', 'Why']];
         var expected = [], changes = 0, changedRows = 0, leftForYou = 0;
         var SRC = { google: 'Google matched the property by name (confident)', 'google-you': 'Google match you accepted', hub: 'The hub already had a more precise coordinate', sn: 'StockNetwork’s own coordinate' };
-        var areaWhy = S.areaMode === 'hub' ? 'Hub zone for this coordinate' : '';
+        var areaWhy = S.areaMode === 'hub' ? 'Avante region for this coordinate' : '';
 
         S.scope.forEach(function(g){
           var f = finalFor(g);
@@ -13481,11 +13246,13 @@
             var it = S.exportRes[i];
             var applied = !!(it && APPLY_STATUS[it.status]);
             if(applied){
-              var why = 'From the hub’s Country > Zone > Town > Suburb for this coordinate' + (it.note ? ' — ' + it.note : '');
+              var why = 'From the location tree for this coordinate' + (it.note ? ' — ' + it.note : '');
               set(c.country, it.country, 'Country', why);
+              if(it.state) set(c.state, it.state, 'State', why);
               if(S.areaMode === 'hub') set(c.area, it.area, 'Area', areaWhy);
               set(c.city, it.city, 'City', why);
               set(c.suburb, it.suburb, 'Suburb', why);
+              if(it.district) set(c.district, it.district, 'District', why);
             } else {
               leftForYou++;
               report.push([before[c.name], rid, sid, '(left as is)', '', '', (it && it.note) || 'The hub couldn’t work out a location for this row.']);
@@ -13499,7 +13266,7 @@
         });
 
         // ---- self-checks ----
-        var allowed = {}; [c.lat, c.lng, c.country, c.city, c.suburb].forEach(function(x){ allowed[x] = 1; });
+        var allowed = {}; [c.lat, c.lng, c.country, c.state, c.city, c.suburb, c.district].forEach(function(x){ if(x > -1) allowed[x] = 1; });
         if(S.areaMode === 'hub') allowed[c.area] = 1;
         var protectedChanged = 0, shapeOk = out.length === F.rows.length;
         out.forEach(function(r, i){
@@ -13512,7 +13279,7 @@
         var checks = [];
         checks.push({ ok: F.roundTripOk, text: F.roundTripOk ? 'Format: written back unchanged, your export comes out byte-for-byte identical (' + (F.encoding === 'utf-8' ? 'UTF-8' + (F.bom ? ' with BOM' : '') : 'Windows-1252') + ', ' + (F.eol === '\r\n' ? 'CRLF' : 'LF') + ' line endings, same quoting).' : 'Format: your export does NOT come back out byte-for-byte identical even with no changes (mixed line endings or unusual quoting). Check the file before loading it.' });
         checks.push({ ok: shapeOk, text: shapeOk ? 'Same ' + (F.rows.length - 1) + ' rows and ' + F.rows[0].cells.length + ' columns, in the same order.' : 'Row or column count changed — do NOT load this file.' });
-        checks.push({ ok: protectedChanged === 0, text: protectedChanged === 0 ? 'District, City2, State' + (S.areaMode === 'sn' ? ', Area' : '') + ' and every other column untouched.' : protectedChanged + ' cells outside Latitude/Longitude/Country/Area/City/Suburb changed — do NOT load this file.' });
+        checks.push({ ok: protectedChanged === 0, text: protectedChanged === 0 ? 'City2' + (S.areaMode === 'sn' ? ', Area' : '') + ' and every other column untouched.' : protectedChanged + ' cells outside Latitude/Longitude/Country/State/Area/City/Suburb/District changed — do NOT load this file.' });
         checks.push({ ok: enc.lost === 0, text: enc.lost === 0 ? 'Every character fits the file’s encoding.' : enc.lost + ' characters from the hub can’t be written in Windows-1252 and became “?” — see the change report.' });
         // A plain-ASCII export doesn't reveal whether StockNetwork means UTF-8
         // or Windows-1252, so an accented value from the hub is a guess.
