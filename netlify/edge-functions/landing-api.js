@@ -66,7 +66,7 @@ function cleanContent(c) {
     title: str(c.title, 120), kind: str(c.kind, 20), dates: str(c.dates, 120),
     checkIn: /^\d{4}-\d{2}-\d{2}$/.test(c.checkIn || "") ? c.checkIn : "", checkOut: /^\d{4}-\d{2}-\d{2}$/.test(c.checkOut || "") ? c.checkOut : "",
     endDate: /^\d{4}-\d{2}-\d{2}$/.test(c.endDate || "") ? c.endDate : "",
-    cover: isKey(c.cover) ? c.cover : "", description: str(c.description, 300),
+    cover: isKey(c.cover) ? c.cover : "", coverW: +c.coverW || 0, coverH: +c.coverH || 0, description: str(c.description, 300),
     // The hook builder's own Booking link (Jean, 2026-10-08) — what Book now opens.
     booking: /^https:\/\/[^\s"<>]+$/i.test(String(c.booking || "")) ? str(c.booking, 600) : "",
     whatsapp: str(String(c.whatsapp || "").replace(/[^\d]/g, ""), 16), waText: str(c.waText, 300),

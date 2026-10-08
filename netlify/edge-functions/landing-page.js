@@ -43,10 +43,10 @@ function page(rec, agent, origin, ownBook) {
     // One "Book now" under every page (Jean, 2026-10-08): StockNetwork with
     // everything available for the hook's dates (a property hook: that property).
     const props = `<div class="props"><a class="book" href="${esc(allBook)}" target="_blank" rel="noopener">Book now<span>›</span></a></div>`;
-    return `<section class="pg"><div class="pgimg"><img src="${esc(img(p.img))}" width="${p.w}" height="${p.h}" alt="${esc(c.title)} — page ${i + 2}" loading="lazy">${spots}</div>${props}</section>`;
+    return `<section class="pg" style="--ar:${(p.w / p.h).toFixed(4)}"><div class="pgimg"><img src="${esc(img(p.img))}" width="${p.w}" height="${p.h}" alt="${esc(c.title)} — page ${i + 2}" loading="lazy">${spots}</div>${props}</section>`;
   }).join("");
   // Page 1 (the hook itself, as seen on Facebook) comes first, also with Book now.
-  const coverHtml = c.cover ? `<section class="pg"><div class="pgimg"><img src="${esc(img(c.cover))}" alt="${esc(c.title)} — page 1" loading="eager"></div><div class="props"><a class="book" href="${esc(allBook)}" target="_blank" rel="noopener">Book now<span>›</span></a></div></section>` : "";
+  const coverHtml = c.cover ? `<section class="pg" style="--ar:${c.coverW && c.coverH ? (c.coverW / c.coverH).toFixed(4) : "0.8"}"><div class="pgimg"><img src="${esc(img(c.cover))}" alt="${esc(c.title)} — page 1" loading="eager"></div><div class="props"><a class="book" href="${esc(allBook)}" target="_blank" rel="noopener">Book now<span>›</span></a></div></section>` : "";
   const title = c.title || "Avante Travel";
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(title)} — Avante Travel</title>
@@ -63,7 +63,11 @@ header{background:#fff;border-bottom:1px solid #e3e9e8;padding:12px 16px;display
 header a.hb{font-family:Montserrat,sans-serif;font-weight:700;font-size:13px;color:var(--navy);text-decoration:none;border:1.5px solid var(--navy);border-radius:999px;padding:7px 12px}
 .intro{max-width:760px;margin:0 auto;padding:18px 16px 4px}.intro h1{font-family:Montserrat,sans-serif;font-size:22px;margin:0 0 4px;color:var(--navy)}.intro p{margin:0;color:#4a5b66}
 main{max-width:760px;margin:0 auto;padding:10px 16px 120px}
-.pg{margin:14px 0 22px}.pgimg{position:relative;border-radius:14px;overflow:hidden;box-shadow:0 6px 22px rgba(14,47,68,.14);background:#fff}
+.pg{margin:14px auto 22px;width:100%}
+/* A computer screen shows one whole page at a time (Jean, 2026-10-08): each
+   page is as big as fits between the header and the WhatsApp bar. */
+@media (min-width:700px){html{scroll-snap-type:y proximity}main{max-width:1100px}
+.pg{width:min(100%,calc((100vh - 270px) * var(--ar,0.8)));min-width:320px;scroll-snap-align:start;scroll-margin-top:72px}}.pgimg{position:relative;border-radius:14px;overflow:hidden;box-shadow:0 6px 22px rgba(14,47,68,.14);background:#fff}
 .pgimg img{display:block;width:100%;height:auto}.spot{position:absolute;display:block;border-radius:8px}.spot:focus-visible{outline:3px solid var(--teal)}
 .props{display:grid;gap:8px;margin-top:10px}
 .book{display:flex;justify-content:center;gap:10px;align-items:center;background:var(--navy);color:#fff;text-decoration:none;font-family:Montserrat,sans-serif;font-weight:700;font-size:15px;padding:14px 16px;border-radius:12px}
