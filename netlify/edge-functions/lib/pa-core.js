@@ -46,7 +46,8 @@ export function waNumber(phone) { let d = String(phone || "").replace(/\D/g, "")
 
 // affiliates: { getAuth(aff) -> {passwordHash}|null, getProfile(aff) -> {name,email,phone}|null }
 // sendEmail(to, subject, html) -> Promise<boolean>
-export function createCore({ store, resortStore, encKey, now = () => new Date(), clientFactory = (c) => new SNClient(c), fetchImpl = (...a) => fetch(...a), baseUrl = "", affiliates = null, sendEmail = async () => false }) {
+// reviews: { baseUrl, secret, tenant } for the Avante Reviews app (review links in after-stay messages)
+export function createCore({ store, resortStore, encKey, now = () => new Date(), clientFactory = (c) => new SNClient(c), fetchImpl = (...a) => fetch(...a), baseUrl = "", affiliates = null, sendEmail = async () => false, reviews = null }) {
   const today = () => now().toISOString().slice(0, 10);
   const getJSON = (k) => store.get(k, { type: "json" });
   const setJSON = (k, v) => store.setJSON(k, v);
@@ -161,7 +162,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
   }
 
   function publicProperty(p) {
-    return { siteId: p.siteId, site: p.site, resortId: p.resortId, resortName: p.resortName, units: p.units, settings: p.settings, connectedAt: p.createdAt };
+    return { siteId: p.siteId, site: p.site, resortId: p.resortId, resortName: p.resortName, units: p.units, settings: p.settings, connectedAt: p.createdAt, demoAllowed: ["3"].includes(String(p.site)) };
   }
 
   // One Stock Network login per property is reused across requests until it
@@ -366,7 +367,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     if ((Number(b.amountPaid) || 0) > 0) return "part-paid";
     return "unpaid";
   }
-  function decorate(b) { return Object.assign({}, b, { payState: payState(b), locked: isPaid(b) }); }
+  function decorate(b) { return Object.assign({}, b, { payState: payState(b), locked: isPaid(b), contact: contactOf(b) }); }
 
   async function payInfoFor(prop, b) {
     if (!b || b.origin === "channel") return null;
@@ -406,6 +407,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
 
   async function payInfo(prop, ref) {
     const { list, b } = await findBooking(prop, ref);
+    notDemo(b);
     const client = await clientFor(prop);
     if (await refreshPayment(client, b)) await saveBookings(prop, list);
     return { booking: decorate(b), pay: await payInfoFor(prop, b) };
@@ -413,6 +415,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
 
   async function markPaidEft(prop, ref) {
     const { list, b } = await findBooking(prop, ref);
+    notDemo(b);
     if (b.origin === "channel") throw new PAError("Channel bookings are paid on the channel.");
     if (payMode(prop) === "gateway") throw new PAError("EFT is switched off for this property (payment gateway only).");
     if (b.status === "Cancelled") throw new PAError(b.ref + " is cancelled.");
@@ -449,6 +452,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
 
   async function cancel(prop, ref) {
     const { list, b } = await findBooking(prop, ref);
+    notDemo(b);
     if (b.status === "Cancelled") return { booking: decorate(b) };
     const client = await clientFor(prop);
     if (await refreshPayment(client, b)) await saveBookings(prop, list);
@@ -536,6 +540,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
 
   async function cancelUnit(prop, ref, unit) {
     const { list, b } = await findBooking(prop, ref);
+    notDemo(b);
     const live = b.items.filter((it) => !it.cancelled);
     const it = live.find((x) => x.unit === cleanStr(unit, 60));
     if (!it) throw new PAError(unit + " is not on " + ref + ".");
@@ -554,6 +559,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
   // Change unit and/or dates of a single-unit booking: SN can't edit, so cancel + rebook.
   async function edit(prop, ref, change) {
     const { list, b } = await findBooking(prop, ref);
+    notDemo(b);
     const live = b.items.filter((it) => !it.cancelled);
     if (live.length !== 1) throw new PAError("Only single-unit bookings can be moved. Remove units, or cancel and book again.");
     const old = live[0];
@@ -601,7 +607,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     const s = cleanStr(q, 80).toLowerCase();
     const list = await bookingsOf(prop);
     if (refresh) {
-      const stale = list.filter((b) => b.origin !== "channel" && b.status !== "Cancelled" && !isPaid(b) && (!b.checkedAt || now().getTime() - Date.parse(b.checkedAt) > 120000)).slice(-10);
+      const stale = list.filter((b) => !b.demo && b.origin !== "channel" && b.status !== "Cancelled" && !isPaid(b) && (!b.checkedAt || now().getTime() - Date.parse(b.checkedAt) > 120000)).slice(-10);
       if (stale.length) {
         try { const client = await clientFor(prop); let changed = false; for (const b of stale) changed = (await refreshPayment(client, b)) || changed; if (changed) await saveBookings(prop, list); } catch (_) {}
       }
@@ -703,7 +709,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     const block = new Set();
     for (const n of Object.keys((snap.taken || {})[unit.name] || {})) if (n >= t0) block.add(n);
     for (const b of await bookingsOf(prop)) {
-      if (b.status === "Cancelled" || (b.origin === "channel" && b.channel === channelKey)) continue;
+      if (b.demo || b.status === "Cancelled" || (b.origin === "channel" && b.channel === channelKey)) continue;
       for (const it of b.items) if (it.unit === unit.name && !it.cancelled) for (const n of eachNight(it.start, it.end)) if (n >= t0) block.add(n);
     }
     const events = (await getJSON("chan:" + prop.siteId)) || {};
@@ -813,6 +819,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
       if (Date.now() - started > deadlineMs) { out[k] = "skipped (time)"; continue; }
       const prop = await getJSON(k);
       if (!prop) continue;
+      try { const n = await remindMessages(prop); if (n) out[prop.site + " messages"] = n + " reminder(s) emailed"; } catch (_) {}
       // Properties without channels make no background calls to Stock Network.
       if (!(await isLinked(prop))) { out[prop.site] = "not linked to a channel: skipped"; continue; }
       try { out[prop.site] = await syncProperty(prop); } catch (e) { out[prop.site] = { error: e.message }; }
@@ -840,5 +847,240 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     return { event: ev };
   }
 
-  return { connect, auth, disconnect, publicProperty, availability, search, book, cancel, cancelUnit, edit, find, saveSettings, channelsView, payInfo, markPaidEft, approvalInfo, approveCancel, affStatus, resume, icalFeed, runSync, syncProperty, channelEvents, addChannelEvent, snapshot, ensureWindow, resolveUnitNotice, findResortsForSite };
+  // ---------- guest details (every booking, incl. paid and channel bookings) ----------
+  // Kept in the hub only: Stock Network bookings can't be edited and don't
+  // need to be for this. Channel bookings stay under the channel's name on SN.
+  function contactOf(b) {
+    if (b.contact) return b.contact;
+    if (b.origin === "channel") return {};
+    const g = b.guest || {};
+    return { name: ((g.first || "") + " " + (g.last || "")).trim(), cell: g.cellphone || "", email: g.email || "" };
+  }
+  async function saveContact(prop, ref, body) {
+    const { list, b } = await findBooking(prop, ref);
+    const c = Object.assign({}, contactOf(b));
+    const set = (k, n) => { if (body[k] !== undefined) c[k] = cleanStr(String(body[k]), n); };
+    set("name", 100); set("cell", 30); set("email", 120); set("arrival", 40); set("carReg", 20); set("notes", 1000);
+    if (body.guests !== undefined) c.guests = Math.max(0, Math.min(50, Number(body.guests) || 0)) || "";
+    if (c.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.email)) throw new PAError("That email address doesn't look right.");
+    if (c.carReg) c.carReg = c.carReg.toUpperCase();
+    if (body.offers !== undefined) c.offers = !!body.offers;
+    if (body.optOut !== undefined) { c.optOut = !!body.optOut; if (c.optOut) c.offers = false; }
+    c.updatedAt = now().toISOString();
+    b.contact = c;
+    await saveBookings(prop, list);
+    return { booking: decorate(b) };
+  }
+  async function checkIn(prop, ref, on) {
+    const { list, b } = await findBooking(prop, ref);
+    const c = Object.assign({}, contactOf(b));
+    if (on) c.checkedInAt = now().toISOString(); else delete c.checkedInAt;
+    b.contact = c;
+    await saveBookings(prop, list);
+    return { booking: decorate(b) };
+  }
+
+  // Every guest once (matched by cellphone, else email), for the property's
+  // records and return business.
+  async function guests(prop) {
+    const map = new Map();
+    for (const b of await bookingsOf(prop)) {
+      if (b.status === "Cancelled") continue;
+      const c = contactOf(b);
+      if (!c.name && !c.cell && !c.email) continue;
+      const key = waNumber(c.cell) || (c.email || "").toLowerCase() || ("ref:" + b.ref);
+      const live = b.items.filter((i) => !i.cancelled);
+      if (!live.length) continue;
+      const start = live.map((i) => i.start).sort()[0], end = live.map((i) => i.end).sort().slice(-1)[0];
+      const g = map.get(key) || { name: "", cell: "", email: "", carReg: "", stays: 0, nights: 0, firstStay: start, lastStay: start, channels: [], offers: false, optOut: false, refs: [] };
+      g.stays++; g.nights += live.reduce((t, i) => t + nightsBetween(i.start, i.end), 0);
+      if (start < g.firstStay) g.firstStay = start;
+      if (start >= g.lastStay) { g.lastStay = start; g.name = c.name || g.name; g.cell = c.cell || g.cell; g.email = c.email || g.email; g.carReg = c.carReg || g.carReg; }
+      else { g.name = g.name || c.name || ""; g.cell = g.cell || c.cell || ""; g.email = g.email || c.email || ""; g.carReg = g.carReg || c.carReg || ""; }
+      const ch = b.origin === "channel" ? b.source : (b.source || "Direct");
+      if (ch && !g.channels.includes(ch)) g.channels.push(ch);
+      if (c.offers) g.offers = true;
+      if (c.optOut) g.optOut = true;
+      g.refs.push(b.ref);
+      void end;
+      map.set(key, g);
+    }
+    const rows = [...map.values()].map((g) => Object.assign(g, { offers: g.offers && !g.optOut })).sort((x, y) => y.lastStay.localeCompare(x.lastStay));
+    return { guests: rows };
+  }
+
+  // ---------- guest messages (WhatsApp, one tap) ----------
+  const MSG_DEFAULTS = {
+    welcome: { on: false, days: 2, time: "10:00", text: "Hi {first_name}, we look forward to welcoming you to {property} on {check_in}! 🌊\n\nYour booking: {unit}, {nights} nights (ref {ref}).\n\n🕑 Check-in from 14:00, check-out by 10:00.\n📍 Directions: [your Google Maps pin]\n🔑 Arrival: [gate code / where to collect keys]\n📶 Wi-Fi: [network] / [password]\n🚗 Parking: one bay per unit — please send us your car registration.\n\nAny questions, just reply here. Safe travels!" },
+    after: { on: false, days: 1, time: "10:00", text: "Hi {first_name}, thank you for staying at {property}! We hope you had a wonderful time. 😊\n\nWould you take a minute to tell us how it was? Your review helps other travellers: {review_link}\n\nWe'd love to welcome you back. Book direct with us next time for our best rate." },
+  };
+  function msgSettings(prop) {
+    const m = prop.messages || {};
+    const one = (k) => Object.assign({}, MSG_DEFAULTS[k], m[k] || {});
+    return { welcome: one("welcome"), after: one("after") };
+  }
+  const SAST = "+02:00";
+  function dueAt(kind, b, ms) {
+    const live = b.items.filter((i) => !i.cancelled);
+    if (!live.length) return null;
+    const start = live.map((i) => i.start).sort()[0], end = live.map((i) => i.end).sort().slice(-1)[0];
+    const st = ms[kind];
+    const day = kind === "welcome" ? addDays(start, -Number(st.days || 0)) : addDays(end, Number(st.days || 0));
+    const time = /^\d{2}:\d{2}$/.test(st.time || "") ? st.time : "10:00";
+    return { at: Date.parse(day + "T" + time + ":00" + SAST), start, end };
+  }
+  // A message is due once its time has passed: welcome until arrival day ends, after-stay for 7 days.
+  function messageState(kind, b, ms) {
+    if (!ms[kind].on || b.status === "Cancelled") return null;
+    const d = dueAt(kind, b, ms); if (!d) return null;
+    const rec = (b.msgs || {})[kind] || {};
+    if (rec.state === "sent" || rec.state === "skipped") return { state: rec.state, at: rec.at, dueAt: d.at };
+    const t = now().getTime();
+    const until = kind === "welcome" ? Date.parse(d.start + "T23:59:00" + SAST) : d.at + 7 * 86400000;
+    if (t > until) return { state: "missed", dueAt: d.at };
+    return { state: t >= d.at ? "due" : "scheduled", dueAt: d.at };
+  }
+  function firstName(c) { return String(c.name || "").trim().split(/\s+/)[0] || ""; }
+  function fillTemplate(text, prop, b, extra = {}) {
+    const c = contactOf(b), live = b.items.filter((i) => !i.cancelled);
+    const start = live.map((i) => i.start).sort()[0] || "", end = live.map((i) => i.end).sort().slice(-1)[0] || "";
+    const nice = (iso) => { if (!iso) return ""; const d = new Date(iso + "T00:00:00Z"); return d.getUTCDate() + " " + ["January","February","March","April","May","June","July","August","September","October","November","December"][d.getUTCMonth()] + " " + d.getUTCFullYear(); };
+    const vals = { first_name: firstName(c) || "there", name: c.name || "", property: prop.resortName || "", unit: live.map((i) => i.unit).join(", "),
+      check_in: nice(start), check_out: nice(end), nights: start && end ? String(nightsBetween(start, end)) : "", ref: b.ref, review_link: extra.review_link || "" };
+    return String(text || "").replace(/\{(\w+)\}/g, (m, k) => (k in vals ? vals[k] : m)).replace(/\n{3,}/g, "\n\n").trim();
+  }
+  async function reviewLinksFor(prop, b) {
+    if (!reviews || !reviews.baseUrl || !reviews.secret) throw new PAError("Avante Reviews isn't connected yet, so the review link can't be added.", 503);
+    const c = contactOf(b), live = b.items.filter((i) => !i.cancelled);
+    const res = await fetchImpl(reviews.baseUrl.replace(/\/$/, "") + "/internal/review-links/" + encodeURIComponent(reviews.tenant || "avante"), {
+      method: "POST", headers: { "content-type": "application/json", "x-sync-secret": reviews.secret },
+      body: JSON.stringify({ resort_id: prop.resortId, resort_name: prop.resortName, booking_ref: b.ref,
+        start_date: live.map((i) => i.start).sort()[0], end_date: live.map((i) => i.end).sort().slice(-1)[0],
+        guest: { full_name: c.name || "Guest", email: c.email || "", whatsapp_number: waNumber(c.cell) ? "+" + waNumber(c.cell) : "" } }),
+    }).catch(() => null);
+    if (!res || !res.ok) throw new PAError("Avante Reviews didn't answer, so the review link can't be added right now. Try again in a minute.", 502);
+    const d = await res.json();
+    return { guest: d.guest_link || null, property: d.property_link || null, guestReviewed: !!d.guest_reviewed, propertyReviewed: !!d.property_reviewed, expiresAt: d.expires_at || null };
+  }
+  // The text to send and a WhatsApp link to the guest. kind: welcome | after | custom
+  async function prepareMessage(prop, ref, kind, customText) {
+    const { b } = await findBooking(prop, ref);
+    const c = contactOf(b);
+    const wa = waNumber(c.cell);
+    if (!wa) throw new PAError("Add the guest's cellphone number first (Guest details).");
+    let text = kind === "custom" ? String(customText || "") : msgSettings(prop)[kind] && msgSettings(prop)[kind].text;
+    if (!kind || (kind !== "custom" && !msgSettings(prop)[kind])) throw new PAError("Unknown message.");
+    let links = null;
+    if (/\{review_link\}/.test(text)) links = await reviewLinksFor(prop, b);
+    if (links && !links.guest) text = text.replace(/[^\n]*\{review_link\}[^\n]*\n?/g, "");
+    text = fillTemplate(text, prop, b, { review_link: links && links.guest });
+    if (!text) throw new PAError("Write the message first.");
+    return { text, whatsappUrl: "https://wa.me/" + wa + "?text=" + encodeURIComponent(text), guestReviewed: !!(links && links.guestReviewed) };
+  }
+  async function markMessage(prop, ref, kind, state, text) {
+    const { list, b } = await findBooking(prop, ref);
+    if (!["welcome", "after", "custom"].includes(kind)) throw new PAError("Unknown message.");
+    if (kind !== "custom") { b.msgs = b.msgs || {}; b.msgs[kind] = { state: state === "skipped" ? "skipped" : "sent", at: now().toISOString() }; }
+    if (state !== "skipped") b.msgLog = (b.msgLog || []).concat([{ at: now().toISOString(), kind, text: cleanStr(String(text || ""), 1500) }]).slice(-30);
+    await saveBookings(prop, list);
+    return { booking: decorate(b) };
+  }
+  async function propertyReviewLink(prop, ref) {
+    const { b } = await findBooking(prop, ref);
+    const links = await reviewLinksFor(prop, b);
+    return { link: links.property, reviewed: links.propertyReviewed };
+  }
+  function messageItems(prop, list) {
+    const ms = msgSettings(prop), out = [];
+    for (const b of list) for (const kind of ["welcome", "after"]) {
+      const st = messageState(kind, b, ms); if (!st) continue;
+      const c = contactOf(b);
+      out.push({ ref: b.ref, kind, state: st.state, dueAt: new Date(st.dueAt).toISOString(), name: c.name || (b.origin === "channel" ? b.source + " guest" : ""), hasCell: !!waNumber(c.cell),
+        units: b.items.filter((i) => !i.cancelled).map((i) => i.unit).join(", "), start: b.items.filter((i) => !i.cancelled).map((i) => i.start).sort()[0] });
+    }
+    return out.sort((x, y) => x.dueAt.localeCompare(y.dueAt));
+  }
+  async function messagesView(prop) {
+    const items = messageItems(prop, await bookingsOf(prop));
+    const t = now().getTime();
+    return { settings: msgSettings(prop), reviewsConnected: !!(reviews && reviews.baseUrl && reviews.secret),
+      due: items.filter((i) => i.state === "due"),
+      upcoming: items.filter((i) => i.state === "scheduled" && Date.parse(i.dueAt) - t < 14 * 86400000) };
+  }
+  async function saveMessages(prop, body) {
+    const cur = msgSettings(prop), out = {};
+    for (const k of ["welcome", "after"]) {
+      const v = (body && body[k]) || {};
+      const days = Math.max(0, Math.min(30, Math.round(Number(v.days !== undefined ? v.days : cur[k].days)) || 0));
+      const time = /^([01]\d|2[0-3]):[0-5]\d$/.test(v.time || "") ? v.time : cur[k].time;
+      const text = v.text !== undefined ? cleanStr(String(v.text), 1500) : cur[k].text;
+      if (v.on && !text) throw new PAError("Write the " + (k === "welcome" ? "welcome" : "after-stay") + " message before switching it on.");
+      out[k] = { on: v.on !== undefined ? !!v.on : cur[k].on, days, time, text };
+    }
+    prop.messages = out;
+    await setJSON("site:" + prop.siteId, prop);
+    return messagesView(prop);
+  }
+  // 15-minute job: email the property once when messages become due. No Stock Network calls.
+  async function remindMessages(prop) {
+    const s = prop.settings || {};
+    if (!s.email || !prop.messages || !(prop.messages.welcome && prop.messages.welcome.on || prop.messages.after && prop.messages.after.on)) return 0;
+    const list = await bookingsOf(prop);
+    const ms = msgSettings(prop), fresh = [];
+    for (const b of list) for (const kind of ["welcome", "after"]) {
+      const st = messageState(kind, b, ms);
+      if (!st || st.state !== "due") continue;
+      b.msgs = b.msgs || {};
+      const rec = b.msgs[kind] || {};
+      if (rec.remindedAt) continue;
+      b.msgs[kind] = Object.assign({}, rec, { remindedAt: now().toISOString() });
+      fresh.push({ b, kind });
+    }
+    if (!fresh.length) return 0;
+    await saveBookings(prop, list);
+    const rows = fresh.map(({ b, kind }) => { const c = contactOf(b); return "<li><b>" + esc(kind === "welcome" ? "Welcome" : "After-stay") + "</b> to " + esc(c.name || "the guest") + " (" + esc(b.ref) + ")" + (waNumber(c.cell) ? "" : " — add their cellphone number first") + "</li>"; }).join("");
+    await sendEmail(s.email, "WhatsApp messages to send: " + (prop.resortName || "your property"),
+      "<p>These guest messages are ready to send:</p><ul>" + rows + "</ul><p>Open the Avante hub, Property Affiliate → Availability, and tap <b>Send</b> on each one. WhatsApp opens with the message ready.</p>").catch(() => false);
+    return fresh.length;
+  }
+
+  // ---------- demo bookings (Property Testing, site 3, only) ----------
+  // Hub-only examples to show guest details, the Guests list and messages.
+  // Never sent to Stock Network or to channel calendars.
+  const DEMO_SITES = ["3"];
+  function isDemoSite(prop) { return DEMO_SITES.includes(String(prop.site)); }
+  async function seedDemo(prop) {
+    if (!isDemoSite(prop)) throw new PAError("Demo bookings are only for the Property Testing site.", 403);
+    const list = (await bookingsOf(prop)).filter((b) => !b.demo);
+    const u = (i) => (prop.units[i % Math.max(1, prop.units.length)] || { name: "Unit 1" }).name;
+    const t = today(), d = (n) => addDays(t, n), ts = now().toISOString();
+    const mk = (n, o) => Object.assign({ ref: "DEMO-" + n, demo: true, reservationId: null, status: "Booked", origin: "hub", source: "Direct", createdAt: ts, amountPaid: 0, snStatus: "Booked" }, o);
+    list.push(
+      mk(1, { items: [{ unit: u(0), start: d(1), end: d(4) }], total: 5400, guest: { first: "Thandi", last: "Mokoena", email: "thandi.demo@example.com", cellphone: "082 555 0101" },
+        contact: { name: "Thandi Mokoena", cell: "082 555 0101", email: "thandi.demo@example.com", guests: 4, arrival: "About 15:00", carReg: "CA 123-456", offers: true, notes: "Celebrating an anniversary: flowers in the room." } }),
+      mk(2, { origin: "channel", channel: "airbnb", source: "Airbnb", items: [{ unit: u(1), start: d(0), end: d(3) }], total: 4200,
+        contact: { name: "Pieter van der Merwe", cell: "083 555 0202", email: "", guests: 2, arrival: "Late, after 20:00", carReg: "CY 98-765", checkedInAt: ts, notes: "Called him: arriving late, key in the lockbox." } }),
+      mk(3, { items: [{ unit: u(0), start: d(-7), end: d(-2) }], total: 9000, amountPaid: 9000, snStatus: "Paid", status: "Paid", guest: { first: "Sarah", last: "Jacobs", email: "sarah.demo@example.com", cellphone: "071 555 0303" },
+        contact: { name: "Sarah Jacobs", cell: "071 555 0303", email: "sarah.demo@example.com", guests: 3, carReg: "GP 45 ZZ GP", checkedInAt: new Date(Date.parse(d(-7) + "T14:30:00+02:00")).toISOString(), offers: true } }),
+      mk(4, { origin: "channel", channel: "bcom", source: "Booking.com", items: [{ unit: u(1), start: d(9), end: d(12) }], total: 6300, contact: {} }),
+      mk(5, { items: [{ unit: u(0), start: d(-60), end: d(-57) }], total: 5400, amountPaid: 5400, snStatus: "Paid", status: "Paid", guest: { first: "Sarah", last: "Jacobs", email: "sarah.demo@example.com", cellphone: "071 555 0303" },
+        contact: { name: "Sarah Jacobs", cell: "071 555 0303", email: "sarah.demo@example.com", guests: 2, carReg: "GP 45 ZZ GP", offers: true }, msgs: { welcome: { state: "sent", at: ts }, after: { state: "sent", at: ts } } }),
+      mk(6, { source: "Walk-in", items: [{ unit: u(2), start: d(16), end: d(18) }], total: 3600, guest: { first: "Lerato", last: "Dlamini", email: "", cellphone: "084 555 0606" },
+        contact: { name: "Lerato Dlamini", cell: "084 555 0606", guests: 2, optOut: true } }),
+    );
+    await saveBookings(prop, list);
+    const m = msgSettings(prop);
+    prop.messages = { welcome: Object.assign({}, m.welcome, { on: true }), after: Object.assign({}, m.after, { on: true }) };
+    await setJSON("site:" + prop.siteId, prop);
+    return { added: 6 };
+  }
+  async function clearDemo(prop) {
+    const list = await bookingsOf(prop);
+    const keep = list.filter((b) => !b.demo);
+    await saveBookings(prop, keep);
+    return { removed: list.length - keep.length };
+  }
+  function notDemo(b) { if (b && b.demo) throw new PAError("This is a demo booking: it isn't on Stock Network, so it can't be changed, paid or cancelled.", 409); }
+
+  return { connect, auth, disconnect, publicProperty, availability, search, book, cancel, cancelUnit, edit, find, saveSettings, channelsView, payInfo, markPaidEft, approvalInfo, approveCancel, affStatus, resume, seedDemo, clearDemo, isDemoSite, saveContact, checkIn, guests, messagesView, saveMessages, prepareMessage, markMessage, propertyReviewLink, remindMessages, icalFeed, runSync, syncProperty, channelEvents, addChannelEvent, snapshot, ensureWindow, resolveUnitNotice, findResortsForSite };
 }
