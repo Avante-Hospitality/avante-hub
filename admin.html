@@ -4907,6 +4907,11 @@
             '<div class="status" id="dh' + i + '-pdfStatus"></div>' +
             '<button type="button" class="btn-outline shorten-btn" data-shorten-field="landing" data-shorten-hook="' + i + '">Shorten this link</button>' +
             '<div class="shorten-status" id="dh' + i + '-landingShortenStatus"></div>' +
+            // Jean, 2026-10-08: everything from Caption down is now done in
+            // the hook builder. The old fields stay in the page, hidden (so
+            // saved captions keep going out and nothing else breaks); remove
+            // the display:none wrappers to bring any of them back.
+            '<div class="old-hook-fields" style="display:none;">' +
             '<label for="dh' + i + '-caption">Caption</label>' +
             '<textarea id="dh' + i + '-caption" placeholder="Ready-to-paste caption affiliates will get with this ad"></textarea>' +
             '<label for="dh' + i + '-flyerPromoTag" style="margin-top:16px;">Flyer promo banner</label>' +
@@ -4918,6 +4923,8 @@
             '<label for="dh' + i + '-flyerDates">Flyer stay dates / availability window</label>' +
             '<input id="dh' + i + '-flyerDates" placeholder="e.g. 18 December to 1 January – Peak Season Stay (14 Days)">' +
             '</div>' +
+            '</div>' +
+            '<div class="old-hook-fields" style="display:none;">' +
             '<div id="dh' + i + '-eventOnlyFields" style="display:none;">' +
               '<label for="dh' + i + '-eventSourceUrl">Event website (optional)</label>' +
               '<div class="hint" style="margin-top:-2px;">If this event already has its own website, paste the link below — "Draft from this page" reads it and offers to fill the fields underneath from whatever it actually says. Nothing is saved or invented; you review the draft first.</div>' +
@@ -4982,9 +4989,16 @@
               '<label for="dh' + i + '-eventLocationDetail">Location detail</label>' +
               '<input id="dh' + i + '-eventLocationDetail" placeholder="e.g. Old Harbour, Marine Drive">' +
             '</div>' +
+            '</div>' +
+            '<div class="hookbuilder-box" style="margin-top:16px; border:1px solid #e2e2e2; border-radius:10px; padding:14px;">' +
+              '<label style="margin-top:0;">Flyers, captions &amp; pages — Hook builder</label>' +
+              '<div class="hint" style="margin-top:-2px;">Captions, flyer pages and shareable content are made in the hook builder, using the same location tree as the hub.</div>' +
+              '<button type="button" class="primary" style="width:100%; margin-top:8px;" onclick="window.open(\'https://avante-hooks.netlify.app/\', \'_blank\', \'noopener\')">Open the hook builder</button>' +
+            '</div>' +
             '<button class="primary" data-hook-save="' + i + '">Save default</button>' +
             '<div class="status" id="dh' + i + '-errorStatus"></div>' +
             '<div class="hook-updated" id="dh' + i + '-updated"></div>' +
+            '<div class="old-hook-fields" style="display:none;">' +
             '<button type="button" class="btn-outline sharekit-btn" data-sharekit="' + i + '">Get Shareable Content</button>' +
             '<button type="button" class="btn-outline sharekit-btn" data-full-details="' + i + '">View Full Details Page</button>' +
             '<button type="button" class="btn-outline" style="margin-top:8px;" data-flyer-gen="' + i + '">🖼️ Generate flyer</button>' +
@@ -5000,6 +5014,7 @@
                 '<button type="button" class="btn-outline" data-flyer-download-png="' + i + '">Download PNG</button>' +
               '</div>' +
               '<div class="hint" style="margin-top:4px;">“Set as this hook’s photo” uploads the flyer above as this hook’s ad creative — the image affiliates and customers actually see — the same as picking a file with Upload image.</div>' +
+            '</div>' +
             '</div>' +
           '</div>';
       }
