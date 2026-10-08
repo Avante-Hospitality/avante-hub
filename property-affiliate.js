@@ -107,7 +107,7 @@
   function render() {
     var views = [['avail', 'Availability'], ['cal', 'My Calendar'], ['book', 'Bookings'], ['guests', 'Guests'], ['msgs', 'Messages'], ['chan', 'Channels'], ['rev', 'Reviews'], ['onb', 'Onboarding Form']];
     var h = '<div class="pa"><h1>Property Affiliate</h1>';
-    h += '<nav class="pa-subnav" aria-label="Property Affiliate sections">' + views.map(function (v) { return '<button type="button" data-act="view" data-v="' + v[0] + '"' + (S.view === v[0] ? ' aria-current="page"' : '') + '>' + v[1] + '</button>'; }).join('') + '</nav>';
+    h += '<nav class="pa-subnav" aria-label="Property Affiliate sections">' + views.map(function (v) { return '<button type="button" data-act="view" data-v="' + v[0] + '"' + (S.view === v[0] ? ' aria-current="page"' : '') + '>' + v[1] + '</button>'; }).join('') + '<button type="button" data-act="hookbuilder">Hook Builder</button></nav>';
     if (S.err) h += '<div class="pa-err" role="alert" style="margin-bottom:14px">' + esc(S.err) + ' <button type="button" class="pa-btn small ghost" data-act="dismiss" style="margin-left:8px">OK</button></div>';
     if (S.msg) h += '<div class="pa-ok" role="status" style="margin-bottom:14px">' + esc(S.msg) + '</div>';
     if (S.view === 'onb') h += '';
@@ -674,6 +674,8 @@
     var a = t.dataset.act;
     if (a === 'backdrop' && e.target !== t) return;
     if (a === 'view') return setView(t.dataset.v);
+    // Hook Builder (2026-10-08): opens the hook builder signed in with this hub login (hub.html's openHookBuilder).
+    if (a === 'hookbuilder') { if (typeof window.openHookBuilder === 'function') window.openHookBuilder(t); return; }
     if (a === 'dismiss') { S.err = null; return render(); }
     if (a === 'connect') return doConnect();
     if (a === 'resume') {

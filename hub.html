@@ -2356,7 +2356,7 @@
     // 5-minute pass and the hook builder swaps it for its own login. The tab
     // is opened first so the browser doesn't block it as a pop-up.
     function openHookBuilder(btn){
-      var win = window.open('', '_blank');
+      var win = window.open('', '_blank'), label = btn ? btn.textContent : '';
       if(btn){ btn.disabled = true; btn.textContent = 'Opening…'; }
       fetch('/api/auth', { method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ action: 'hooksTicket', aff: AFF_ID, session: hubSession() }) })
@@ -2367,8 +2367,9 @@
           if(win){ win.opener = null; win.location.href = d.url; } else { window.location.href = d.url; }
         })
         .catch(function(err){ if(win) win.close(); alert((err && err.message) || 'The hook builder could not be opened.'); })
-        .then(function(){ if(btn){ btn.disabled = false; btn.textContent = 'Open the hook builder'; } });
+        .then(function(){ if(btn){ btn.disabled = false; btn.textContent = label; } });
     }
+    window.openHookBuilder = openHookBuilder; // also used by the Property Affiliate top bar (property-affiliate.js)
     var STOCKNETWORK_BASE = 'https://stock.stocknetwork.co.za/ui/';
     // Avante's own Impact.com/Travelstart tracking link. Impact.com has no
     // formal sub-affiliate feature, so each affiliate's flight link reuses
