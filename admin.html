@@ -817,14 +817,6 @@
         <h1>Default Hooks</h1>
         <p>The shared fallback ad content for each of the 6 storefront hook slots. Any affiliate hook set to "Let Admin Manage" — or a self-managed hook whose dates have passed — shows this content automatically. Editing a hook here updates it everywhere immediately.</p>
       </div>
-      <!-- Jean, 2026-10-08: one hook builder button for all the hooks. Build
-           as many hooks as you like there; "Load to hub" picks which Default
-           Hook below a finished one goes on. -->
-      <div class="card" style="margin-bottom:20px; border:2px solid var(--teal, #0DCDC2);">
-        <h3 style="margin-top:0;">Hook builder</h3>
-        <p class="modal-sub" style="margin:-4px 0 10px;">Build hooks (flyer pages, captions and landing pages) in the hook builder — as many as you like, also for later. When one is ready, click <b>Load to hub</b> there and pick which Default Hook below it goes on.</p>
-        <button type="button" class="primary" data-open-hookbuilder="1">Open the hook builder</button>
-      </div>
       <div class="card" style="margin-bottom:20px;">
         <h3 style="margin-top:0;">Check for collapsed booking/landing links</h3>
         <p class="modal-sub" style="margin:-4px 0 10px;">Scans every hook — these defaults, and every affiliate's own self-managed hooks — for one specific mistake: Booking link and Landing page link both set to the exact same shortened (go.avantetravel.co.za) link, which breaks per-affiliate attribution on that hook. When found, restores Booking link to what that short link actually points to and clears Landing page link back to empty.</p>
@@ -894,6 +886,14 @@
         <input id="flyerSettingsEmail" placeholder="e.g. marketing@avantehospitality.co.za">
         <button type="button" class="primary" id="flyerSettingsSaveBtn" style="margin-top:10px;">Save contact info</button>
         <div class="status" id="flyerSettingsStatus"></div>
+      </div>
+      <!-- Jean, 2026-10-08: one hook builder button for all the hooks. Build
+           as many hooks as you like there; "Load to hub" picks which Default
+           Hook below a finished one goes on. -->
+      <div class="card" style="margin-bottom:20px; border:2px solid var(--teal, #0DCDC2);">
+        <h3 style="margin-top:0;">Hook builder</h3>
+        <p class="modal-sub" style="margin:-4px 0 10px;">Build hooks (flyer pages, captions and landing pages) in the hook builder — as many as you like, also for later. When one is ready, click <b>Load to hub</b> there and pick which Default Hook below it goes on.</p>
+        <button type="button" class="primary" data-open-hookbuilder="1">Open the hook builder</button>
       </div>
       <div class="hook-grid" id="defaultHookGrid"></div>
       <!-- Shared across every hook card's Auto-build field — populated once
