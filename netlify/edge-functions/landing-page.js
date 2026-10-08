@@ -48,6 +48,11 @@ function page(rec, agent, origin, ownBook) {
   // Page 1 (the hook itself, as seen on Facebook) comes first, also with Book now.
   const coverHtml = c.cover ? `<section class="pg" style="--ar:${c.coverW && c.coverH ? (c.coverW / c.coverH).toFixed(4) : "0.8"}"><div class="pgimg"><img src="${esc(img(c.cover))}" alt="${esc(c.title)} — page 1" loading="eager"></div><div class="props"><a class="book" href="${esc(allBook)}" target="_blank" rel="noopener">Book now<span>›</span></a></div></section>` : "";
   const title = c.title || "Avante Travel";
+  // Faded photos of the area down both sides on a computer (Jean, 2026-10-08):
+  // the hook's own photos, slowly changing. Phones don't show them.
+  const sc = (c.scenes || []).map(img);
+  const sideOf = (list) => list.map((u, i) => `<img src="${esc(u)}" alt="" loading="lazy"${i ? "" : ' class="on"'}>`).join("");
+  const scenesHtml = sc.length ? `<div class="side left" aria-hidden="true">${sideOf(sc.filter((_, i) => i % 2 === 0))}</div><div class="side right" aria-hidden="true">${sideOf(sc.length > 1 ? sc.filter((_, i) => i % 2 === 1) : sc)}</div>` : "";
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(title)} — Avante Travel</title>
 <meta name="description" content="${esc(c.description || c.dates || title)}">
@@ -77,12 +82,23 @@ main{max-width:760px;margin:0 auto;padding:10px 16px 120px}
 .bar{position:fixed;left:0;right:0;bottom:0;z-index:6;display:flex;gap:10px;padding:12px 16px calc(12px + env(safe-area-inset-bottom));background:rgba(255,255,255,.96);border-top:1px solid #e3e9e8;justify-content:center}
 .bar a{flex:1;max-width:360px;text-align:center;text-decoration:none;font-family:Montserrat,sans-serif;font-weight:800;font-size:15px;padding:14px 12px;border-radius:999px}
 .wa{background:#25D366;color:#fff}.bk{background:var(--teal);color:var(--navy)}
+.side{display:none}
+@media (min-width:900px){
+.side{display:block;position:fixed;top:0;bottom:0;width:50vw;z-index:0;pointer-events:none;overflow:hidden}
+.side.left{left:0;-webkit-mask-image:linear-gradient(to right,#000 0,rgba(0,0,0,.85) 25%,transparent 62%);mask-image:linear-gradient(to right,#000 0,rgba(0,0,0,.85) 25%,transparent 62%)}
+.side.right{right:0;-webkit-mask-image:linear-gradient(to left,#000 0,rgba(0,0,0,.85) 25%,transparent 62%);mask-image:linear-gradient(to left,#000 0,rgba(0,0,0,.85) 25%,transparent 62%)}
+.side img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity 2.2s ease;filter:saturate(.9)}
+.side img.on{opacity:.62}
+.intro,main{position:relative;z-index:1}header{z-index:5}.bar{z-index:6}
+.intro h1,.intro p{text-shadow:0 1px 0 rgba(255,255,255,.7)}}
+@media (prefers-reduced-motion:reduce){.side img{transition:none}}
 footer{text-align:center;color:#6b7c87;font-size:12px;padding:8px 16px 0}
 </style></head><body>
 <header><div class="brand">AVANTE<span>TRAVEL</span></div>${wa ? `<a class="hb" href="${esc(wa)}" target="_blank" rel="noopener">Ask us</a>` : ""}</header>
-<div class="intro"><h1>${esc(title)}</h1>${c.dates ? `<p>${esc(c.dates)}</p>` : ""}</div>
+${scenesHtml}<div class="intro"><h1>${esc(title)}</h1>${c.dates ? `<p>${esc(c.dates)}</p>` : ""}</div>
 <main>${coverHtml}${pagesHtml}<footer>Bookings are made securely through StockNetwork for Avante Travel.</footer></main>
 <div class="bar">${wa ? `<a class="wa" href="${esc(wa)}" target="_blank" rel="noopener">WhatsApp us</a>` : ""}</div>
+${sc.length > 2 ? `<script>(function(){var t=0;setInterval(function(){t++;document.querySelectorAll(".side").forEach(function(s){var im=s.querySelectorAll("img");if(im.length<2)return;im.forEach(function(x,i){x.classList.toggle("on",i===t%im.length)})})},6500)})();</script>` : ""}
 </body></html>`;
 }
 
