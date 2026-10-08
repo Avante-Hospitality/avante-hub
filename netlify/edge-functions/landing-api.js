@@ -51,7 +51,8 @@ function cleanContent(c) {
     links: (Array.isArray(p.links) ? p.links : []).slice(0, 8).filter((a) => a && /^(https?:|tel:|mailto:)/i.test(String(a.url || "")))
       .map((a) => ({ x: +a.x || 0, y: +a.y || 0, w: +a.w || 0, h: +a.h || 0, url: str(a.url, 600), label: str(a.label, 80) })),
     props: (Array.isArray(p.props) ? p.props : []).slice(0, 3).filter((x) => x && x.resortId)
-      .map((x) => ({ name: str(x.name, 100), resortId: str(x.resortId, 60) })),
+      .map((x) => ({ name: str(x.name, 100), resortId: str(x.resortId, 60),
+        at: x.at && [x.at.x, x.at.y, x.at.w, x.at.h].every((v) => Number.isFinite(+v)) ? { x: +x.at.x, y: +x.at.y, w: +x.at.w, h: +x.at.h } : null })),
   }));
   return {
     title: str(c.title, 120), kind: str(c.kind, 20), dates: str(c.dates, 120),

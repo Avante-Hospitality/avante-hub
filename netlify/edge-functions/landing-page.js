@@ -37,9 +37,13 @@ function page(rec, agent, origin) {
       const pct = (v, of) => ((v / of) * 100).toFixed(3) + "%";
       return `<a class="spot" href="${esc(href)}" ${/^https?:/i.test(href) ? 'target="_blank" rel="noopener"' : ""} aria-label="${esc(a.label || "Open")}" style="left:${pct(a.x, p.w)};top:${pct(a.y, p.h)};width:${pct(a.w, p.w)};height:${pct(a.h, p.h)}"></a>`;
     }).join("");
-    const props = p.props.length && !(c.kind === "property" && i > 0)
-      ? `<div class="props">${p.props.map((x) => `<a class="book" href="${esc(bookUrl(agent, x.resortId, c))}" target="_blank" rel="noopener">Book ${esc(x.name)}<span>›</span></a>`).join("")}</div>` : "";
-    return `<section class="pg"><div class="pgimg"><img src="${esc(img(p.img))}" width="${p.w}" height="${p.h}" alt="${esc(c.title)} — page ${i + 2}" loading="${i ? "lazy" : "eager"}">${spots}</div>${props}</section>`;
+    const pct = (v, of) => ((v / of) * 100).toFixed(3) + "%";
+    // "Book now" under each place, on the page itself (where the page says where it goes).
+    const onPage = p.props.filter((x) => x.at).map((x) => `<a class="booknow" href="${esc(bookUrl(agent, x.resortId, c))}" target="_blank" rel="noopener" aria-label="Book now: ${esc(x.name)}" style="left:${pct(x.at.x, p.w)};top:${pct(x.at.y, p.h)};width:${pct(x.at.w, p.w)};height:${pct(x.at.h, p.h)}">Book now</a>`).join("");
+    const below = p.props.filter((x) => !x.at);
+    const props = below.length && !(c.kind === "property" && i > 0)
+      ? `<div class="props">${below.map((x) => `<a class="book" href="${esc(bookUrl(agent, x.resortId, c))}" target="_blank" rel="noopener" aria-label="Book now: ${esc(x.name)}">Book now<span>›</span></a>`).join("")}</div>` : "";
+    return `<section class="pg"><div class="pgimg"><img src="${esc(img(p.img))}" width="${p.w}" height="${p.h}" alt="${esc(c.title)} — page ${i + 2}" loading="${i ? "lazy" : "eager"}">${spots}${onPage}</div>${props}</section>`;
   }).join("");
   const title = c.title || "Avante Travel";
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -62,6 +66,8 @@ main{max-width:760px;margin:0 auto;padding:10px 16px 120px}
 .props{display:grid;gap:8px;margin-top:10px}
 .book{display:flex;justify-content:space-between;align-items:center;background:var(--navy);color:#fff;text-decoration:none;font-family:Montserrat,sans-serif;font-weight:700;font-size:15px;padding:14px 16px;border-radius:12px}
 .book span{color:var(--teal);font-size:22px;line-height:1}
+.booknow{position:absolute;z-index:2;display:flex;align-items:center;justify-content:center;background:var(--teal);color:var(--navy);text-decoration:none;font-family:Montserrat,sans-serif;font-weight:800;font-size:clamp(9px,2.2vw,15px);border-radius:999px;box-shadow:0 2px 8px rgba(14,47,68,.25);white-space:nowrap}
+.booknow:active{transform:scale(.97)}.booknow::after{content:"";position:absolute;inset:-10px -6px}
 .bar{position:fixed;left:0;right:0;bottom:0;z-index:6;display:flex;gap:10px;padding:12px 16px calc(12px + env(safe-area-inset-bottom));background:rgba(255,255,255,.96);border-top:1px solid #e3e9e8;justify-content:center}
 .bar a{flex:1;max-width:360px;text-align:center;text-decoration:none;font-family:Montserrat,sans-serif;font-weight:800;font-size:15px;padding:14px 12px;border-radius:999px}
 .wa{background:#25D366;color:#fff}.bk{background:var(--teal);color:var(--navy)}
