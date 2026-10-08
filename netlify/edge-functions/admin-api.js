@@ -913,9 +913,9 @@ export default async (request, context) => {
         totalOwed: (existing && existing.totalOwed) || 0,
         totalPaid: (existing && existing.totalPaid) || 0,
         channelRevenue: (existing && existing.channelRevenue) || {},
-        // Hook builder access (switched on per affiliate in this form). Kept
-        // as it was when the form doesn't send it.
-        hooksAccess: typeof body.hooksAccess === "boolean" ? body.hooksAccess : !!(existing && existing.hooksAccess),
+        // Hook builder access: on for everyone unless switched off in this
+        // form. Kept as it was when the form doesn't send it.
+        hooksAccess: typeof body.hooksAccess === "boolean" ? body.hooksAccess : !(existing && existing.hooksAccess === false),
         createdAt: (existing && existing.createdAt) || new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };

@@ -245,8 +245,9 @@ export default async (request, context) => {
             types: (dirRecord && Array.isArray(dirRecord.types)) ? dirRecord.types : [],
             bank: bank,
             revenueShare: revenueShare,
-            // Admin switches the hook builder on per affiliate (Affiliates tab).
-            hooksAccess: !!(dirRecord && dirRecord.hooksAccess && dirRecord.status !== "inactive"),
+            // Every affiliate has the hook builder unless admin switched it
+            // off for them (Affiliates tab) or they're inactive.
+            hooksAccess: !(dirRecord && (dirRecord.hooksAccess === false || dirRecord.status === "inactive")),
           },
         }),
         { headers: { "content-type": "application/json", ...cors } }
@@ -254,15 +255,15 @@ export default async (request, context) => {
     }
 
     if (action === "hooksTicket") {
-      // A signed-in affiliate opening the hook builder — only when admin has
-      // switched it on for them (and they're not inactive).
+      // A signed-in affiliate opening the hook builder — every affiliate,
+      // unless admin switched it off for them or they're inactive.
       if (!(await validSession())) return relogin();
       const dirRecord = await directoryStore.get(aff, { type: "json" });
-      if (!dirRecord || !dirRecord.hooksAccess || dirRecord.status === "inactive") {
-        return json({ ok: false, error: "The hook builder isn't switched on for your account yet. Ask Avante Travel to switch it on." }, 403);
+      if (dirRecord && (dirRecord.hooksAccess === false || dirRecord.status === "inactive")) {
+        return json({ ok: false, error: "The hook builder is switched off for your account. Ask Avante Travel to switch it on." }, 403);
       }
       try {
-        return json({ ok: true, url: await hooksLink({ sub: aff, name: dirRecord.name || aff, role: "affiliate" }) });
+        return json({ ok: true, url: await hooksLink({ sub: aff, name: (dirRecord && dirRecord.name) || aff, role: "affiliate" }) });
       } catch (e) {
         return json({ ok: false, error: e.message || "The hook builder couldn't be opened." }, 500);
       }
