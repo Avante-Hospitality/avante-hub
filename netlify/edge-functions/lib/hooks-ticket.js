@@ -9,7 +9,8 @@
 const enc = new TextEncoder();
 const b64url = (bytes) => btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 
-export const HOOKS_URL = "https://avante-hooks.netlify.app/";
+// /index.html rather than "/": the bare address can keep an old cached answer.
+export const HOOKS_URL = "https://avante-hooks.netlify.app/index.html";
 
 export async function makeHooksTicket(who) {
   const secret = Deno.env.get("HOOKS_SSO_SECRET") || "";
