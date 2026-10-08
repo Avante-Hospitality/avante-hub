@@ -133,3 +133,16 @@
   .pa-dialog-wide{ border-radius:0; min-height:100vh; }
   .pa-payframe{ flex:1 1 auto; height:calc(100vh - 120px); }
 }
+
+/* ---- Guest details, messages, guests ---- */
+.pa-tabs{ display:flex; width:100%; }
+.pa-tabs button{ flex:1 1 0; }
+.pa-chipbtn{ border:1px solid #cfe3e0; background:#f4fbfa; color:#08776f; border-radius:999px; padding:6px 10px; font:600 12px 'Noto Sans',sans-serif; cursor:pointer; min-height:32px; }
+.pa-checkin{ display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; background:#f4fbfa; border:1px solid #e3e9e8; border-radius:10px; padding:10px 12px; font-size:13.5px; }
+.pa-logline{ border-left:3px solid #0DCDC2; background:#f9fdfc; padding:8px 10px; border-radius:6px; font-size:12.5px; line-height:1.5; color:#333; overflow-wrap:anywhere; }
+.pa-logline div{ margin-top:4px; color:#5f6b6e; }
+.pa-cell.has-ref{ cursor:pointer; }
+.pa-cell.has-ref:hover, .pa-cal .day.has-ref:hover{ outline:2px solid #0DCDC2; outline-offset:1px; }
+.pa-cal button.day{ font:inherit; text-align:left; cursor:pointer; width:100%; }
+.pa-dialog .pa-result .grow{ min-width:0; }
+.pa-dialog textarea{ font:14px/1.5 'Noto Sans',sans-serif; }
