@@ -14,7 +14,8 @@
 //   POST { op:"toHook", slug, hook, caption }            → { ok, hook }   (admin: fills Default Hook <hook>)
 //   GET  ?img=<key>                                      → the picture (public)
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
-import { ADMIN_MASTER_SITE_GUID } from "./lib/booking-link.js";
+import { ADMIN_MASTER_SITE_GUID, correctBookingLinkSiteId } from "./lib/booking-link.js";
+import { isShortLink, resolveShortLink } from "./lib/short-link.js";
 import { generateHashtags } from "./lib/hashtag-helper.js";
 import { AI_SCAN_CACHE_FIELDS_CLEARED } from "./lib/record-merge.js";
 
@@ -66,6 +67,8 @@ function cleanContent(c) {
     checkIn: /^\d{4}-\d{2}-\d{2}$/.test(c.checkIn || "") ? c.checkIn : "", checkOut: /^\d{4}-\d{2}-\d{2}$/.test(c.checkOut || "") ? c.checkOut : "",
     endDate: /^\d{4}-\d{2}-\d{2}$/.test(c.endDate || "") ? c.endDate : "",
     cover: isKey(c.cover) ? c.cover : "", description: str(c.description, 300),
+    // The hook builder's own Booking link (Jean, 2026-10-08) — what Book now opens.
+    booking: /^https:\/\/[^\s"<>]+$/i.test(String(c.booking || "")) ? str(c.booking, 600) : "",
     whatsapp: str(String(c.whatsapp || "").replace(/[^\d]/g, ""), 16), waText: str(c.waText, 300),
     pages,
   };
@@ -135,6 +138,12 @@ export default async (request) => {
     if (c.checkIn) p.set("CheckInDT", c.checkIn);
     if (c.checkOut) p.set("CheckOutDT", c.checkOut);
     fields.booking = SN + ADMIN_MASTER_SITE_GUID + (p.toString() ? "?" + p : "");
+    // The hook builder's Booking link wins, with the placeholder ID hook-api.js swaps per affiliate.
+    if (c.booking) {
+      let link = c.booking;
+      if (isShortLink(link)) link = (await resolveShortLink(link, getStore({ name: "short-links", consistency: "strong" })).catch(() => "")) || link;
+      fields.booking = correctBookingLinkSiteId(link, ADMIN_MASTER_SITE_GUID).url;
+    }
     if (typeof b.caption === "string") {
       fields.caption = b.caption.trim().slice(0, 3000);
       fields.hashtags = await generateHashtags(fields.caption).catch(() => null);

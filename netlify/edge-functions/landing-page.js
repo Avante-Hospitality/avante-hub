@@ -10,6 +10,7 @@
 // visitor goes straight to that affiliate's storefront.
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
 import { correctBookingLinkSiteId, ADMIN_MASTER_SITE_GUID } from "./lib/booking-link.js";
+import { isShortLink, resolveShortLink } from "./lib/short-link.js";
 
 const SN = "https://stock.stocknetwork.co.za/ui/";
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -26,12 +27,13 @@ function bookUrl(agent, resortId, c) {
   return SN + encodeURIComponent(agent) + (q ? "?" + q : "");
 }
 
-function page(rec, agent, origin) {
+function page(rec, agent, origin, ownBook) {
   const c = rec.current, img = (k) => origin + "/api/landing?img=" + k;
   const cover = c.cover || (c.pages[0] && c.pages[0].img);
   const wa = c.whatsapp ? "https://wa.me/" + c.whatsapp + "?text=" + encodeURIComponent(c.waText || "Hi Avante Travel, I'd like to know more about " + c.title) : "";
   const mainBook = c.kind === "property" && c.pages.some((p) => p.props.length) ? bookUrl(agent, c.pages.find((p) => p.props.length).props[0].resortId, c) : "";
-  const allBook = mainBook || bookUrl(agent, "", c);
+  // The hook builder's own Booking link if it has one (with the affiliate's ID), else built here.
+  const allBook = ownBook || mainBook || bookUrl(agent, "", c);
   const pagesHtml = c.pages.map((p, i) => {
     const spots = p.links.map((a) => {
       const href = /^https?:/i.test(a.url) ? (a.label === "Book now" ? allBook : correctBookingLinkSiteId(a.url, agent).url) : a.url;
@@ -92,7 +94,14 @@ export default async (request) => {
   if (!rec || !rec.current || !rec.current.pages || !rec.current.pages.length) return storefront(agent);
   // The offer has ended: straight to the affiliate's storefront.
   if (rec.current.endDate && rec.current.endDate < todaySA()) return storefront(agent);
-  return new Response(page(rec, agent, url.origin), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=60" } });
+  let ownBook = "";
+  if (rec.current.booking) {
+    ownBook = rec.current.booking;
+    if (isShortLink(ownBook)) { try { ownBook = (await resolveShortLink(ownBook, getStore({ name: "short-links", consistency: "strong" }))) || ownBook; } catch (e) {} }
+    // An affiliate's link (or page) credits them; otherwise the link stays exactly as built.
+    if (agent !== ADMIN_MASTER_SITE_GUID) ownBook = correctBookingLinkSiteId(ownBook, agent).url;
+  }
+  return new Response(page(rec, agent, url.origin, ownBook), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=60" } });
 };
 
 export const config = { path: "/l/*" };
