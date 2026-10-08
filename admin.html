@@ -893,7 +893,7 @@
       <div class="card" style="margin-bottom:20px; border:2px solid var(--teal, #0DCDC2);">
         <h3 style="margin-top:0;">Hook builder</h3>
         <p class="modal-sub" style="margin:-4px 0 10px;">Build hooks (flyer pages, captions and landing pages) in the hook builder — as many as you like, also for later. When one is ready, click <b>Load to hub</b> there and pick which Default Hook below it goes on.</p>
-        <button type="button" class="primary" data-open-hookbuilder="1">Open the hook builder</button>
+        <button type="button" class="primary" id="openHookBuilderTop">Open the hook builder</button>
       </div>
       <div class="hook-grid" id="defaultHookGrid"></div>
       <!-- Shared across every hook card's Auto-build field — populated once
@@ -2411,6 +2411,7 @@
         if(err && err.message !== 'unauthenticated') alert(err.message || 'The hook builder could not be opened.');
       }).then(function(){ if(btn){ btn.disabled = false; btn.textContent = 'Open the hook builder'; } });
     }
+    window.openHookBuilder = openHookBuilder;
     function adminPost(action, extraBody){
       var body = Object.assign({ action: action, token: ADMIN_TOKEN }, extraBody || {});
       return fetch('/api/admin', {
@@ -9806,5 +9807,9 @@
     })();
   </script>
 
+<script>
+  // The one "Open the hook builder" button above the hooks (Jean, 2026-10-08).
+  document.getElementById('openHookBuilderTop').addEventListener('click', function(){ window.openHookBuilder(this); });
+</script>
 </body>
 </html>
