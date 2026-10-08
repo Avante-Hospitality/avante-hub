@@ -18,6 +18,8 @@ export default async (request) => {
     resortStore: getStore({ name: "resort-list", consistency: "strong" }),
     encKey: env("PA_ENC_KEY"),
     baseUrl: new URL(request.url).origin,
+    // Avante Reviews app: review links for after-stay messages.
+    reviews: { baseUrl: env("REVIEWS_BASE_URL"), secret: env("REVIEWS_SYNC_SECRET"), tenant: env("REVIEWS_TENANT") || "avante" },
     // Same stores auth-api.js uses: the affiliate's password hash and profile.
     affiliates: {
       getAuth: (aff) => getStore({ name: "affiliate-auth", consistency: "strong" }).get(aff, { type: "json" }),
@@ -65,6 +67,16 @@ export default async (request) => {
       case "channelEvents": return json(Object.assign({ ok: true }, await core.channelEvents(prop)));
       case "addChannelEvent": return json(Object.assign({ ok: true }, await core.addChannelEvent(prop, body.unit, body.channel, body.uid)));
       case "unitNotice": return json(Object.assign({ ok: true }, await core.resolveUnitNotice(prop, body.name, body.from)));
+      case "saveContact": return json(Object.assign({ ok: true }, await core.saveContact(prop, body.ref, body.contact || {})));
+      case "checkIn": return json(Object.assign({ ok: true }, await core.checkIn(prop, body.ref, !!body.on)));
+      case "guests": return json(Object.assign({ ok: true }, await core.guests(prop)));
+      case "messages": return json(Object.assign({ ok: true }, await core.messagesView(prop)));
+      case "saveMessages": return json(Object.assign({ ok: true }, await core.saveMessages(prop, body)));
+      case "prepareMessage": return json(Object.assign({ ok: true }, await core.prepareMessage(prop, body.ref, body.kind, body.text)));
+      case "markMessage": return json(Object.assign({ ok: true }, await core.markMessage(prop, body.ref, body.kind, body.state, body.text)));
+      case "propertyReviewLink": return json(Object.assign({ ok: true }, await core.propertyReviewLink(prop, body.ref)));
+      case "seedDemo": return json(Object.assign({ ok: true }, await core.seedDemo(prop)));
+      case "clearDemo": return json(Object.assign({ ok: true }, await core.clearDemo(prop)));
       case "syncNow": return json({ ok: true, result: await core.syncProperty(prop) });
       default: return json({ ok: false, error: "unknown action" }, 400);
     }
