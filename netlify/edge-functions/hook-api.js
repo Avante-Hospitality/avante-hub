@@ -66,6 +66,15 @@ async function resolveShortLink(rawUrl) {
   return resolveShortLinkShared(rawUrl, shortStore);
 }
 
+function withAffiliate(landing, aff) {
+  try {
+    const u = new URL(landing);
+    if (!/^\/l\/[a-z0-9-]+\/?$/.test(u.pathname) || !/^[0-9a-f-]{36}$/i.test(String(aff || ""))) return landing;
+    u.searchParams.set("a", aff);
+    return u.toString();
+  } catch (e) { return landing; }
+}
+
 async function personalizeBooking(rawUrl, replacement) {
   const resolved = await resolveShortLink(rawUrl);
   return personalizeStockNetworkUrl(resolved, replacement);
@@ -414,7 +423,9 @@ export default async (request, context) => {
       const data = adminRecord
         ? {
             booking: personalizedBooking,
-            landing: adminRecord.landing || "",
+            // A landing page from the hook builder (/l/<name>) opens with this
+            // affiliate's ID, so its Book now buttons credit them.
+            landing: withAffiliate(adminRecord.landing || "", aff),
             caption: adminRecord.caption || "",
             hashtags: adminRecord.hashtags || null,
             galleryCount: adminRecord.galleryCount || 0,

@@ -10,14 +10,21 @@
 //   POST { op:"image", data:"data:image/jpeg;base64,…" } → { ok, key }   (stored once, by content)
 //   POST { op:"publish", slug, content }                 → { ok, slug, url, version }
 //   POST { op:"info", slug }                             → { ok, exists, mine, updatedAt, endDate }
+//   POST { op:"slots" }                                  → { ok, slots:[{hook,title,landing,updatedAt}] }   (admin)
+//   POST { op:"toHook", slug, hook, caption }            → { ok, hook }   (admin: fills Default Hook <hook>)
 //   GET  ?img=<key>                                      → the picture (public)
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
+import { ADMIN_MASTER_SITE_GUID } from "./lib/booking-link.js";
+import { generateHashtags } from "./lib/hashtag-helper.js";
+import { AI_SCAN_CACHE_FIELDS_CLEARED } from "./lib/record-merge.js";
 
 export const LANDING_STORE = "landing-pages";
 const IMAGE_STORE = "landing-images";
 const PUBLIC_HOST = "https://go.avantetravel.co.za";
 const MAX_IMAGE = 3 * 1024 * 1024;
 const KEEP_VERSIONS = 10;
+const DEFAULT_HOOK_COUNT = 6;
+const SN = "https://stock.stocknetwork.co.za/ui/";
 const SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{1,58}[a-z0-9])$/;
 
 const enc = new TextEncoder();
@@ -93,6 +100,56 @@ export default async (request) => {
     const have = await images.getMetadata(key).catch(() => null);
     if (!have) await images.set(key, img.bytes.buffer, { metadata: { type: img.type, by: owner.sub, at: new Date().toISOString() } });
     return json({ ok: true, key });
+  }
+
+  // Admin's Default Hooks (Jean, 2026-10-08): "Send to hub" in the hook
+  // builder puts a published landing page on Default Hook 1-6 — page 1 as
+  // the hook's picture, the caption, the landing page as its "See full
+  // details" link and a Book now link for the hook's dates. Affiliates see
+  // it with their own ID in both links (hook-api.js).
+  if (b.op === "slots" || b.op === "toHook") {
+    if (owner.role !== "admin") return json({ ok: false, error: "Only Avante admin can change the Default Hooks." }, 403);
+    const hooks = getStore({ name: "promo-hooks", consistency: "strong" });
+    if (b.op === "slots") {
+      const slots = [];
+      for (let n = 1; n <= DEFAULT_HOOK_COUNT; n++) {
+        const r = await hooks.get("__admin__:" + n, { type: "json" }).catch(() => null);
+        slots.push({ hook: n, title: r ? str(r.hookTitle || (r.caption || "").split("\n")[0], 70) : "", landing: r ? r.landing || "" : "", used: !!(r && (r.booking || r.landing || r.caption)), updatedAt: r ? r.updatedAt || null : null });
+      }
+      return json({ ok: true, slots });
+    }
+    const n = Number(b.hook);
+    if (!Number.isInteger(n) || n < 1 || n > DEFAULT_HOOK_COUNT) return json({ ok: false, error: "Pick Default Hook 1 to " + DEFAULT_HOOK_COUNT + "." }, 400);
+    const lslug = str(b.slug, 60).toLowerCase();
+    const lp = SLUG_RE.test(lslug) ? await store.get(lslug, { type: "json" }) : null;
+    if (!lp || !lp.current) return json({ ok: false, error: "Publish the landing page first." }, 400);
+    const c = lp.current, key = "__admin__:" + n, now = new Date().toISOString();
+    const existing = (await hooks.get(key, { type: "json" }).catch(() => null)) || {};
+    const fields = { landing: PUBLIC_HOST + "/l/" + lslug, landingSlug: lslug, hookTitle: c.title || "", updatedAt: now, galleryCount: 0, source: null,
+      category: c.kind === "event" ? "event" : "property", flyerDates: c.dates || "" };
+    // Book now: everything available for the hook's dates (a property hook:
+    // that property), under the placeholder ID hook-api.js swaps per affiliate.
+    const p = new URLSearchParams();
+    const firstProp = c.kind === "property" ? (c.pages.find((x) => x.props && x.props.length) || {}).props : null;
+    if (firstProp && firstProp[0]) p.set("ResortID", firstProp[0].resortId);
+    if (c.checkIn) p.set("CheckInDT", c.checkIn);
+    if (c.checkOut) p.set("CheckOutDT", c.checkOut);
+    fields.booking = SN + ADMIN_MASTER_SITE_GUID + (p.toString() ? "?" + p : "");
+    if (typeof b.caption === "string") {
+      fields.caption = b.caption.trim().slice(0, 3000);
+      fields.hashtags = await generateHashtags(fields.caption).catch(() => null);
+    }
+    // Page 1 becomes the hook's picture (a copy, so the hook keeps working on its own).
+    if (c.cover) {
+      const img = await images.getWithMetadata(c.cover, { type: "arrayBuffer" }).catch(() => null);
+      if (img && img.data) {
+        await getStore({ name: "promo-hook-images", consistency: "strong" }).set(key, img.data, { metadata: { contentType: (img.metadata && img.metadata.type) || "image/jpeg", sourceUrl: "landing:" + lslug } });
+        fields.imageHash = c.cover;
+        if (existing.imageHash !== c.cover) Object.assign(fields, AI_SCAN_CACHE_FIELDS_CLEARED);
+      }
+    }
+    await hooks.setJSON(key, { ...existing, ...fields });
+    return json({ ok: true, hook: n, landing: fields.landing });
   }
 
   const slug = str(b.slug, 60).toLowerCase();
