@@ -134,6 +134,13 @@
     .card{ padding:24px 20px 26px; }
   }
 </style>
+<style>
+  /* Phones: text boxes at 16px so iPhones don't zoom in when one is tapped
+     (that zoom is what makes a page stop fitting the screen). */
+  @media (max-width: 700px){
+    input:not([type=checkbox]):not([type=radio]):not([type=range]), select, textarea{ font-size:16px !important; }
+  }
+</style>
 </head>
 <body>
 

@@ -65,6 +65,13 @@
   .modal-box .modal-body h2, .modal-box .modal-body h3{ font-size:14px; }
   .modal-close{ background:none; border:none; font-size:20px; cursor:pointer; color:#5b6b76; line-height:1; }
 </style>
+<style>
+  /* Phones: text boxes at 16px so iPhones don't zoom in when one is tapped
+     (that zoom is what makes a page stop fitting the screen). */
+  @media (max-width: 700px){
+    input:not([type=checkbox]):not([type=radio]):not([type=range]), select, textarea{ font-size:16px !important; }
+  }
+</style>
 </head>
 <body>
 
