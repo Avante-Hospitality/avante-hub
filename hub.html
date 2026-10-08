@@ -961,7 +961,7 @@
   /* Hook builder (2026-10-08): shown only to affiliates admin has switched
      it on for (body.hooks-on); for them the old caption and flyer fields go. */
   .hookbuilder-box{ display:none; margin-top:16px; border:1px solid #e2e2e2; border-radius:10px; padding:14px; }
-  body.hooks-on .hookbuilder-box{ display:block; }
+  body.hooks-on .hookbuilder-box.hookbuilder-top{ display:block; }
   body.hooks-on .old-hook-fields{ display:none; }
 </style>
 </head>
@@ -1262,6 +1262,11 @@
            from /api/resorts with every resort name plus every unique
            district, same as admin.html's Default Hooks panel. -->
       <datalist id="hookSourceOptions"></datalist>
+      <div class="hookbuilder-box hookbuilder-top" style="margin:20px 0;">
+        <label style="margin-top:0;">Hook builder</label>
+        <div class="hint" style="margin-top:-2px;">Make your hooks' flyer pages, captions and landing pages in the hook builder. It opens with your Hub login.</div>
+        <button type="button" class="primary" style="margin-top:8px;" data-open-hookbuilder="1">Open the hook builder</button>
+      </div>
       <div class="hook-grid" id="hook-grid"></div>
     </section>
 
