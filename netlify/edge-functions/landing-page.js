@@ -41,8 +41,10 @@ function page(rec, agent, origin) {
     // One "Book now" under every page (Jean, 2026-10-08): StockNetwork with
     // everything available for the hook's dates (a property hook: that property).
     const props = `<div class="props"><a class="book" href="${esc(allBook)}" target="_blank" rel="noopener">Book now<span>›</span></a></div>`;
-    return `<section class="pg"><div class="pgimg"><img src="${esc(img(p.img))}" width="${p.w}" height="${p.h}" alt="${esc(c.title)} — page ${i + 2}" loading="${i ? "lazy" : "eager"}">${spots}</div>${props}</section>`;
+    return `<section class="pg"><div class="pgimg"><img src="${esc(img(p.img))}" width="${p.w}" height="${p.h}" alt="${esc(c.title)} — page ${i + 2}" loading="lazy">${spots}</div>${props}</section>`;
   }).join("");
+  // Page 1 (the hook itself, as seen on Facebook) comes first, also with Book now.
+  const coverHtml = c.cover ? `<section class="pg"><div class="pgimg"><img src="${esc(img(c.cover))}" alt="${esc(c.title)} — page 1" loading="eager"></div><div class="props"><a class="book" href="${esc(allBook)}" target="_blank" rel="noopener">Book now<span>›</span></a></div></section>` : "";
   const title = c.title || "Avante Travel";
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(title)} — Avante Travel</title>
@@ -73,7 +75,7 @@ footer{text-align:center;color:#6b7c87;font-size:12px;padding:8px 16px 0}
 </style></head><body>
 <header><div class="brand">AVANTE<span>TRAVEL</span></div>${wa ? `<a class="hb" href="${esc(wa)}" target="_blank" rel="noopener">Ask us</a>` : ""}</header>
 <div class="intro"><h1>${esc(title)}</h1>${c.dates ? `<p>${esc(c.dates)}</p>` : ""}</div>
-<main>${pagesHtml}<footer>Bookings are made securely through StockNetwork for Avante Travel.</footer></main>
+<main>${coverHtml}${pagesHtml}<footer>Bookings are made securely through StockNetwork for Avante Travel.</footer></main>
 <div class="bar">${wa ? `<a class="wa" href="${esc(wa)}" target="_blank" rel="noopener">WhatsApp us</a>` : ""}</div>
 </body></html>`;
 }
