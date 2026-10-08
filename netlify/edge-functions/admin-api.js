@@ -4,6 +4,7 @@ import { isShortLink, resolveShortLink, findExistingShortLink, createShortLink }
 import { correctBookingLinkSiteId, ADMIN_MASTER_SITE_GUID } from "./lib/booking-link.js";
 import { resolveHookMode } from "./lib/hook-mode.js";
 import { buildHookDraft } from "./lib/hook-draft.js";
+import { hooksLink } from "./lib/hooks-ticket.js";
 import { saveHookPhotoUrls } from "./lib/hook-photos.js";
 import { defaultTemplateForCategory } from "./lib/hook-templates.js";
 import { resolveFlyerFields, defaultPhotoSlotOrder } from "./lib/hook-flyer.js";
@@ -912,11 +913,23 @@ export default async (request, context) => {
         totalOwed: (existing && existing.totalOwed) || 0,
         totalPaid: (existing && existing.totalPaid) || 0,
         channelRevenue: (existing && existing.channelRevenue) || {},
+        // Hook builder access (switched on per affiliate in this form). Kept
+        // as it was when the form doesn't send it.
+        hooksAccess: typeof body.hooksAccess === "boolean" ? body.hooksAccess : !!(existing && existing.hooksAccess),
         createdAt: (existing && existing.createdAt) || new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
       await directoryStore.setJSON(affId, record);
       return json({ ok: true, affiliate: record }, 200, cors);
+    }
+
+    if (action === "hooksTicket") {
+      // Admin opening the hook builder (see lib/hooks-ticket.js).
+      try {
+        return json({ ok: true, url: await hooksLink({ sub: "admin", name: "Avante Travel (admin)", role: "admin" }) }, 200, cors);
+      } catch (e) {
+        return json({ ok: false, error: e.message || "The hook builder couldn't be opened." }, 500, cors);
+      }
     }
 
     if (action === "setWhatsappRouting") {

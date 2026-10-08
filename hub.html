@@ -957,6 +957,13 @@
     table.fee-table th:first-child, table.fee-table td:first-child{ width:31%; }
   }
 </style>
+<style>
+  /* Hook builder (2026-10-08): shown only to affiliates admin has switched
+     it on for (body.hooks-on); for them the old caption and flyer fields go. */
+  .hookbuilder-box{ display:none; margin-top:16px; border:1px solid #e2e2e2; border-radius:10px; padding:14px; }
+  body.hooks-on .hookbuilder-box{ display:block; }
+  body.hooks-on .old-hook-fields{ display:none; }
+</style>
 </head>
 <body>
 
@@ -2334,6 +2341,34 @@
       try{ localStorage.removeItem('avante-hub-auth:' + AFF_ID); localStorage.removeItem('avante-hub-session:' + AFF_ID); }catch(e){}
       window.location.href = 'login.html' + (AFF_ID ? ('?aff=' + encodeURIComponent(AFF_ID)) : '');
     }
+    // Hook builder: switched on per affiliate by admin. Ask once on load; if
+    // it's on, the hook cards swap their caption/flyer fields for the
+    // "Open the hook builder" button (body.hooks-on, see the CSS).
+    (function(){
+      if(!AFF_ID || !hubSession()) return;
+      fetch('/api/auth', { method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'getProfile', aff: AFF_ID, session: hubSession() }) })
+        .then(function(r){ return r.json(); })
+        .then(function(d){ if(d && d.ok && d.profile && d.profile.hooksAccess) document.body.classList.add('hooks-on'); })
+        .catch(function(){});
+    })();
+    // Opens the hook builder signed in as this affiliate: the hub makes a
+    // 5-minute pass and the hook builder swaps it for its own login. The tab
+    // is opened first so the browser doesn't block it as a pop-up.
+    function openHookBuilder(btn){
+      var win = window.open('', '_blank');
+      if(btn){ btn.disabled = true; btn.textContent = 'Opening…'; }
+      fetch('/api/auth', { method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'hooksTicket', aff: AFF_ID, session: hubSession() }) })
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+          if(d && d.relogin){ if(win) win.close(); hubRelogin(); return; }
+          if(!d || !d.ok || !d.url) throw new Error((d && d.error) || 'The hook builder could not be opened.');
+          if(win){ win.opener = null; win.location.href = d.url; } else { window.location.href = d.url; }
+        })
+        .catch(function(err){ if(win) win.close(); alert((err && err.message) || 'The hook builder could not be opened.'); })
+        .then(function(){ if(btn){ btn.disabled = false; btn.textContent = 'Open the hook builder'; } });
+    }
     var STOCKNETWORK_BASE = 'https://stock.stocknetwork.co.za/ui/';
     // Avante's own Impact.com/Travelstart tracking link. Impact.com has no
     // formal sub-affiliate feature, so each affiliate's flight link reuses
@@ -3154,6 +3189,11 @@
                 '<button type="button" class="primary autobuild-use-btn" data-autobuild-use="' + i + '">Use this draft</button>' +
               '</div>' +
             '</div>' +
+            // Jean, 2026-10-08: for affiliates with hook builder access
+            // (switched on by admin), Caption, the flyer fields, Get Shareable
+            // Content and Generate flyer are hidden ("old-hook-fields") and the
+            // hook builder box shows instead — see body.hooks-on in the CSS.
+            '<div class="old-hook-fields">' +
             '<label for="h' + i + '-caption">Caption</label>' +
             '<textarea id="h' + i + '-caption" placeholder="Ready-to-paste caption for this promo"></textarea>' +
             '<label for="h' + i + '-flyerPromoTag" style="margin-top:16px;">Flyer promo banner</label>' +
@@ -3164,6 +3204,12 @@
             '<textarea id="h' + i + '-flyerPrice" rows="2" placeholder="R3500 PER DAY&#10;Under R600 p/p"></textarea>' +
             '<label for="h' + i + '-flyerDates">Flyer stay dates / availability window</label>' +
             '<input id="h' + i + '-flyerDates" placeholder="e.g. 18 December to 1 January – Peak Season Stay (14 Days)">' +
+            '</div>' +
+            '</div>' +
+            '<div class="hookbuilder-box">' +
+              '<label style="margin-top:0;">Flyers, captions &amp; pages — Hook builder</label>' +
+              '<div class="hint" style="margin-top:-2px;">Make this hook\'s flyer pages and captions in the hook builder. It opens with your Hub login.</div>' +
+              '<button type="button" class="primary" style="width:100%; margin-top:8px;" data-open-hookbuilder="1">Open the hook builder</button>' +
             '</div>' +
             '<div class="hook-mode-label">Who manages this hook?</div>' +
             '<div class="hook-mode-toggle" data-mode-toggle="' + i + '">' +
@@ -3224,6 +3270,7 @@
               '</div>' +
             '</div>' +
             '</div>' +
+            '<div class="old-hook-fields">' +
             '<button type="button" class="btn-outline sharekit-btn" data-sharekit="' + i + '">Get Shareable Content</button>' +
             '<button type="button" class="btn-outline" style="margin-top:8px;" data-flyer-gen="' + i + '">🖼️ Generate flyer</button>' +
             '<div class="hint" style="margin-top:-2px;">Builds a finished flyer image from this hook’s own saved data and Avante’s flyer template layout — no Canva needed. Auto-build this hook and Save it first so there’s real content to draw from.</div>' +
@@ -3238,6 +3285,7 @@
                 '<button type="button" class="btn-outline" data-flyer-download-png="' + i + '">Download PNG</button>' +
               '</div>' +
               '<div class="hint" style="margin-top:4px;">“Set as this hook’s photo” uploads the flyer above as this hook’s ad creative — the image your customers actually see — the same as picking a file with Upload image.</div>' +
+            '</div>' +
             '</div>' +
           '</div>';
       }
@@ -4553,6 +4601,7 @@
       }
 
       grid.addEventListener('click', function(e){
+        if(e.target.getAttribute('data-open-hookbuilder')){ openHookBuilder(e.target); return; }
         var flyerGenN = e.target.getAttribute('data-flyer-gen');
         if(flyerGenN){ generateFlyer(flyerGenN); return; }
         var flyerUpdateN = e.target.getAttribute('data-flyer-update');

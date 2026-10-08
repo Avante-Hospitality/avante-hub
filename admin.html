@@ -580,6 +580,8 @@
         <option value="active">Active</option>
         <option value="inactive">Inactive</option>
       </select>
+      <label style="display:flex; align-items:center; gap:8px; font-weight:600; margin-top:12px;"><input type="checkbox" id="affHooksAccessInput"> Hook builder access</label>
+      <p class="modal-sub" style="margin:-2px 0 8px;">When ticked, this affiliate's hook cards in their Hub get an "Open the hook builder" button (and the old caption and flyer fields are hidden). They open it with their Hub login. Untick to take it away again.</p>
       <label>Bank account (for payouts, optional)</label>
       <p class="modal-sub" style="margin:-2px 0 8px;">Used only when you pay this affiliate — not shown to them.</p>
       <div class="row">
@@ -2386,6 +2388,21 @@
         });
     }
 
+    // Opens the hook builder signed in as admin: the hub makes a 5-minute
+    // pass (action hooksTicket) and the hook builder swaps it for its login.
+    // The tab is opened first (so the browser doesn't block it as a pop-up)
+    // and pointed at the hook builder once the pass is back.
+    function openHookBuilder(btn){
+      var win = window.open('', '_blank');
+      if(btn){ btn.disabled = true; btn.textContent = 'Opening…'; }
+      adminPost('hooksTicket').then(function(res){
+        if(!res.data || !res.data.ok || !res.data.url) throw new Error((res.data && res.data.error) || 'The hook builder could not be opened.');
+        if(win){ win.opener = null; win.location.href = res.data.url; } else { window.location.href = res.data.url; }
+      }).catch(function(err){
+        if(win) win.close();
+        if(err && err.message !== 'unauthenticated') alert(err.message || 'The hook builder could not be opened.');
+      }).then(function(){ if(btn){ btn.disabled = false; btn.textContent = 'Open the hook builder'; } });
+    }
     function adminPost(action, extraBody){
       var body = Object.assign({ action: action, token: ADMIN_TOKEN }, extraBody || {});
       return fetch('/api/admin', {
@@ -3181,6 +3198,7 @@
       document.getElementById('affAccountNumberInput').value = bank.accountNumber || '';
       document.getElementById('affBranchCodeInput').value = bank.branchCode || '';
       document.getElementById('affStatusInput').value = existing ? (existing.status || 'active') : 'active';
+      document.getElementById('affHooksAccessInput').checked = !!(existing && existing.hooksAccess);
       document.getElementById('affNotesInput').value = existing ? (existing.notes || '') : '';
       document.getElementById('affModalStatus').classList.remove('show');
       affOverlay.classList.add('show');
@@ -3225,7 +3243,8 @@
       btn.textContent = 'Saving…';
       adminPost('upsertAffiliate', {
         affId: affId, name: name, email: email, siteNr: siteNr, types: types,
-        revenueShare: revenueShare, bank: bank, status: status, notes: notes
+        revenueShare: revenueShare, bank: bank, status: status, notes: notes,
+        hooksAccess: document.getElementById('affHooksAccessInput').checked
       }).then(function(res){
         if(!res.data || !res.data.ok){
           throw { userMessage: (res.data && res.data.error) || 'Could not save affiliate.' };
@@ -4993,7 +5012,7 @@
             '<div class="hookbuilder-box" style="margin-top:16px; border:1px solid #e2e2e2; border-radius:10px; padding:14px;">' +
               '<label style="margin-top:0;">Flyers, captions &amp; pages — Hook builder</label>' +
               '<div class="hint" style="margin-top:-2px;">Captions, flyer pages and shareable content are made in the hook builder, using the same location tree as the hub.</div>' +
-              '<button type="button" class="primary" style="width:100%; margin-top:8px;" onclick="window.open(\'https://avante-hooks.netlify.app/\', \'_blank\', \'noopener\')">Open the hook builder</button>' +
+              '<button type="button" class="primary" style="width:100%; margin-top:8px;" data-open-hookbuilder="1">Open the hook builder</button>' +
             '</div>' +
             '<button class="primary" data-hook-save="' + i + '">Save default</button>' +
             '<div class="status" id="dh' + i + '-errorStatus"></div>' +
@@ -5833,6 +5852,7 @@
       })();
 
       grid.addEventListener('click', function(e){
+        if(e.target.getAttribute('data-open-hookbuilder')){ openHookBuilder(e.target); return; }
         var flyerGenN = e.target.getAttribute('data-flyer-gen');
         if(flyerGenN){ generateFlyer(flyerGenN); return; }
         var flyerUpdateN = e.target.getAttribute('data-flyer-update');
