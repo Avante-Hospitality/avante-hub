@@ -96,7 +96,8 @@ async function flyerImage(link) {
   if (!/^https:\/\/go\.avantetravel\.co\.za\/l\//i.test(link || "")) return "";
   try {
     const html = await (await fetch(link)).text();
-    const m = html.match(/<meta property="og:image" content="([^"]+)"/i);
+    // The Facebook-size picture from the hook builder (Jean, 2026-10-09), else page 1.
+    const m = html.match(/<meta name="avante:fb-image" content="([^"]+)"/i) || html.match(/<meta property="og:image" content="([^"]+)"/i);
     return m ? m[1].replace(/&amp;/g, "&") : "";
   } catch (e) { return ""; }
 }

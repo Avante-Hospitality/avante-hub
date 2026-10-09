@@ -78,6 +78,7 @@ ${pixel(title, rec.slug)}
 <meta property="og:type" content="website"><meta property="og:title" content="${esc(title)}">
 <meta property="og:description" content="${esc(c.dates || c.description || "Book with Avante Travel")}">
 ${cover ? `<meta property="og:image" content="${esc(img(cover))}">` : ""}<meta property="og:url" content="${esc(origin + "/l/" + rec.slug)}">
+${c.fbCover ? `<meta name="avante:fb-image" content="${esc(img(c.fbCover))}">` : ""}
 <link rel="preconnect" href="https://fonts.gstatic.com"><link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800&family=Noto+Sans:wght@400;600&display=swap" rel="stylesheet">
 <style>
 :root{--teal:#0DCDC2;--teal-dark:#0aa89f;--navy:#0e2f44;--ink:#1d2b36;--mint:#f4fbfa}
