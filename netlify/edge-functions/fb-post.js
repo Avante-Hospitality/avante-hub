@@ -8,8 +8,12 @@
 // everything goes to the one Page in FB_PAGE_ID.
 //
 // Netlify environment variables (secret):
-//   FB_PAGE_ID         the Avante Travel Page's ID
-//   FB_PAGE_TOKEN      a long-lived Page access token with pages_manage_posts
+//   FB_PAGE_ID         the Avante Travel Page's ID (1250982098099907)
+//   FB_USER_TOKEN      Jean's long-lived (60-day) user token from the
+//                      "Avante Hub" Meta app, with pages_manage_posts. The
+//                      first post swaps it for the Page's own token, which
+//                      doesn't expire, and keeps that in the "fb-config" store.
+//   FB_PAGE_TOKEN      optional: a Page token to use directly instead
 //   FB_POST_AFFILIATES optional, comma-separated affiliate IDs allowed to post
 //
 //   POST { op:"status" }                                  → { ok, configured, allowed }
@@ -19,7 +23,7 @@
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
 import { ADMIN_MASTER_SITE_GUID } from "./lib/booking-link.js";
 
-const GRAPH = "https://graph.facebook.com/v23.0";
+const GRAPH = "https://graph.facebook.com/v26.0";
 const DEFAULT_PASSWORD = "0000"; // same as auth-api.js
 const json = (d, s = 200) => new Response(JSON.stringify(d), { status: s, headers: { "content-type": "application/json", "cache-control": "no-store" } });
 
@@ -54,6 +58,24 @@ async function readHook(origin, aff, hook) {
   return r.json();
 }
 
+// The Page token to post with: FB_PAGE_TOKEN if set, else the one swapped
+// from FB_USER_TOKEN (kept per user token, so pasting a new user token in
+// Netlify makes a fresh swap). `fresh` skips the kept one after an error.
+async function pageToken(pageId, fresh) {
+  const direct = Deno.env.get("FB_PAGE_TOKEN") || "";
+  if (direct) return direct;
+  const user = Deno.env.get("FB_USER_TOKEN") || "";
+  if (!user || !pageId) return "";
+  const store = getStore({ name: "fb-config", consistency: "strong" });
+  const key = "page-token:" + pageId + ":" + (await sha256Hex(user)).slice(0, 16);
+  if (!fresh) { try { const kept = await store.get(key, { type: "json" }); if (kept && kept.token) return kept.token; } catch (e) {} }
+  const r = await fetch(GRAPH + "/" + encodeURIComponent(pageId) + "?fields=access_token&access_token=" + encodeURIComponent(user));
+  const d = await r.json().catch(() => ({}));
+  if (!d.access_token) throw new Error((d.error && d.error.message) || "Couldn't get the Page's token from Facebook.");
+  await store.setJSON(key, { token: d.access_token, at: new Date().toISOString() });
+  return d.access_token;
+}
+
 function buildPost(h) {
   const caption = String(h.caption || "").trim();
   let tags = [];
@@ -70,8 +92,7 @@ export default async (request) => {
   try { body = await request.json(); } catch (e) { return json({ ok: false, error: "Bad request." }, 400); }
   const op = body.op || "status";
   const pageId = Deno.env.get("FB_PAGE_ID") || "";
-  const token = Deno.env.get("FB_PAGE_TOKEN") || "";
-  const configured = !!(pageId && token);
+  const configured = !!(pageId && (Deno.env.get("FB_PAGE_TOKEN") || Deno.env.get("FB_USER_TOKEN")));
 
   // Who is asking: admin, or an allowed affiliate who is logged in.
   let aff = "";
@@ -95,13 +116,23 @@ export default async (request) => {
   if (!post.message && !post.link) return json({ ok: false, error: "This hook has no caption or link yet." }, 400);
   if (op === "preview") return json({ ok: true, configured, ...post });
   if (op !== "post") return json({ ok: false, error: "Unknown op." }, 400);
-  if (!configured) return json({ ok: false, error: "Facebook isn't connected yet (FB_PAGE_ID / FB_PAGE_TOKEN missing in Netlify)." }, 503);
+  if (!configured) return json({ ok: false, error: "Facebook isn't connected yet (FB_PAGE_ID / FB_USER_TOKEN missing in Netlify)." }, 503);
 
-  const form = new URLSearchParams({ access_token: token });
-  if (post.message) form.set("message", post.message);
-  if (post.link) form.set("link", post.link);
-  const r = await fetch(GRAPH + "/" + encodeURIComponent(pageId) + "/feed", { method: "POST", body: form });
-  const d = await r.json().catch(() => ({}));
+  const send = async (fresh) => {
+    const form = new URLSearchParams({ access_token: await pageToken(pageId, fresh) });
+    if (post.message) form.set("message", post.message);
+    if (post.link) form.set("link", post.link);
+    const r = await fetch(GRAPH + "/" + encodeURIComponent(pageId) + "/feed", { method: "POST", body: form });
+    return { r, d: await r.json().catch(() => ({})) };
+  };
+  let r, d;
+  try {
+    ({ r, d } = await send(false));
+    // A kept Page token that stopped working: swap again once.
+    if (d.error && d.error.code === 190 && !Deno.env.get("FB_PAGE_TOKEN")) ({ r, d } = await send(true));
+  } catch (e) {
+    return json({ ok: false, error: e.message || "Couldn't reach Facebook." }, 502);
+  }
   if (!r.ok || !d.id) {
     const msg = (d.error && d.error.message) || "Facebook said no (" + r.status + ").";
     return json({ ok: false, error: msg, expiredToken: !!(d.error && d.error.code === 190) }, 502);
