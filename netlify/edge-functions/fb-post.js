@@ -82,8 +82,23 @@ function buildPost(h) {
   try { tags = (h.hashtags && h.hashtags.facebook) || []; } catch (e) {}
   const missing = tags.map((t) => "#" + String(t).replace(/^#/, "")).filter((t) => !caption.toLowerCase().includes(t.toLowerCase()));
   const link = /^https:\/\//i.test(h.landing || "") ? h.landing : /^https:\/\//i.test(h.booking || "") ? h.booking : "";
-  const message = [caption, missing.join(" ")].filter(Boolean).join("\n\n");
+  // Jean, 2026-10-09: the link goes right under the caption's first line, so
+  // it shows before Facebook's "See more".
+  const lines = caption.split("\n");
+  const first = lines.shift() || "";
+  const rest = lines.join("\n").trim();
+  const message = [first, link ? "👉 " + link : "", rest, missing.join(" ")].filter(Boolean).join("\n\n");
   return { message, link };
+}
+
+// The hook's flyer (page 1): the landing page's own preview picture.
+async function flyerImage(link) {
+  if (!/^https:\/\/go\.avantetravel\.co\.za\/l\//i.test(link || "")) return "";
+  try {
+    const html = await (await fetch(link)).text();
+    const m = html.match(/<meta property="og:image" content="([^"]+)"/i);
+    return m ? m[1].replace(/&amp;/g, "&") : "";
+  } catch (e) { return ""; }
 }
 
 export default async (request) => {
@@ -114,15 +129,25 @@ export default async (request) => {
   if (h.expired) return json({ ok: false, error: "This hook's offer has ended." }, 400);
   const post = buildPost(h);
   if (!post.message && !post.link) return json({ ok: false, error: "This hook has no caption or link yet." }, 400);
+  post.image = await flyerImage(post.link);
   if (op === "preview") return json({ ok: true, configured, ...post });
   if (op !== "post") return json({ ok: false, error: "Unknown op." }, 400);
   if (!configured) return json({ ok: false, error: "Facebook isn't connected yet (FB_PAGE_ID / FB_USER_TOKEN missing in Netlify)." }, 503);
 
+  // A photo post with the full flyer (Jean, 2026-10-09: the link card showed
+  // only a thin slice of it). No flyer → a plain link post.
   const send = async (fresh) => {
     const form = new URLSearchParams({ access_token: await pageToken(pageId, fresh) });
-    if (post.message) form.set("message", post.message);
-    if (post.link) form.set("link", post.link);
-    const r = await fetch(GRAPH + "/" + encodeURIComponent(pageId) + "/feed", { method: "POST", body: form });
+    let edge = "/feed";
+    if (post.image) {
+      edge = "/photos";
+      form.set("url", post.image);
+      if (post.message) form.set("caption", post.message);
+    } else {
+      if (post.message) form.set("message", post.message);
+      if (post.link) form.set("link", post.link);
+    }
+    const r = await fetch(GRAPH + "/" + encodeURIComponent(pageId) + edge, { method: "POST", body: form });
     return { r, d: await r.json().catch(() => ({})) };
   };
   let r, d;
@@ -137,8 +162,9 @@ export default async (request) => {
     const msg = (d.error && d.error.message) || "Facebook said no (" + r.status + ").";
     return json({ ok: false, error: msg, expiredToken: !!(d.error && d.error.code === 190) }, 502);
   }
-  const [pid, sid] = String(d.id).split("_");
-  return json({ ok: true, postId: d.id, url: "https://www.facebook.com/" + pid + "/posts/" + (sid || "") });
+  const postId = String(d.post_id || d.id);
+  const [pid, sid] = postId.split("_");
+  return json({ ok: true, postId, url: sid ? "https://www.facebook.com/" + pid + "/posts/" + sid : "https://www.facebook.com/" + postId });
 };
 
 export const config = { path: "/api/fb-post" };
