@@ -27,6 +27,24 @@ function bookUrl(agent, resortId, c) {
   return SN + encodeURIComponent(agent) + (q ? "?" + q : "");
 }
 
+// Meta Pixel "Avante Travel Pixel" (Jean, 2026-10-09). Counts page views, and
+// clicks on Book (InitiateCheckout) and WhatsApp / phone / email (Contact),
+// so Facebook ads report what people did on the landing page. The booking
+// itself happens on StockNetwork, which the Pixel can't see.
+const META_PIXEL_ID = "1747389042999072";
+function pixel(title, slug) {
+  const info = JSON.stringify({ content_name: title || "", landing: slug || "" }).replace(/</g, "\\u003c");
+  return `<script>
+!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');
+fbq('init','${META_PIXEL_ID}');fbq('track','PageView');
+(function(){var info=${info};document.addEventListener('click',function(ev){var a=ev.target.closest&&ev.target.closest('a[href]');if(!a)return;var h=a.getAttribute('href')||'';
+if(/stocknetwork\\.co\\.za/i.test(h))fbq('track','InitiateCheckout',info);
+else if(/wa\\.me\\/|whatsapp/i.test(h))fbq('track','Contact',Object.assign({method:'whatsapp'},info));
+else if(/^tel:/i.test(h))fbq('track','Contact',Object.assign({method:'phone'},info));
+else if(/^mailto:/i.test(h))fbq('track','Contact',Object.assign({method:'email'},info));},true);})();
+</script><noscript><img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=${META_PIXEL_ID}&ev=PageView&noscript=1" alt=""></noscript>`;
+}
+
 function page(rec, agent, origin, ownBook) {
   const c = rec.current, img = (k) => origin + "/api/landing?img=" + k;
   const cover = c.cover || (c.pages[0] && c.pages[0].img);
@@ -54,6 +72,7 @@ function page(rec, agent, origin, ownBook) {
   const sideOf = (list) => list.map((u, i) => `<img src="${esc(u)}" alt="" loading="lazy"${i ? "" : ' class="on"'}>`).join("");
   const scenesHtml = sc.length ? `<div class="side left" aria-hidden="true">${sideOf(sc.filter((_, i) => i % 2 === 0))}</div><div class="side right" aria-hidden="true">${sideOf(sc.length > 1 ? sc.filter((_, i) => i % 2 === 1) : sc)}</div>` : "";
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+${pixel(title, rec.slug)}
 <title>${esc(title)} — Avante Travel</title>
 <meta name="description" content="${esc(c.description || c.dates || title)}">
 <meta property="og:type" content="website"><meta property="og:title" content="${esc(title)}">
