@@ -2385,6 +2385,36 @@
       window.location.href = 'admin-login.html';
     }
 
+    // "Post to Facebook" under each Default Hook (Jean, 2026-10-09): shows
+    // exactly what will be posted, asks, then posts the hook's caption and
+    // landing page link to the Avante Travel Page via /api/fb-post.
+    document.addEventListener('click', function(ev){
+      var btn = ev.target.closest && ev.target.closest('[data-fbpost]');
+      if(!btn) return;
+      var n = btn.getAttribute('data-fbpost');
+      var st = document.getElementById('dh' + n + '-fbpostStatus');
+      function say(t, ok){ if(!st) return; st.textContent = t; st.className = 'status show' + (ok ? ' success' : ''); }
+      function call(payload){
+        payload.admin = ADMIN_TOKEN;
+        return fetch('/api/fb-post', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
+          .then(function(r){ return r.json().catch(function(){ return { ok: false, error: 'No answer from the server.' }; }); });
+      }
+      btn.disabled = true; say('Getting the post ready…');
+      call({ op: 'preview', hook: n }).then(function(p){
+        if(!p.ok){ if(p.relogin) return goToLogin(); throw new Error(p.error || 'Could not prepare this hook.'); }
+        var text = (p.message || '').slice(0, 600) + ((p.message || '').length > 600 ? '…' : '');
+        if(!window.confirm('Post this to the Avante Travel Facebook Page now? It goes public straight away.\n\n' + text + '\n\nLink: ' + (p.link || '(none)'))){ say('Not posted.'); return null; }
+        say('Posting to Facebook…');
+        return call({ op: 'post', hook: n });
+      }).then(function(r){
+        if(!r) return;
+        if(!r.ok) throw new Error(r.error || 'Facebook did not accept the post.');
+        st.innerHTML = 'Posted ✓ <a href="' + r.url + '" target="_blank" rel="noopener">See it on Facebook</a>';
+        st.className = 'status show success';
+      }).catch(function(e){ say(e.message || 'Something went wrong.'); })
+        .then(function(){ btn.disabled = false; });
+    });
+
     function adminGet(resource, extraParams){
       var params = new URLSearchParams(extraParams || {});
       params.set('resource', resource);
@@ -5026,6 +5056,10 @@
             '<button class="primary" data-hook-save="' + i + '">Save default</button>' +
             '<div class="status" id="dh' + i + '-errorStatus"></div>' +
             '<div class="hook-updated" id="dh' + i + '-updated"></div>' +
+            // Post to Facebook (Jean, 2026-10-09): this hook's caption and
+            // landing page link onto the Avante Travel Page. See /api/fb-post.
+            '<button type="button" class="btn-outline" style="width:100%; margin-top:10px;" data-fbpost="' + i + '">📣 Post to Facebook (Avante Travel Page)</button>' +
+            '<div class="status" id="dh' + i + '-fbpostStatus"></div>' +
             '<div class="old-hook-fields" style="display:none;">' +
             '<button type="button" class="btn-outline sharekit-btn" data-sharekit="' + i + '">Get Shareable Content</button>' +
             '<button type="button" class="btn-outline sharekit-btn" data-full-details="' + i + '">View Full Details Page</button>' +

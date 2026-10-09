@@ -546,6 +546,7 @@
   .hook-card .link-box .label{ font-size:10.5px; }
   .hook-card .link-box .url{ font-size:11.5px; }
   .hook-row + .hook-row{ margin-top:14px; }
+  body.fbpost-on .fbpost-box{ display:block !important; }
   .hook-card .caption-preview{ font-size:12.5px; color:var(--ink); line-height:1.5; white-space:pre-line; }
 
   /* ---- Auto-build (draft a hook from a property or area) — same as admin.html's Default Hooks panel */
@@ -2357,6 +2358,41 @@
         .then(function(d){ if(d && d.ok && d.profile && d.profile.hooksAccess) document.body.classList.add('hooks-on'); })
         .catch(function(){});
     })();
+    // "Post to Facebook" under each hook (Jean, 2026-10-09): shown only if
+    // /api/fb-post says this affiliate may post (testing: site 36 only).
+    // Posts the hook's caption + landing page link to the Avante Travel Page.
+    (function(){
+      if(!AFF_ID || !hubSession()) return;
+      function call(payload){
+        payload.aff = AFF_ID; payload.session = hubSession();
+        return fetch('/api/fb-post', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
+          .then(function(r){ return r.json().catch(function(){ return { ok: false, error: 'No answer from the server.' }; }); });
+      }
+      call({ op: 'status' }).then(function(d){
+        if(d && d.ok && d.allowed) document.body.classList.add('fbpost-on');
+      }).catch(function(){});
+      document.addEventListener('click', function(ev){
+        var btn = ev.target.closest && ev.target.closest('[data-fbpost]');
+        if(!btn) return;
+        var n = btn.getAttribute('data-fbpost');
+        var st = document.getElementById('h' + n + '-fbpostStatus');
+        function say(t, ok){ if(!st) return; st.textContent = t; st.className = 'status show' + (ok ? ' success' : ''); }
+        btn.disabled = true; say('Getting the post ready…');
+        call({ op: 'preview', hook: n }).then(function(p){
+          if(!p.ok){ if(p.relogin) return hubRelogin(); throw new Error(p.error || 'Could not prepare this hook.'); }
+          var text = (p.message || '').slice(0, 600) + ((p.message || '').length > 600 ? '…' : '');
+          if(!window.confirm('Post this to the Avante Travel Facebook Page now? It goes public straight away.\n\n' + text + '\n\nLink: ' + (p.link || '(none)'))){ say('Not posted.'); return null; }
+          say('Posting to Facebook…');
+          return call({ op: 'post', hook: n });
+        }).then(function(r){
+          if(!r) return;
+          if(!r.ok) throw new Error(r.error || 'Facebook did not accept the post.');
+          st.innerHTML = 'Posted ✓ <a href="' + r.url + '" target="_blank" rel="noopener">See it on Facebook</a>';
+          st.className = 'status show success';
+        }).catch(function(e){ say(e.message || 'Something went wrong.'); })
+          .then(function(){ btn.disabled = false; });
+      });
+    })();
     // Opens the hook builder signed in as this affiliate: the hub makes a
     // 5-minute pass and the hook builder swaps it for its own login. The tab
     // is opened first so the browser doesn't block it as a pop-up.
@@ -3216,6 +3252,12 @@
               '<label style="margin-top:0;">Flyers, captions &amp; pages — Hook builder</label>' +
               '<div class="hint" style="margin-top:-2px;">Make this hook\'s flyer pages and captions in the hook builder. It opens with your Hub login.</div>' +
               '<button type="button" class="primary" style="width:100%; margin-top:8px;" data-open-hookbuilder="1">Open the hook builder</button>' +
+            '</div>' +
+            // Post to Facebook (Jean, 2026-10-09) — testing: only shows for
+            // the affiliates /api/fb-post allows (Avante's own site 36).
+            '<div class="fbpost-box" data-fbpost-box="' + i + '" style="display:none; margin-top:12px;">' +
+              '<button type="button" class="btn-outline" style="width:100%;" data-fbpost="' + i + '">📣 Post to Facebook (Avante Travel Page)</button>' +
+              '<div class="status" id="h' + i + '-fbpostStatus"></div>' +
             '</div>' +
             '<div class="hook-mode-label">Who manages this hook?</div>' +
             '<div class="hook-mode-toggle" data-mode-toggle="' + i + '">' +
