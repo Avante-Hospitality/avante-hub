@@ -1135,13 +1135,15 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     return out.sort((x, y) => x.units.localeCompare(y.units, "en", { numeric: true }));
   }
   async function inHouse(prop) { return { guests: inHouseOf(await bookingsOf(prop)), today: today() }; }
-  // One email to every in-house guest who has an email address (each gets
-  // their own copy, with their own name filled in). refs limits it.
+  // One email to each in-house guest the property ticked who has an email
+  // address (each gets their own copy, with their own name filled in).
   async function emailInHouse(prop, body) {
     const text0 = String((body && body.text) || "").trim();
     if (!text0) throw new PAError("Write the message first.");
     const subject0 = cleanStr(String((body && body.subject) || ""), 150) || "A message from {property}";
-    const want = Array.isArray(body && body.refs) && body.refs.length ? new Set(body.refs.map((r) => cleanStr(String(r), 20))) : null;
+    // The property chooses who gets it: only the bookings it ticked.
+    if (!Array.isArray(body && body.refs) || !body.refs.length) throw new PAError("Choose the guests to send it to.");
+    const want = new Set(body.refs.map((r) => cleanStr(String(r), 20)));
     const list = await bookingsOf(prop);
     const guestsNow = inHouseOf(list).filter((g) => !want || want.has(g.ref));
     let sent = 0, failed = 0; const noEmail = [];

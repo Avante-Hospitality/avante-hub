@@ -492,8 +492,7 @@
     var wa = waNum(g.cell);
     var tags = [g.arriving ? 'arrives today' : '', g.leaving ? 'leaves today' : '', g.checkedIn ? 'checked in' : ''].filter(Boolean).join(' · ');
     return '<div class="pa-result"><div class="grow"><b>' + esc(g.name) + '</b> <span class="pa-hint">· ' + esc(g.units) + '</span><div class="pa-hint">' + short(g.start) + ' – ' + short(g.end) + ' · ' + esc(g.source) + (tags ? ' · ' + tags : '') + ' · ' + esc(g.ref) + '</div></div><div class="pa-actions">' +
-      (wa ? '<button type="button" class="pa-btn small teal" data-act="bulk" data-ref="' + esc(g.ref) + '" data-via="wa">WhatsApp</button>' : '') +
-      (g.hasEmail ? '<button type="button" class="pa-btn small" data-act="bulk" data-ref="' + esc(g.ref) + '" data-via="email">Email</button>' : '') +
+      (wa || g.hasEmail ? '<button type="button" class="pa-btn small teal" data-act="bulk" data-ref="' + esc(g.ref) + '">Message</button>' : '') +
       (g.cell ? '<a class="pa-btn small ghost pa-linkbtn" href="tel:' + esc(String(g.cell).replace(/\s/g, '')) + '">Call</a>' : '') +
       (!wa && !g.hasEmail ? '<button type="button" class="pa-btn small" data-act="openRef" data-ref="' + esc(g.ref) + '" data-tab="guest">Add details</button>' : '<button type="button" class="pa-btn small ghost" data-act="openRef" data-ref="' + esc(g.ref) + '">Open</button>') + '</div></div>';
   }
@@ -538,7 +537,7 @@
     // in-house
     var ih = M.inHouse || [];
     h += '<section class="pa-card" aria-label="Guests staying now"><div class="pa-row" style="justify-content:space-between;align-items:center"><div><p class="pa-h2" style="margin:0">Staying now</p><p class="pa-hint" style="margin:0">' + (ih.length ? ih.length + (ih.length === 1 ? ' booking' : ' bookings') + ' in house today, including arrivals and departures.' : 'Nobody is staying today.') + '</p></div>' +
-      (ih.length ? '<button type="button" class="pa-btn teal" data-act="bulk" data-ref="">Message all in-house guests</button>' : '') + '</div>' +
+      (ih.length ? '<button type="button" class="pa-btn teal" data-act="bulk" data-ref="">Message in-house guests</button>' : '') + '</div>' +
       (ih.length ? '<div class="pa-results">' + ih.map(inHouseRow).join('') + '</div>' : '') + '</section>';
     h += '<section class="pa-card" aria-label="WhatsApp messages to send"><p class="pa-h2">WhatsApp to send</p>' + (M.due.length ? '<div class="pa-results">' + M.due.map(msgItem).join('') + '</div>' : '<p class="pa-hint">Nothing to send right now.</p>') + '</section>';
     if (M.emailIssues && M.emailIssues.length) h += '<section class="pa-card" style="border-color:#f5c98a" aria-label="Emails not sent"><p class="pa-h2">Emails that couldn\'t go out</p><p class="pa-hint">Add the guest\'s email address and the hub sends it on its next round (every 15 minutes).</p><div class="pa-results">' + M.emailIssues.map(msgItem).join('') + '</div></section>';
@@ -628,18 +627,31 @@
     var m = S.modal, h = '<div class="pa-modal" data-act="backdrop"><div class="pa-dialog" role="dialog" aria-modal="true" aria-labelledby="pa-dlg-t">';
     var hdr = function (t, s) { return '<header><div><b id="pa-dlg-t">' + esc(t) + '</b><span>' + esc(s || (S.prop.resortName + ' · site ' + S.prop.site)) + '</span></div><button type="button" data-act="close" aria-label="Close">✕</button></header>'; };
     if (m.type === 'bulk') {
-      var all = (S.messages && S.messages.inHouse) || [], gs = m.ref ? all.filter(function (g) { return g.ref === m.ref; }) : all;
+      // The property picks which in-house guests get the message (nobody is ticked to start with),
+      // and can start from one of its own templates.
+      var all = (S.messages && S.messages.inHouse) || [], sel = m.sel || {};
+      var gs = all.filter(function (g) { return sel[g.ref]; });
       var withEmail = gs.filter(function (g) { return g.hasEmail; }), withWa = gs.filter(function (g) { return waNum(g.cell); });
-      var one = gs.length === 1;
-      h += hdr(one ? 'Message ' + gs[0].name : 'Message all in-house guests', one ? gs[0].units + ' · ' + gs[0].ref : gs.length + ' bookings staying now') + '<div class="body">';
+      h += hdr('Message in-house guests', all.length + (all.length === 1 ? ' booking' : ' bookings') + ' staying now') + '<div class="body">';
       if (m.result) h += '<div class="pa-ok" role="status">' + esc(m.result) + '</div>';
+      h += '<fieldset class="pa-fieldset"><legend class="pa-label">Send to</legend>' +
+        '<div class="pa-actions"><button type="button" class="pa-btn small ghost" data-act="bulkSel" data-v="all">Select all</button><button type="button" class="pa-btn small ghost" data-act="bulkSel" data-v="none">Clear</button><span class="pa-hint">' + gs.length + ' of ' + all.length + ' selected</span></div>' +
+        all.map(function (g) {
+          var how = [waNum(g.cell) ? 'WhatsApp' : '', g.hasEmail ? 'email' : ''].filter(Boolean).join(' + ') || 'no contact details';
+          return '<label class="pa-check pa-radio"><input type="checkbox" data-bulkref="' + esc(g.ref) + '"' + (sel[g.ref] ? ' checked' : '') + '><span><b>' + esc(g.name) + '</b> <span class="pa-hint">· ' + esc(g.units) + ' · ' + short(g.start) + ' – ' + short(g.end) + (g.arriving ? ' · arrives today' : g.leaving ? ' · leaves today' : '') + ' · ' + how + '</span></span></label>';
+        }).join('') + '</fieldset>';
+      var tpls = msgList();
+      if (tpls.length) h += '<div class="pa-field"><label class="pa-label" for="pa-bulk-tpl">Start from a template</label><select id="pa-bulk-tpl" data-bulktpl="1"><option value="">Write my own</option>' + tpls.map(function (x) { return '<option value="' + esc(x.id) + '"' + (m.tpl === x.id ? ' selected' : '') + '>' + esc(x.name) + '</option>'; }).join('') + '</select></div>';
       h += '<div class="pa-field"><label class="pa-label" for="pa-bulk-subj">Email subject</label><input id="pa-bulk-subj" type="text" maxlength="150" value="' + esc(m.subject || '') + '" placeholder="A message from {property}"></div>' +
         '<div class="pa-field"><label class="pa-label" for="pa-bulk-text">Message</label><textarea id="pa-bulk-text" rows="7" placeholder="e.g. Hi {first_name}, the water will be off from 14:00 to 15:00 today. Sorry for the trouble!">' + esc(m.text || '') + '</textarea></div>' +
         '<div class="pa-actions">' + PLACEHOLDERS.filter(function (x) { return x[0] !== '{review_link}'; }).map(function (x) { return '<button type="button" class="pa-chipbtn" data-act="insertPh" data-target="pa-bulk-text" data-ph="' + x[0] + '" title="Insert ' + x[1] + '">' + x[0] + '</button>'; }).join('') + '</div>';
-      if (m.via !== 'wa') h += '<div class="pa-pay"><p class="pa-label" style="margin:0">Email</p><p class="pa-hint" style="margin:0">' + (withEmail.length ? (one ? 'Goes to ' + esc(gs[0].email) + '.' : 'Each guest gets their own copy with their name filled in: ' + withEmail.length + ' of ' + gs.length + ' have an email address.') : 'No email address for ' + (one ? 'this guest' : 'these guests') + ' yet.') + '</p>' +
-        (withEmail.length ? '<div class="pa-actions"><button type="button" class="pa-btn" data-act="bulkEmail"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'Sending…' : one ? 'Send email' : 'Email ' + withEmail.length + (withEmail.length === 1 ? ' guest' : ' guests')) + '</button></div>' : '') + '</div>';
-      if (m.via !== 'email') h += '<div class="pa-pay"><p class="pa-label" style="margin:0">WhatsApp, one by one</p><p class="pa-hint" style="margin:0">Each button opens WhatsApp with the message ready for that guest; press Send there, then come back for the next.</p>' +
-        (withWa.length ? withWa.map(function (g) { var done = (m.waDone || {})[g.ref]; return '<div class="pa-row" style="align-items:center;justify-content:space-between;gap:8px"><span><b>' + esc(g.name) + '</b> <span class="pa-hint">· ' + esc(g.units) + '</span></span><button type="button" class="pa-btn small ' + (done ? 'ghost' : 'teal') + '" data-act="bulkWa" data-ref="' + esc(g.ref) + '">' + (done ? 'Sent ✓ · again' : 'WhatsApp') + '</button></div>'; }).join('') : '<p class="pa-hint" style="margin:0">No cellphone number for ' + (one ? 'this guest' : 'these guests') + ' yet.</p>') + '</div>';
+      if (!gs.length) h += '<p class="pa-hint" style="margin:0">Tick the guests above to send to them.</p>';
+      else {
+        h += '<div class="pa-pay"><p class="pa-label" style="margin:0">Email</p><p class="pa-hint" style="margin:0">' + (withEmail.length ? 'Each guest gets their own copy with their name filled in: ' + withEmail.length + ' of ' + gs.length + ' selected have an email address.' : 'None of the selected guests has an email address yet.') + '</p>' +
+          (withEmail.length ? '<div class="pa-actions"><button type="button" class="pa-btn" data-act="bulkEmail"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'Sending…' : 'Email ' + withEmail.length + (withEmail.length === 1 ? ' guest' : ' guests')) + '</button></div>' : '') + '</div>';
+        h += '<div class="pa-pay"><p class="pa-label" style="margin:0">WhatsApp, one by one</p><p class="pa-hint" style="margin:0">Each button opens WhatsApp with the message ready for that guest; press Send there, then come back for the next.</p>' +
+          (withWa.length ? withWa.map(function (g) { var done = (m.waDone || {})[g.ref]; return '<div class="pa-row" style="align-items:center;justify-content:space-between;gap:8px"><span><b>' + esc(g.name) + '</b> <span class="pa-hint">· ' + esc(g.units) + '</span></span><button type="button" class="pa-btn small ' + (done ? 'ghost' : 'teal') + '" data-act="bulkWa" data-ref="' + esc(g.ref) + '">' + (done ? 'Sent ✓ · again' : 'WhatsApp') + '</button></div>'; }).join('') : '<p class="pa-hint" style="margin:0">None of the selected guests has a cellphone number yet.</p>') + '</div>';
+      }
       return h + '<div class="pa-row"><button type="button" class="pa-btn ghost" data-act="close">Done</button></div></div></div></div>';
     }
     if (m.type === 'compose') {
@@ -803,7 +815,17 @@
   document.addEventListener('click', function (e) { if (S.more && !e.target.closest('.pa-more')) { S.more = false; render(); } });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && S.more) { S.more = false; render(); var b = root.querySelector('[data-act="more"]'); if (b) b.focus(); } });
   // Changing when a scheduled message goes out shows the matching fields (days or date).
-  root.addEventListener('change', function (e) { if (e.target.dataset && e.target.dataset.msgrerender) { S.msgDirty = true; var id = e.target.id; render(); var el = document.getElementById(id); if (el) el.focus(); } else if (/^pa-m-\d+-/.test(e.target.id || '')) S.msgDirty = true; });
+  root.addEventListener('change', function (e) {
+    if (e.target.dataset && e.target.dataset.bulkref && S.modal && S.modal.type === 'bulk') {
+      var bm = S.modal; bm.text = val('pa-bulk-text'); bm.subject = val('pa-bulk-subj'); bm.sel = bm.sel || {}; bm.sel[e.target.dataset.bulkref] = e.target.checked;
+      var rf = e.target.dataset.bulkref; render(); var cb = root.querySelector('[data-bulkref="' + rf + '"]'); if (cb) cb.focus(); return;
+    }
+    if (e.target.dataset && e.target.dataset.bulktpl && S.modal && S.modal.type === 'bulk') {
+      var bt = S.modal, tp = msgList().find(function (x) { return x.id === e.target.value; });
+      bt.tpl = e.target.value;
+      if (tp) { bt.text = tp.text.replace(/[^\n]*\{review_link\}[^\n]*\n?/g, ''); bt.subject = tp.subject || ''; } else { bt.text = val('pa-bulk-text'); bt.subject = val('pa-bulk-subj'); }
+      render(); var ts = document.getElementById('pa-bulk-tpl'); if (ts) ts.focus(); return;
+    } if (e.target.dataset && e.target.dataset.msgrerender) { S.msgDirty = true; var id = e.target.id; render(); var el = document.getElementById(id); if (el) el.focus(); } else if (/^pa-m-\d+-/.test(e.target.id || '')) S.msgDirty = true; });
   root.addEventListener('keydown', function (e) { if (e.key === 'Enter' && e.target.id === 'pa-rp') { var b = root.querySelector('[data-act="resume"]'); if (b) b.click(); } });
   root.addEventListener('click', function (e) {
     var t = e.target.closest('[data-act]'); if (!t) return;
@@ -1002,13 +1024,21 @@
     }
     if (a === 'bulk') {
       if (!S.messages) return;
-      S.modal = { type: 'bulk', ref: t.dataset.ref || '', via: t.dataset.via || '', waDone: {} }; return render();
+      var pre = {}; if (t.dataset.ref) pre[t.dataset.ref] = true;
+      S.modal = { type: 'bulk', sel: pre, waDone: {} }; return render();
+    }
+    if (a === 'bulkSel') {
+      var bmS = S.modal; bmS.text = val('pa-bulk-text'); bmS.subject = val('pa-bulk-subj'); bmS.sel = {};
+      if (t.dataset.v === 'all') ((S.messages && S.messages.inHouse) || []).forEach(function (g) { bmS.sel[g.ref] = true; });
+      return render();
     }
     if (a === 'bulkEmail') {
       var bm2 = S.modal; bm2.text = val('pa-bulk-text'); bm2.subject = val('pa-bulk-subj');
       if (!bm2.text.trim()) { var bt = document.getElementById('pa-bulk-text'); if (bt) bt.focus(); return; }
       busy(true); bm2.result = null; render();
-      return api('emailInHouse', { text: bm2.text, subject: bm2.subject, refs: bm2.ref ? [bm2.ref] : [] }).then(function (d) {
+      var refsE = Object.keys(bm2.sel || {}).filter(function (r) { return bm2.sel[r]; });
+      if (!refsE.length) { S.busy = false; return render(); }
+      return api('emailInHouse', { text: bm2.text, subject: bm2.subject, refs: refsE }).then(function (d) {
         S.busy = false;
         bm2.result = (d.sent ? 'Emailed ' + d.sent + (d.sent === 1 ? ' guest.' : ' guests.') : 'No email was sent.') + (d.failed ? ' ' + d.failed + ' could not be sent; try again in a minute.' : '') + (d.noEmail && d.noEmail.length ? ' No email address for: ' + d.noEmail.join(', ') + '.' : '');
         render();
