@@ -104,7 +104,10 @@
     if (S.view === 'msgs') collectMsgEdit(); // keep what was typed in the scheduled messages
     var connected = !!(S.token && S.prop);
     var h = '<div class="pa">';
-    h += '<header class="pa-top"><span class="pa-kicker">Property Affiliate</span>' + (connected ? '<b class="pa-propname">' + esc(S.prop.resortName || 'Your property') + '</b><span class="pa-hint pa-top-meta">' + S.prop.units.length + ' units · SN site ' + esc(S.prop.site) + '</span>' : '') + '</header>';
+    // "How to" opens this screen's part of the property affiliate guide (how-to-property.html).
+    var howTo = !connected ? 'how-to-property.html#connect' : S.view === 'onb' ? 'how-to.html#property' : 'how-to-property.html#' + ({ avail: 'avail', book: 'book', guests: 'guests', msgs: 'msgs', chan: 'chan', rev: 'rev' }[S.view] || 'tabs');
+    h += '<header class="pa-top"><span class="pa-kicker">Property Affiliate</span>' + (connected ? '<b class="pa-propname">' + esc(S.prop.resortName || 'Your property') + '</b><span class="pa-hint pa-top-meta">' + S.prop.units.length + ' units · SN site ' + esc(S.prop.site) + '</span>' : '') +
+      '<a class="pa-howto" href="' + howTo + '" target="_blank" rel="noopener" aria-label="How to use this screen (opens the guide in a new tab)">❓ How to</a></header>';
     var inMore = S.view === 'onb';
     h += '<nav class="pa-tabbar" aria-label="Property Affiliate sections"><div class="pa-tabscroll">' + TABS.map(function (v) {
       var badge = v[0] === 'msgs' && S.msgsDue ? '<span class="pa-badge" aria-label="' + S.msgsDue + ' to send">' + S.msgsDue + '</span>' : '';

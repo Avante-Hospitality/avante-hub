@@ -213,3 +213,5 @@ button.pa-block:hover, button.pa-block:focus-visible{ outline:2px solid var(--te
 .pa label.pa-radio{ align-items:flex-start; }
 .pa-dialog .body > .pa-field, .pa-dialog .body > .pa-form{ flex:none; }
 .pa-radio input[type=date]{ width:100%; height:auto; min-height:44px; margin:0; accent-color:auto; }
+.pa-howto{ margin-left:auto; align-self:center; display:inline-flex; align-items:center; min-height:34px; padding:0 12px; border-radius:999px; border:1.5px solid var(--pa-ink); color:var(--pa-ink); background:#fff; font:700 12.5px 'Montserrat',sans-serif; text-decoration:none; }
+.pa-howto:hover, .pa-howto:focus-visible{ background:var(--teal,#0DCDC2); border-color:var(--teal,#0DCDC2); outline:none; }

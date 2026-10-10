@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin How-To · Avante Travel</title>
+<meta name="robots" content="noindex">
+<meta name="description" content="Step-by-step guide for Avante Travel staff to every tab in the hub admin.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Noto+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="how-to.css">
+<link rel="icon" href="icon-192.png">
+</head>
+<body id="top">
+<!-- KEEP THIS GUIDE UP TO DATE: every change to admin.html, admin-login.html,
+     explore-tree.html, tree-lookup.html, property-agreement.html or the admin
+     edge functions that changes what staff see or do must update the matching
+     section here in the same change, and add a line to "What's new". See CLAUDE.md. -->
+<header class="ht-top">
+  <span class="brand">Avante Travel <span>Admin how-to</span></span>
+  <nav aria-label="Guides">
+    <a href="how-to-admin.html" aria-current="page">Admin</a>
+    <a href="how-to.html">Affiliate hub</a>
+    <a href="how-to-property.html">Property affiliate</a>
+    <a href="how-to-hook-builder.html">Hook builder</a>
+    <a href="admin.html">Open admin</a>
+  </nav>
+</header>
+<div class="ht-wrap">
+  <aside class="ht-side" aria-label="Contents">
+    <label for="ht-q" class="ht-updated">Search this guide</label>
+    <input id="ht-q" type="search" placeholder="e.g. payout, hook, coordinates">
+  </aside>
+  <main class="ht-main">
+    <h1>Hub admin, step by step</h1>
+    <p class="ht-lead">For Avante Travel staff. Every admin tab, one small step at a time.</p>
+    <p class="ht-updated">Last updated: 10 October 2026</p>
+
+    <div class="ht-card ht-new" aria-label="What's new">
+      <h2>What's new</h2>
+      <ul>
+        <li><time>10 Oct 2026</time> This guide is new. Every admin tab has a <span class="btn g">❓ How to</span> button that opens its part of this guide.</li>
+        <li><time>10 Oct 2026</time> Default Hooks: no limit on hooks (<b>+ Add a hook</b>), <b>Place on front stores</b> and <b>Promotion ends</b> on each hook.</li>
+        <li><time>10 Oct 2026</time> Booking links use the holiday builder and the location tree. <b>Move saved booking links to the holiday builder</b> converts old ones.</li>
+      </ul>
+    </div>
+
+    <section id="login">
+      <h2>🔐 Log in to admin</h2>
+      <ol class="steps">
+        <li>Go to <b>go.avantetravel.co.za/admin-login.html</b>.</li>
+        <li>Type the admin <span class="field">Password</span> and tap <span class="btn">Log In</span>.</li>
+      </ol>
+      <div class="tip">You stay logged in for 12 hours, but only in that browser tab. Closing the tab logs you out.</div>
+      <h3>Set a recovery phrase (do this once)</h3>
+      <ol class="steps">
+        <li>Tap <b>Change Password</b> at the top right.</li>
+        <li>Type the current password, a new password (at least 6 characters) twice, and a <span class="field">Recovery phrase (optional)</span>. (Leaving it blank keeps the old phrase.)</li>
+        <li>Tap <span class="btn">Save Password</span>. Keep the phrase somewhere safe.</li>
+      </ol>
+      <h3>Forgot the admin password</h3>
+      <ol class="steps">
+        <li>On the login page tap <b>Forgot your password?</b></li>
+        <li>Type your <span class="field">Recovery phrase</span> and a new password twice.</li>
+        <li>Tap <span class="btn">Reset Password</span>.</li>
+      </ol>
+      <div class="warn">No recovery phrase set? Only someone with Netlify access can reset it (Blobs → admin-auth → delete the "admin" key).</div>
+    </section>
+
+    <section id="affiliates">
+      <h2>👥 Affiliates</h2>
+      <h3>Add a new affiliate</h3>
+      <ol class="steps">
+        <li>Tap the <span class="tab">Affiliates</span> tab, then <span class="btn">+ Add Affiliate</span>.</li>
+        <li>Type the <span class="field">Affiliate ID</span> (their Stock Network agent GUID; it is also their hub username).</li>
+        <li>Type their <span class="field">Name</span> and <span class="field">Email (optional)</span>. Fill in the email: it's needed for "forgot password".</li>
+        <li>Type their <span class="field">StockNetwork Site Nr (optional)</span> (needed to match their bookings).</li>
+        <li>Tick their type: Franchise Affiliate, Property Affiliate or Agent Affiliate.</li>
+        <li>Set the <b>Revenue share</b> for each channel: % or R flat.</li>
+        <li>Leave <span class="field">Status</span> on Active. Leave <b>Hook builder access</b> ticked (or untick it).</li>
+        <li>Add bank details and notes if you have them.</li>
+        <li>Tap <span class="btn">Save Affiliate</span>.</li>
+        <li>On their row tap <span class="btn g">Welcome Info</span>. It copies a welcome message. Paste it into an email to them.</li>
+      </ol>
+      <div class="tip">Welcome Info always says the password is 0000. That is right for new affiliates only. Admin can't reset an affiliate's password: they use "Forgot your password?" on the login page, which needs their email on file.</div>
+      <h3>Other jobs on this tab</h3>
+      <ul class="plain">
+        <li><span class="btn g">Details</span>: all their links (with short links), revenue share, totals and bank details. <b>Copy All</b> copies everything.</li>
+        <li><span class="btn g">Edit</span>: change anything except the ID. Then <b>Save Affiliate</b>.</li>
+        <li><span class="btn g">Payouts</span>: jumps to Payouts with this affiliate picked.</li>
+        <li><span class="btn g">Delete</span>: removes the affiliate and their payout history. Can't be undone.</li>
+        <li><b>Show only affiliates missing a Site Nr</b>: tick to find the ones to fix.</li>
+      </ul>
+      <h3>Make short codes for everyone</h3>
+      <ol class="steps">
+        <li>Scroll to <b>Generate short codes for every affiliate</b>.</li>
+        <li>Tap <span class="btn g">Check now</span>. Read the list.</li>
+        <li>Tap <span class="btn">Generate short codes</span>. Safe to run again; nothing is doubled.</li>
+      </ol>
+    </section>
+
+    <section id="applications">
+      <h2>📝 Applications</h2>
+      <ol class="steps">
+        <li>Tap <span class="tab">Applications</span>. Set the email that gets new applications and tap <b>Save</b> (once).</li>
+        <li>Tap <span class="btn g">View details</span> on an application.</li>
+        <li>Contact the person. Set the status to <b>Contacted</b>.</li>
+        <li>When you say yes, set it to <b>Approved</b>.</li>
+        <li>Go to <a href="#affiliates">Affiliates</a> and add them (it isn't done automatically).</li>
+      </ol>
+      <div class="note">The status is only a label for you. Nothing is emailed to the applicant.</div>
+    </section>
+
+    <section id="defaultHooks">
+      <h2>📣 Default Hooks (the offers on every front store)</h2>
+      <p class="what"><b>What they are:</b> the shared offers. Every affiliate hook on "Let admin manage" shows these, with the affiliate's own booking link. Front stores show 6 at a time (1 big, 2 medium, 3 small); the rest take turns every 6 seconds.</p>
+      <h3>Make a default hook (the easy way)</h3>
+      <ol class="steps">
+        <li>Tap <span class="tab">Default Hooks</span>.</li>
+        <li>Tap <span class="btn">Open the hook builder</span> (the teal card).</li>
+        <li>Make the hook there, then use <b>Load to hub</b> and pick a Default Hook, or <b>+ New hook</b> (see the <a href="how-to-hook-builder.html#load">hook builder guide</a>).</li>
+        <li>Back in admin, refresh. Find that Hook card.</li>
+        <li>Choose <span class="field">Place on front stores</span>: Rotates with the others, or Fixed: level 1 (big, top), Fixed: level 2, left / right, or Fixed: level 3, left / middle / right.</li>
+        <li>Tap <span class="btn">Save default</span>.</li>
+      </ol>
+      <div class="tip">Hooks loaded from the hook builder get their <b>Promotion ends</b> date from the flyer's end date (Flyer to). Change the date in the hook builder: each <b>Publish again</b> sends it to the hub again (and overwrites a date typed in admin). Event flyers arrive as Hook type "Event / festival"; that's expected.</div>
+      <h3>Make or fix a default hook by hand</h3>
+      <ol class="steps">
+        <li>Need a new card? Tap <span class="btn g">+ Add a hook</span> at the bottom.</li>
+        <li>Leave <span class="field">Hook type</span> on <b>Property / resort stay</b>.</li>
+        <li>Tap <span class="btn g">🔗 Build booking link</span>. Pick the place (Country › Province › Region › City › Suburb › Property) and the dates. Tap <span class="btn">Fill in booking link</span>.</li>
+        <li>Landing page: tap <span class="btn g">🔗 Build landing page link</span>, or <span class="btn g">📄 Upload PDF instead</span> (the PDF link still needs Save default).</li>
+        <li>Picture: tap <span class="btn g">Upload image</span> (square, under 4 MB). It saves straight away.</li>
+        <li>Or tap <span class="btn g">✨ Auto-build from property or area</span>, type a property or area in <span class="field">Property name or area</span> (or tick places under <b>🌳 Browse properties by location</b>), tap <b>Generate</b>, pick up to 4 photos and tap <b>Use this draft</b>.</li>
+        <li>Set the place and end date. Tap <span class="btn">Save default</span>.</li>
+        <li>Optional: tap <span class="btn g">📣 Post to Facebook (Avante Travel Page)</span>. It goes public straight away.</li>
+      </ol>
+      <div class="warn">Links (also a PDF link), place and end date need <b>Save default</b>. Pictures, Auto-build photos and "Clear hook" save straight away. After <b>Clear hook</b>, reload the page before saving that card again. For hooks you make by hand, keep Hook type on Property: "Event / festival" hides the link fields.</div>
+      <h3>The tool cards at the top</h3>
+      <p>The first five work the same: tap <span class="btn g">Check now</span>, read the list, then tap the button to apply. Nothing changes before that.</p>
+      <ul class="plain">
+        <li><b>Check for collapsed booking/landing links</b> → <span class="btn">Apply fix</span>: fixes hooks whose booking and landing links are the same.</li>
+        <li><b>Move saved booking links to the holiday builder</b> → <span class="btn">Move to the holiday builder</span>: changes old Stock Network links to holiday builder links with the location tree.</li>
+        <li><b>Check for misattributed booking links</b> → <span class="btn">Apply fix</span>: fixes affiliate hooks that credit the wrong affiliate.</li>
+        <li><b>Switch every affiliate to "Let admin manage"</b> → <span class="btn">Switch to admin-managed</span>: puts every affiliate hook back on your content (theirs is kept).</li>
+        <li><b>Clear all booking links</b> (red) → <span class="btn">Clear all booking links</span>: empties every booking link. <b>There's no second question</b>, so be sure.</li>
+      </ul>
+      <p><b>Flyer contact info</b> is a form: type the <span class="field">Contact phone number</span> and <span class="field">Contact email address</span> and tap <span class="btn">Save contact info</span>.</p>
+      <div class="tip">A hook shows on front stores until its <b>Promotion ends</b> day (South African time). No date? The booking link's check-out date is used. If an affiliate fixes their own hook in a place, theirs wins over yours on their store.</div>
+    </section>
+
+    <section id="payouts">
+      <h2>💰 Payouts</h2>
+      <ol class="steps">
+        <li>Get the revenue report (Stock Network for accommodation, Impact.com for flights).</li>
+        <li>Tap <span class="tab">Payouts</span> and pick the affiliate in <span class="field">Select an affiliate</span>.</li>
+        <li>Pick the <span class="field">Revenue channel</span>.</li>
+        <li>Type the <span class="field">Period</span> (for example "October 2026") and the <span class="field">Revenue for this period (R)</span>.</li>
+        <li>Tap <span class="btn">Add Revenue Entry</span>. The amount owed is worked out for you.</li>
+        <li>Get their bank details: Affiliates → <b>Details</b>.</li>
+        <li>Pay them from your bank (the hub doesn't move money).</li>
+        <li>Tap <span class="btn g">Mark Paid</span> on the entry.</li>
+      </ol>
+      <div class="tip">Wrong entry? Tap <b>Delete</b>: the totals fix themselves. The share used is the one set when the entry was added.</div>
+    </section>
+
+    <section id="leaderboard">
+      <h2>🏆 Leaderboard</h2>
+      <ol class="steps">
+        <li>Tap <span class="tab">Leaderboard</span>.</li>
+        <li>Pick <span class="field">Rank by</span>: Total Turnover or one channel.</li>
+        <li>Read the ranking. Nothing to change here.</li>
+      </ol>
+      <div class="note">This ranking uses the revenue typed in Payouts. The Bookings tab has its own ranking from Stock Network reports.</div>
+    </section>
+
+    <section id="bookings">
+      <h2>📥 Bookings (import Stock Network reports)</h2>
+      <ol class="steps">
+        <li>In Stock Network: Reports → <b>Reservation Detail Listing</b> → export as CSV.</li>
+        <li>In admin tap <span class="tab">Bookings</span>, choose the file, and tap <span class="btn">Upload Report</span>.</li>
+        <li>Read the result: new, updated, unchanged, skipped.</li>
+        <li>Pick a <span class="field">Category</span> and <span class="field">Period</span> to see the leaderboard and the full breakdown.</li>
+      </ol>
+      <div class="tip">Uploading the same dates again is safe. "Skipped" means no affiliate has that Site Nr: fix it in Affiliates → Edit and upload again. Affiliates see these numbers on their My Dashboard.</div>
+    </section>
+
+    <section id="whatsapp">
+      <h2>💬 WhatsApp Messaging (booking alerts)</h2>
+      <p class="what"><b>What it does:</b> when a Stock Network booking email arrives, it's posted to the affiliate's WhatsApp group, and the guest gets a confirmation on WhatsApp.</p>
+      <ol class="steps">
+        <li>Tap <span class="tab">WhatsApp Messaging</span>, then <span class="btn g">Edit Routing</span> on the affiliate's row.</li>
+        <li>Type a <span class="field">Booking email alias</span>, for example jeanl1967+name@gmail.com.</li>
+        <li>Put that same address as the notification email on the affiliate's Stock Network site.</li>
+        <li>Add recipients: tap <span class="btn g">Fetch My Groups</span> and pick a group, and/or type a number and tap <span class="btn g">Add</span> (up to 10).</li>
+        <li>Tap <span class="btn g">Test</span> on each recipient.</li>
+        <li>Tick which statuses to send: Request, Booked, Confirmed, Paid.</li>
+        <li>Tap <span class="btn">Save Routing</span>.</li>
+        <li>After the next booking, check <b>Recent Activity</b> (Sent or Failed).</li>
+      </ol>
+    </section>
+
+    <section id="propertyListings">
+      <h2>🏡 Property Listings (onboarding forms)</h2>
+      <ol class="steps">
+        <li>Once: set <span class="field">Notify this email address when a new listing is submitted</span> and tap <b>Save</b>. New listings and agreement answers are emailed there.</li>
+        <li>Tap <span class="btn g">Refresh</span>. Tap <span class="btn g">View</span> on a listing.</li>
+        <li>Check and correct the details, then tap <span class="btn">Save Changes</span> (Send Agreement doesn't save these).</li>
+        <li>Open it again and fill in <span class="field">Commission / Revenue Share</span>, <span class="field">Listing Duration</span> and the <span class="field">Agreement Terms</span>.</li>
+        <li>Tap <span class="btn">Send Agreement for Acceptance</span>. The person who sent the listing (owner or affiliate) gets an email to accept.</li>
+        <li>Wait until the <b>Agreement</b> column says Accepted (you also get an email).</li>
+        <li>Open it again, set <span class="field">Status</span> to <b>Listed</b>, type the <span class="field">StockNetwork Site Nr</span>, and tap <span class="btn">Save Changes</span>.</li>
+      </ol>
+      <div class="tip">"Listed" can only be chosen after the agreement is accepted. To say no, set Status to Rejected and save. Every status change emails the person who sent the listing.</div>
+    </section>
+
+    <section id="mapActivities">
+      <h2>🗺️ Map &amp; Activities</h2>
+      <p class="what"><b>What it's for:</b> what shows on the Explore Map, the location tree, coordinates, and activities. Use <b>Jump to:</b> at the top to go to a section.</p>
+      <h3>Daily check</h3>
+      <ol class="steps">
+        <li>Tap <span class="tab">Map &amp; Activities</span>.</li>
+        <li>Read the <b>Overview</b> tiles. Tap any tile that isn't 0 to go and fix it.</li>
+      </ol>
+      <h3>Add an activity</h3>
+      <ol class="steps">
+        <li>Go to <b>Add an activity</b>.</li>
+        <li>Type the <span class="field">Name</span>, area, price, <span class="field">Latitude</span>, <span class="field">Longitude</span>, booking link and description.</li>
+        <li>Tap <span class="btn">Save activity</span>. Then add photos (up to 12), or tap <b>🖼️ Find photo</b>.</li>
+        <li>Check its <b>Location</b> in the list below.</li>
+      </ol>
+      <h3>Fix a pin in the wrong place</h3>
+      <ol class="steps">
+        <li>On the <b>Master map</b>, tap the pin, then <span class="btn g">Fix coordinates</span>.</li>
+        <li>Tap <b>Open in Google Maps</b>, right-click the right spot, and click the numbers to copy them.</li>
+        <li>Paste them and tap <span class="btn">Save and place again</span>, then <b>Reload map</b>.</li>
+      </ol>
+      <h3>A property with no pin</h3>
+      <ol class="steps">
+        <li>Go to <b>Find &amp; fix missing coordinates</b>. Pick the list and tap <b>Load properties with no coordinate</b>.</li>
+        <li>Tap <span class="btn g">Search</span>, then <span class="btn">Use this</span> on the right match.</li>
+        <li>Can't find it? Tap <b>Can't find it — flag as possibly inactive</b>. Later download the flagged list for Stock Network.</li>
+      </ol>
+      <h3>New Stock Network properties</h3>
+      <ol class="steps">
+        <li>Go to <b>New StockNetwork properties</b> and tap <b>Refresh list</b>.</li>
+        <li>Tap <b>Dismiss</b> on any you don't want.</li>
+        <li>Tap <b>Download CSV (ready to re-upload)</b>, then upload it under <b>StockNetwork resort list</b>.</li>
+        <li>Under <b>Location tree</b>, tap <span class="btn">Re-run lookup</span>.</li>
+      </ol>
+      <h3>Location differences with Stock Network</h3>
+      <ol class="steps">
+        <li>Go to <b>StockNetwork location review</b> and tap <b>Load flagged properties</b>.</li>
+        <li>For each row: tap <b>Accept suggested coordinate</b>, or type a District / City2 / State correction and tap <b>Save correction</b>.</li>
+        <li>Under <b>Corrections to send to StockNetwork</b>, tap <b>Download CSV</b> and email it to Stock Network.</li>
+      </ol>
+      <h3>Hide a property from the map</h3>
+      <ol class="steps">
+        <li>Onboarded (listed) property: go to <b>Properties on the map</b> and untick <b>Show on map</b>.</li>
+        <li>Stock Network property: on the <b>Master map</b>, tap its pin and tap <b>Hide from map</b>.</li>
+      </ol>
+    </section>
+
+    <section id="snCleanup">
+      <h2>🧽 SN Cleanup (make Stock Network match the hub)</h2>
+      <p class="what"><b>What it does:</b> builds a file for Stock Network so Country, Area, City, Suburb and coordinates match the hub's location tree. One step at a time; nothing runs until you press that step's button.</p>
+      <ol class="steps">
+        <li><b>Upload:</b> choose the Stock Network <b>Resort Information</b> export (.csv). Pick <b>Test run</b> the first time (10 properties; you can change the number, up to 500). Tap <b>Next →</b> to go on (<b>← Back</b> goes back).</li>
+        <li><b>Find coordinates:</b> tap <span class="btn">Start lookups</span>. Decide the <b>Unsure</b> ones (Accept / Reject).</li>
+        <li><b>Place in hub:</b> tap <span class="btn">Save coordinates and place in hub</span>.</li>
+        <li><b>Area choice:</b> keep "Replace with the Avante region" (normal).</li>
+        <li><b>Build file:</b> tap <span class="btn">Build file</span>. Every check must be ✓ (a "!" is a warning and is OK). Download the file.</li>
+        <li><b>Check:</b> load the file into Stock Network, wait one night, come back and tap <span class="btn">Check now</span>.</li>
+        <li>All good? Do it again with <b>Everything in the file</b>.</li>
+      </ol>
+      <div class="warn">Google lookups cost money; the screen shows the cost before you start. Any ✗ in the checks means: do NOT load that file into Stock Network.</div>
+    </section>
+
+    <section id="tutorial">
+      <h2>📘 How Payouts Work</h2>
+      <p>This tab explains where payout numbers come from. The steps are the same as <a href="#payouts">Payouts</a> above.</p>
+    </section>
+
+    <section id="help">
+      <h2>🆘 Quick answers</h2>
+      <table class="ht">
+        <tr><th>Question</th><th>Answer</th></tr>
+        <tr><td>An affiliate forgot their password</td><td>They tap "Forgot your password?" on the hub login page. Their email must be on their record (Affiliates → Edit).</td></tr>
+        <tr><td>An affiliate can't open the hook builder</td><td>Affiliates → Edit → tick <b>Hook builder access</b> → Save.</td></tr>
+        <tr><td>An affiliate's dashboard is empty</td><td>Check their Site Nr, then upload the latest Stock Network report in Bookings.</td></tr>
+        <tr><td>A default hook doesn't show</td><td>Does it have a booking or landing link? Has its end date passed? Did you tap Save default?</td></tr>
+        <tr><td>An offer shows too long</td><td>Set <b>Promotion ends</b> and Save default. Loaded from the hook builder? Change "Flyer to" there and tap Publish again.</td></tr>
+      </table>
+    </section>
+  </main>
+</div>
+<script src="how-to.js"></script>
+</body>
+</html>

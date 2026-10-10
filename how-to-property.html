@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Property Affiliate How-To · Avante Travel</title>
+<meta name="description" content="Step-by-step guide to the Property Affiliate part of the Avante Travel hub: calendar, bookings, guests, communication and channels.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Noto+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="how-to.css">
+<link rel="icon" href="icon-192.png">
+</head>
+<body id="top">
+<!-- KEEP THIS GUIDE UP TO DATE: every change to property-affiliate.js / .css,
+     netlify/edge-functions/lib/pa-core.js or approve-cancel.html that changes what
+     a user sees or does must update the matching section here in the same change,
+     and add a line to "What's new". See CLAUDE.md. -->
+<header class="ht-top">
+  <span class="brand">Avante Travel <span>How-to</span></span>
+  <nav aria-label="Guides">
+    <a href="how-to.html">Affiliate hub</a>
+    <a href="how-to-property.html" aria-current="page">Property affiliate</a>
+    <a href="how-to-hook-builder.html">Hook builder</a>
+    <a href="hub.html">Open the hub</a>
+  </nav>
+</header>
+<div class="ht-wrap">
+  <aside class="ht-side" aria-label="Contents">
+    <label for="ht-q" class="ht-updated">Search this guide</label>
+    <input id="ht-q" type="search" placeholder="e.g. cancel, email, calendar">
+  </aside>
+  <main class="ht-main">
+    <h1>Property Affiliate, step by step</h1>
+    <p class="ht-lead">For owners and managers of a holiday property. Your calendar, bookings, guests, messages and channels (Airbnb, Booking.com, LekkeSlaap), one small step at a time.</p>
+    <p class="ht-updated">Last updated: 10 October 2026</p>
+
+    <div class="ht-card ht-new" aria-label="What's new">
+      <h2>What's new</h2>
+      <ul>
+        <li><time>10 Oct 2026</time> New look: a slim header and one tab bar (Calendar · Bookings · Guests · Communication · Channels · Reviews · More).</li>
+        <li><time>10 Oct 2026</time> One calendar, right under the date search. Bookings show the guest's name. Tap a booking to open it.</li>
+        <li><time>10 Oct 2026</time> The calendar can open on a set date, which is also your first bookable date (see <a href="#chan">Channels</a>).</li>
+        <li><time>10 Oct 2026</time> <b>Cancel</b> is now on every part of a booking.</li>
+        <li><time>10 Oct 2026</time> Messages is now <b>Communication</b>: the hub emails guests for you, you can add up to 30 scheduled messages, and you can message guests who are staying now.</li>
+      </ul>
+    </div>
+
+    <section id="connect">
+      <h2>🚀 First time: connect your property</h2>
+      <p class="what"><b>What you need:</b> your property's own Stock Network <b>API login</b>: username, client ID and client secret. Avante Travel or Stock Network can give it to you.</p>
+      <ol class="steps">
+        <li>Log in to the hub and tap <b>Property Affiliate</b> in the menu ☰.</li>
+        <li>Type your <span class="field">Username</span>, <span class="field">Client ID</span> and <span class="field">Client secret</span>.</li>
+        <li>Tap <span class="btn">Connect</span>.</li>
+        <li>Asked "Which property is this?" Tap your property, or search for it by name and tap <span class="btn">This one</span>.</li>
+        <li>Your calendar opens. Done!</li>
+      </ol>
+      <h3>Open it on another phone or computer</h3>
+      <ol class="steps">
+        <li>Log in to the hub on that device. Property Affiliate opens by itself.</li>
+        <li>If it asks, type your <span class="field">Hub password</span> and tap <span class="btn">Open …</span>.</li>
+      </ol>
+      <div class="tip">The hub keeps your Stock Network login locked away (encrypted). It only uses it to read your availability and make, change and cancel bookings for you.</div>
+      <h3>Do these next</h3>
+      <ol class="steps">
+        <li>Fill in <b>Reservation settings</b> and <b>Guest payments</b>: see <a href="#chan">Channels</a>.</li>
+        <li>Link Airbnb, Booking.com and LekkeSlaap: see <a href="#channels-links">Link your channels</a>.</li>
+        <li>Write your guest messages: see <a href="#msgs">Communication</a>.</li>
+      </ol>
+    </section>
+
+    <section id="tabs">
+      <h2>🧭 Finding your way around</h2>
+      <p>At the top is the tab bar. On a phone, swipe it sideways to see all the tabs.</p>
+      <table class="ht">
+        <tr><th>Tab</th><th>What it's for</th></tr>
+        <tr><td><b>Calendar</b></td><td>See every unit's nights, search dates, make bookings.</td></tr>
+        <tr><td><b>Bookings</b></td><td>List of all bookings, payments.</td></tr>
+        <tr><td><b>Guests</b></td><td>Everyone who stayed, once each.</td></tr>
+        <tr><td><b>Communication</b></td><td>Emails and WhatsApps to guests. An orange number means WhatsApps are waiting to be sent.</td></tr>
+        <tr><td><b>Channels</b></td><td>Settings, payments, and Airbnb / Booking.com / LekkeSlaap links.</td></tr>
+        <tr><td><b>Reviews</b></td><td>Guest reviews and rating your guests.</td></tr>
+        <tr><td><b>More ▾</b></td><td>Onboarding Form, Hook Builder, Disconnect property.</td></tr>
+      </table>
+    </section>
+
+    <section id="avail">
+      <h2>📅 Calendar</h2>
+      <p class="what"><b>What it's for:</b> every unit, night by night. Tap a booking to open it. Tap open nights to book them.</p>
+      <h3>Read the calendar</h3>
+      <ul class="plain">
+        <li><b style="color:#08776f">Teal "Open"</b>: free to sell.</li>
+        <li><b>Navy block with a name</b>: a booking made in the hub. The name is the guest's.</li>
+        <li><b>Pink / blue / green block</b>: an Airbnb / Booking.com / LekkeSlaap booking ("Airbnb guest" if there's no name yet).</li>
+        <li><b>Grey "Booked on SN"</b>: booked on Stock Network outside the hub.</li>
+        <li><b>Orange dashed</b>: a channel booking not yet on Stock Network (see <a href="#channels-links">Channels</a>).</li>
+        <li><b>Light grey dashed "Not on SN"</b>: nights you never gave to Stock Network.</li>
+        <li><b>Light grey dashed "Not bookable yet"</b>: nights before your calendar start date (see <a href="#chan">Channels</a>).</li>
+        <li><b>Orange "Clash · Airbnb"</b> (or another channel): a channel booking on nights already sold on Stock Network. Sort it out with the guest or channel.</li>
+      </ul>
+      <ol class="steps">
+        <li>Tap <span class="btn g">›</span> to see the next days, <span class="btn g">‹</span> to go back.</li>
+        <li>Tap <span class="btn g">Today</span> (or <b>Start date</b>) to jump back to the start.</li>
+        <li>Tap a booking block to open it (see <a href="#booking">Open a booking</a>).</li>
+      </ol>
+      <h3>Find which units are free for some dates</h3>
+      <ol class="steps">
+        <li>Pick the <span class="field">Check-in</span> and <span class="field">Check-out</span> dates at the top.</li>
+        <li>Tap <span class="btn">Search all units</span>.</li>
+        <li>Tap <span class="btn">Select</span> next to the unit you want. It goes into your selection at the bottom.</li>
+      </ol>
+      <h3>Make a booking</h3>
+      <ol class="steps">
+        <li>Tap the first night on an open unit. It shows "Check-in" ("In" on a phone).</li>
+        <li>Tap the <b>last night</b> of the stay. The nights turn navy ("Selected").</li>
+        <li>Want more units on the same booking? Do the same on another unit.</li>
+        <li>Tap <span class="btn t">Book this unit</span> (or <b>Book 2 units together</b>) in the bar at the bottom.</li>
+        <li>Type the guest's <span class="field">First name</span>, <span class="field">Last name</span>, <span class="field">Email</span> and <span class="field">Cellphone (required)</span>. A name and a cellphone are both needed.</li>
+        <li>Fill in adults, children, <span class="field">Booked through</span> (Direct, Walk-in, …) and notes.</li>
+        <li>Tap <span class="btn">Make booking on Stock Network</span> (for several units: <b>Book N units on Stock Network</b>).</li>
+        <li>Send the guest the payment details: tap <b>WhatsApp</b>, or <b>Email</b> (if the guest has an email), under Payment.</li>
+      </ol>
+      <div class="tip">The booking goes onto Stock Network as a Request. Your other channels are blocked for those nights within 15 minutes.</div>
+      <h3>Find a booking</h3>
+      <ol class="steps">
+        <li>Tap <span class="btn g">Find a booking</span>.</li>
+        <li>Type a reference, guest name, unit or channel.</li>
+        <li>Tap <span class="btn">Edit</span> next to the booking.</li>
+      </ol>
+      <h3>Sell your open dates</h3>
+      <ol class="steps">
+        <li>Scroll below the calendar to <b>Sell these</b>.</li>
+        <li>Tap <span class="btn">Copy booking link</span> next to any open stretch.</li>
+        <li>Or copy the ready-made message under <b>Share your open dates</b> with <span class="btn t">Copy message</span>.</li>
+      </ol>
+    </section>
+
+    <section id="booking">
+      <h2>📂 Open a booking (Guest · Messages · Booking)</h2>
+      <p class="what"><b>How:</b> tap the booking on the calendar, or tap <b>Open</b> on the Bookings tab. It has 3 parts at the top.</p>
+      <h3>Guest: the guest's details</h3>
+      <ol class="steps">
+        <li>Tap <span class="btn g">Guest</span>.</li>
+        <li>Fill in name, cellphone, email, number of guests, arrival time, car registration and notes.</li>
+        <li>Tick <b>OK to send offers</b> only if the guest agreed. Tick <b>Opted out</b> if they asked not to get offers.</li>
+        <li>Tap <span class="btn">Save guest details</span>.</li>
+        <li>When they arrive, tap <span class="btn t">Mark checked in</span>.</li>
+      </ol>
+      <h3>Messages: talk to this guest</h3>
+      <ol class="steps">
+        <li>Tap <span class="btn g">Messages</span>.</li>
+        <li>Each scheduled message shows when it goes out and if it was sent (WhatsApp and email).</li>
+        <li>Tap <span class="btn t">WhatsApp</span> to send it now on WhatsApp, or <span class="btn">Email now</span> to email it now. (WhatsApp only shows when the guest has a cellphone number, Email now only when they have an email address. Add them in the Guest part.)</li>
+        <li>Your own message: type it in <span class="field">Write a message</span> (and an <span class="field">Email subject</span>), then tap <span class="btn t">Send on WhatsApp</span> or <span class="btn">Send by email</span>.</li>
+        <li>After check-out, tap <span class="btn g">Rate guest</span> to review the guest.</li>
+      </ol>
+      <h3>Booking: change unit or dates</h3>
+      <ol class="steps">
+        <li>Tap <span class="btn g">Booking</span>.</li>
+        <li>Change the <span class="field">Unit</span>, <span class="field">Check-in</span> or <span class="field">Check-out</span>.</li>
+        <li>Tap <span class="btn">Save changes</span>.</li>
+        <li>Send the guest the new payment link.</li>
+      </ol>
+      <div class="warn">Stock Network can't edit a booking. Changing the unit or dates cancels it and makes a <b>new booking with a new reference</b>. For several units: tap <b>Remove unit</b> to cancel one unit only.</div>
+      <h3>Cancel a booking</h3>
+      <ol class="steps">
+        <li>Open the booking (any part: Guest, Messages or Booking).</li>
+        <li>Tap <span class="btn g" style="color:#8a3a00;border-color:#8a3a00">Cancel this booking</span> at the bottom.</li>
+        <li>Tap <b>OK</b>. It is cancelled on Stock Network and the nights open again.</li>
+      </ol>
+      <h3>Cancel a PAID booking</h3>
+      <ol class="steps">
+        <li>Open the booking and tap <span class="btn g" style="color:#8a3a00;border-color:#8a3a00">Request cancellation</span>.</li>
+        <li>Tap <b>OK</b>.</li>
+        <li>The affiliate linked to your property gets an email (tap <b>Send by WhatsApp</b> to send it to them on WhatsApp too).</li>
+        <li>They open the link, type their hub password and tap <b>Approve and cancel on Stock Network</b>.</li>
+        <li>Only then is it cancelled. Refunds are done outside the hub.</li>
+      </ol>
+      <div class="note">The approval link works once, for 24 hours. Too many wrong passwords block it: then request again. Property not linked to an affiliate? A paid booking can't be cancelled in the hub: cancel it in Stock Network.</div>
+      <div class="tip">Paid bookings are locked: they can't be changed in the hub. Changes go through Stock Network. Demo bookings can't be cancelled.</div>
+    </section>
+
+    <section id="book">
+      <h2>📋 Bookings</h2>
+      <ol class="steps">
+        <li>Tap <b>Bookings</b>.</li>
+        <li>Type in <span class="field">Search</span> to find a reference, guest, unit or channel.</li>
+        <li>Tap <span class="btn">Open</span> to open a booking.</li>
+        <li>Tap <span class="btn g">Payment link</span> to send the guest the payment details again.</li>
+        <li>Paid by EFT into your account? Tap <span class="btn g">Mark paid (EFT)</span>, then also mark it paid in Stock Network.</li>
+      </ol>
+      <div class="tip">Each booking shows its status (Request, Booked, Cancelled …) and payment (Unpaid, Part paid, Paid, Paid (EFT), Paid on channel). Payment link and Mark paid (EFT) don't show on paid, demo or channel bookings. Mark paid (EFT) also doesn't show when guests can only pay through the payment gateway.</div>
+      <h3>Pay now (card or Instant EFT)</h3>
+      <ol class="steps">
+        <li>After booking, tap <span class="btn t">Pay now</span> (only there when guests may pay through the payment gateway). The secure Stock Network payment page opens in its own window.</li>
+        <li>Pay there. When that window closes, the hub checks the payment.</li>
+        <li>Not showing paid yet? Wait a minute and tap <span class="btn">Check payment now</span>.</li>
+      </ol>
+      <h3>Demo bookings (Property Testing only)</h3>
+      <ol class="steps">
+        <li>On the Bookings tab, tap <span class="btn">Load demo bookings</span> to try everything with 6 example bookings.</li>
+        <li>Tap <span class="btn g">Remove demo bookings</span> when done. Demo bookings never go to Stock Network or your channels.</li>
+      </ol>
+    </section>
+
+    <section id="guests">
+      <h2>👥 Guests</h2>
+      <p class="what"><b>What it's for:</b> everyone who stayed or is booked, once each, for your records and return business.</p>
+      <ol class="steps">
+        <li>Tap <b>Guests</b>.</li>
+        <li>Type in <span class="field">Search</span>: a name, number, email or car.</li>
+        <li>Tap <span class="btn g">Call</span>, <span class="btn g">WhatsApp</span> or <span class="btn g">Last booking</span>.</li>
+        <li>Tap <span class="btn g">Download (Excel)</span> to save the list as a spreadsheet.</li>
+      </ol>
+      <div class="warn">Only send offers to guests marked "OK for offers" and not opted out. Airbnb and Booking.com guests only if they agreed with you directly.</div>
+    </section>
+
+    <section id="msgs">
+      <h2>💬 Communication</h2>
+      <p class="what"><b>How it works:</b> <b>Email</b> is sent by the hub automatically, from your property's name, and guests' replies go to your email address. <b>WhatsApp</b> opens on your phone with the message ready, and you tap Send. (WhatsApp can also go out automatically with a paid WhatsApp Business setup. Ask Avante Travel.)</p>
+
+      <h3>Write your messages (templates)</h3>
+      <ol class="steps">
+        <li>Tap <b>Communication</b> and scroll to <b>Scheduled messages</b>.</li>
+        <li>Tap a message (for example <b>Welcome</b>) to open it.</li>
+        <li>Change the <span class="field">Message</span> to your own words. Tap the grey chips like <span class="field">{first_name}</span> to add the guest's name, dates, unit and so on. They fill themselves in for each guest.</li>
+        <li>Choose <span class="field">When</span>: Days before arrival, On arrival day, Days into the stay, Days before check-out, Days after check-out, or On a set date. Then the <span class="field">Days</span> (or date) and the time.</li>
+        <li>Tick <b>Email</b>, <b>WhatsApp</b> or both. Type an <span class="field">Email subject</span>.</li>
+        <li>Tick <b>Switched on</b>.</li>
+        <li>Tap <span class="btn">Save messages</span>.</li>
+      </ol>
+      <h3>Add another message (optional)</h3>
+      <ol class="steps">
+        <li>Tap <span class="btn g">+ Add a message</span>.</li>
+        <li>Give it a <span class="field">Name</span> (for example "Day 2 tips") and fill it in as above. You can have up to 30 messages.</li>
+        <li>Tap <span class="btn">Save messages</span>.</li>
+      </ol>
+      <div class="tip">Don't want a message any more? Open it and tap <b>Remove this message</b>, or untick <b>Switched on</b>. Then Save. "On a set date" messages go to guests staying on that date.</div>
+
+      <h3>Send WhatsApps that are due</h3>
+      <ol class="steps">
+        <li>An orange number on <b>Communication</b> means WhatsApps are waiting. You also get an email (sent to your <b>Email on SN reservations</b> address).</li>
+        <li>Under <b>WhatsApp to send</b>, tap <span class="btn t">WhatsApp</span>.</li>
+        <li>Check the message, then tap <span class="btn t">Open WhatsApp</span> and press Send in WhatsApp.</li>
+        <li>Don't want to send it? Tap <span class="btn g">Skip</span>.</li>
+      </ol>
+      <div class="tip">Emails go out by themselves (the hub checks every 15 minutes). <b>Emails that couldn't go out</b> lists guests without an email address (tap <b>Add details</b> and the email goes on the next round) and emails that failed (the hub tries again).</div>
+
+      <h3>Message guests who are staying now</h3>
+      <ol class="steps">
+        <li>Under <b>Staying now</b>, tap <span class="btn t">Message in-house guests</span> (or <b>Message</b> next to one guest).</li>
+        <li>Tick the guests who must get it (tap <b>Select all</b> for everyone).</li>
+        <li>Pick one of your templates in <span class="field">Start from a template</span>, or write your own.</li>
+        <li>Email: tap <span class="btn">Email N guests</span>. Each guest gets their own copy with their name.</li>
+        <li>WhatsApp: tap <span class="btn t">WhatsApp</span> next to each guest, one by one, and press Send in WhatsApp.</li>
+        <li>Tap <span class="btn g">Done</span>.</li>
+      </ol>
+      <div class="note">Set your email address first (Channels → Reservation settings) so guests' replies reach you.</div>
+    </section>
+
+    <section id="chan">
+      <h2>⚙️ Channels: settings and payments</h2>
+      <h3>Reservation settings</h3>
+      <ol class="steps">
+        <li>Tap <b>Channels</b>.</li>
+        <li>Type your <span class="field">Email on SN reservations</span> (also where guests' email replies go) and <span class="field">Phone on SN reservations (required)</span>.</li>
+        <li>Type your <span class="field">Minimum stay (nights)</span>.</li>
+        <li>Under <b>Calendar opens on</b>, choose <b>Today</b>, or <b>A set date</b> and pick the date.</li>
+        <li>Optional: type a nightly channel price per unit.</li>
+        <li>Tap <span class="btn">Save reservation settings</span>.</li>
+      </ol>
+      <div class="tip"><b>A set date</b> is also your first bookable date: nobody can book in the hub before it, until that date has passed. Handy when you open for the season.</div>
+      <h3>Guest payments</h3>
+      <ol class="steps">
+        <li>Under <b>How guests can pay</b>, choose <b>Both</b>, <b>Avante payment gateway only</b> or <b>EFT to our bank account only</b>.</li>
+        <li>For EFT, fill in your bank, account holder, account number, branch code, account type and (optional) a note for guests.</li>
+        <li>Tap <span class="btn">Save payment settings</span>.</li>
+      </ol>
+      <div class="tip">"EFT to our bank account only" needs your bank details first. An account number needs the bank name and account holder too.</div>
+    </section>
+
+    <section id="channels-links">
+      <h2>🔁 Link Airbnb, Booking.com and LekkeSlaap</h2>
+      <p class="what"><b>What it does:</b> keeps every channel's calendar in step with Stock Network, so you never double-book.</p>
+      <ol class="steps">
+        <li>Tap <b>Channels</b> and scroll to <b>Channel links per unit</b>.</li>
+        <li>For a unit and a channel, tap <span class="btn">Copy</span> next to <b>Avante link for …</b>.</li>
+        <li>Paste that link into the unit's calendar import (sync) on Airbnb, Booking.com or LekkeSlaap.</li>
+        <li>On that channel, copy the unit's own calendar export link (ends in .ics).</li>
+        <li>Paste it in the hub box <b>… 's calendar link</b>.</li>
+        <li>Do the same for every unit and channel.</li>
+        <li>Tap <span class="btn">Save settings and links</span>. It turns "Connected" after the first read (within 15 minutes).</li>
+      </ol>
+      <h3>New channel bookings</h3>
+      <ol class="steps">
+        <li>Scroll to <b>Channel bookings not yet on Stock Network</b>.</li>
+        <li>Check the booking and tap <span class="btn">Add to Stock Network</span>.</li>
+        <li>Happy that it works? Tick <b>Book other channels' reservations onto Stock Network automatically</b> and save.</li>
+      </ol>
+      <div class="tip">Tap <b>Check channels now</b> to read the channels straight away. "Clash · sold on SN" means the nights were already sold: sort it out with the guest or channel.</div>
+      <h3>"New unit on Stock Network"</h3>
+      <ol class="steps">
+        <li>If a unit was only renamed, pick its old name under <b>Renamed from</b> and tap <span class="btn">Move links to …</span>.</li>
+        <li>If it really is new, tap <span class="btn g">It's a new unit</span>.</li>
+      </ol>
+    </section>
+
+    <section id="rev">
+      <h2>⭐ Reviews</h2>
+      <ol class="steps">
+        <li>Ask guests for a review: switch on the <b>After stay</b> message in <a href="#msgs">Communication</a>. It includes their personal review link.</li>
+        <li>Rate a guest: after check-out, open the booking → <b>Messages</b> → <span class="btn g">Rate guest</span>.</li>
+      </ol>
+      <div class="tip">Your Avante guest rating shows once you have 3 Avante reviews. Until then guests see your Google reviews.</div>
+    </section>
+
+    <section id="more">
+      <h2>➕ More: Onboarding Form, Hook Builder, Disconnect</h2>
+      <ol class="steps">
+        <li>Tap <b>More ▾</b> on the tab bar.</li>
+        <li><b>Onboarding Form</b>: list a property with Avante (see the <a href="how-to.html#property">hub guide</a>).</li>
+        <li><b>Hook Builder</b>: make flyers and offers (see the <a href="how-to-hook-builder.html">hook builder guide</a>).</li>
+        <li><b>Disconnect property</b>: stops the hub working for this property. Channel sync stops until you connect again.</li>
+      </ol>
+    </section>
+
+    <section id="help">
+      <h2>🆘 Something not working?</h2>
+      <table class="ht">
+        <tr><th>Problem</th><th>Try this</th></tr>
+        <tr><td>A night shows "Not on SN"</td><td>That night was never given to Stock Network. Load it on Stock Network; the hub picks it up within 15 minutes.</td></tr>
+        <tr><td>"Bookings open from …"</td><td>Your calendar start date is in the future. Change it in Channels → Reservation settings.</td></tr>
+        <tr><td>Guests' email replies don't reach me</td><td>Fill in Email on SN reservations in Channels → Reservation settings.</td></tr>
+        <tr><td>An email to a guest didn't go</td><td>Add their email in the booking's Guest part. It goes on the next round.</td></tr>
+        <tr><td>I can't change a booking</td><td>It is paid (locked). Change it in Stock Network, or Request cancellation.</td></tr>
+        <tr><td>A channel shows "Needs attention"</td><td>Check the channel's calendar link is correct and starts with https://, then Save.</td></tr>
+      </table>
+    </section>
+  </main>
+</div>
+<script src="how-to.js"></script>
+</body>
+</html>
