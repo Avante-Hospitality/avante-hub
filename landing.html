@@ -154,16 +154,17 @@
   .offers-head p{ color:var(--muted-ink); margin:6px 0 0; font-size:14.5px; max-width:56ch; }
   .offers-count{ font-family:'Montserrat',sans-serif; font-weight:700; font-size:13px; color:var(--teal-ink); background:var(--mint); border:1.5px solid #c9ece8; border-radius:100px; padding:6px 14px; white-space:nowrap; }
 
-  .flyer{ display:block; width:100%; aspect-ratio:4 / 5; object-fit:cover; background:var(--mint); border-radius:10px; }
+  /* Flyers carry their own text, so they're never cropped. */
+  .flyer{ display:block; width:100%; aspect-ratio:4 / 5; object-fit:contain; background:var(--mint); border-radius:10px; }
   .flyer-frame{ position:relative; background:var(--mint); border-radius:10px; overflow:hidden; }
   .flyer-frame img{ opacity:0; transition:opacity .25s ease; }
   .flyer-frame img.show{ opacity:1; }
 
   /* The featured offer: the one bold moment on the page. */
-  .feature{ display:grid; grid-template-columns:minmax(0, 5fr) minmax(0, 6fr); background:var(--navy); color:#fff; border-radius:18px; overflow:hidden; margin-bottom:28px; }
-  .feature .flyer-frame{ border-radius:0; background:#173f57; }
-  .feature .flyer{ border-radius:0; height:100%; }
-  .feature-body{ padding:34px 36px; display:flex; flex-direction:column; justify-content:center; gap:14px; }
+  .feature{ display:grid; grid-template-columns:minmax(0, 4fr) minmax(0, 7fr); background:var(--navy); color:#fff; border-radius:18px; overflow:hidden; margin-bottom:28px; }
+  .feature .flyer-frame{ border-radius:0; background:#173f57; display:flex; align-items:center; }
+  .feature .flyer{ border-radius:0; background:transparent; }
+  .feature-body{ padding:34px 40px; display:flex; flex-direction:column; justify-content:center; gap:14px; }
   .feature-kicker{ display:inline-flex; align-self:flex-start; gap:8px; align-items:center; font-family:'Montserrat',sans-serif; font-weight:700; font-size:12.5px; color:var(--navy); background:var(--teal); border-radius:100px; padding:5px 12px; }
   .feature h2{ font-size:clamp(24px, 3.2vw, 36px); line-height:1.1; margin:0; font-weight:800; letter-spacing:-0.015em; }
   .feature .place{ color:#bfe9e5; font-size:15px; margin:0; }
@@ -217,7 +218,6 @@
   }
   @media (max-width:720px){
     .feature{ grid-template-columns:1fr; }
-    .feature .flyer{ height:auto; }
     .feature-body{ padding:24px 20px 26px; }
     .offers-head h1{ font-size:23px; }
     .panel-box{ padding:20px 18px; }
