@@ -893,10 +893,20 @@
 
     var PIN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>';
 
-    function offerActions(r, info, quiet){
+    // The search screen can't open one property directly yet, so a link
+    // with a property but no destination also gets the offer's town —
+    // the guest lands on results that include it.
+    function withPlace(url, place){
+      var p = AvanteBooking.parse(url);
+      var town = (place || '').split(',')[0].trim();
+      if(!p || p.opts.destination || !town) return url;
+      p.opts.destination = town;
+      return AvanteBooking.build(p.siteId, p.opts);
+    }
+    function offerActions(r, info){
       var h = '';
       if(isSafeUrl(r.data.booking)){
-        h += '<a class="btn btn-book" ' + bookAttrs(r.data.booking) + ' data-book>' + (info.dates ? 'Book these dates' : 'Check availability') + '</a>';
+        h += '<a class="btn btn-book" ' + bookAttrs(withPlace(r.data.booking, info.place)) + ' data-book>' + (info.dates ? 'Book these dates' : 'Check availability') + '</a>';
       }
       if(isSafeUrl(r.data.landing)){
         h += '<a class="btn btn-quiet" href="' + escapeHtml(r.data.landing) + '" data-details>Full details</a>';
