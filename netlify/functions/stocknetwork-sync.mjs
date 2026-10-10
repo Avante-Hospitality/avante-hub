@@ -106,7 +106,7 @@ export default async (request) => {
   try {
     importResp = await fetch(`${siteBase}/api/resorts`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "x-sync-secret": process.env.PA_SYNC_SECRET || "" }, // resorts-api.js checks this
       body: JSON.stringify({ action: "syncStockNetworkApi", rows }),
     });
   } catch (err) {

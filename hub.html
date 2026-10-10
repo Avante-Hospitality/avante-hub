@@ -1291,12 +1291,9 @@
 
         <div class="hint" id="a-resortListMeta" style="margin-top:14px;">Loading resort list…</div>
 
-        <div class="btn-row" style="margin-top:10px;">
-          <button type="button" class="btn-outline" id="a-resortUploadBtn">Update resort list</button>
-          <input type="file" id="a-resortFileInput" accept=".csv" style="display:none;">
-        </div>
-        <div class="hint">Upload a new resort CSV (same format as before) any time StockNetwork adds properties — this refreshes the list above for every affiliate.</div>
-        <div class="status" id="a-resortUploadStatus"></div>
+        <!-- 2026-10-10: "Update resort list" removed here — any affiliate could replace the
+             shared list. Admin uploads it in admin › Map & Activities › StockNetwork resort list,
+             and /api/resorts now only accepts uploads with an admin login. -->
 
         <div class="row">
           <div>
@@ -2899,12 +2896,13 @@
         }else if(names.length){
           metaEl.textContent = names.length + ' resorts loaded.';
         }else{
-          metaEl.textContent = 'No resort list uploaded yet — use "Update resort list" below to add one.';
+          metaEl.textContent = 'No resort list loaded yet — Avante Travel keeps it up to date.';
         }
       }
 
       ResortData.subscribe(populatePicker);
 
+      if(!uploadBtn || !fileInput) return; // the upload is admin-only now (admin › Map & Activities)
       uploadBtn.addEventListener('click', function(){ fileInput.click(); });
 
       fileInput.addEventListener('change', function(){
@@ -3002,7 +3000,7 @@
 
         metaEl.textContent = usable.length
           ? usable.length + ' resorts available.'
-          : 'No resort list uploaded yet — use "Update resort list" in the Accommodation Link Builder above.';
+          : 'No resort list loaded yet — Avante Travel keeps it up to date.';
       }
 
       ResortData.subscribe(populatePicker);

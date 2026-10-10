@@ -8848,9 +8848,10 @@
         resortUploadStatusEl.textContent = '';
         resortUploadStatusEl.className = 'status';
         file.text().then(function(csvText){
+          var adminTok = ''; try{ adminTok = sessionStorage.getItem('avante-admin-token') || ''; }catch(e){}
           return fetch('/api/resorts', {
             method: 'POST',
-            headers: { 'content-type': 'text/csv' },
+            headers: { 'content-type': 'text/csv', 'x-admin-token': adminTok },
             body: csvText
           });
         }).then(function(r){ return r.json().then(function(data){ return { status: r.status, data: data }; }); })

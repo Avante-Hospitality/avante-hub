@@ -566,7 +566,7 @@ export default async (request, context) => {
   const cors = {
     "access-control-allow-origin": "*",
     "access-control-allow-methods": "GET, POST, OPTIONS",
-    "access-control-allow-headers": "content-type",
+    "access-control-allow-headers": "content-type, x-admin-token, x-sync-secret",
   };
 
   if (request.method === "OPTIONS") {
@@ -574,6 +574,17 @@ export default async (request, context) => {
   }
 
   const store = getStore({ name: "resort-list", consistency: "strong" });
+  const env = (k) => (typeof Netlify !== "undefined" ? Netlify.env.get(k) : Deno.env.get(k)) || "";
+  const deny = (msg) => new Response(JSON.stringify({ ok: false, error: msg }), { status: 403, headers: { "content-type": "application/json", ...cors } });
+  // 2026-10-10: writing the shared resort list needs an admin login (CSV
+  // upload from admin › Map & Activities) or the nightly sync's shared
+  // secret (stocknetwork-sync.mjs sends PA_SYNC_SECRET). Before this, anyone
+  // — including any affiliate from the hub — could replace the list.
+  async function isAdmin(token) {
+    if (!token) return false;
+    const session = await getStore({ name: "admin-sessions", consistency: "strong" }).get(token, { type: "json" });
+    return !!(session && new Date(session.expiresAt).getTime() > Date.now());
+  }
 
   try {
     if (request.method === "GET") {
@@ -601,7 +612,12 @@ export default async (request, context) => {
       // upload flow below needs to change.
       const contentType = (request.headers.get("content-type") || "").toLowerCase();
       if (contentType.includes("application/json")) {
+        const secret = env("PA_SYNC_SECRET");
+        if (!secret || request.headers.get("x-sync-secret") !== secret) return deny("forbidden");
         return handleApiSync(request, store, cors);
+      }
+      if (!(await isAdmin(request.headers.get("x-admin-token") || ""))) {
+        return deny("Only Avante admin can update the resort list. Log in to admin and upload it under Map & Activities.");
       }
 
       const text = await request.text();
