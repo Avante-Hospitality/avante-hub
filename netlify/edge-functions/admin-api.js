@@ -3,7 +3,7 @@ import { generateHashtags } from "./lib/hashtag-helper.js";
 import { isShortLink, resolveShortLink, findExistingShortLink, createShortLink } from "./lib/short-link.js";
 import { correctBookingLinkSiteId, ADMIN_MASTER_SITE_GUID, toHolidayBuilderUrl } from "./lib/booking-link.js";
 import { withTreePath } from "./lib/tree-place.js";
-import { resolveHookMode } from "./lib/hook-mode.js";
+import { resolveHookMode, adminHookNumbers, validHookNumber, cleanPin, cleanEndDate } from "./lib/hook-mode.js";
 import { buildHookDraft } from "./lib/hook-draft.js";
 import { hooksLink } from "./lib/hooks-ticket.js";
 import { saveHookPhotoUrls } from "./lib/hook-photos.js";
@@ -312,7 +312,15 @@ export default async (request, context) => {
   // lib/event-themes.js) — grows on its own, powers the Theme dropdown on
   // the Event hook form.
   const eventThemeStore = getStore({ name: "event-themes", consistency: "strong" });
+  // Default Hooks are unlimited since 2026-10-10 (see lib/hook-mode.js):
+  // the first 6 always show as cards, more are added with "Add a hook".
   const DEFAULT_HOOK_COUNT = 6;
+  const defaultHookNumbers = async () => {
+    const nums = await adminHookNumbers(hookStore);
+    const set = new Set(nums);
+    for (let n = 1; n <= DEFAULT_HOOK_COUNT; n++) set.add(n);
+    return [...set].sort((a, b) => a - b);
+  };
 
   async function verifyToken(token) {
     if (!token) return false;
@@ -361,10 +369,13 @@ export default async (request, context) => {
 
       if (resource === "defaultHooks") {
         const hooks = [];
-        for (let n = 1; n <= DEFAULT_HOOK_COUNT; n++) {
+        for (const n of await defaultHookNumbers()) {
           const rec = await hookStore.get("__admin__:" + n, { type: "json" });
           hooks.push({
             hook: n,
+            // Front store: fixed place (0 = rotates) and promotion end date.
+            pin: cleanPin(rec && rec.pin),
+            endDate: (rec && rec.endDate) || "",
             booking: (rec && rec.booking) || "",
             landing: (rec && rec.landing) || "",
             caption: (rec && rec.caption) || "",
@@ -1017,7 +1028,7 @@ export default async (request, context) => {
 
     if (action === "setDefaultHook") {
       const n = Number(body.hook);
-      if (!isFinite(n) || n < 1 || n > DEFAULT_HOOK_COUNT) {
+      if (!validHookNumber(n)) {
         return json({ ok: false, error: "invalid hook number" }, 400, cors);
       }
       const booking = typeof body.booking === "string" ? body.booking.trim() : "";
@@ -1083,6 +1094,10 @@ export default async (request, context) => {
         category: category,
         updatedAt: new Date().toISOString(),
       };
+      // Front store (2026-10-10): fixed place for every affiliate (0 =
+      // rotates) and the promotion's last day. Only changed when sent.
+      if (body.pin !== undefined) record.pin = cleanPin(body.pin);
+      if (typeof body.endDate === "string") record.endDate = cleanEndDate(body.endDate);
       // Event-only fields (see lib/hook-templates.js's event-flyer-v1) —
       // every one typed in directly, same optional/blank-if-unknown rule as
       // the property-only fields above. Saved regardless of `category` so
@@ -1114,6 +1129,17 @@ export default async (request, context) => {
       return json({ ok: true, hook: n, record: record }, 200, cors);
     }
 
+    if (action === "addDefaultHook") {
+      // "Add a hook" (2026-10-10): makes the next Default Hook number, so
+      // its card appears in admin. It shows on front stores once it has a
+      // booking or landing link.
+      const nums = await defaultHookNumbers();
+      const n = (nums.length ? nums[nums.length - 1] : 0) + 1;
+      if (!validHookNumber(n)) return json({ ok: false, error: "No more hooks can be added." }, 400, cors);
+      await hookStore.setJSON("__admin__:" + n, { createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+      return json({ ok: true, hook: n }, 200, cors);
+    }
+
     if (action === "clearDefaultHook") {
       // Resets a Default Hook slot back to empty (2026-09-23, per Jean: "a
       // button to clear a hook") — deletes its saved promo-hooks record
@@ -1136,7 +1162,7 @@ export default async (request, context) => {
       // hook's own PDF itself, via the same DELETE /api/hook-pdf call
       // "Remove PDF" already uses, before calling this action.
       const n = Number(body.hook);
-      if (!isFinite(n) || n < 1 || n > DEFAULT_HOOK_COUNT) {
+      if (!validHookNumber(n)) {
         return json({ ok: false, error: "invalid hook number" }, 400, cors);
       }
       const key = "__admin__:" + n;
@@ -1214,7 +1240,7 @@ export default async (request, context) => {
       // event-flyer-v1's images order (heroImage first, secondaryImage
       // second — see lib/hook-templates.js).
       const n = Number(body.hook);
-      if (!isFinite(n) || n < 1 || n > DEFAULT_HOOK_COUNT) {
+      if (!validHookNumber(n)) {
         return json({ ok: false, error: "invalid hook number" }, 400, cors);
       }
       const slot = body.slot === "secondary" ? "secondary" : "hero";
@@ -1261,7 +1287,7 @@ export default async (request, context) => {
       // design notes (cover-slot keying, gallery cleanup, AI-cache
       // invalidation) this used to carry inline.
       const n = Number(body.hook);
-      if (!isFinite(n) || n < 1 || n > DEFAULT_HOOK_COUNT) {
+      if (!validHookNumber(n)) {
         return json({ ok: false, error: "invalid hook number" }, 400, cors);
       }
       const urls = Array.isArray(body.urls)
@@ -1293,7 +1319,7 @@ export default async (request, context) => {
       // live. Saving an empty string clears the override, so the hook goes
       // back to using the shared default.
       const n = Number(body.hook);
-      if (!isFinite(n) || n < 1 || n > DEFAULT_HOOK_COUNT) {
+      if (!validHookNumber(n)) {
         return json({ ok: false, error: "invalid hook number" }, 400, cors);
       }
       const key = "__admin__:" + n;
@@ -1312,7 +1338,7 @@ export default async (request, context) => {
       // Canva API call. See lib/hook-flyer.js and lib/hook-flyer-svg.js for
       // the "nothing invented" resolution + rendering this delegates to.
       const n = Number(body.hook);
-      if (!isFinite(n) || n < 1 || n > DEFAULT_HOOK_COUNT) {
+      if (!validHookNumber(n)) {
         return json({ ok: false, error: "invalid hook number" }, 400, cors);
       }
       const key = "__admin__:" + n;
@@ -1622,10 +1648,11 @@ export default async (request, context) => {
         return !!(rec && typeof rec.booking === "string" && /^https?:\/\//i.test(rec.booking));
       }
 
-      // Read once up front since it's the same 6 admin records for every
+      // Read once up front since it's the same admin records for every
       // affiliate.
       const adminHasContent = {};
-      for (let n = 1; n <= DEFAULT_HOOK_COUNT; n++) {
+      const allHookNumbers = await defaultHookNumbers();
+      for (const n of allHookNumbers) {
         const rec = await hookStore.get("__admin__:" + n, { type: "json" });
         adminHasContent[n] = hasBookingLink(rec);
       }
@@ -1660,7 +1687,7 @@ export default async (request, context) => {
 
       await mapWithConcurrency(affIds, async (affId) => {
         await ensureOne(affId, "hub", origin + "/hub.html?aff=" + encodeURIComponent(affId));
-        for (let n = 1; n <= DEFAULT_HOOK_COUNT; n++) {
+        for (const n of allHookNumbers) {
           // Same mode/expiry resolution hook-api.js's GET uses (see
           // resolveHookMode): an affiliate who's explicitly switched this
           // hook to "Manage my own" gets their own booking/landing checked

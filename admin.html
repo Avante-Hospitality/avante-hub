@@ -912,6 +912,11 @@
         <button type="button" class="primary" id="openHookBuilderTop">Open the hook builder</button>
       </div>
       <div class="hook-grid" id="defaultHookGrid"></div>
+      <div class="card" style="margin:20px 0; text-align:center;">
+        <p class="modal-sub" style="margin:0 0 10px;">There's no limit on hooks. Front stores show 6 at a time (1 big, 2 medium, 3 small) and the rest take turns every few seconds, unless a hook is fixed in a place.</p>
+        <button type="button" class="primary" id="addDefaultHookBtn">+ Add a hook</button>
+        <div class="status" id="addDefaultHookStatus"></div>
+      </div>
       <!-- Shared across every hook card's Auto-build field — populated once
            from /api/resorts with every resort name plus every unique
            district, so typing "3 Malachite Mews" or "Knysna" both
@@ -4197,9 +4202,12 @@
     });
 
     // ---------- Default Hooks (admin fallback ad content) ----------
+    // Unlimited since 2026-10-10: the cards are built once the existing hook
+    // numbers are known (at least 1–6; "Add a hook" makes the next one).
+    fetch('/api/hook?numbers=1', { cache: 'no-store' }).then(function(r){ return r.json(); }).catch(function(){ return {}; }).then(function(numRes){
     (function(){
       var grid = document.getElementById('defaultHookGrid');
-      var HOOK_COUNT = 6;
+      var HOOK_COUNT = Math.max(6, (numRes && numRes.max) || 0);
       var IMAGE_MAX_BYTES = 4 * 1024 * 1024; // 4MB
       var ADMIN_AFF = '__admin__';
       var loaded = false;
@@ -4928,7 +4936,26 @@
               '<div class="hook-badge" style="margin-bottom:0;">Hook ' + i + '</div>' +
               '<button type="button" class="btn-danger btn-small" data-clear-hook="' + i + '">Clear hook</button>' +
             '</div>' +
-            '<label for="dh' + i + '-category" style="margin-top:0;">Hook type</label>' +
+            '<div class="dh-front" style="display:flex; gap:10px; flex-wrap:wrap; margin:10px 0 4px;">' +
+              '<div style="flex:1; min-width:150px;">' +
+                '<label for="dh' + i + '-pin" style="margin-top:0;">Place on front stores</label>' +
+                '<select id="dh' + i + '-pin">' +
+                  '<option value="0">Rotates with the others</option>' +
+                  '<option value="1">Fixed: level 1 (big, top)</option>' +
+                  '<option value="2">Fixed: level 2, left</option>' +
+                  '<option value="3">Fixed: level 2, right</option>' +
+                  '<option value="4">Fixed: level 3, left</option>' +
+                  '<option value="5">Fixed: level 3, middle</option>' +
+                  '<option value="6">Fixed: level 3, right</option>' +
+                '</select>' +
+              '</div>' +
+              '<div style="flex:1; min-width:150px;">' +
+                '<label for="dh' + i + '-endDate" style="margin-top:0;">Promotion ends</label>' +
+                '<input type="date" id="dh' + i + '-endDate">' +
+              '</div>' +
+            '</div>' +
+            '<div class="hint" style="margin-top:0;">Shows on front stores up to and including this day, then drops off by itself. Leave it empty to use the booking link\'s check-out date. An affiliate who manages this hook themselves can fix their own version in a place instead.</div>' +
+            '<label for="dh' + i + '-category">Hook type</label>' +
             '<select id="dh' + i + '-category" data-category-select="' + i + '">' +
               '<option value="property">Property / resort stay</option>' +
               '<option value="event">Event / festival</option>' +
@@ -5592,7 +5619,9 @@
         // plain caption/link edit with no Auto-build run this session
         // omits it entirely, so the server keeps whatever was last saved
         // instead of blanking it (see admin-api.js's setDefaultHook).
-        var savePayload = { hook: n, booking: booking, landing: landing, caption: caption, flyerPromoTag: flyerPromoTag, flyerPrice: flyerPrice, flyerDates: flyerDates, category: category };
+        var savePayload = { hook: n, booking: booking, landing: landing, caption: caption, flyerPromoTag: flyerPromoTag, flyerPrice: flyerPrice, flyerDates: flyerDates, category: category,
+          pin: Number(document.getElementById(p + 'pin').value) || 0,
+          endDate: document.getElementById(p + 'endDate').value || '' };
         for(var ek in eventFields){ savePayload[ek] = eventFields[ek]; }
         if(typeof defaultHookLocationLabel[n] === 'string') savePayload.locationLabel = defaultHookLocationLabel[n];
         adminPost('setDefaultHook', savePayload).then(function(res){
@@ -5646,6 +5675,8 @@
             document.getElementById('dh' + h.hook + '-flyerPromoTag').value = h.flyerPromoTag || '';
             document.getElementById('dh' + h.hook + '-flyerPrice').value = h.flyerPrice || '';
             document.getElementById('dh' + h.hook + '-flyerDates').value = h.flyerDates || '';
+            if(document.getElementById('dh' + h.hook + '-pin')) document.getElementById('dh' + h.hook + '-pin').value = String(h.pin || 0);
+            if(document.getElementById('dh' + h.hook + '-endDate')) document.getElementById('dh' + h.hook + '-endDate').value = h.endDate || '';
             document.getElementById('dh' + h.hook + '-category').value = h.category || 'property';
             document.getElementById('dh' + h.hook + '-eventNameLine1').value = h.eventNameLine1 || '';
             document.getElementById('dh' + h.hook + '-eventNameLine2').value = h.eventNameLine2 || '';
@@ -6146,7 +6177,37 @@
           });
         }
       });
+      // "+ Add a hook": makes the next hook number, then reloads so its
+      // card appears (the page comes back on this tab).
+      document.getElementById('addDefaultHookBtn').addEventListener('click', function(){
+        var btn = this, st = document.getElementById('addDefaultHookStatus');
+        btn.disabled = true;
+        st.className = 'status show'; st.textContent = 'Adding…';
+        adminPost('addDefaultHook', {}).then(function(res){
+          if(res.data && res.data.ok){
+            try{ sessionStorage.setItem('avante-open-panel', 'defaultHooks'); }catch(e){}
+            window.location.reload();
+          }else{
+            btn.disabled = false;
+            st.textContent = (res.data && res.data.error) || 'Could not add a hook.';
+          }
+        }).catch(function(){ btn.disabled = false; st.textContent = 'Could not reach the server — please try again.'; });
+      });
+
+      // Opened again after "Add a hook" reloaded the page.
+      try{
+        if(sessionStorage.getItem('avante-open-panel') === 'defaultHooks'){
+          sessionStorage.removeItem('avante-open-panel');
+          var dhTab = document.querySelector('.tab[data-panel="defaultHooks"]');
+          if(dhTab) dhTab.click();
+          setTimeout(function(){ var last = document.getElementById('dh' + HOOK_COUNT + '-booking'); if(last) last.scrollIntoView({ block: 'center' }); }, 600);
+        }else if(document.getElementById('panel-defaultHooks').classList.contains('active') && !loaded){
+          loadDefaultHooks();
+          loadEventThemeOptions();
+        }
+      }catch(e){}
     })();
+    });
 
   </script>
   <!--

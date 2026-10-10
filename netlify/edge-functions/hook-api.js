@@ -3,7 +3,7 @@ import { generateHashtags } from "./lib/hashtag-helper.js";
 import { resolveShortLink as resolveShortLinkShared, isShortLink } from "./lib/short-link.js";
 import { correctBookingLinkSiteId, ADMIN_MASTER_SITE_GUID, personalizeBookingLink, toHolidayBuilderUrl } from "./lib/booking-link.js";
 import { withTreePath } from "./lib/tree-place.js";
-import { resolveHookMode } from "./lib/hook-mode.js";
+import { resolveHookMode, adminHookNumbers, promotionEnd, promotionEnded, cleanPin, cleanEndDate, validHookNumber } from "./lib/hook-mode.js";
 import { buildHookDraft } from "./lib/hook-draft.js";
 import { saveHookPhotoUrls } from "./lib/hook-photos.js";
 import { defaultTemplateForCategory } from "./lib/hook-templates.js";
@@ -62,6 +62,116 @@ async function personalizeBooking(rawUrl, replacement) {
   return personalizeStockNetworkUrl(resolved, replacement);
 }
 
+// What an affiliate's storefront should show for hook `hook` — the
+// affiliate's own version while they manage it themselves (and its
+// promotion hasn't ended), otherwise admin's Default Hook, personalised
+// with the affiliate's own ID. null when there's nothing to show.
+// affRecordIn/adminRecordIn: already-loaded records (undefined = load).
+async function resolveHook(store, aff, hook, origin, affRecordIn, adminRecordIn) {
+  const key = aff + ":" + hook;
+  // GET — resolve what should actually be shown for this hook.
+  const affRecord = affRecordIn !== undefined ? affRecordIn : await store.get(key, { type: "json" });
+  const { mode, source, expired } = resolveHookMode(affRecord);
+
+  if (aff === ADMIN_KEY) {
+    // The admin's own default record — no resolution needed, just return
+    // it as-is, plus a `details` alias for the stored `source` metadata
+    // (Auto-build's property/area info) so hook-landing.html can read it
+    // the same way it does for every other caller below — without
+    // renaming or removing the existing `source` field, which already
+    // means something else (rich metadata, not admin/self routing) only
+    // on this raw admin record.
+    const data = affRecord ? { ...affRecord, details: affRecord.source || null } : null;
+    return data;
+  }
+
+  if (source === "admin") {
+    const adminRecord = adminRecordIn !== undefined ? adminRecordIn : await store.get(ADMIN_KEY + ":" + hook, { type: "json" });
+
+    let personalizedBooking = adminRecord ? adminRecord.booking || "" : "";
+    if (personalizedBooking) {
+      // Re-attribute the admin's placeholder booking link to whichever
+      // affiliate is actually viewing it, using their own real
+      // StockNetwork site GUID (`aff` — the same ID self-managed hooks
+      // already use directly as their booking link's site identifier;
+      // see the "Add Affiliate" modal, which requires this to match the
+      // affiliate's real Hub/StockNetwork ID exactly). Confirmed directly
+      // that StockNetwork's numeric "Site Nr" field (used elsewhere for
+      // CSV/leaderboard matching only) does NOT work as a /ui/<id> URL
+      // segment, so it must never be used here — only a real GUID does.
+      try {
+        personalizedBooking = await personalizeBooking(personalizedBooking, aff);
+        // A property link saved before the location tree gets its path.
+        personalizedBooking = await withTreePath(personalizedBooking, origin);
+      } catch (e) {
+        // Best-effort — fall back to the admin's link exactly as saved.
+      }
+    }
+
+    // "details" carries the real property/area info Auto-build scraped
+    // (name, description, attractions, room type) when this hook was
+    // built that way — used by the new hook-landing.html page for its
+    // "full details" view. Deliberately not called "source" here, since
+    // that name is already used below for the admin/self routing field.
+    const data = adminRecord
+      ? {
+          booking: personalizedBooking,
+          // A landing page from the hook builder (/l/<name>) opens with this
+          // affiliate's ID, so its Book now buttons credit them.
+          landing: withAffiliate(adminRecord.landing || "", aff),
+          caption: adminRecord.caption || "",
+          hashtags: adminRecord.hashtags || null,
+          galleryCount: adminRecord.galleryCount || 0,
+          details: adminRecord.source || null,
+          // Which area/town/suburb the property in this hook is in, set
+          // via the admin's Default Hooks location picker (see
+          // setDefaultHook in admin-api.js) — passed through as-is so a
+          // future caller (e.g. hook-landing.html or the Hub's Explore
+          // Map) can match or display it without a second lookup.
+          location: { label: adminRecord.locationLabel || "" },
+          flyerPromoTag: adminRecord.flyerPromoTag || "",
+          flyerPrice: adminRecord.flyerPrice || "",
+          flyerDates: adminRecord.flyerDates || "",
+          mode: mode,
+          source: "admin",
+          expired: expired,
+        }
+      : { mode: mode, source: "admin", expired: expired };
+    // If there's genuinely nothing to show (no admin default set either),
+    // return null so callers treat this hook slot as inactive — same as
+    // the old behaviour for an empty hook.
+    const hasContent = adminRecord && (adminRecord.booking || adminRecord.landing);
+    return hasContent ? data : null;
+  }
+
+  // source === "self". Auto-build is admin-only for now, so galleryCount/
+  // details will normally be absent here — passed through defensively
+  // for shape consistency with the admin branch above.
+  // Saved before the holiday builder switch (or the location tree)? Send
+  // it there, with the property's tree path.
+  const selfBooking = affRecord && affRecord.booking
+    ? await withTreePath(toHolidayBuilderUrl(affRecord.booking), origin).catch(() => toHolidayBuilderUrl(affRecord.booking))
+    : "";
+  const data = affRecord
+    ? {
+        booking: selfBooking,
+        landing: affRecord.landing || "",
+        caption: affRecord.caption || "",
+        hashtags: affRecord.hashtags || null,
+        galleryCount: affRecord.galleryCount || 0,
+        details: affRecord.source || null,
+        location: { label: affRecord.locationLabel || "" },
+        flyerPromoTag: affRecord.flyerPromoTag || "",
+        flyerPrice: affRecord.flyerPrice || "",
+        flyerDates: affRecord.flyerDates || "",
+        mode: mode,
+        source: "self",
+        expired: expired,
+      }
+    : null;
+  return data;
+}
+
 export default async (request, context) => {
   const cors = {
     "access-control-allow-origin": "*",
@@ -76,6 +186,79 @@ export default async (request, context) => {
   const url = new URL(request.url);
   const aff = (url.searchParams.get("aff") || "").trim();
   const hook = (url.searchParams.get("hook") || "").trim();
+
+  // GET /api/hook?numbers=1 — which Default Hook numbers exist (hooks are
+  // unlimited since 2026-10-10), so the admin and hub pages know how many
+  // hook cards to show. Not sensitive: just numbers.
+  if (request.method === "GET" && url.searchParams.has("numbers")) {
+    try {
+      const nums = await adminHookNumbers(getStore({ name: "promo-hooks", consistency: "strong" }));
+      return new Response(JSON.stringify({ ok: true, numbers: nums, max: nums.length ? nums[nums.length - 1] : 0 }), {
+        headers: { "content-type": "application/json", "cache-control": "no-store", ...cors },
+      });
+    } catch (e) {
+      return new Response(JSON.stringify({ ok: false, numbers: [], max: 0 }), { status: 500, headers: { "content-type": "application/json", ...cors } });
+    }
+  }
+
+  // GET /api/hook?aff=<id>&list=1 — every hook this affiliate's front
+  // store shows right now, resolved (their own version or admin's,
+  // personalised), with its fixed place (pin) — see lib/hook-mode.js for
+  // the rules. &all=1 also returns hidden and ended hooks, flagged, for
+  // the hub's own hook management.
+  if (request.method === "GET" && aff && url.searchParams.get("list") === "1") {
+    try {
+      const store = getStore({ name: "promo-hooks", consistency: "strong" });
+      const all = url.searchParams.get("all") === "1";
+      // Admin's hook numbers, plus any the affiliate manages themselves
+      // (so their own version stays even if admin removes that hook).
+      const nums = await adminHookNumbers(store);
+      if (aff !== ADMIN_KEY) {
+        const own = await store.list({ prefix: aff + ":" }).catch(() => ({ blobs: [] }));
+        for (const b of own.blobs || []) {
+          const n = validHookNumber(b.key.slice(aff.length + 1));
+          if (n && !nums.includes(n)) nums.push(n);
+        }
+        nums.sort((a, b) => a - b);
+      }
+      const rows = await Promise.all(nums.map(async (n) => {
+        const [adminRec, affRec] = await Promise.all([
+          store.get(ADMIN_KEY + ":" + n, { type: "json" }).catch(() => null),
+          aff === ADMIN_KEY ? Promise.resolve(null) : store.get(aff + ":" + n, { type: "json" }).catch(() => null),
+        ]);
+        const { mode, source, expired } = resolveHookMode(affRec);
+        const used = source === "self" ? affRec : adminRec;
+        const hidden = !!(affRec && affRec.hidden);
+        const ended = promotionEnded(used);
+        const data = aff === ADMIN_KEY ? null : await resolveHook(store, aff, String(n), url.origin, affRec, adminRec);
+        if (!all && (hidden || ended || !data)) return null;
+        if (!data && !all) return null;
+        const end = promotionEnd(used);
+        const title = used ? String(used.hookTitle || (used.caption || "").split("\n")[0] || "").slice(0, 90) : "";
+        return {
+          hook: n,
+          mode, source, expired, hidden, ended,
+          // A fixed place: admin's for its own hooks; the affiliate's only
+          // for a hook they manage themselves (which wins over admin's).
+          pin: source === "self" ? cleanPin(affRec && affRec.pin) : cleanPin(adminRec && adminRec.pin),
+          adminPin: cleanPin(adminRec && adminRec.pin),
+          ownPin: cleanPin(affRec && affRec.pin),
+          endDate: end ? end.toISOString().slice(0, 10) : "",
+          title,
+          imageAff: source === "self" ? aff : ADMIN_KEY,
+          ...(data || {}),
+        };
+      }));
+      return new Response(JSON.stringify({ ok: true, hooks: rows.filter(Boolean) }), {
+        headers: { "content-type": "application/json", "cache-control": "no-store", ...cors },
+      });
+    } catch (e) {
+      console.error("hook-api.js list:", String((e && e.message) || e));
+      return new Response(JSON.stringify({ ok: false, hooks: [], error: "Could not load the hooks — please try again." }), {
+        status: 500, headers: { "content-type": "application/json", ...cors },
+      });
+    }
+  }
 
   if (!aff || !hook) {
     return new Response(JSON.stringify({ error: "missing aff or hook" }), {
@@ -319,6 +502,12 @@ export default async (request, context) => {
       // this is only ever sent right after a fresh Auto-build draft; any
       // other save just keeps whatever was last set.
       if (typeof body.locationLabel === "string") record.locationLabel = body.locationLabel;
+      // Front store controls (2026-10-10, see lib/hook-mode.js): hide this
+      // hook on the affiliate's own front store; fix it to a place (only
+      // used while they manage it themselves); its promotion end date.
+      if (typeof body.hidden === "boolean") record.hidden = body.hidden;
+      if (body.pin !== undefined) record.pin = cleanPin(body.pin);
+      if (typeof body.endDate === "string") record.endDate = cleanEndDate(body.endDate);
       // Flyer-template-only fields (see lib/hook-templates.js) — price and
       // the promo banner/date range. StockNetwork has no static rate field
       // (price is dates-dependent) and the banner/dates are campaign-
@@ -360,109 +549,7 @@ export default async (request, context) => {
     }
 
     // GET — resolve what should actually be shown for this hook.
-    const affRecord = await store.get(key, { type: "json" });
-    const { mode, source, expired } = resolveHookMode(affRecord);
-
-    if (aff === ADMIN_KEY) {
-      // The admin's own default record — no resolution needed, just return
-      // it as-is, plus a `details` alias for the stored `source` metadata
-      // (Auto-build's property/area info) so hook-landing.html can read it
-      // the same way it does for every other caller below — without
-      // renaming or removing the existing `source` field, which already
-      // means something else (rich metadata, not admin/self routing) only
-      // on this raw admin record.
-      const data = affRecord ? { ...affRecord, details: affRecord.source || null } : null;
-      return new Response(JSON.stringify(data), {
-        headers: { "content-type": "application/json", ...cors },
-      });
-    }
-
-    if (source === "admin") {
-      const adminRecord = await store.get(ADMIN_KEY + ":" + hook, { type: "json" });
-
-      let personalizedBooking = adminRecord ? adminRecord.booking || "" : "";
-      if (personalizedBooking) {
-        // Re-attribute the admin's placeholder booking link to whichever
-        // affiliate is actually viewing it, using their own real
-        // StockNetwork site GUID (`aff` — the same ID self-managed hooks
-        // already use directly as their booking link's site identifier;
-        // see the "Add Affiliate" modal, which requires this to match the
-        // affiliate's real Hub/StockNetwork ID exactly). Confirmed directly
-        // that StockNetwork's numeric "Site Nr" field (used elsewhere for
-        // CSV/leaderboard matching only) does NOT work as a /ui/<id> URL
-        // segment, so it must never be used here — only a real GUID does.
-        try {
-          personalizedBooking = await personalizeBooking(personalizedBooking, aff);
-          // A property link saved before the location tree gets its path.
-          personalizedBooking = await withTreePath(personalizedBooking, new URL(request.url).origin);
-        } catch (e) {
-          // Best-effort — fall back to the admin's link exactly as saved.
-        }
-      }
-
-      // "details" carries the real property/area info Auto-build scraped
-      // (name, description, attractions, room type) when this hook was
-      // built that way — used by the new hook-landing.html page for its
-      // "full details" view. Deliberately not called "source" here, since
-      // that name is already used below for the admin/self routing field.
-      const data = adminRecord
-        ? {
-            booking: personalizedBooking,
-            // A landing page from the hook builder (/l/<name>) opens with this
-            // affiliate's ID, so its Book now buttons credit them.
-            landing: withAffiliate(adminRecord.landing || "", aff),
-            caption: adminRecord.caption || "",
-            hashtags: adminRecord.hashtags || null,
-            galleryCount: adminRecord.galleryCount || 0,
-            details: adminRecord.source || null,
-            // Which area/town/suburb the property in this hook is in, set
-            // via the admin's Default Hooks location picker (see
-            // setDefaultHook in admin-api.js) — passed through as-is so a
-            // future caller (e.g. hook-landing.html or the Hub's Explore
-            // Map) can match or display it without a second lookup.
-            location: { label: adminRecord.locationLabel || "" },
-            flyerPromoTag: adminRecord.flyerPromoTag || "",
-            flyerPrice: adminRecord.flyerPrice || "",
-            flyerDates: adminRecord.flyerDates || "",
-            mode: mode,
-            source: "admin",
-            expired: expired,
-          }
-        : { mode: mode, source: "admin", expired: expired };
-      // If there's genuinely nothing to show (no admin default set either),
-      // return null so callers treat this hook slot as inactive — same as
-      // the old behaviour for an empty hook.
-      const hasContent = adminRecord && (adminRecord.booking || adminRecord.landing);
-      return new Response(JSON.stringify(hasContent ? data : null), {
-        headers: { "content-type": "application/json", ...cors },
-      });
-    }
-
-    // source === "self". Auto-build is admin-only for now, so galleryCount/
-    // details will normally be absent here — passed through defensively
-    // for shape consistency with the admin branch above.
-    // Saved before the holiday builder switch (or the location tree)? Send
-    // it there, with the property's tree path.
-    const selfBooking = affRecord && affRecord.booking
-      ? await withTreePath(toHolidayBuilderUrl(affRecord.booking), new URL(request.url).origin).catch(() => toHolidayBuilderUrl(affRecord.booking))
-      : "";
-    const data = affRecord
-      ? {
-          booking: selfBooking,
-          landing: affRecord.landing || "",
-          caption: affRecord.caption || "",
-          hashtags: affRecord.hashtags || null,
-          galleryCount: affRecord.galleryCount || 0,
-          details: affRecord.source || null,
-          location: { label: affRecord.locationLabel || "" },
-          flyerPromoTag: affRecord.flyerPromoTag || "",
-          flyerPrice: affRecord.flyerPrice || "",
-          flyerDates: affRecord.flyerDates || "",
-          mode: mode,
-          source: "self",
-          expired: expired,
-        }
-      : null;
+    const data = await resolveHook(store, aff, hook, url.origin);
     return new Response(JSON.stringify(data), {
       headers: { "content-type": "application/json", ...cors },
     });

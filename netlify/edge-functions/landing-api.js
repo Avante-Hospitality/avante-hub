@@ -16,6 +16,7 @@
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
 import { ADMIN_MASTER_SITE_GUID, correctBookingLinkSiteId, holidayBuilderUrl } from "./lib/booking-link.js";
 import { propertyTreeOpts, withTreePath } from "./lib/tree-place.js";
+import { adminHookNumbers, validHookNumber, cleanEndDate } from "./lib/hook-mode.js";
 import { isShortLink, resolveShortLink } from "./lib/short-link.js";
 import { generateHashtags } from "./lib/hashtag-helper.js";
 import { AI_SCAN_CACHE_FIELDS_CLEARED } from "./lib/record-merge.js";
@@ -114,22 +115,34 @@ export default async (request) => {
   if (b.op === "slots" || b.op === "toHook") {
     if (owner.role !== "admin") return json({ ok: false, error: "Only Avante admin can change the Default Hooks." }, 403);
     const hooks = getStore({ name: "promo-hooks", consistency: "strong" });
+    // Default Hooks are unlimited (2026-10-10): every existing one (at
+    // least 1–6), plus the next number as a new hook.
+    const numbers = async () => {
+      const set = new Set(await adminHookNumbers(hooks).catch(() => []));
+      for (let n = 1; n <= DEFAULT_HOOK_COUNT; n++) set.add(n);
+      return [...set].sort((a, c) => a - c);
+    };
     if (b.op === "slots") {
       const slots = [];
-      for (let n = 1; n <= DEFAULT_HOOK_COUNT; n++) {
+      const nums = await numbers();
+      for (const n of nums) {
         const r = await hooks.get("__admin__:" + n, { type: "json" }).catch(() => null);
         slots.push({ hook: n, title: r ? str(r.hookTitle || (r.caption || "").split("\n")[0], 70) : "", landing: r ? r.landing || "" : "", used: !!(r && (r.booking || r.landing || r.caption)), updatedAt: r ? r.updatedAt || null : null });
       }
+      slots.push({ hook: nums[nums.length - 1] + 1, title: "", landing: "", used: false, updatedAt: null, isNew: true });
       return json({ ok: true, slots });
     }
     const n = Number(b.hook);
-    if (!Number.isInteger(n) || n < 1 || n > DEFAULT_HOOK_COUNT) return json({ ok: false, error: "Pick Default Hook 1 to " + DEFAULT_HOOK_COUNT + "." }, 400);
+    const nums = await numbers();
+    if (!validHookNumber(n) || n > nums[nums.length - 1] + 1) return json({ ok: false, error: "Pick one of the Default Hooks, or a new one." }, 400);
     const lslug = str(b.slug, 60).toLowerCase();
     const lp = SLUG_RE.test(lslug) ? await store.get(lslug, { type: "json" }) : null;
     if (!lp || !lp.current) return json({ ok: false, error: "Publish the landing page first." }, 400);
     const c = lp.current, key = "__admin__:" + n, now = new Date().toISOString();
     const existing = (await hooks.get(key, { type: "json" }).catch(() => null)) || {};
     const fields = { landing: PUBLIC_HOST + "/l/" + lslug, landingSlug: lslug, hookTitle: c.title || "", updatedAt: now, galleryCount: 0, source: null,
+      // The landing page's end date is the hook's promotion end (front store).
+      ...(cleanEndDate(c.endDate || "") ? { endDate: cleanEndDate(c.endDate) } : {}),
       category: c.kind === "event" ? "event" : "property", flyerDates: c.dates || "" };
     // Book now: everything available for the hook's dates (a property hook:
     // that property), under the placeholder ID hook-api.js swaps per affiliate.

@@ -175,6 +175,17 @@
   .feature .btn-quiet:hover{ background:rgba(255,255,255,.08); }
 
   .offer-grid{ display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:22px; }
+  /* The 6 places: level 2 (two medium offers, flyer beside the text) and
+     level 3 (three smaller offers). Places swap with a short fade. */
+  .level{ display:grid; grid-template-columns:repeat(var(--cols, 3), minmax(0, 1fr)); gap:22px; margin-bottom:22px; }
+  .place{ transition:opacity .35s ease; }
+  .place.swapping{ opacity:0; }
+  .offer-l2{ display:grid; grid-template-columns:minmax(0, 2fr) minmax(0, 3fr); gap:18px; align-items:center; background:var(--mint); border:1.5px solid var(--line); border-radius:16px; padding:14px; }
+  .offer-l2 .offer-text{ display:flex; flex-direction:column; gap:6px; }
+  .offer-l2 .offer-text h3{ font-size:19px; }
+  .offer-text .tag{ align-self:flex-start; font-family:'Montserrat',sans-serif; font-weight:700; font-size:12px; color:var(--navy); background:var(--teal); border-radius:100px; padding:4px 10px; }
+  .offer .offer-text .actions{ margin-top:10px; }
+  .flyer-frame.noimg{ display:none; }
   .offer{ display:flex; flex-direction:column; gap:12px; }
   .offer-text h3{ font-size:16.5px; color:var(--navy); margin:0; line-height:1.3; font-weight:700; }
   .offer-text .place{ color:var(--muted-ink); font-size:13.5px; margin:3px 0 0; }
@@ -214,19 +225,24 @@
 
   @media (max-width:980px){
     .offer-grid{ grid-template-columns:repeat(2, minmax(0, 1fr)); }
+    .level3{ grid-template-columns:repeat(min(var(--cols, 3), 2), minmax(0, 1fr)); }
     .more{ grid-template-columns:1fr; }
   }
   @media (max-width:720px){
     .feature{ grid-template-columns:1fr; }
+    .level2{ grid-template-columns:1fr; }
     .feature-body{ padding:24px 20px 26px; }
     .offers-head h1{ font-size:23px; }
     .panel-box{ padding:20px 18px; }
   }
   @media (max-width:520px){
     .offer-grid{ grid-template-columns:1fr; }
+    .level3{ grid-template-columns:1fr; }
+    .offer-l2{ grid-template-columns:1fr; }
   }
   @media (prefers-reduced-motion: reduce){
     .flyer-frame img{ transition:none; }
+    .place{ transition:none; }
   }
 
   .placeholder{
@@ -849,7 +865,6 @@
 
     // ---------- Offers (promotions) ----------
     var content = document.getElementById('content');
-    var HOOK_COUNT = 6;
 
     function escapeHtml(s){
       var d = document.createElement('div');
@@ -914,85 +929,152 @@
       return h;
     }
     function flyer(r, info, eager){
-      return '<div class="flyer-frame"><img class="flyer" id="promoImg' + r.n + '" alt="' + escapeHtml(info.name ? info.name + ' offer flyer' : 'Holiday offer flyer') + '"' + (eager ? '' : ' loading="lazy"') + '></div>';
+      return '<div class="flyer-frame"><img class="flyer" alt="' + escapeHtml(info.name ? info.name + ' offer flyer' : 'Holiday offer flyer') + '"' + (eager ? '' : ' loading="lazy"') + '></div>';
+    }
+
+    // ---------- The 6 places and the rotation (Jean, 2026-10-10) ----------
+    // Place 1 is level 1 (the big one), places 2–3 level 2, places 4–6
+    // level 3. A hook fixed to a place stays there; all the others take
+    // turns in the free places, one place changing every few seconds while
+    // someone is looking. The affiliate's own fixed hooks win over admin's.
+    var PLACES = 6;
+    var ROTATE_MS = 6000;
+    var LEVEL_OF = [1, 2, 2, 3, 3, 3];
+
+    // Pure placement: which hook sits in which place first, and which wait
+    // their turn. hooks: [{ n, pin, source, ... }] in hook order.
+    function planPlaces(hooks){
+      var count = Math.min(PLACES, hooks.length);
+      var places = [];
+      for(var i = 0; i < count; i++) places.push(null);
+      var fixed = {};
+      hooks.filter(function(h){ return h.pin >= 1 && h.pin <= count; })
+        .sort(function(a, b){ return ((b.source === 'self') - (a.source === 'self')) || (a.n - b.n); })
+        .forEach(function(h){ if(!places[h.pin - 1]){ places[h.pin - 1] = h; fixed[h.n] = 1; } });
+      var pool = hooks.filter(function(h){ return !fixed[h.n]; });
+      var free = [];
+      for(var j = 0; j < count; j++){ if(!places[j]){ places[j] = pool.shift(); free.push(j); } }
+      return { places: places, free: free, queue: pool };
+    }
+    window.__planPlaces = planPlaces; // for testing
+
+    function renderPlace(i, r){
+      var info = describe(r.data), lvl = LEVEL_OF[i];
+      var title = info.name ? escapeHtml(info.name) : 'Holiday offer';
+      if(lvl === 1){
+        return flyer(r, info, true) +
+          '<div class="feature-body">' +
+            (info.tag ? '<span class="feature-kicker">' + escapeHtml(info.tag) + '</span>' : '') +
+            '<h2>' + (info.name ? title : 'This week’s pick') + '</h2>' +
+            (info.place ? '<p class="place">' + escapeHtml(info.place) + '</p>' : '') +
+            (info.blurb ? '<p class="blurb">' + escapeHtml(info.blurb) + '</p>' : '') +
+            (info.dates ? '<div class="dates">' + escapeHtml(info.dates) + '</div>' : '') +
+            (info.price ? '<p class="blurb">' + escapeHtml(info.price) + '</p>' : '') +
+            '<div class="actions">' + offerActions(r, info) + '</div>' +
+          '</div>';
+      }
+      return flyer(r, info, i < 3) +
+        '<div class="offer-text">' +
+          (info.tag && lvl === 2 ? '<span class="tag">' + escapeHtml(info.tag) + '</span>' : '') +
+          (info.name ? '<h3>' + title + '</h3>' : '') +
+          (info.place ? '<p class="place">' + escapeHtml(info.place) + '</p>' : '') +
+          (info.dates ? '<p class="dates">' + escapeHtml(info.dates) + '</p>' : '') +
+          '<div class="actions">' + offerActions(r, info) + '</div>' +
+        '</div>';
+    }
+
+    function loadFlyer(el, r){
+      var img = el.querySelector('img.flyer');
+      if(!img) return;
+      img.onload = function(){ img.classList.add('show'); };
+      img.onerror = function(){ img.parentNode.classList.add('noimg'); };
+      // Admin's version uses admin's picture (stored under "__admin__").
+      img.src = '/api/hook-image?aff=' + encodeURIComponent(r.data.imageAff || (r.data.source === 'self' ? aff : '__admin__')) + '&hook=' + r.n;
     }
 
     function renderOffers(active){
-      var infos = active.map(function(r){ return describe(r.data); });
-      var lead = active[0], leadInfo = infos[0];
-      var h = '';
-
-      h += '<article class="feature">' + flyer(lead, leadInfo, true) +
-        '<div class="feature-body">' +
-          (leadInfo.tag ? '<span class="feature-kicker">' + escapeHtml(leadInfo.tag) + '</span>' : '') +
-          (leadInfo.name ? '<h2>' + escapeHtml(leadInfo.name) + '</h2>' : '<h2>This week’s pick</h2>') +
-          (leadInfo.place ? '<p class="place">' + escapeHtml(leadInfo.place) + '</p>' : '') +
-          (leadInfo.blurb ? '<p class="blurb">' + escapeHtml(leadInfo.blurb) + '</p>' : '') +
-          (leadInfo.dates ? '<div class="dates">' + escapeHtml(leadInfo.dates) + '</div>' : '') +
-          (leadInfo.price ? '<p class="blurb">' + escapeHtml(leadInfo.price) + '</p>' : '') +
-          '<div class="actions">' + offerActions(lead, leadInfo) + '</div>' +
-        '</div></article>';
-
-      if(active.length > 1){
-        h += '<div class="offer-grid">';
-        active.slice(1).forEach(function(r, i){
-          var info = infos[i + 1];
-          h += '<article class="offer">' + flyer(r, info, false) +
-            '<div class="offer-text">' +
-              (info.name ? '<h3>' + escapeHtml(info.name) + '</h3>' : '') +
-              (info.place ? '<p class="place">' + escapeHtml(info.place) + '</p>' : '') +
-              (info.dates ? '<p class="dates">' + escapeHtml(info.dates) + '</p>' : '') +
-            '</div>' +
-            '<div class="actions">' + offerActions(r, info) + '</div>' +
-          '</article>';
-        });
+      var plan = planPlaces(active);
+      var count = plan.places.length;
+      var lv2 = Math.max(0, Math.min(2, count - 1)), lv3 = Math.max(0, count - 3);
+      var h = '<article class="feature place" data-place="0"></article>';
+      if(lv2){
+        h += '<div class="level level2" style="--cols:' + lv2 + '">';
+        for(var a = 1; a <= lv2; a++) h += '<article class="offer offer-l2 place" data-place="' + a + '"></article>';
+        h += '</div>';
+      }
+      if(lv3){
+        h += '<div class="level level3" style="--cols:' + lv3 + '">';
+        for(var b = 3; b < 3 + lv3; b++) h += '<article class="offer place" data-place="' + b + '"></article>';
         h += '</div>';
       }
       content.innerHTML = h;
+      var els = content.querySelectorAll('.place');
+      plan.places.forEach(function(r, i){
+        els[i].innerHTML = renderPlace(i, r);
+        loadFlyer(els[i], r);
+      });
 
       var countEl = document.getElementById('offersCount');
       countEl.textContent = active.length === 1 ? '1 offer' : active.length + ' offers';
       countEl.hidden = false;
 
+      startRotation(plan, els);
+      renderMore(active);
+    }
+
+    // One free place changes per tick, in turn; the hook it showed goes to
+    // the back of the queue. Pauses while the visitor points at or tabs
+    // into an offer, has Full details open, or the page isn't visible.
+    var rotationTimer = null;
+    function startRotation(plan, els){
+      if(rotationTimer) clearInterval(rotationTimer);
+      if(!plan.queue.length || !plan.free.length) return;
+      var paused = false, turn = 0;
+      content.addEventListener('mouseenter', function(){ paused = true; });
+      content.addEventListener('mouseleave', function(){ paused = false; });
+      content.addEventListener('focusin', function(){ paused = true; });
+      content.addEventListener('focusout', function(){ paused = false; });
+      var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      rotationTimer = setInterval(function(){
+        if(paused || document.hidden || bookingModalOverlay.classList.contains('show')) return;
+        var i = plan.free[turn % plan.free.length];
+        turn++;
+        var incoming = plan.queue.shift();
+        plan.queue.push(plan.places[i]);
+        plan.places[i] = incoming;
+        var el = els[i];
+        var swap = function(){
+          el.innerHTML = renderPlace(i, incoming);
+          loadFlyer(el, incoming);
+          el.classList.remove('swapping');
+        };
+        if(reduce){ swap(); return; }
+        el.classList.add('swapping');
+        setTimeout(swap, 350);
+      }, reduce ? ROTATE_MS * 1.5 : ROTATE_MS);
+    }
+
+    // Book and Full details, for whatever is in the places right now.
+    content.addEventListener('click', function(e){
+      var a = e.target.closest && e.target.closest('a[data-book], a[data-details]');
+      if(!a) return;
+      var url = a.getAttribute('href');
+      if(!url) return;
+      if(a.hasAttribute('data-details')){
+        e.preventDefault();
+        openBookingModal(url);
+        return;
+      }
       // Book: on the storefront, try a real new tab first; if the browser
       // blocks it, open in this page instead of doing nothing. In the
       // holiday builder (embed) the plain target="_top" link does the job.
-      if(!isEmbed){
-        content.querySelectorAll('[data-book]').forEach(function(a){
-          a.addEventListener('click', function(e){
-            var url = a.getAttribute('href');
-            if(!url){ return; }
-            e.preventDefault();
-            var win = null;
-            try{ win = window.open(url, '_blank'); }catch(err){ win = null; }
-            if(win){ try{ win.opener = null; }catch(err){} }
-            else { window.location.href = url; }
-          });
-        });
-      }
-      // Full details opens in the in-page panel.
-      content.querySelectorAll('[data-details]').forEach(function(a){
-        a.addEventListener('click', function(e){
-          var url = a.getAttribute('href');
-          if(!url){ return; }
-          e.preventDefault();
-          openBookingModal(url);
-        });
-      });
-
-      active.forEach(function(r){
-        var img = document.getElementById('promoImg' + r.n);
-        img.onload = function(){ img.classList.add('show'); };
-        img.onerror = function(){ img.parentNode.style.display = 'none'; };
-        // Admin-managed (or expired self-managed) hooks show the admin's
-        // image, which is stored under the reserved "__admin__" key —
-        // not this affiliate's own ID.
-        var imgAff = (r.data.source === 'admin') ? '__admin__' : aff;
-        img.src = '/api/hook-image?aff=' + encodeURIComponent(imgAff) + '&hook=' + r.n;
-      });
-
-      renderMore(active);
-    }
+      if(isEmbed) return;
+      e.preventDefault();
+      var win = null;
+      try{ win = window.open(url, '_blank'); }catch(err){ win = null; }
+      if(win){ try{ win.opener = null; }catch(err){} }
+      else { window.location.href = url; }
+    });
 
     // "Search a place": the towns and regions of the offers on show, each
     // a link down the location tree (country › province › region › city),
@@ -1058,21 +1140,16 @@
     if(!aff){
       renderMessage('This link is incomplete', 'Check the link you were given, or ask the person who shared it for a new one.');
     } else {
-      var requests = [];
-      for(var i = 1; i <= HOOK_COUNT; i++){
-        (function(n){
-          requests.push(
-            fetch('/api/hook?aff=' + encodeURIComponent(aff) + '&hook=' + n)
-              .then(function(r){ return r.json(); })
-              .then(function(data){ return { n: n, data: data }; })
-              .catch(function(){ return { n: n, data: null }; })
-          );
-        })(i);
-      }
-
-      Promise.all(requests).then(function(results){
-        var active = results.filter(function(r){
-          return r.data && (isSafeUrl(r.data.booking) || isSafeUrl(r.data.landing));
+      // Every hook on this front store right now, with fixed places — see
+      // /api/hook?list=1 (hidden and ended hooks are already left out).
+      fetch('/api/hook?aff=' + encodeURIComponent(aff) + '&list=1', { cache: 'no-store' })
+        .then(function(r){ return r.json(); })
+        .catch(function(){ return { hooks: [] }; })
+        .then(function(res){
+        var active = ((res && res.hooks) || []).map(function(h){
+          return { n: h.hook, pin: h.pin || 0, source: h.source, data: h };
+        }).filter(function(r){
+          return isSafeUrl(r.data.booking) || isSafeUrl(r.data.landing);
         });
         // Saved before the holiday builder switch? Book through it anyway.
         active.forEach(function(r){ if(r.data.booking) r.data.booking = AvanteBooking.convert(r.data.booking); });

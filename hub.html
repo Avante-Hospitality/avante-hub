@@ -1668,7 +1668,7 @@
                 <p>Underneath the Save button is <strong>Who manages this hook?</strong> with two options:</p>
                 <p><strong>Manage my own</strong> — this hook stays exactly as you set it up, until you change it yourself.</p>
                 <p><strong>Let admin manage</strong> — this hook automatically shows whatever ad Avante Travel's admin has set as the current default for that hook slot. This is the default setting for every hook, so if you never touch this toggle, it's already switched on.</p>
-                <p>You can set this individually for each of your 6 hooks — for example, keep Hook 1 as your own promo for a resort you love, while Hooks 2 through 6 stay on "Let admin manage" and update automatically whenever admin refreshes them. There's no need to check back — a change to the admin's version appears on your storefront right away.</p>
+                <p>You can set this individually for each hook — for example, keep Hook 1 as your own promo for a resort you love and fix it at the top of your front store, while the others stay on "Let admin manage" and update automatically whenever admin refreshes them. Your front store shows 6 hooks at a time (1 big, 2 medium, 3 small) and the rest take turns every few seconds. Untick <strong>Show on my front store</strong> on any hook you don't want shown.</p>
               </div>
             </div>
 
@@ -3177,9 +3177,16 @@
     })();
 
     // ---------- Home: Promo Hooks ----------
+    // Hooks are unlimited since 2026-10-10: one card per Default Hook
+    // number (at least 1–6), built once the numbers are known.
+    window.HUB_HOOKS_READY = fetch('/api/hook?numbers=1', { cache: 'no-store' })
+      .then(function(r){ return r.json(); })
+      .catch(function(){ return {}; })
+      .then(function(numRes){ return Math.max(6, (numRes && numRes.max) || 0); });
+    window.HUB_HOOKS_READY.then(function(HOOK_COUNT_N){
     (function(){
       var grid = document.getElementById('hook-grid');
-      var HOOK_COUNT = 6;
+      var HOOK_COUNT = HOOK_COUNT_N;
       var html = '';
       for(var i = 1; i <= HOOK_COUNT; i++){
         html +=
@@ -3256,12 +3263,41 @@
               '<button type="button" class="btn-outline" style="width:100%;" data-fbpost="' + i + '">📣 Post to Facebook (Avante Travel Page)</button>' +
               '<div class="status" id="h' + i + '-fbpostStatus"></div>' +
             '</div>' +
+            // Front store controls (2026-10-10): show/hide this hook on your
+            // own front store; and, while you manage it yourself, fix it in
+            // a place and set when its promotion ends.
+            '<label class="hook-show" style="display:flex; align-items:center; gap:8px; margin:14px 0 0; font-weight:600;">' +
+              '<input type="checkbox" id="h' + i + '-show" data-front-show="' + i + '" checked style="width:auto; margin:0;"> Show on my front store' +
+            '</label>' +
+            '<div class="hint" id="h' + i + '-showNote" style="margin-top:2px;">Untick to hide this hook from your front store.</div>' +
             '<div class="hook-mode-label">Who manages this hook?</div>' +
             '<div class="hook-mode-toggle" data-mode-toggle="' + i + '">' +
               '<button type="button" class="hook-mode-btn" data-mode-btn="' + i + '" data-mode-value="self">Manage my own</button>' +
               '<button type="button" class="hook-mode-btn" data-mode-btn="' + i + '" data-mode-value="admin">Let admin manage</button>' +
             '</div>' +
             '<div class="hook-mode-note" id="h' + i + '-modeNote"></div>' +
+            '<div data-self-n="' + i + '" class="hook-front-self" style="margin-top:10px;">' +
+              '<div style="display:flex; gap:10px; flex-wrap:wrap;">' +
+                '<div style="flex:1; min-width:150px;">' +
+                  '<label for="h' + i + '-pin" style="margin-top:0;">Place on my front store</label>' +
+                  '<select id="h' + i + '-pin" data-front-pin="' + i + '">' +
+                    '<option value="0">Rotates with the others</option>' +
+                    '<option value="1">Fixed: level 1 (big, top)</option>' +
+                    '<option value="2">Fixed: level 2, left</option>' +
+                    '<option value="3">Fixed: level 2, right</option>' +
+                    '<option value="4">Fixed: level 3, left</option>' +
+                    '<option value="5">Fixed: level 3, middle</option>' +
+                    '<option value="6">Fixed: level 3, right</option>' +
+                  '</select>' +
+                '</div>' +
+                '<div style="flex:1; min-width:150px;">' +
+                  '<label for="h' + i + '-endDate" style="margin-top:0;">Promotion ends</label>' +
+                  '<input type="date" id="h' + i + '-endDate" data-front-end="' + i + '">' +
+                '</div>' +
+              '</div>' +
+              '<div class="hint">A fixed hook stays in its place until its promotion ends; then admin\'s version of this hook comes back and takes turns with the others. Empty date: your booking link\'s check-out date is used.</div>' +
+              '<div class="status" id="h' + i + '-frontStatus"></div>' +
+            '</div>' +
             '<div class="hook-admin-preview" id="h' + i + '-adminPreview" style="display:none;">' +
             '<div class="hint">This hook is admin-managed — here\'s exactly what shows on your storefront:</div>' +
             '<div class="hook-image-wrap"><img class="hook-image" id="h' + i + '-previewImage" alt="Storefront preview"><div class="hook-placeholder" id="h' + i + '-previewPlaceholder">No image set yet</div></div>' +
@@ -4806,7 +4842,49 @@
           e.target.value = '';
         }
       });
+      // ---- Front store controls: show/hide, fixed place, promotion end ----
+      function saveFront(n, body, statusEl){
+        if(!AFF_ID) return;
+        if(statusEl){ statusEl.className = 'status show'; statusEl.textContent = 'Saving…'; }
+        fetch('/api/hook?aff=' + encodeURIComponent(AFF_ID) + '&hook=' + encodeURIComponent(n), {
+          method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body)
+        }).then(function(r){ return r.json(); }).then(function(d){
+          if(statusEl) statusEl.textContent = (d && d.ok) ? 'Saved.' : ((d && d.error) || 'Could not save.');
+        }).catch(function(){ if(statusEl) statusEl.textContent = 'Could not reach the server — please try again.'; });
+      }
+      grid.addEventListener('change', function(e){
+        var t = e.target, n;
+        if((n = t.getAttribute('data-front-show'))){
+          var note = document.getElementById('h' + n + '-showNote');
+          saveFront(n, { hidden: !t.checked }, null);
+          if(note) note.textContent = t.checked ? 'Untick to hide this hook from your front store.' : 'Hidden: this hook doesn\'t show on your front store.';
+        }else if((n = t.getAttribute('data-front-pin'))){
+          saveFront(n, { pin: Number(t.value) || 0 }, document.getElementById('h' + n + '-frontStatus'));
+        }else if((n = t.getAttribute('data-front-end'))){
+          saveFront(n, { endDate: t.value || '' }, document.getElementById('h' + n + '-frontStatus'));
+        }
+      });
+      // Current settings for every hook (hidden ones included).
+      if(AFF_ID){
+        fetch('/api/hook?aff=' + encodeURIComponent(AFF_ID) + '&list=1&all=1', { cache: 'no-store' })
+          .then(function(r){ return r.json(); })
+          .then(function(res){
+            ((res && res.hooks) || []).forEach(function(h){
+              var show = document.getElementById('h' + h.hook + '-show');
+              if(show){
+                show.checked = !h.hidden;
+                var note = document.getElementById('h' + h.hook + '-showNote');
+                if(note && h.hidden) note.textContent = 'Hidden: this hook doesn\'t show on your front store.';
+              }
+              var pin = document.getElementById('h' + h.hook + '-pin');
+              if(pin) pin.value = String(h.ownPin || 0);
+              var end = document.getElementById('h' + h.hook + '-endDate');
+              if(end && h.source === 'self') end.value = h.endDate || '';
+            });
+          }).catch(function(){});
+      }
     })();
+    });
 
   </script>
   <!--
@@ -4943,7 +5021,7 @@
       var embedBtnRow = document.querySelector('#embedLinkBox .btn-row');
       LinkShortener.attach(embedBtnRow, textOf('embedUrl'));
 
-      var HOOK_COUNT = 6;
+      window.HUB_HOOKS_READY.then(function(HOOK_COUNT){
       for(var i = 1; i <= HOOK_COUNT; i++){
         (function(n){
           var bookingRow = document.querySelector('#h' + n + '-bookingRow .btn-row');
@@ -4956,6 +5034,7 @@
           LinkShortener.attach(clientRow, textOf('h' + n + '-clientUrl'));
         })(i);
       }
+      });
     })();
 
     // ---------- Your Short Links (per-affiliate list) ----------
