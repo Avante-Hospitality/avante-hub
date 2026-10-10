@@ -25,12 +25,17 @@ export default async (request) => {
       getAuth: (aff) => getStore({ name: "affiliate-auth", consistency: "strong" }).get(aff, { type: "json" }),
       getProfile: (aff) => getStore({ name: "affiliates-directory", consistency: "strong" }).get(aff, { type: "json" }),
     },
-    sendEmail: async (to, subject, html) => {
+    // Guest emails go out under the property's name, with replies going to
+    // the property's own email address (opts.fromName / opts.replyTo).
+    sendEmail: async (to, subject, html, opts = {}) => {
       const key = env("RESEND_API_KEY");
       if (!key || !to) return false;
+      const name = String(opts.fromName || "").replace(/[\r\n"<>]/g, "").trim().slice(0, 80);
+      const msg = { from: (name ? '"' + name + '"' : "Avante Travel") + " <bookings@go.avantetravel.co.za>", to: [to], subject, html };
+      if (opts.replyTo) msg.reply_to = [opts.replyTo];
       try {
         const r = await fetch("https://api.resend.com/emails", { method: "POST", headers: { authorization: "Bearer " + key, "content-type": "application/json" },
-          body: JSON.stringify({ from: "Avante Travel <bookings@go.avantetravel.co.za>", to: [to], subject, html }) });
+          body: JSON.stringify(msg) });
         return r.ok;
       } catch (_) { return false; }
     },
@@ -74,6 +79,9 @@ export default async (request) => {
       case "saveMessages": return json(Object.assign({ ok: true }, await core.saveMessages(prop, body)));
       case "prepareMessage": return json(Object.assign({ ok: true }, await core.prepareMessage(prop, body.ref, body.kind, body.text)));
       case "markMessage": return json(Object.assign({ ok: true }, await core.markMessage(prop, body.ref, body.kind, body.state, body.text)));
+      case "emailNow": return json(Object.assign({ ok: true }, await core.emailNow(prop, body.ref, body.kind, body.text, body.subject)));
+      case "inHouse": return json(Object.assign({ ok: true }, await core.inHouse(prop)));
+      case "emailInHouse": return json(Object.assign({ ok: true }, await core.emailInHouse(prop, body)));
       case "propertyReviewLink": return json(Object.assign({ ok: true }, await core.propertyReviewLink(prop, body.ref)));
       case "seedDemo": return json(Object.assign({ ok: true }, await core.seedDemo(prop)));
       case "clearDemo": return json(Object.assign({ ok: true }, await core.clearDemo(prop)));

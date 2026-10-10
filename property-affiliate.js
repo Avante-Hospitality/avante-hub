@@ -19,7 +19,7 @@
 
   var S = { token: null, prop: null, view: 'avail', av: null, from: null, sel: null, cart: [], searched: null, results: null,
     modal: null, edit: null, found: null, findQ: '', msg: null, err: null, busy: false, channels: null, events: null,
-    bookings: null, calUnit: null, calMonth: null, unitFilter: 'All units', connect: null };
+    bookings: null, more: false, msgEdit: null, unitFilter: 'All units', connect: null };
   // One connection per affiliate on this device (a shared computer can hold several).
   if (aff) TOKEN_KEY = 'avante-pa-token:' + aff;
   try {
@@ -81,20 +81,13 @@
       });
       var ms = Date.now(); each(a, b).forEach(function (k) { av.loaded[k] = ms; });
       S.av = av;
-      if (!S.calUnit && d.units.length) S.calUnit = d.units[0].name;
       render();
     }).catch(function (e) { inFlight = null; fail(e); });
   }
   function loadAvailability(from) {
-    S.from = from || S.from || today();
+    S.from = from || S.from || startDate();
     if (S.from < today()) S.from = today();
-    if (!S.calMonth) S.calMonth = S.from.slice(0, 7);
     return loadWindow(S.from, add(S.from, WINDOW));
-  }
-  function loadMonth() {
-    var first = S.calMonth + '-01', y = +S.calMonth.slice(0, 4), m = +S.calMonth.slice(5, 7);
-    var next = new Date(Date.UTC(y, m, 1)).toISOString().slice(0, 10);
-    return loadWindow(first, next);
   }
   function stateOf(unit, n) { var r = S.av && S.av.nights[unit]; return (r && r[n]) || { s: 'na' }; }
   function inCart(unit, n) { return S.cart.some(function (c) { return c.unit === unit && n >= c.start && n < c.end; }); }
@@ -104,16 +97,28 @@
   function sizeOf(unit) { var u = S.av && S.av.units.find(function (x) { return x.name === unit; }); return u ? u.size : ''; }
 
   // ---------- render ----------
+  // Slim header + one sticky tab bar. Calendar is the home view (the date
+  // search with the unit calendar right under it).
+  var TABS = [['avail', 'Calendar'], ['book', 'Bookings'], ['guests', 'Guests'], ['msgs', 'Communication'], ['chan', 'Channels'], ['rev', 'Reviews']];
   function render() {
-    var views = [['avail', 'Availability'], ['cal', 'My Calendar'], ['book', 'Bookings'], ['guests', 'Guests'], ['msgs', 'Messages'], ['chan', 'Channels'], ['rev', 'Reviews'], ['onb', 'Onboarding Form']];
-    var h = '<div class="pa"><h1>Property Affiliate</h1>';
-    h += '<nav class="pa-subnav" aria-label="Property Affiliate sections">' + views.map(function (v) { return '<button type="button" data-act="view" data-v="' + v[0] + '"' + (S.view === v[0] ? ' aria-current="page"' : '') + '>' + v[1] + '</button>'; }).join('') + '<button type="button" data-act="hookbuilder">Hook Builder</button></nav>';
-    if (S.err) h += '<div class="pa-err" role="alert" style="margin-bottom:14px">' + esc(S.err) + ' <button type="button" class="pa-btn small ghost" data-act="dismiss" style="margin-left:8px">OK</button></div>';
-    if (S.msg) h += '<div class="pa-ok" role="status" style="margin-bottom:14px">' + esc(S.msg) + '</div>';
+    if (S.view === 'msgs') collectMsgEdit(); // keep what was typed in the scheduled messages
+    var connected = !!(S.token && S.prop);
+    var h = '<div class="pa">';
+    h += '<header class="pa-top"><span class="pa-kicker">Property Affiliate</span>' + (connected ? '<b class="pa-propname">' + esc(S.prop.resortName || 'Your property') + '</b><span class="pa-hint pa-top-meta">' + S.prop.units.length + ' units · SN site ' + esc(S.prop.site) + '</span>' : '') + '</header>';
+    var inMore = S.view === 'onb';
+    h += '<nav class="pa-tabbar" aria-label="Property Affiliate sections"><div class="pa-tabscroll">' + TABS.map(function (v) {
+      var badge = v[0] === 'msgs' && S.msgsDue ? '<span class="pa-badge" aria-label="' + S.msgsDue + ' to send">' + S.msgsDue + '</span>' : '';
+      return '<button type="button" data-act="view" data-v="' + v[0] + '"' + (S.view === v[0] ? ' aria-current="page"' : '') + '>' + v[1] + badge + '</button>';
+    }).join('') + '</div>' +
+      '<div class="pa-more"><button type="button" data-act="more" aria-haspopup="true" aria-expanded="' + (!!S.more) + '"' + (inMore ? ' aria-current="page"' : '') + '>More ▾</button>' +
+      (S.more ? '<div class="pa-menu" role="menu"><button type="button" role="menuitem" data-act="view" data-v="onb">Onboarding Form</button><button type="button" role="menuitem" data-act="hookbuilder">Hook Builder</button>' +
+        (connected ? '<button type="button" role="menuitem" class="pa-menu-danger" data-act="disconnect">Disconnect property</button>' : '') + '</div>' : '') +
+      '</div></nav>';
+    if (S.err) h += '<div class="pa-err" role="alert" style="margin-bottom:12px">' + esc(S.err) + ' <button type="button" class="pa-btn small ghost" data-act="dismiss" style="margin-left:8px">OK</button></div>';
+    if (S.msg) h += '<div class="pa-ok" role="status" style="margin-bottom:12px">' + esc(S.msg) + '</div>';
     if (S.view === 'onb') h += '';
-    else if (!S.token || !S.prop) h += viewConnect();
+    else if (!connected) h += viewConnect();
     else if (S.view === 'avail') h += viewAvail();
-    else if (S.view === 'cal') h += viewCal();
     else if (S.view === 'chan') h += viewChan();
     else if (S.view === 'book') h += viewBookings();
     else if (S.view === 'guests') h += viewGuests();
@@ -125,11 +130,13 @@
     if (onboarding) onboarding.style.display = S.view === 'onb' ? '' : 'none';
   }
 
-  function propHeader(extra) {
-    return '<div class="pa-row" style="justify-content:space-between;align-items:center;margin-bottom:14px"><div><p class="pa-title">' + esc(S.prop.resortName || 'Your property') + '</p>' +
-      '<div class="pa-hint">' + S.prop.units.length + ' units · Stock Network site ' + esc(S.prop.site) + (extra ? ' · ' + extra : '') + '</div></div>' +
-      '<button type="button" class="pa-btn small ghost" data-act="disconnect">Disconnect</button></div>';
-  }
+  // Kept for the views that used it: the slim header already shows the property.
+  function propHeader() { return ''; }
+
+  // The first date the calendar opens on (Channels → Reservation settings):
+  // today, or a set date that is also the first bookable date.
+  function startDate() { var fb = S.prop && S.prop.firstBookable; return fb && fb > today() ? fb : today(); }
+  function firstBookable() { return startDate(); }
 
   function viewConnect() {
     var c = S.connect || {};
@@ -159,18 +166,24 @@
     return h;
   }
 
-  // ---- Availability (home) ----
+  // ---- Calendar (home): date search, then every unit's nights ----
+  // Bookings show as one block across their nights with the guest's name
+  // (or "Airbnb guest" etc.); tap a block to open the booking. Open nights
+  // are tapped to pick a stay.
+  var BLOCK = { hub: 'bk-hub', sn: 'bk-sn', airbnb: 'bk-airbnb', bcom: 'bk-bcom', lekke: 'bk-lekke', pending: 'bk-warn', clash: 'bk-warn', na: 'bk-na', closed: 'bk-na' };
+  function blockKey(st) { return st.ref ? 'ref:' + st.ref : st.s === 'pending' || st.s === 'clash' ? st.s + ':' + (st.ch || '') : st.s; }
   function viewAvail() {
-    if (!S.av) return propHeader() + '<div class="pa-card pa-hint">Loading availability from Stock Network…</div>';
-    var units = S.av.units, days = each(S.from, add(S.from, WINDOW));
-    var qIn = (S.searched && S.searched.ci) || S.from, qOut = (S.searched && S.searched.co) || add(S.from, 1);
-    var h = propHeader('updated ' + new Date(S.av.snapshotAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-    if (S.msgsDue) h += '<div class="pa-ok pa-row" role="status" style="justify-content:space-between;align-items:center;margin-bottom:14px;gap:8px"><span>' + S.msgsDue + (S.msgsDue === 1 ? ' WhatsApp message is' : ' WhatsApp messages are') + ' ready to send to guests.</span><button type="button" class="pa-btn small" data-act="view" data-v="msgs">Open Messages</button></div>';
+    if (!S.av) return '<div class="pa-card pa-hint">Loading availability from Stock Network…</div>';
+    var units = S.av.units, days = each(S.from, add(S.from, WINDOW)), fb = firstBookable();
+    var qIn = (S.searched && S.searched.ci) || (S.from < fb ? fb : S.from), qOut = (S.searched && S.searched.co) || add(qIn, Math.max(1, S.av.minStay || 1));
+    var h = '';
+    if (S.msgsDue) h += '<div class="pa-ok pa-row" role="status" style="justify-content:space-between;align-items:center;margin-bottom:12px;gap:8px"><span>' + S.msgsDue + (S.msgsDue === 1 ? ' WhatsApp message is' : ' WhatsApp messages are') + ' ready to send to guests.</span><button type="button" class="pa-btn small" data-act="view" data-v="msgs">Open Communication</button></div>';
+    if (fb > today()) h += '<div class="pa-note">Bookings open from <b>' + nice(fb) + '</b> (your calendar start date, set in Channels → Reservation settings).</div>';
     // search
-    h += '<section class="pa-card pa-soft" aria-label="Find available units"><div class="pa-row">' +
-      '<div class="pa-field"><label class="pa-label" for="pa-qin">Check-in</label><input id="pa-qin" type="date" value="' + qIn + '" min="' + today() + '"></div>' +
-      '<div class="pa-field"><label class="pa-label" for="pa-qout">Check-out</label><input id="pa-qout" type="date" value="' + qOut + '" min="' + add(today(), 1) + '"></div>' +
-      '<button type="button" class="pa-btn" data-act="search">Search all units</button><button type="button" class="pa-btn ghost" data-act="openFind">Find a Booking</button></div>';
+    h += '<section class="pa-search" aria-label="Find available units"><div class="pa-row">' +
+      '<div class="pa-field"><label class="pa-label" for="pa-qin">Check-in</label><input id="pa-qin" type="date" value="' + qIn + '" min="' + fb + '"></div>' +
+      '<div class="pa-field"><label class="pa-label" for="pa-qout">Check-out</label><input id="pa-qout" type="date" value="' + qOut + '" min="' + add(fb, 1) + '"></div>' +
+      '<button type="button" class="pa-btn" data-act="search">Search all units</button><button type="button" class="pa-btn ghost" data-act="openFind">Find a booking</button></div>';
     if (S.results) {
       var r = S.results;
       h += '<div class="pa-results"><b style="font-size:13px;color:#0e2f44">' + r.results.filter(function (x) { return rangeOpen(x.unit, r.checkIn, r.checkOut) || inCart(x.unit, r.checkIn); }).length + ' of ' + units.length + ' units open · ' + nice(r.checkIn) + ' to ' + nice(r.checkOut) + ' · ' + nw(r.nights) + '</b>';
@@ -183,42 +196,58 @@
       h += '</div>';
     }
     h += '</section>';
-    // grid
+    // calendar
     var phone = isPhone();
     var cols = (phone ? '62px' : '150px') + ' repeat(' + WINDOW + ', minmax(0,1fr))';
-    h += '<section class="pa-card" aria-label="Unit by unit"><div class="pa-row" style="justify-content:space-between;align-items:center">' +
-      '<div><p class="pa-h2">Unit by unit</p><div class="pa-hint">' + (S.sel ? 'Check-in ' + nice(S.sel.start) + ' on ' + esc(S.sel.unit) + '. Now click the last night of the stay.' : 'Click an open night to set check-in, then the last night of the stay. Repeat on other units to book several together.') + '</div></div>' +
-      '<div class="pa-row" style="gap:8px"><button type="button" class="pa-btn small ghost" data-act="shift" data-n="-' + WINDOW + '" aria-label="Previous ' + WINDOW + ' days">‹ Earlier</button><button type="button" class="pa-btn small ghost" data-act="shift" data-n="' + WINDOW + '" aria-label="Next ' + WINDOW + ' days">Later ›</button></div></div>';
-    h += '<div class="pa-legend"><span><i style="background:#0DCDC2"></i>Open</span><span><i style="background:#e7ebeb"></i>Booked</span><span><i style="background:#fff4e5;border:2px dashed #ED8B00"></i>Channel booking not yet on SN</span><span><i style="background:#f3f5f5;border:1.5px dashed #c9d3d3"></i>Not on SN</span></div>';
-    h += '<div class="pa-grid-wrap"><div class="pa-grid' + (phone ? ' phone' : '') + '" style="grid-template-columns:' + cols + '"><div class="pa-label" style="align-self:end">Unit</div>';
-    h += days.map(function (d) { return '<div class="hd">' + (phone ? dow(d).slice(0, 2) : dow(d)) + '<b>' + dObj(d).getUTCDate() + '</b>' + (dObj(d).getUTCDate() === 1 || d === days[0] ? MON[dObj(d).getUTCMonth()] : '') + '</div>'; }).join('');
+    var last = add(days[days.length - 1], 0);
+    h += '<section class="pa-card pa-calcard" aria-label="Calendar"><div class="pa-caltools">' +
+      '<div class="pa-row" style="gap:6px;align-items:center"><button type="button" class="pa-btn small ghost" data-act="shift" data-n="-' + WINDOW + '" aria-label="Previous ' + WINDOW + ' days"' + (S.from <= today() ? ' disabled' : '') + '>‹</button>' +
+      '<b class="pa-calrange">' + short(days[0]) + ' – ' + short(last) + ' ' + dObj(last).getUTCFullYear() + '</b>' +
+      '<button type="button" class="pa-btn small ghost" data-act="shift" data-n="' + WINDOW + '" aria-label="Next ' + WINDOW + ' days">›</button>' +
+      (S.from !== startDate() ? '<button type="button" class="pa-btn small ghost" data-act="goStart">' + (startDate() === today() ? 'Today' : 'Start date') + '</button>' : '') + '</div>' +
+      '<span class="pa-hint">' + (S.sel ? 'Check-in ' + nice(S.sel.start) + ' on ' + esc(S.sel.unit) + ': now tap the last night.' : 'Tap an open night for check-in, then the last night. Tap a booking to open it.') +
+      (S.av.snapshotAt ? ' · Updated ' + new Date(S.av.snapshotAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '') + '</span></div>';
+    h += '<div class="pa-legend"><span><i class="lg-open"></i>Open</span><span><i class="lg-hub"></i>Hub booking</span><span><i class="lg-sn"></i>Booked on SN</span><span><i class="lg-airbnb"></i>Airbnb</span><span><i class="lg-bcom"></i>Booking.com</span><span><i class="lg-lekke"></i>LekkeSlaap</span><span><i class="lg-warn"></i>Channel booking not yet on SN</span><span><i class="lg-na"></i>Not on SN</span></div>';
+    h += '<div class="pa-grid-wrap"><div class="pa-grid pa-blocks' + (phone ? ' phone' : '') + '" style="grid-template-columns:' + cols + '"><div class="pa-label" style="align-self:end">Unit</div>';
+    h += days.map(function (d) { var we = dow(d) === 'Fri' || dow(d) === 'Sat'; return '<div class="hd' + (we ? ' we' : '') + (d === today() ? ' today' : '') + '">' + (phone ? dow(d).slice(0, 2) : dow(d)) + '<b>' + dObj(d).getUTCDate() + '</b>' + (dObj(d).getUTCDate() === 1 || d === days[0] ? MON[dObj(d).getUTCMonth()] : '') + '</div>'; }).join('');
     var perNight = {}, totalOpen = 0, weekend = 0, weekendAll = 0;
     units.forEach(function (u) {
-      var open = 0, cells = '';
-      days.forEach(function (d) {
-        var st = stateOf(u.name, d).s, cls, lbl, isOpen = false;
-        if (inCart(u.name, d)) { cls = 'sel'; lbl = 'Selected'; }
-        else if (st === 'open') { isOpen = true; cls = S.sel && S.sel.unit === u.name && S.sel.start === d ? 'start' : 'open'; lbl = cls === 'start' ? 'Check-in' : 'Open'; }
-        else if (st === 'na') { cls = 'na'; lbl = 'Not on SN'; }
-        else if (st === 'pending' || st === 'clash') { cls = 'warn'; lbl = st === 'clash' ? 'Clash' : 'Pending'; }
-        else { cls = 'booked'; lbl = 'Booked'; }
-        if (isOpen || cls === 'sel') { open++; totalOpen++; perNight[d] = (perNight[d] || 0) + 1; if (dow(d) === 'Fri' || dow(d) === 'Sat') weekend++; }
-        var shown = phone ? ({ Selected: '✓', 'Check-in': 'In', Clash: '!', Pending: '!' }[lbl] || '') : lbl;
-        cells += isOpen ? '<button type="button" class="pa-cell ' + cls + '" data-act="cell" data-u="' + esc(u.name) + '" data-d="' + d + '" aria-label="' + esc(u.name) + ', ' + nice(d) + ', open">' + shown + '</button>'
-          : (stateOf(u.name, d).ref ? '<button type="button" class="pa-cell ' + cls + ' has-ref" data-act="openRef" data-ref="' + esc(stateOf(u.name, d).ref) + '" aria-label="' + esc(u.name) + ', ' + nice(d) + ', booking ' + esc(stateOf(u.name, d).ref) + '" title="' + esc(stateOf(u.name, d).ref) + '">' + shown + '</button>'
-          : '<div class="pa-cell ' + cls + '" aria-label="' + esc(u.name) + ', ' + nice(d) + ', ' + lbl + '" title="' + lbl + '">' + shown + '</div>');
-      });
+      var open = 0, cells = '', i = 0;
+      while (i < days.length) {
+        var d = days[i], st = stateOf(u.name, d);
+        if (st.s === 'open' && d < fb) st = { s: 'closed' };
+        if (inCart(u.name, d) || st.s === 'open') {
+          var sel = inCart(u.name, d), isStart = S.sel && S.sel.unit === u.name && S.sel.start === d;
+          open++; totalOpen++; perNight[d] = (perNight[d] || 0) + 1; if (dow(d) === 'Fri' || dow(d) === 'Sat') weekend++;
+          var lbl = sel ? 'Selected' : isStart ? 'Check-in' : 'Open';
+          cells += sel ? '<div class="pa-cell sel" aria-label="' + esc(u.name) + ', ' + nice(d) + ', selected">' + (phone ? '✓' : 'Selected') + '</div>'
+            : '<button type="button" class="pa-cell ' + (isStart ? 'start' : 'open') + '" data-act="cell" data-u="' + esc(u.name) + '" data-d="' + d + '" aria-label="' + esc(u.name) + ', ' + nice(d) + ', ' + lbl.toLowerCase() + '">' + (phone ? (isStart ? 'In' : '') : lbl) + '</button>';
+          i++; continue;
+        }
+        // A run of nights with the same booking (or the same state) is one block.
+        var key = blockKey(st), j = i + 1;
+        while (j < days.length) { var s2 = stateOf(u.name, days[j]); if (s2.s === 'open' && days[j] < fb) s2 = { s: 'closed' }; if (inCart(u.name, days[j]) || s2.s === 'open' || blockKey(s2) !== key) break; j++; }
+        var span = j - i, cls = BLOCK[st.s] || 'bk-sn';
+        var contL = i === 0 && st.ref && stateOf(u.name, add(d, -1)).ref === st.ref, contR = j === days.length && st.ref && stateOf(u.name, add(days[j - 1], 1)).ref === st.ref;
+        var text = st.ref ? (st.name || 'Guest') : st.s === 'sn' ? 'Booked on SN' : st.s === 'pending' ? (CH[st.ch] || 'Channel') + ' guest · not on SN yet' : st.s === 'clash' ? 'Clash · ' + (CH[st.ch] || 'channel') : st.s === 'closed' ? 'Not bookable yet' : 'Not on SN';
+        var range = nice(d) + (span > 1 ? ' – ' + nice(days[j - 1]) : '');
+        var style = ' style="grid-column:span ' + span + '"';
+        var classes = 'pa-block ' + cls + (contL ? ' cont-l' : '') + (contR ? ' cont-r' : '');
+        if (st.ref) cells += '<button type="button" class="' + classes + '"' + style + ' data-act="openRef" data-ref="' + esc(st.ref) + '" title="' + esc(text + ' · ' + st.ref) + '" aria-label="' + esc(u.name + ', ' + range + ': ' + text + ', booking ' + st.ref + '. Open the booking') + '"><span>' + esc(text) + '</span></button>';
+        else cells += '<div class="' + classes + '"' + style + ' title="' + esc(text) + '" aria-label="' + esc(u.name + ', ' + range + ': ' + text) + '"><span>' + esc((phone && span < 3) || span === 1 ? '' : text) + '</span></div>';
+        i = j;
+      }
       h += '<div class="unit"><b>' + esc(u.name) + '</b><span>' + open + (phone ? '/' + WINDOW : ' of ' + WINDOW + ' open') + '</span></div>' + cells;
     });
     days.forEach(function (d) { if (dow(d) === 'Fri' || dow(d) === 'Sat') weekendAll += units.length; });
     h += '<div class="pa-label" style="align-self:center;color:#0e2f44">Units open</div>' + days.map(function (d) { var n = perNight[d] || 0; return '<div style="text-align:center;font:700 13px Montserrat,sans-serif;color:' + (n ? '#0e2f44' : '#8a3a00') + '">' + n + '/' + units.length + '</div>'; }).join('');
-    h += '</div></div>' + (totalOpen ? '' : '<p class="pa-hint" style="margin-top:10px">Nothing open on Stock Network in these days. Use Later ›, or search your dates above.</p>') + '</section>';
+    h += '</div></div>' + (totalOpen ? '' : '<p class="pa-hint" style="margin-top:10px">Nothing open on Stock Network in these days. Use ›, or search your dates above.</p>') + '</section>';
     // cart
     if (S.cart.length) {
       var tot = S.cart.reduce(function (t, c) { return t + (priceOf(c.unit, c.start, c.end) || 0); }, 0);
       h += '<section class="pa-cart" aria-label="Selected units"><div class="grow"><b style="font:700 14px Montserrat,sans-serif">' + S.cart.length + (S.cart.length === 1 ? ' unit' : ' units') + ' selected · ' + money(tot) + '</b><div>' +
         S.cart.map(function (c, i) { return '<span class="pa-chip">' + esc(c.unit) + ' · ' + short(c.start) + ' – ' + short(c.end) + '<button type="button" data-act="uncart" data-i="' + i + '" aria-label="Remove ' + esc(c.unit) + '">✕</button></span>'; }).join('') +
-        '</div><span style="font-size:12px;color:#d6e2e9">Add another unit by clicking its nights in the grid, or search again.</span></div>' +
+        '</div><span style="font-size:12px;color:#d6e2e9">Add another unit by tapping its nights in the calendar, or search again.</span></div>' +
         '<button type="button" class="pa-btn ghost" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.5)" data-act="clearCart">Clear</button>' +
         '<button type="button" class="pa-btn teal" data-act="openBook">' + (S.cart.length === 1 ? 'Book this unit' : 'Book ' + S.cart.length + ' units together') + '</button></section>';
     }
@@ -264,31 +293,6 @@
     return h;
   }
 
-  // ---- My Calendar ----
-  function viewCal() {
-    if (!S.av) return propHeader() + '<div class="pa-card pa-hint">Loading…</div>';
-    var ym = S.calMonth, y = +ym.slice(0, 4), m = +ym.slice(5, 7) - 1;
-    var first = ym + '-01', days = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
-    var lead = (dObj(first).getUTCDay() + 6) % 7;
-    var h = propHeader();
-    h += '<div class="pa-card"><div class="pa-row" style="justify-content:space-between;align-items:center;margin-bottom:12px"><div class="pa-seg" role="group" aria-label="Choose unit">' +
-      S.av.units.map(function (u) { return '<button type="button" data-act="calUnit" data-u="' + esc(u.name) + '" aria-pressed="' + (S.calUnit === u.name) + '">' + esc(u.name) + '</button>'; }).join('') + '</div>' +
-      '<div class="pa-row" style="gap:8px;align-items:center"><button type="button" class="pa-btn small ghost" data-act="calMonth" data-n="-1" aria-label="Previous month">‹</button><b style="font:700 16px Montserrat,sans-serif;color:#0e2f44;min-width:150px;text-align:center">' + MONTH_FULL[m] + ' ' + y + '</b><button type="button" class="pa-btn small ghost" data-act="calMonth" data-n="1" aria-label="Next month">›</button></div></div>';
-    h += '<div class="pa-grid-wrap"><div class="pa-cal">' + ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(function (d) { return '<div class="dow">' + d + '</div>'; }).join('');
-    for (var i = 0; i < lead; i++) h += '<div></div>';
-    for (var d = 1; d <= days; d++) {
-      var iso = ym + '-' + (d < 10 ? '0' + d : d), c = stateOf(S.calUnit, iso), past = iso < today();
-      var look = { open: ['#ffffff', '#0e2f44', 'Open'], na: ['#f3f5f5', '#6b7477', 'Not on SN'], sn: ['#0e2f44', '#ffffff', 'Booked on SN'], hub: ['#0e2f44', '#ffffff', c.ref || 'Booked'], pending: ['#fff4e5', '#6b3a00', (CH[c.ch] || '') + ' · not on SN yet'], clash: ['#fff4e5', '#6b3a00', 'Clash'], airbnb: ['#ffe0da', '#7a1f12', 'Airbnb ' + (c.ref || '')], bcom: ['#dbe6ff', '#0b2f80', 'Booking.com ' + (c.ref || '')], lekke: ['#d9f2e3', '#0f5a32', 'LekkeSlaap ' + (c.ref || '')] }[c.s] || ['#fff', '#0e2f44', ''];
-      if (past) look = ['#fff', '#8a9699', ''];
-      else if (!S.av.nights[S.calUnit] || !S.av.loaded[iso]) look = ['#fff', '#8a9699', '…'];
-      var dayRef = !past && S.av.loaded[iso] && c.ref;
-      h += dayRef ? '<button type="button" class="day has-ref" data-act="openRef" data-ref="' + esc(c.ref) + '" aria-label="' + d + ' ' + MONTH_FULL[m] + ': booking ' + esc(c.ref) + ', tap to open" style="background:' + look[0] + ';color:' + look[1] + '"><b>' + d + '</b><span>' + esc(look[2]) + '</span></button>'
-        : '<div class="day" style="background:' + look[0] + ';color:' + look[1] + (past ? ';opacity:.55' : '') + '"><b>' + d + '</b><span>' + esc(look[2]) + '</span></div>';
-    }
-    h += '</div></div><p class="pa-hint" style="margin-top:10px">Tap a booking to open its guest details and messages. Change availability or rates on Stock Network; the hub picks up changes within 15 minutes.</p></div>';
-    return h;
-  }
-
   // ---- Channels ----
   function viewChan() {
     if (!S.channels) return propHeader() + '<div class="pa-card pa-hint">Loading channels…</div>';
@@ -306,10 +310,18 @@
       '<div class="pa-field"><label class="pa-label" for="pa-se">Email on SN reservations</label><input id="pa-se" type="email" value="' + esc(st.email || '') + '" placeholder="Your reservations inbox"></div>' +
       '<div class="pa-field"><label class="pa-label" for="pa-sp">Phone on SN reservations (required)</label><input id="pa-sp" type="tel" value="' + esc(st.phone || '') + '"></div>' +
       '<div class="pa-field"><label class="pa-label" for="pa-sm">Minimum stay (nights)</label><input id="pa-sm" type="number" min="1" max="30" value="' + esc(st.minStay || 2) + '"></div></div>' +
+      (function () {
+        var cs = st.calendarStart || {}, isDate = cs.mode === 'date';
+        return '<fieldset class="pa-fieldset"><legend class="pa-label">Calendar opens on</legend>' +
+          '<label class="pa-check pa-radio"><input type="radio" name="pa-cs-mode" value="today"' + (isDate ? '' : ' checked') + '><span><b>Today</b><br><span class="pa-hint">The calendar always opens on today\'s date.</span></span></label>' +
+          '<label class="pa-check pa-radio"><input type="radio" name="pa-cs-mode" value="date"' + (isDate ? ' checked' : '') + '><span><b>A set date</b><br><span class="pa-hint">The calendar opens on this date, and it is the first date that can be booked in the hub until it has passed (for example when you open for the season).</span>' +
+          '<span style="display:block;margin-top:8px;max-width:220px"><input id="pa-cs-date" type="date" aria-label="Calendar start date" value="' + esc(cs.date || '') + '" min="' + today() + '"></span></span></label></fieldset>';
+      })() +
       '<p class="pa-label" style="margin:14px 0 6px">Nightly channel price per unit (calendar links don\'t include prices)</p><div class="pa-form">' +
       S.channels.units.map(function (u) { return '<div class="pa-field"><label class="pa-label" for="pa-pr-' + esc(u.name) + '" style="color:#0e2f44">' + esc(u.name) + '</label><input id="pa-pr-' + esc(u.name) + '" data-price="' + esc(u.name) + '" type="number" min="0" value="' + esc((st.prices || {})[u.name] || '') + '" placeholder="Uses the SN rate if empty"></div>'; }).join('') + '</div>' +
       '<label class="pa-check" style="display:flex;align-items:center;gap:10px;margin-top:14px"><input id="pa-auto" type="checkbox"' + (st.autoBook ? ' checked' : '') + ' style="width:18px;height:18px">Book other channels\' reservations onto Stock Network automatically</label>' +
-      '<p class="pa-hint">Leave this off at first: new channel bookings then wait below for you to add them with one click, so you can check everything is right.</p></section>';
+      '<p class="pa-hint">Leave this off at first: new channel bookings then wait below for you to add them with one click, so you can check everything is right.</p>' +
+      '<div class="pa-row" style="margin-top:12px"><button type="button" class="pa-btn" data-act="saveChannels">Save reservation settings</button></div></section>';
     var bk = S.channels.bank || {}, pm = st.payMode || 'both';
     var pmOpt = function (v, label, hint) { return '<label class="pa-check pa-radio"><input type="radio" name="pa-pm" value="' + v + '"' + (pm === v ? ' checked' : '') + '><span><b>' + label + '</b><br><span class="pa-hint">' + hint + '</span></span></label>'; };
     h += '<section class="pa-card" aria-label="Guest payments"><p class="pa-h2">Guest payments</p><p class="pa-hint">How guests pay for bookings you make in the hub. Bookings from Airbnb, Booking.com and LekkeSlaap are paid on those channels.</p>' +
@@ -387,7 +399,7 @@
           '<td>' + statusPill(b) + '</td><td>' + payPill(b) + '</td><td>' + bookingActions(b) + '</td></tr>';
       }).join('') + '</tbody></table></div>';
     }
-    h += '<p class="pa-hint">Open a booking to add or change the guest\'s details (also on paid and channel bookings) and to send WhatsApp messages. Paid bookings can\'t be changed in the hub, and cancelling them needs the linked affiliate\'s approval. Stock Network bookings made outside the hub show on the Availability grid as Booked; manage those in Stock Network.</p></section>';
+    h += '<p class="pa-hint">Open a booking to add or change the guest\'s details (also on paid and channel bookings) and to send WhatsApp messages and emails. Paid bookings can\'t be changed in the hub, and cancelling them needs the linked affiliate\'s approval. Stock Network bookings made outside the hub show on the Calendar as Booked on SN; manage those in Stock Network.</p></section>';
     if (S.prop.demoAllowed) h += '<section class="pa-card pa-soft" aria-label="Demo bookings"><p class="pa-h2">Demo bookings (Property Testing only)</p><p class="pa-hint">Six example bookings with guest details, plus example welcome and after-stay messages switched on, to show how the hub works. They stay in the hub: they are never sent to Stock Network or to your channel calendars.</p>' +
       '<div class="pa-actions" style="margin-top:10px"><button type="button" class="pa-btn" data-act="seedDemo">Load demo bookings</button><button type="button" class="pa-btn ghost" data-act="clearDemo">Remove demo bookings</button></div></section>';
     return h;
@@ -424,49 +436,123 @@
   }
   function waNum(phone) { var d = String(phone || '').replace(/\D/g, ''); if (d.indexOf('00') === 0) d = d.slice(2); if (d.charAt(0) === '0') d = '27' + d.slice(1); return d.length >= 9 ? d : ''; }
 
-  // ---- Messages (WhatsApp, one tap) ----
+  // ---- Communication (email sent by the hub, WhatsApp one tap) ----
   var PLACEHOLDERS = [['{first_name}', 'first name'], ['{name}', 'full name'], ['{property}', 'property'], ['{unit}', 'unit'], ['{check_in}', 'check-in date'], ['{check_out}', 'check-out date'], ['{nights}', 'nights'], ['{ref}', 'booking ref'], ['{review_link}', 'review link']];
-  var KIND = { welcome: 'Welcome', after: 'After-stay', custom: 'Message' };
+  var ANCHORS = [['before_arrival', 'Days before arrival'], ['arrival', 'On arrival day'], ['during', 'Days into the stay'], ['before_checkout', 'Days before check-out'], ['after_checkout', 'Days after check-out'], ['date', 'On a set date']];
+  function msgList() { return (S.messages && S.messages.list) || []; }
+  function msgLabel(kind) { if (kind === 'custom') return 'Message'; if (kind === 'in-house') return 'Message to in-house guests'; var m = msgList().find(function (x) { return x.id === kind; }); return m ? m.name : 'Message'; }
+  function niceDate(iso) { var d = dObj(iso); return d.getUTCDate() + ' ' + MON[d.getUTCMonth()] + ' ' + d.getUTCFullYear(); }
+  function describeWhen(m) {
+    var n = +m.days || 0, d = n + (n === 1 ? ' day' : ' days'), at = ' at ' + (m.time || '10:00');
+    return ({ before_arrival: n ? d + ' before arrival' : 'On arrival day', arrival: 'On arrival day', during: n ? d + ' into the stay' : 'On arrival day', before_checkout: n ? d + ' before check-out' : 'On check-out day', after_checkout: n ? d + ' after check-out' : 'On check-out day', date: m.date ? 'On ' + niceDate(m.date) + ' (guests staying that day)' : 'On a set date (choose it)' }[m.anchor] || '') + at;
+  }
+  function stayOf(b) { var live = b.items.filter(function (i) { return !i.cancelled; }); if (!live.length) return null; return { start: live.map(function (i) { return i.start; }).sort()[0], end: live.map(function (i) { return i.end; }).sort().slice(-1)[0] }; }
+  // Same timing as the server (lib/pa-core.js timing()), for the booking screen.
+  function msgTiming(m, b) {
+    var st = stayOf(b); if (!st) return null;
+    var day, lastDay, n = +m.days || 0;
+    if (m.anchor === 'before_arrival') { day = add(st.start, -n); lastDay = st.start; }
+    else if (m.anchor === 'arrival') { day = st.start; lastDay = st.start; }
+    else if (m.anchor === 'during') { day = add(st.start, n); if (day >= st.end) return null; lastDay = st.end; }
+    else if (m.anchor === 'before_checkout') { day = add(st.end, -n); if (day < st.start) day = st.start; lastDay = st.end; }
+    else if (m.anchor === 'after_checkout') { day = add(st.end, n); lastDay = add(day, 7); }
+    else if (m.anchor === 'date') { if (!m.date || m.date < st.start || m.date > st.end) return null; day = m.date; lastDay = m.date; }
+    else return null;
+    var at = Date.parse(day + 'T' + (m.time || '10:00') + ':00+02:00'), until = Date.parse(lastDay + 'T23:59:00+02:00'), t = Date.now();
+    return { at: at, state: t > until ? 'missed' : t >= at ? 'due' : 'scheduled' };
+  }
+  function when(ms) { var w = new Date(ms); return w.toLocaleDateString([], { day: 'numeric', month: 'short' }) + ' ' + w.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
+  function dayOnly(iso) { return new Date(iso).toLocaleDateString([], { day: 'numeric', month: 'short' }); }
+  // Lines like "WhatsApp: sent 12 Oct" / "Email: goes out 14 Oct 10:00".
+  function msgStatus(b, m) {
+    if (b.status === 'Cancelled') return ['Booking cancelled'];
+    var tm = msgTiming(m, b), rec = (b.msgs || {})[m.id] || {}, c = b.contact || {}, out = [];
+    if (!tm) return ['Doesn\'t apply to this stay'];
+    if (!m.on) out.push('Switched off (Communication tab)');
+    if (m.wa) out.push('WhatsApp: ' + (rec.state === 'sent' ? 'sent ' + dayOnly(rec.at) : rec.state === 'skipped' ? 'skipped' : !m.on ? 'not scheduled' : tm.state === 'due' ? 'ready to send' : tm.state === 'missed' ? 'not sent' : 'goes out ' + when(tm.at)));
+    if (m.email) {
+      var e = rec.email || {};
+      out.push('Email: ' + (e.state === 'sent' ? 'sent ' + dayOnly(e.at) : !m.on ? 'not scheduled' : tm.state === 'missed' ? 'not sent' : !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.email || '') ? 'add the guest\'s email address' : e.state === 'failed' ? 'couldn\'t be sent, trying again' : tm.state === 'due' ? 'going out within 15 minutes' : 'goes out ' + when(tm.at)));
+    }
+    return out;
+  }
   function msgItem(i) {
-    var when = new Date(i.dueAt);
-    return '<div class="pa-result"><div class="grow"><b>' + esc(KIND[i.kind]) + ' · ' + esc(i.name || i.ref) + '</b><div class="pa-hint">' + esc(i.units) + ' · arrives ' + short(i.start) + ' · ' + esc(i.ref) + ' · ' + (i.state === 'due' ? 'due since ' : 'goes out ') + when.toLocaleDateString([], { day: 'numeric', month: 'short' }) + ' ' + when.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + (i.hasCell ? '' : ' · <b style="color:#8a3a00">no cellphone yet</b>') + '</div></div>' +
-      '<div class="pa-actions">' + (i.hasCell ? '<button type="button" class="pa-btn small teal" data-act="compose" data-ref="' + esc(i.ref) + '" data-kind="' + i.kind + '">' + (i.state === 'due' ? 'Send' : 'Send now') + '</button>' : '<button type="button" class="pa-btn small" data-act="openRef" data-ref="' + esc(i.ref) + '" data-tab="guest">Add number</button>') +
-      '<button type="button" class="pa-btn small ghost" data-act="skipMsg" data-ref="' + esc(i.ref) + '" data-kind="' + i.kind + '">Skip</button></div></div>';
+    var lines = [];
+    if (i.wa && i.wa !== 'scheduled') lines.push('WhatsApp ' + (i.wa === 'due' ? 'ready' : i.wa));
+    if (i.email === 'no-email' || i.email === 'scheduled-no-email') lines.push('<b style="color:#8a3a00">no email address</b>');
+    else if (i.email === 'failed') lines.push('<b style="color:#8a3a00">email failed</b>');
+    else if (i.email) lines.push('email ' + (i.email === 'due' ? 'going out' : i.email));
+    var waBtn = i.wa === 'due' || (i.wa === 'scheduled');
+    return '<div class="pa-result"><div class="grow"><b>' + esc(i.label || msgLabel(i.kind)) + ' · ' + esc(i.name || i.ref) + '</b><div class="pa-hint">' + esc(i.units) + ' · arrives ' + short(i.start) + ' · ' + esc(i.ref) + ' · ' + (i.state === 'due' ? 'due since ' : 'goes out ') + when(i.dueAt) + (lines.length ? ' · ' + lines.join(' · ') : '') + (i.wa && !i.hasCell ? ' · <b style="color:#8a3a00">no cellphone yet</b>' : '') + '</div></div>' +
+      '<div class="pa-actions">' + (waBtn && i.hasCell ? '<button type="button" class="pa-btn small teal" data-act="compose" data-ref="' + esc(i.ref) + '" data-kind="' + esc(i.kind) + '">' + (i.wa === 'due' ? 'WhatsApp' : 'WhatsApp now') + '</button>' : '') +
+      ((i.wa && !i.hasCell) || ((i.email === 'no-email' || i.email === 'scheduled-no-email') && !i.hasEmail) ? '<button type="button" class="pa-btn small" data-act="openRef" data-ref="' + esc(i.ref) + '" data-tab="guest">Add details</button>' : '') +
+      (i.wa === 'due' ? '<button type="button" class="pa-btn small ghost" data-act="skipMsg" data-ref="' + esc(i.ref) + '" data-kind="' + esc(i.kind) + '">Skip</button>' : '') + '</div></div>';
+  }
+  function inHouseRow(g) {
+    var wa = waNum(g.cell);
+    var tags = [g.arriving ? 'arrives today' : '', g.leaving ? 'leaves today' : '', g.checkedIn ? 'checked in' : ''].filter(Boolean).join(' · ');
+    return '<div class="pa-result"><div class="grow"><b>' + esc(g.name) + '</b> <span class="pa-hint">· ' + esc(g.units) + '</span><div class="pa-hint">' + short(g.start) + ' – ' + short(g.end) + ' · ' + esc(g.source) + (tags ? ' · ' + tags : '') + ' · ' + esc(g.ref) + '</div></div><div class="pa-actions">' +
+      (wa ? '<button type="button" class="pa-btn small teal" data-act="bulk" data-ref="' + esc(g.ref) + '" data-via="wa">WhatsApp</button>' : '') +
+      (g.hasEmail ? '<button type="button" class="pa-btn small" data-act="bulk" data-ref="' + esc(g.ref) + '" data-via="email">Email</button>' : '') +
+      (g.cell ? '<a class="pa-btn small ghost pa-linkbtn" href="tel:' + esc(String(g.cell).replace(/\s/g, '')) + '">Call</a>' : '') +
+      (!wa && !g.hasEmail ? '<button type="button" class="pa-btn small" data-act="openRef" data-ref="' + esc(g.ref) + '" data-tab="guest">Add details</button>' : '<button type="button" class="pa-btn small ghost" data-act="openRef" data-ref="' + esc(g.ref) + '">Open</button>') + '</div></div>';
+  }
+  // Editing copy of the scheduled messages, so adding or removing one keeps what was typed.
+  function msgEditList() { if (!S.msgEdit) S.msgEdit = JSON.parse(JSON.stringify(msgList())); return S.msgEdit; }
+  function collectMsgEdit() {
+    if (!S.msgEdit) return;
+    S.msgEdit.forEach(function (m, i) {
+      var g = function (f) { return document.getElementById('pa-m-' + i + '-' + f); };
+      if (!g('text')) return;
+      m.name = g('name').value; m.on = g('on').checked; m.anchor = g('anchor').value; m.time = g('time').value || '10:00';
+      if (g('days')) m.days = g('days').value; if (g('date')) m.date = g('date').value;
+      m.wa = g('wa').checked; m.email = g('email').checked; m.subject = g('subject').value; m.text = g('text').value;
+      var dt = g('det'); m._open = dt ? dt.open : m._open;
+    });
+  }
+  function msgCard(m, i) {
+    var needDays = ['before_arrival', 'during', 'before_checkout', 'after_checkout'].indexOf(m.anchor) >= 0;
+    var p = function (f) { return 'pa-m-' + i + '-' + f; };
+    return '<details class="pa-card pa-msgcard" id="' + p('det') + '"' + (m._open ? ' open' : '') + '><summary><span class="pa-msgsum"><b>' + esc(m.name || 'Message') + '</b><span class="pa-hint">' + esc(describeWhen(m)) + ' · ' + [m.wa ? 'WhatsApp' : '', m.email ? 'Email' : ''].filter(Boolean).join(' + ') + '</span></span>' +
+      '<span class="pa-pill" style="background:' + (m.on ? '#d4f5f2;color:#065e58' : '#eef2f2;color:#333') + '">' + (m.on ? 'On' : 'Off') + '</span></summary>' +
+      '<div class="pa-msgbody"><div class="pa-row"><div class="pa-field" style="flex:2 1 220px"><label class="pa-label" for="' + p('name') + '">Name</label><input id="' + p('name') + '" type="text" maxlength="60" value="' + esc(m.name || '') + '"></div>' +
+      '<label class="pa-check" style="display:flex;align-items:center;gap:8px;min-height:44px"><input type="checkbox" id="' + p('on') + '"' + (m.on ? ' checked' : '') + '> Switched on</label></div>' +
+      '<div class="pa-row" style="margin-top:10px"><div class="pa-field" style="flex:1 1 200px"><label class="pa-label" for="' + p('anchor') + '">When</label><select id="' + p('anchor') + '" data-msgrerender="1">' + ANCHORS.map(function (a) { return '<option value="' + a[0] + '"' + (m.anchor === a[0] ? ' selected' : '') + '>' + a[1] + '</option>'; }).join('') + '</select></div>' +
+      (needDays ? '<div class="pa-field" style="flex:0 1 110px"><label class="pa-label" for="' + p('days') + '">Days</label><input id="' + p('days') + '" type="number" min="0" max="365" value="' + esc(m.days || 0) + '"></div>' : '') +
+      (m.anchor === 'date' ? '<div class="pa-field" style="flex:0 1 170px"><label class="pa-label" for="' + p('date') + '">Date</label><input id="' + p('date') + '" type="date" value="' + esc(m.date || '') + '" min="' + today() + '"></div>' : '') +
+      '<div class="pa-field" style="flex:0 1 130px"><label class="pa-label" for="' + p('time') + '">At (SA time)</label><input id="' + p('time') + '" type="time" value="' + esc(m.time || '10:00') + '"></div></div>' +
+      '<fieldset class="pa-fieldset pa-sendby"><legend class="pa-label">Send by</legend><label class="pa-check"><input type="checkbox" id="' + p('email') + '"' + (m.email ? ' checked' : '') + '> Email (the hub sends it automatically)</label><label class="pa-check"><input type="checkbox" id="' + p('wa') + '"' + (m.wa ? ' checked' : '') + '> WhatsApp (you tap Send)</label></fieldset>' +
+      '<div class="pa-field" style="margin-top:10px"><label class="pa-label" for="' + p('subject') + '">Email subject</label><input id="' + p('subject') + '" type="text" maxlength="150" value="' + esc(m.subject || '') + '" placeholder="e.g. Your stay at {property}"></div>' +
+      '<div class="pa-field" style="margin-top:10px"><label class="pa-label" for="' + p('text') + '">Message</label><textarea id="' + p('text') + '" rows="8">' + esc(m.text || '') + '</textarea></div>' +
+      '<div class="pa-actions" style="margin-top:6px">' + PLACEHOLDERS.map(function (x) { return '<button type="button" class="pa-chipbtn" data-act="insertPh" data-target="' + p('text') + '" data-ph="' + x[0] + '" title="Insert ' + x[1] + '">' + x[0] + '</button>'; }).join('') + '</div>' +
+      (/\{review_link\}/.test(m.text || '') && S.messages && !S.messages.reviewsConnected ? '<p class="pa-err" style="margin-top:8px">Avante Reviews isn\'t connected yet, so the line with {review_link} is left out. Avante Travel sets this up.</p>' : '') +
+      '<div class="pa-actions" style="margin-top:10px;justify-content:flex-end"><button type="button" class="pa-btn small danger" data-act="removeMsg" data-i="' + i + '">Remove this message</button></div></div></details>';
   }
   function viewMessages() {
-    var h = propHeader(), M = S.messages;
-    if (!M) return h + '<div class="pa-card pa-hint">Loading…</div>';
-    h += '<section class="pa-card" aria-label="Messages to send"><p class="pa-h2">Ready to send</p>' + (M.due.length ? '<div class="pa-results">' + M.due.map(msgItem).join('') + '</div>' : '<p class="pa-hint">Nothing to send right now.</p>') + '</section>';
+    var h = '', M = S.messages;
+    if (!M) return '<div class="pa-card pa-hint">Loading…</div>';
+    var propEmail = M.propertyEmail;
+    h += '<div class="pa-note"><b>Email</b> is sent by the hub automatically, from <b>' + esc(S.prop.resortName || 'your property') + '</b>. ' +
+      (propEmail ? 'Guests\' replies go to ' + esc(propEmail) + '.' : '<span style="color:#8a3a00">Add your email address in Channels → Reservation settings so guests\' replies reach you.</span>') +
+      ' <b>WhatsApp</b> opens on your phone with the message ready; you tap Send.<br><span class="pa-hint">WhatsApp messages can also go out automatically with a paid WhatsApp Business setup. Ask Avante Travel if you\'d like that.</span></div>';
+    // in-house
+    var ih = M.inHouse || [];
+    h += '<section class="pa-card" aria-label="Guests staying now"><div class="pa-row" style="justify-content:space-between;align-items:center"><div><p class="pa-h2" style="margin:0">Staying now</p><p class="pa-hint" style="margin:0">' + (ih.length ? ih.length + (ih.length === 1 ? ' booking' : ' bookings') + ' in house today, including arrivals and departures.' : 'Nobody is staying today.') + '</p></div>' +
+      (ih.length ? '<button type="button" class="pa-btn teal" data-act="bulk" data-ref="">Message all in-house guests</button>' : '') + '</div>' +
+      (ih.length ? '<div class="pa-results">' + ih.map(inHouseRow).join('') + '</div>' : '') + '</section>';
+    h += '<section class="pa-card" aria-label="WhatsApp messages to send"><p class="pa-h2">WhatsApp to send</p>' + (M.due.length ? '<div class="pa-results">' + M.due.map(msgItem).join('') + '</div>' : '<p class="pa-hint">Nothing to send right now.</p>') + '</section>';
+    if (M.emailIssues && M.emailIssues.length) h += '<section class="pa-card" style="border-color:#f5c98a" aria-label="Emails not sent"><p class="pa-h2">Emails that couldn\'t go out</p><p class="pa-hint">Add the guest\'s email address and the hub sends it on its next round (every 15 minutes).</p><div class="pa-results">' + M.emailIssues.map(msgItem).join('') + '</div></section>';
     if (M.upcoming.length) h += '<section class="pa-card pa-soft" aria-label="Coming up"><p class="pa-h2">Coming up (next 14 days)</p><div class="pa-results">' + M.upcoming.map(msgItem).join('') + '</div></section>';
-    var card = function (k, title, rel) {
-      var st = M.settings[k];
-      return '<section class="pa-card" aria-label="' + title + '"><div class="pa-row" style="justify-content:space-between;align-items:center"><p class="pa-h2" style="margin:0">' + title + '</p>' +
-        '<label class="pa-check" style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="pa-m-' + k + '-on"' + (st.on ? ' checked' : '') + '> On</label></div>' +
-        '<div class="pa-row" style="margin-top:10px"><div class="pa-field" style="flex:0 1 140px"><label class="pa-label" for="pa-m-' + k + '-days">Days ' + rel + '</label><input id="pa-m-' + k + '-days" type="number" min="0" max="30" value="' + esc(st.days) + '"></div>' +
-        '<div class="pa-field" style="flex:0 1 140px"><label class="pa-label" for="pa-m-' + k + '-time">At (SA time)</label><input id="pa-m-' + k + '-time" type="time" value="' + esc(st.time) + '"></div></div>' +
-        '<div class="pa-field" style="margin-top:10px"><label class="pa-label" for="pa-m-' + k + '-text">Message</label><textarea id="pa-m-' + k + '-text" rows="9">' + esc(st.text) + '</textarea></div>' +
-        '<div class="pa-actions" style="margin-top:6px">' + PLACEHOLDERS.filter(function (x) { return k === 'after' || x[0] !== '{review_link}'; }).map(function (x) { return '<button type="button" class="pa-chipbtn" data-act="insertPh" data-target="pa-m-' + k + '-text" data-ph="' + x[0] + '" title="Insert ' + x[1] + '">' + x[0] + '</button>'; }).join('') + '</div>' +
-        (k === 'after' && !M.reviewsConnected ? '<p class="pa-err" style="margin-top:8px">Avante Reviews isn\'t connected yet, so {review_link} can\'t be filled in. Avante Travel sets this up.</p>' : '') + '</section>';
-    };
-    h += '<p class="pa-hint" style="margin:4px 0 10px">At the set time the message appears under Ready to send and you get an email. Tap <b>Send</b>: WhatsApp opens on your phone with the message filled in for that guest. Words in {curly brackets} fill themselves in.</p>';
-    h += card('welcome', 'Welcome and instructions (before arrival)', 'before arrival') + card('after', 'After the stay (with review link)', 'after check-out');
+    // scheduled messages
+    var list = msgEditList();
+    h += '<div class="pa-row" style="justify-content:space-between;align-items:center;margin:6px 0 10px"><div><p class="pa-h2" style="margin:0">Scheduled messages</p><p class="pa-hint" style="margin:0">As many as you like. Each goes to every booking at its time. Words in {curly brackets} fill themselves in.</p></div>' +
+      '<button type="button" class="pa-btn ghost" data-act="addMsg">+ Add a message</button></div>';
+    h += list.length ? list.map(msgCard).join('') : '<div class="pa-card pa-hint">No scheduled messages. Add one above.</div>';
     h += '<div class="pa-row" style="margin-bottom:18px"><button type="button" class="pa-btn" data-act="saveMessages">Save messages</button></div>';
     return h;
   }
 
   // ---- booking popup: Guest / Messages / Booking ----
-  function msgStatus(b, k) {
-    var M = S.messages, set = M && M.settings && M.settings[k], rec = (b.msgs || {})[k];
-    if (rec && rec.state === 'sent') return 'Sent ' + new Date(rec.at).toLocaleDateString([], { day: 'numeric', month: 'short' });
-    if (rec && rec.state === 'skipped') return 'Skipped';
-    if (!set || !set.on) return 'Switched off (see the Messages tab)';
-    var find = function (list) { return (list || []).find(function (i) { return i.ref === b.ref && i.kind === k; }); };
-    if (find(M.due)) return 'Ready to send';
-    var up = find(M.upcoming); if (up) { var w = new Date(up.dueAt); return 'Goes out ' + w.toLocaleDateString([], { day: 'numeric', month: 'short' }) + ' at ' + w.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
-    var live = b.items.filter(function (i) { return !i.cancelled; }), start = live.map(function (i) { return i.start; }).sort()[0];
-    if (k === 'welcome' && start <= today()) return 'Not sent (the stay has started)';
-    return k === 'after' && live.map(function (i) { return i.end; }).sort().slice(-1)[0] <= today() ? 'Not sent' : 'Scheduled';
-  }
   function viewGuestSection(b) {
     var c = b.contact || {}, wa = waNum(c.cell);
     var h = '<div class="pa-form">' +
@@ -488,25 +574,37 @@
     return h;
   }
   function viewMsgSection(b) {
-    var c = b.contact || {}, wa = waNum(c.cell), ended = b.items.some(function (i) { return !i.cancelled; }) && b.items.filter(function (i) { return !i.cancelled; }).map(function (i) { return i.end; }).sort().slice(-1)[0] <= today();
+    var c = b.contact || {}, wa = waNum(c.cell), hasEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.email || ''), st = stayOf(b), ended = st && st.end <= today();
     var h = '';
-    if (!wa) h += '<div class="pa-lock">Add the guest\'s cellphone number in the Guest section to send WhatsApp messages.</div>';
-    h += ['welcome', 'after'].map(function (k) {
-      return '<div class="pa-result"><div class="grow"><b>' + KIND[k] + ' message</b><div class="pa-hint">' + esc(msgStatus(b, k)) + '</div></div>' + (wa ? '<button type="button" class="pa-btn small teal" data-act="compose" data-ref="' + esc(b.ref) + '" data-kind="' + k + '">' + (((b.msgs || {})[k] || {}).state === 'sent' ? 'Send again' : 'Send now') + '</button>' : '') + '</div>';
-    }).join('');
+    if (!wa || !hasEmail) h += '<div class="pa-lock">' + (!wa && !hasEmail ? 'Add the guest\'s cellphone number and email address in the Guest section to message them.' : !wa ? 'Add the guest\'s cellphone number in the Guest section to send WhatsApp messages.' : 'Add the guest\'s email address in the Guest section so the hub can email them.') + '</div>';
+    var list = msgList();
+    h += list.length ? list.map(function (m) {
+      return '<div class="pa-result"><div class="grow"><b>' + esc(m.name) + '</b><div class="pa-hint">' + esc(describeWhen(m)) + '</div><div class="pa-hint">' + msgStatus(b, m).map(esc).join('<br>') + '</div></div><div class="pa-actions">' +
+        (wa ? '<button type="button" class="pa-btn small teal" data-act="compose" data-ref="' + esc(b.ref) + '" data-kind="' + esc(m.id) + '">WhatsApp</button>' : '') +
+        (hasEmail ? '<button type="button" class="pa-btn small" data-act="emailNow" data-ref="' + esc(b.ref) + '" data-kind="' + esc(m.id) + '">Email now</button>' : '') + '</div></div>';
+    }).join('') : '<p class="pa-hint">No scheduled messages yet. Set them up in the Communication tab.</p>';
     h += '<div class="pa-field"><label class="pa-label" for="pa-custom">Write a message</label><textarea id="pa-custom" rows="3" placeholder="e.g. Hi {first_name}, your braai pack is in the fridge."></textarea></div>' +
-      '<div class="pa-actions"><button type="button" class="pa-btn" data-act="compose" data-ref="' + esc(b.ref) + '" data-kind="custom"' + (wa ? '' : ' disabled') + '>Send on WhatsApp</button></div>';
+      '<div class="pa-field"><label class="pa-label" for="pa-custom-subj">Email subject</label><input id="pa-custom-subj" type="text" maxlength="150" placeholder="A message from {property}"></div>' +
+      '<div class="pa-actions"><button type="button" class="pa-btn teal" data-act="compose" data-ref="' + esc(b.ref) + '" data-kind="custom"' + (wa ? '' : ' disabled') + '>Send on WhatsApp</button>' +
+      '<button type="button" class="pa-btn" data-act="emailNow" data-ref="' + esc(b.ref) + '" data-kind="custom"' + (hasEmail ? '' : ' disabled') + '>Send by email</button></div>';
     if (ended) h += '<div class="pa-result"><div class="grow"><b>Rate this guest</b><div class="pa-hint">Your review of the guest, shared only with Avante partner properties.</div></div><button type="button" class="pa-btn small ghost" data-act="rateGuest" data-ref="' + esc(b.ref) + '">Rate guest</button></div>';
     var log = (b.msgLog || []).slice().reverse();
-    if (log.length) h += '<p class="pa-label" style="margin:6px 0 0">Sent</p>' + log.map(function (l) { return '<div class="pa-logline"><b>' + esc(KIND[l.kind] || 'Message') + '</b> · ' + esc(new Date(l.at).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })) + '<div>' + esc(l.text).replace(/\n/g, '<br>') + '</div></div>'; }).join('');
+    if (log.length) h += '<p class="pa-label" style="margin:6px 0 0">Sent</p>' + log.map(function (l) { return '<div class="pa-logline"><b>' + esc(msgLabel(l.kind)) + '</b> · ' + (l.via === 'email' ? 'Email' : 'WhatsApp') + ' · ' + esc(new Date(l.at).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })) + (l.subject ? '<div><b>' + esc(l.subject) + '</b></div>' : '') + '<div>' + esc(l.text).replace(/\n/g, '<br>') + '</div></div>'; }).join('');
     return h;
   }
 
-  // ---- Reviews ----  // ---- Reviews ----
+  // Fill {first_name} etc. for one in-house guest in the browser (for WhatsApp one by one).
+  function fillLocal(text, g) {
+    var first = String(g.name || '').trim().split(/\s+/)[0] || 'there';
+    var vals = { first_name: /guest$/i.test(g.name || '') ? 'there' : first, name: g.name || '', property: (S.prop && S.prop.resortName) || '', unit: g.units || '', check_in: g.start ? niceDate(g.start) : '', check_out: g.end ? niceDate(g.end) : '', nights: g.start && g.end ? String(nightsBetween(g.start, g.end)) : '', ref: g.ref || '' };
+    return String(text || '').replace(/\{(\w+)\}/g, function (m, k) { return k in vals ? vals[k] : m; }).trim();
+  }
+
+  // ---- Reviews ----
   function viewReviews() {
     return propHeader() + '<div class="pa-stats"><div class="pa-stat" style="background:#0e2f44;color:#fff"><span style="font:700 12px Montserrat,sans-serif;text-transform:uppercase;letter-spacing:.06em;color:#9fe9e3">Avante guest rating</span><span style="color:#d6e2e9;line-height:1.5">Shows on your listing once you have 3 Avante guest reviews. Until then guests see your Google reviews.</span></div>' +
       '<div class="pa-stat" style="background:#f4fbfa;border:1.5px solid #e3e9e8"><span class="pa-label">What Google says</span><span style="line-height:1.5">Your Google rating and reviews show on your listing through Avante Reviews once your Google Place ID is set.</span></div>' +
-      '<div class="pa-stat" style="background:#f4fbfa;border:1.5px solid #e3e9e8"><span class="pa-label">Ask guests for a review</span><span style="line-height:1.5">Switch on the after-stay message in <b>Messages</b>. It includes the guest\'s personal Avante review link.</span><button type="button" class="pa-btn small" style="align-self:flex-start" data-act="view" data-v="msgs">Open Messages</button></div></div>' +
+      '<div class="pa-stat" style="background:#f4fbfa;border:1.5px solid #e3e9e8"><span class="pa-label">Ask guests for a review</span><span style="line-height:1.5">Switch on the after-stay message in <b>Communication</b>. It includes the guest\'s personal Avante review link.</span><button type="button" class="pa-btn small" style="align-self:flex-start" data-act="view" data-v="msgs">Open Communication</button></div></div>' +
       '<div class="pa-card pa-soft"><p class="pa-h2">Rate your guests</p><p class="pa-hint">After check-out, open the booking, go to Messages and tap <b>Rate guest</b>. Guest ratings are shared only with Avante partner properties.</p></div>';
   }
 
@@ -529,8 +627,23 @@
   function viewModal() {
     var m = S.modal, h = '<div class="pa-modal" data-act="backdrop"><div class="pa-dialog" role="dialog" aria-modal="true" aria-labelledby="pa-dlg-t">';
     var hdr = function (t, s) { return '<header><div><b id="pa-dlg-t">' + esc(t) + '</b><span>' + esc(s || (S.prop.resortName + ' · site ' + S.prop.site)) + '</span></div><button type="button" data-act="close" aria-label="Close">✕</button></header>'; };
+    if (m.type === 'bulk') {
+      var all = (S.messages && S.messages.inHouse) || [], gs = m.ref ? all.filter(function (g) { return g.ref === m.ref; }) : all;
+      var withEmail = gs.filter(function (g) { return g.hasEmail; }), withWa = gs.filter(function (g) { return waNum(g.cell); });
+      var one = gs.length === 1;
+      h += hdr(one ? 'Message ' + gs[0].name : 'Message all in-house guests', one ? gs[0].units + ' · ' + gs[0].ref : gs.length + ' bookings staying now') + '<div class="body">';
+      if (m.result) h += '<div class="pa-ok" role="status">' + esc(m.result) + '</div>';
+      h += '<div class="pa-field"><label class="pa-label" for="pa-bulk-subj">Email subject</label><input id="pa-bulk-subj" type="text" maxlength="150" value="' + esc(m.subject || '') + '" placeholder="A message from {property}"></div>' +
+        '<div class="pa-field"><label class="pa-label" for="pa-bulk-text">Message</label><textarea id="pa-bulk-text" rows="7" placeholder="e.g. Hi {first_name}, the water will be off from 14:00 to 15:00 today. Sorry for the trouble!">' + esc(m.text || '') + '</textarea></div>' +
+        '<div class="pa-actions">' + PLACEHOLDERS.filter(function (x) { return x[0] !== '{review_link}'; }).map(function (x) { return '<button type="button" class="pa-chipbtn" data-act="insertPh" data-target="pa-bulk-text" data-ph="' + x[0] + '" title="Insert ' + x[1] + '">' + x[0] + '</button>'; }).join('') + '</div>';
+      if (m.via !== 'wa') h += '<div class="pa-pay"><p class="pa-label" style="margin:0">Email</p><p class="pa-hint" style="margin:0">' + (withEmail.length ? (one ? 'Goes to ' + esc(gs[0].email) + '.' : 'Each guest gets their own copy with their name filled in: ' + withEmail.length + ' of ' + gs.length + ' have an email address.') : 'No email address for ' + (one ? 'this guest' : 'these guests') + ' yet.') + '</p>' +
+        (withEmail.length ? '<div class="pa-actions"><button type="button" class="pa-btn" data-act="bulkEmail"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'Sending…' : one ? 'Send email' : 'Email ' + withEmail.length + (withEmail.length === 1 ? ' guest' : ' guests')) + '</button></div>' : '') + '</div>';
+      if (m.via !== 'email') h += '<div class="pa-pay"><p class="pa-label" style="margin:0">WhatsApp, one by one</p><p class="pa-hint" style="margin:0">Each button opens WhatsApp with the message ready for that guest; press Send there, then come back for the next.</p>' +
+        (withWa.length ? withWa.map(function (g) { var done = (m.waDone || {})[g.ref]; return '<div class="pa-row" style="align-items:center;justify-content:space-between;gap:8px"><span><b>' + esc(g.name) + '</b> <span class="pa-hint">· ' + esc(g.units) + '</span></span><button type="button" class="pa-btn small ' + (done ? 'ghost' : 'teal') + '" data-act="bulkWa" data-ref="' + esc(g.ref) + '">' + (done ? 'Sent ✓ · again' : 'WhatsApp') + '</button></div>'; }).join('') : '<p class="pa-hint" style="margin:0">No cellphone number for ' + (one ? 'this guest' : 'these guests') + ' yet.</p>') + '</div>';
+      return h + '<div class="pa-row"><button type="button" class="pa-btn ghost" data-act="close">Done</button></div></div></div></div>';
+    }
     if (m.type === 'compose') {
-      return h + hdr('WhatsApp to ' + (m.name || 'the guest'), KIND[m.kind] + (m.kind === 'custom' ? '' : ' message') + ' · ' + m.ref) + '<div class="body">' +
+      return h + hdr('WhatsApp to ' + (m.name || 'the guest'), msgLabel(m.kind) + ' · ' + m.ref) + '<div class="body">' +
         (m.sent ? '<div class="pa-ok">Opened in WhatsApp and marked as sent. Press Send in WhatsApp if you haven\'t yet.</div>' : '<p class="pa-hint" style="margin:0">Check the message, change it if you like, then open WhatsApp. It opens on this phone or computer with the message ready for ' + esc(m.name || 'the guest') + '.</p>') +
         '<div class="pa-field"><label class="pa-label" for="pa-compose">Message</label><textarea id="pa-compose" rows="12">' + esc(m.text) + '</textarea></div>' +
         '<div class="pa-actions"><button type="button" class="pa-btn teal" data-act="sendCompose">' + (m.sent ? 'Open WhatsApp again' : 'Open WhatsApp') + '</button><button type="button" class="pa-btn ghost" data-act="composeBack">' + (m.sent ? 'Done' : 'Back') + '</button></div></div></div></div>';
@@ -569,7 +682,9 @@
         var bodyHtml = tab === 'guest' ? viewGuestSection(b) : tab === 'msgs' ? viewMsgSection(b)
           : '<div class="pa-items">' + live.map(function (it) { return '<div class="pa-item"><b style="flex:1 1 140px;color:#0e2f44">' + esc(it.unit) + '</b><span style="flex:1 1 170px;font-size:13px">' + short(it.start) + ' – ' + short(it.end) + ' · ' + nw(nightsBetween(it.start, it.end)) + '</span></div>'; }).join('') + '<div class="pa-row" style="justify-content:space-between"><span class="pa-label">' + esc(b.status) + '</span><b>' + money(b.total) + '</b></div></div>' +
             '<p class="pa-hint">' + (b.demo ? 'Demo booking: it isn\'t on Stock Network, so it can\'t be changed, paid or cancelled. Remove demo bookings from the Bookings tab.' : 'This booking was cancelled.') + '</p>';
-        return h + hdr('Booking ' + b.ref, sub) + '<div class="body">' + segHtml + bodyHtml + '<div class="pa-row"><button type="button" class="pa-btn ghost" data-act="close">Close</button></div></div></div></div>';
+        // Cancel is on every section of the booking (paid bookings: request cancellation).
+        var cancelBtn = !b.demo && b.status !== 'Cancelled' ? '<button type="button" class="pa-btn danger" data-act="cancelBooking"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'Working…' : b.locked ? 'Request cancellation' : 'Cancel this booking') + '</button>' : '';
+        return h + hdr('Booking ' + b.ref, sub) + '<div class="body">' + segHtml + bodyHtml + '<div class="pa-row pa-dlgfoot">' + cancelBtn + '<button type="button" class="pa-btn ghost" data-act="close">Close</button></div></div></div></div>';
       }
     }
     if (editing && b.locked) {
@@ -611,10 +726,10 @@
   // ---------- actions ----------
   function val(id) { var el = document.getElementById(id); return el ? el.value : ''; }
   function setView(v) {
-    S.view = v; S.err = null; S.msg = null; render();
+    if (v === 'cal') v = 'avail';
+    S.view = v; S.more = false; S.err = null; S.msg = null; render();
     if (!S.prop) return;
     if (v === 'avail') loadAvailability(S.from);
-    if (v === 'cal') { if (!S.calMonth) S.calMonth = (S.from || today()).slice(0, 7); loadMonth(); }
     if (v === 'chan') Promise.all([api('channels'), api('channelEvents')]).then(function (r) { S.channels = r[0]; S.events = r[1].events; render(); }).catch(fail);
     if (v === 'book') api('find', { q: S.findQ }).then(function (d) { S.bookings = d.bookings; S.payMode = d.payMode; render(); }).catch(fail);
     if (v === 'guests') api('guests').then(function (d) { S.guests = d.guests; render(); }).catch(fail);
@@ -627,7 +742,7 @@
     S.guests = null;
   }
   function alertInModal(msg) { S.modalNote = null; S.err = msg; S.modal = S.modal; render(); var e = root.querySelector('.pa-err'); if (e) e.scrollIntoView({ block: 'nearest' }); }
-  function loadMessages() { return api('messages').then(function (d) { S.messages = d; S.msgsDue = d.due.length; render(); }).catch(function () {}); }
+  function loadMessages() { return api('messages').then(function (d) { if (S.view === 'msgs') collectMsgEdit(); S.messages = d; S.msgsDue = d.due.length; if (!S.msgDirty) S.msgEdit = null; render(); }).catch(function () {}); }
   // Pay now opens Stock Network's payment page in its own window: bank and
   // Instant EFT pages refuse to run inside another site's page.
   var payTimer = null;
@@ -656,6 +771,7 @@
   var lastFocusedText = null;
   root.addEventListener('focusin', function (e) { if (e.target.tagName === 'TEXTAREA') lastFocusedText = e.target; });
   root.addEventListener('input', function (e) {
+    if (/^pa-m-\d+-/.test(e.target.id || '')) S.msgDirty = true;
     if (e.target.id === 'pa-gq') { S.guestQ = e.target.value; render(); var gq = document.getElementById('pa-gq'); if (gq) { gq.focus(); gq.setSelectionRange(gq.value.length, gq.value.length); } return; }
     if (e.target.id === 'pa-fq' || e.target.id === 'pa-bq') {
       S.findQ = e.target.value; clearTimeout(findTimer);
@@ -683,12 +799,20 @@
     }).catch(fail);
   }
 
+  // The More menu closes when you tap anywhere else.
+  document.addEventListener('click', function (e) { if (S.more && !e.target.closest('.pa-more')) { S.more = false; render(); } });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && S.more) { S.more = false; render(); var b = root.querySelector('[data-act="more"]'); if (b) b.focus(); } });
+  // Changing when a scheduled message goes out shows the matching fields (days or date).
+  root.addEventListener('change', function (e) { if (e.target.dataset && e.target.dataset.msgrerender) { S.msgDirty = true; var id = e.target.id; render(); var el = document.getElementById(id); if (el) el.focus(); } else if (/^pa-m-\d+-/.test(e.target.id || '')) S.msgDirty = true; });
   root.addEventListener('keydown', function (e) { if (e.key === 'Enter' && e.target.id === 'pa-rp') { var b = root.querySelector('[data-act="resume"]'); if (b) b.click(); } });
   root.addEventListener('click', function (e) {
     var t = e.target.closest('[data-act]'); if (!t) return;
     var a = t.dataset.act;
     if (a === 'backdrop' && e.target !== t) return;
     if (a === 'view') return setView(t.dataset.v);
+    if (a === 'more') { S.more = !S.more; return render(); }
+    if (S.more && a !== 'more' && a !== 'hookbuilder') S.more = false;
+    if (a === 'goStart') { S.searched = null; return loadAvailability(startDate()); }
     // Hook Builder (2026-10-08): opens the hook builder signed in with this hub login (hub.html's openHookBuilder).
     if (a === 'hookbuilder') { if (typeof window.openHookBuilder === 'function') window.openHookBuilder(t); return; }
     if (a === 'dismiss') { S.err = null; return render(); }
@@ -734,6 +858,7 @@
     if (a === 'selectResult') { S.cart.push({ unit: t.dataset.u, start: S.results.checkIn, end: S.results.checkOut }); S.results = null; return render(); }
     if (a === 'cell') {
       var u = t.dataset.u, d = t.dataset.d;
+      if (d < firstBookable()) return;
       if (!S.sel || S.sel.unit !== u || d <= S.sel.start) { S.sel = { unit: u, start: d }; return render(); }
       if (!rangeOpen(u, S.sel.start, add(d, 1))) { S.sel = { unit: u, start: d }; return render(); }
       S.cart.push({ unit: u, start: S.sel.start, end: add(d, 1) }); S.sel = null; return render();
@@ -742,11 +867,6 @@
     if (a === 'clearCart') { S.cart = []; S.sel = null; return render(); }
     if (a === 'openBook') { S.modal = { type: 'book' }; return render(); }
     if (a === 'filter') { S.unitFilter = t.dataset.u; return render(); }
-    if (a === 'calUnit') { S.calUnit = t.dataset.u; return render(); }
-    if (a === 'calMonth') {
-      var y = +S.calMonth.slice(0, 4), mo = +S.calMonth.slice(5, 7) - 1 + (+t.dataset.n); var dt = new Date(Date.UTC(y, mo, 1)); S.calMonth = dt.toISOString().slice(0, 7);
-      return loadMonth();
-    }
     if (a === 'copy' || a === 'copyShare') {
       var text = a === 'copy' ? t.dataset.text : val('pa-share');
       (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(function () { t.textContent = 'Copied'; }, function () { prompt('Copy this:', text); });
@@ -790,9 +910,10 @@
       var prices = {}; root.querySelectorAll('[data-price]').forEach(function (el) { prices[el.dataset.price] = el.value; });
       var channels = {}; root.querySelectorAll('[data-imp]').forEach(function (el) { var p = el.dataset.imp.split('|'); (channels[p[0]] = channels[p[0]] || {})[p[1]] = el.value.trim(); });
       var pmEl = root.querySelector('input[name="pa-pm"]:checked');
-      return api('saveSettings', { email: val('pa-se'), phone: val('pa-sp'), minStay: val('pa-sm'), autoBook: document.getElementById('pa-auto').checked, prices: prices, channels: channels,
+      var csMode = root.querySelector('input[name="pa-cs-mode"]:checked');
+      return api('saveSettings', { calendarStart: { mode: csMode ? csMode.value : 'today', date: val('pa-cs-date') }, email: val('pa-se'), phone: val('pa-sp'), minStay: val('pa-sm'), autoBook: document.getElementById('pa-auto').checked, prices: prices, channels: channels,
         payMode: pmEl ? pmEl.value : 'both', bank: { bankName: val('pa-bn'), accountHolder: val('pa-bh'), accountNumber: val('pa-ba'), branchCode: val('pa-bb'), accountType: val('pa-bt'), note: val('pa-bx') } })
-        .then(function (d) { S.channels = d; S.msg = 'Saved. The hub reads your channel links every 15 minutes.'; render(); window.scrollTo(0, 0); }).catch(function (e) { fail(e); window.scrollTo(0, 0); });
+        .then(function (d) { S.channels = d; S.prop.settings = d.settings; if (d.firstBookable) S.prop.firstBookable = d.firstBookable; S.from = startDate(); S.searched = null; S.msg = 'Saved. The hub reads your channel links every 15 minutes.'; render(); window.scrollTo(0, 0); }).catch(function (e) { fail(e); window.scrollTo(0, 0); });
     }
     if (a === 'unitMove' || a === 'unitNew') {
       var from = a === 'unitMove' ? val('pa-mv-' + t.dataset.u) : '';
@@ -835,7 +956,7 @@
     }
     if (a === 'composeBack') { var bm = S.modal.back; S.modal = bm && bm.type === 'edit' ? bm : null; if (S.modal) { S.bTab = 'msgs'; S.modalNote = null; } if (S.view === 'msgs') loadMessages(); return render(); }
     if (a === 'skipMsg') {
-      if (!confirm('Skip the ' + KIND[t.dataset.kind].toLowerCase() + ' message for ' + t.dataset.ref + '? It won\'t come up again.')) return;
+      if (!confirm('Skip the WhatsApp "' + msgLabel(t.dataset.kind) + '" message for ' + t.dataset.ref + '? It won\'t come up again.')) return;
       return api('markMessage', { ref: t.dataset.ref, kind: t.dataset.kind, state: 'skipped' }).then(function () { loadMessages(); }).catch(fail);
     }
     if (a === 'rateGuest') {
@@ -848,9 +969,60 @@
       var st0 = tgt === lastFocusedText ? tgt.selectionStart : tgt.value.length, en0 = tgt === lastFocusedText ? tgt.selectionEnd : st0;
       tgt.value = tgt.value.slice(0, st0) + t.dataset.ph + tgt.value.slice(en0); tgt.focus(); tgt.selectionStart = tgt.selectionEnd = st0 + t.dataset.ph.length; return;
     }
+    if (a === 'addMsg') {
+      collectMsgEdit();
+      msgEditList().push({ id: '', name: 'New message', on: false, anchor: 'before_arrival', days: 1, date: '', time: '10:00', wa: true, email: true, subject: 'A message from {property}', text: '', _open: true });
+      S.msgDirty = true; render();
+      var nm = document.getElementById('pa-m-' + (S.msgEdit.length - 1) + '-name'); if (nm) { nm.focus(); nm.select(); }
+      return;
+    }
+    if (a === 'removeMsg') {
+      collectMsgEdit();
+      var rmM = S.msgEdit[+t.dataset.i]; if (!rmM) return;
+      if (!confirm('Remove the "' + (rmM.name || 'Message') + '" message? It stops going to guests once you save.')) return;
+      S.msgEdit.splice(+t.dataset.i, 1); S.msgDirty = true; return render();
+    }
     if (a === 'saveMessages') {
-      var mb = {}; ['welcome', 'after'].forEach(function (k) { mb[k] = { on: document.getElementById('pa-m-' + k + '-on').checked, days: val('pa-m-' + k + '-days'), time: val('pa-m-' + k + '-time'), text: val('pa-m-' + k + '-text') }; });
-      return api('saveMessages', mb).then(function (d) { S.messages = d; S.msgsDue = d.due.length; S.msg = 'Messages saved.'; render(); window.scrollTo(0, 0); }).catch(function (e) { fail(e); window.scrollTo(0, 0); });
+      collectMsgEdit();
+      var sendList = msgEditList().map(function (m) { var o = Object.assign({}, m); delete o._open; return o; });
+      var openIds = msgEditList().map(function (m) { return m._open; });
+      t.textContent = 'Saving…';
+      return api('saveMessages', { list: sendList }).then(function (d) {
+        S.messages = d; S.msgsDue = d.due.length; S.msgDirty = false; S.msgEdit = null;
+        msgEditList().forEach(function (m, k) { m._open = openIds[k]; });
+        S.msg = 'Messages saved.'; render(); window.scrollTo(0, 0);
+      }).catch(function (e) { fail(e); window.scrollTo(0, 0); });
+    }
+    if (a === 'emailNow') {
+      var kindE = t.dataset.kind, refE = t.dataset.ref, txtE = kindE === 'custom' ? val('pa-custom') : '', subjE = kindE === 'custom' ? val('pa-custom-subj') : '';
+      if (kindE === 'custom' && !txtE.trim()) { var tc = document.getElementById('pa-custom'); if (tc) tc.focus(); return; }
+      if (kindE !== 'custom' && !confirm('Email the "' + msgLabel(kindE) + '" message to this guest now?')) return;
+      t.disabled = true; t.textContent = 'Sending…';
+      return api('emailNow', { ref: refE, kind: kindE, text: txtE, subject: subjE }).then(function (d) { updateBooking(d.booking); S.err = null; S.modalNote = 'Email sent to ' + d.to + '.'; render(); loadMessages(); }).catch(function (e) { t.disabled = false; t.textContent = 'Email now'; alertInModal(e.message); });
+    }
+    if (a === 'bulk') {
+      if (!S.messages) return;
+      S.modal = { type: 'bulk', ref: t.dataset.ref || '', via: t.dataset.via || '', waDone: {} }; return render();
+    }
+    if (a === 'bulkEmail') {
+      var bm2 = S.modal; bm2.text = val('pa-bulk-text'); bm2.subject = val('pa-bulk-subj');
+      if (!bm2.text.trim()) { var bt = document.getElementById('pa-bulk-text'); if (bt) bt.focus(); return; }
+      busy(true); bm2.result = null; render();
+      return api('emailInHouse', { text: bm2.text, subject: bm2.subject, refs: bm2.ref ? [bm2.ref] : [] }).then(function (d) {
+        S.busy = false;
+        bm2.result = (d.sent ? 'Emailed ' + d.sent + (d.sent === 1 ? ' guest.' : ' guests.') : 'No email was sent.') + (d.failed ? ' ' + d.failed + ' could not be sent; try again in a minute.' : '') + (d.noEmail && d.noEmail.length ? ' No email address for: ' + d.noEmail.join(', ') + '.' : '');
+        render();
+      }).catch(function (e) { S.busy = false; S.err = e.message; render(); });
+    }
+    if (a === 'bulkWa') {
+      var bm3 = S.modal, gW = ((S.messages && S.messages.inHouse) || []).find(function (g) { return g.ref === t.dataset.ref; });
+      bm3.text = val('pa-bulk-text'); bm3.subject = val('pa-bulk-subj');
+      if (!gW) return;
+      if (!bm3.text.trim()) { var bt2 = document.getElementById('pa-bulk-text'); if (bt2) bt2.focus(); return; }
+      var filled = fillLocal(bm3.text, gW);
+      window.open('https://wa.me/' + waNum(gW.cell) + '?text=' + encodeURIComponent(filled), '_blank', 'noopener');
+      bm3.waDone[gW.ref] = true; render();
+      return api('markMessage', { ref: gW.ref, kind: 'custom', state: 'sent', text: filled }).catch(function () {});
     }
     if (a === 'guestsCsv') {
       var head = ['Name', 'Cellphone', 'Email', 'Car registration', 'Stays', 'Nights', 'First stay', 'Last stay', 'Booked via', 'OK for offers', 'Opted out', 'Bookings'];
@@ -861,7 +1033,7 @@
     }
     if (a === 'seedDemo' || a === 'clearDemo') {
       t.textContent = a === 'seedDemo' ? 'Loading…' : 'Removing…';
-      return api(a).then(function (d) { var note = a === 'seedDemo' ? d.added + ' demo bookings loaded, and the example welcome and after-stay messages switched on. Open one to try the Guest and Messages sections, and look at the Guests and Messages tabs.' : d.removed + ' demo bookings removed.'; S.guests = null; staleAll(); loadMessages(); setView('book'); S.msg = note; render(); }).catch(fail);
+      return api(a).then(function (d) { var note = a === 'seedDemo' ? d.added + ' demo bookings loaded, and the example welcome and after-stay messages switched on. Open one to try the Guest and Messages sections, and look at the Guests and Communication tabs.' : d.removed + ' demo bookings removed.'; S.guests = null; staleAll(); loadMessages(); setView('book'); S.msg = note; render(); }).catch(fail);
     }
     if (a === 'syncNow') {
       t.textContent = 'Checking…';

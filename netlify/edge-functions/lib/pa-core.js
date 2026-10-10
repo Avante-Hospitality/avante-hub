@@ -45,7 +45,7 @@ function maskEmail(e) { const m = /^(.)(.*)(@.*)$/.exec(String(e || "")); return
 export function waNumber(phone) { let d = String(phone || "").replace(/\D/g, ""); if (d.startsWith("00")) d = d.slice(2); if (d.startsWith("0")) d = "27" + d.slice(1); return d.length >= 9 ? d : ""; }
 
 // affiliates: { getAuth(aff) -> {passwordHash}|null, getProfile(aff) -> {name,email,phone}|null }
-// sendEmail(to, subject, html) -> Promise<boolean>
+// sendEmail(to, subject, html, { fromName, replyTo }?) -> Promise<boolean>
 // reviews: { baseUrl, secret, tenant } for the Avante Reviews app (review links in after-stay messages)
 export function createCore({ store, resortStore, encKey, now = () => new Date(), clientFactory = (c) => new SNClient(c), fetchImpl = (...a) => fetch(...a), baseUrl = "", affiliates = null, sendEmail = async () => false, reviews = null }) {
   const today = () => now().toISOString().slice(0, 10);
@@ -162,7 +162,19 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
   }
 
   function publicProperty(p) {
-    return { siteId: p.siteId, site: p.site, resortId: p.resortId, resortName: p.resortName, units: p.units, settings: p.settings, connectedAt: p.createdAt, demoAllowed: ["3"].includes(String(p.site)) };
+    return { siteId: p.siteId, site: p.site, resortId: p.resortId, resortName: p.resortName, units: p.units, settings: p.settings, connectedAt: p.createdAt, demoAllowed: ["3"].includes(String(p.site)), firstBookable: firstBookable(p) };
+  }
+
+  // Calendar start (property setup): "today", or a set date that is also the
+  // first date guests can book from, until it has passed.
+  function firstBookable(prop) {
+    const cs = prop && prop.settings && prop.settings.calendarStart;
+    const t = today();
+    return cs && cs.mode === "date" && /^\d{4}-\d{2}-\d{2}$/.test(cs.date || "") && cs.date > t ? cs.date : t;
+  }
+  function checkBookable(prop, start) {
+    const fb = firstBookable(prop);
+    if (start < fb) throw new PAError(fb === today() ? "Choose a check-in from today." : "Bookings open from " + fb + " (the property's first bookable date).");
   }
 
   // One Stock Network login per property is reused across requests until it
@@ -295,8 +307,8 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
       for (const n of eachNight(from, to)) {
         const b = ours[u.name] && ours[u.name][n];
         const p = pend[u.name] && pend[u.name][n];
-        if (b) row[n] = { s: b.origin === "channel" ? b.channel : "hub", ref: b.ref };
-        else if (p) row[n] = { s: p.status === "clash" ? "clash" : "pending", ch: p.channel };
+        if (b) row[n] = { s: b.origin === "channel" ? b.channel : "hub", ref: b.ref, name: guestLabel(b) };
+        else if (p) row[n] = { s: p.status === "clash" ? "clash" : "pending", ch: p.channel, name: (CHANNELS[p.channel] || "Channel") + " guest" };
         else if (open.has(n)) row[n] = { s: "open" };
         else if (taken[n]) row[n] = { s: "sn" };
         else row[n] = { s: "na" };
@@ -305,12 +317,12 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     }
     const nightRates = {};
     for (const u of prop.units) { const nr = (snap.nightRates || {})[u.name] || {}; const m = {}; for (const n of eachNight(from, to)) if (nr[n]) m[n] = nr[n]; nightRates[u.name] = m; }
-    return { from, to, snapshotAt: snap.at, units: prop.units.map((u) => ({ name: u.name, size: u.size, rateFrom: snap.rates[u.name] || null })), nights, nightRates, minStay: prop.settings.minStay || 2 };
+    return { from, to, firstBookable: firstBookable(prop), snapshotAt: snap.at, units: prop.units.map((u) => ({ name: u.name, size: u.size, rateFrom: snap.rates[u.name] || null })), nights, nightRates, minStay: prop.settings.minStay || 2 };
   }
 
   async function search(prop, checkIn, checkOut) {
     if (!checkIn || !checkOut || checkOut <= checkIn) throw new PAError("Choose a check-out after the check-in.");
-    if (checkIn < today()) throw new PAError("Choose a check-in from today.");
+    checkBookable(prop, checkIn);
     if (nightsBetween(checkIn, checkOut) > MAX_WINDOW_DAYS - 2) throw new PAError("Choose a shorter stay.");
     // Read the stay, and at least the 2 weeks the grid will show next, in one call.
     const wEnd = checkOut > addDays(checkIn, 14) ? checkOut : addDays(checkIn, 14);
@@ -429,6 +441,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
   async function book(prop, body) {
     const items = (Array.isArray(body.items) ? body.items : []).slice(0, 10).map((it) => ({ unit: cleanStr(it.unit, 60), start: cleanStr(it.start, 10), end: cleanStr(it.end, 10), adults: Math.max(1, Math.min(20, Number(it.adults) || Number(body.adults) || 2)), children: Math.max(0, Math.min(20, Number(it.children) || Number(body.children) || 0)) }));
     if (!items.length) throw new PAError("Choose at least one unit.");
+    for (const it of items) checkBookable(prop, it.start);
     const guest = validGuest(body.guest);
     const source = cleanStr(body.source, 40) || "Direct";
     const channelRef = cleanStr(body.channelRef, 60);
@@ -565,6 +578,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     const old = live[0];
     const next = { unit: cleanStr(change.unit, 60) || old.unit, start: cleanStr(change.start, 10) || old.start, end: cleanStr(change.end, 10) || old.end };
     const guest = validGuest(Object.assign({}, b.guest, change.guest || {}));
+    if (next.start !== old.start) checkBookable(prop, next.start);
     const client = await clientFor(prop);
     if (await refreshPayment(client, b)) await saveBookings(prop, list);
     if (b.status === "Cancelled") throw new PAError(b.ref + " has been cancelled on Stock Network.", 409);
@@ -622,6 +636,12 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     if (body.phone !== undefined) s.phone = cleanStr(body.phone, 30);
     if (body.minStay !== undefined) s.minStay = Math.max(1, Math.min(30, Number(body.minStay) || 1));
     if (body.autoBook !== undefined) s.autoBook = !!body.autoBook;
+    if (body.calendarStart && typeof body.calendarStart === "object") {
+      const mode = body.calendarStart.mode === "date" ? "date" : "today";
+      const date = /^\d{4}-\d{2}-\d{2}$/.test(String(body.calendarStart.date || "")) ? String(body.calendarStart.date) : "";
+      if (mode === "date" && !date) throw new PAError("Choose the date the calendar opens on.");
+      s.calendarStart = { mode, date: mode === "date" ? date : "" };
+    }
     if (body.payMode !== undefined) s.payMode = PAY_MODES.includes(body.payMode) ? body.payMode : "both";
     if (body.bank && typeof body.bank === "object") {
       const bk = { bankName: cleanStr(body.bank.bankName, 60), accountHolder: cleanStr(body.bank.accountHolder, 100), accountNumber: cleanStr(body.bank.accountNumber, 30).replace(/[^0-9 -]/g, ""), branchCode: cleanStr(body.bank.branchCode, 20), accountType: cleanStr(body.bank.accountType, 30), note: cleanStr(body.bank.note, 200) };
@@ -657,7 +677,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     }));
     const settings = Object.assign({ payMode: "both" }, prop.settings || {});
     const linked = Object.keys(prop.channels || {}).filter((n) => Object.values(prop.channels[n] || {}).some((c) => c && c.importUrl));
-    return { settings, bank: await bankOf(prop), units, affiliateLinked: !!prop.aff, unitNotices: prop.unitNotices || [], linkedUnits: linked };
+    return { settings, firstBookable: firstBookable(prop), bank: await bankOf(prop), units, affiliateLinked: !!prop.aff, unitNotices: prop.unitNotices || [], linkedUnits: linked };
   }
 
   // A unit name appeared on SN. from = the old unit it replaces (renamed on SN),
@@ -856,6 +876,13 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     const g = b.guest || {};
     return { name: ((g.first || "") + " " + (g.last || "")).trim(), cell: g.cellphone || "", email: g.email || "" };
   }
+  // The name shown on a calendar block.
+  function guestLabel(b) {
+    const c = contactOf(b);
+    if (c.name) return c.name;
+    if (b.origin === "channel") return (b.source || CHANNELS[b.channel] || "Channel") + " guest";
+    return "Guest";
+  }
   async function saveContact(prop, ref, body) {
     const { list, b } = await findBooking(prop, ref);
     const c = Object.assign({}, contactOf(b));
@@ -909,139 +936,309 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     return { guests: rows };
   }
 
-  // ---------- guest messages (WhatsApp, one tap) ----------
+  // ---------- guest communication (WhatsApp one tap, email sent by the hub) ----------
+  // prop.messages = { list: [message] }, as many scheduled messages as the
+  // property wants. A message:
+  //   { id, name, on, anchor, days, date, time, wa, email, subject, text }
+  // anchor: before_arrival | arrival | during | before_checkout | after_checkout | date
+  //   days = how many days before/after (before_arrival, during, before_checkout,
+  //   after_checkout); date = YYYY-MM-DD for "date" (guests staying that day).
+  // wa: WhatsApp — the property taps Send (the hub emails them a reminder when due).
+  // email: the hub emails the guest itself, from the property's name, with
+  //   replies going to the property's email address.
+  // Per booking: b.msgs[id] = { state: sent|skipped (WhatsApp), at, remindedAt,
+  //   email: { state: sent|failed, at, error } }.
+  // Older properties stored { welcome:{...}, after:{...} }: those become the
+  // first two messages (ids "welcome" and "after").
+  const ANCHORS = ["before_arrival", "arrival", "during", "before_checkout", "after_checkout", "date"];
+  const MAX_MESSAGES = 30;
   const MSG_DEFAULTS = {
-    welcome: { on: false, days: 2, time: "10:00", text: "Hi {first_name}, we look forward to welcoming you to {property} on {check_in}! 🌊\n\nYour booking: {unit}, {nights} nights (ref {ref}).\n\n🕑 Check-in from 14:00, check-out by 10:00.\n📍 Directions: [your Google Maps pin]\n🔑 Arrival: [gate code / where to collect keys]\n📶 Wi-Fi: [network] / [password]\n🚗 Parking: one bay per unit — please send us your car registration.\n\nAny questions, just reply here. Safe travels!" },
-    after: { on: false, days: 1, time: "10:00", text: "Hi {first_name}, thank you for staying at {property}! We hope you had a wonderful time. 😊\n\nWould you take a minute to tell us how it was? Your review helps other travellers: {review_link}\n\nWe'd love to welcome you back. Book direct with us next time for our best rate." },
+    welcome: { id: "welcome", name: "Welcome", on: false, anchor: "before_arrival", days: 2, time: "10:00", wa: true, email: true, subject: "Your stay at {property}",
+      text: "Hi {first_name}, we look forward to welcoming you to {property} on {check_in}! 🌊\n\nYour booking: {unit}, {nights} nights (ref {ref}).\n\n🕑 Check-in from 14:00, check-out by 10:00.\n📍 Directions: [your Google Maps pin]\n🔑 Arrival: [gate code / where to collect keys]\n📶 Wi-Fi: [network] / [password]\n🚗 Parking: one bay per unit — please send us your car registration.\n\nAny questions, just reply here. Safe travels!" },
+    after: { id: "after", name: "After stay", on: false, anchor: "after_checkout", days: 1, time: "10:00", wa: true, email: true, subject: "Thank you for staying at {property}",
+      text: "Hi {first_name}, thank you for staying at {property}! We hope you had a wonderful time. 😊\n\nWould you take a minute to tell us how it was? Your review helps other travellers: {review_link}\n\nWe'd love to welcome you back. Book direct with us next time for our best rate." },
   };
-  function msgSettings(prop) {
+  const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+  const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+  function cleanMessage(v, cur) {
+    v = v || {}; cur = cur || {};
+    const pick = (k, d) => (v[k] !== undefined ? v[k] : cur[k] !== undefined ? cur[k] : d);
+    const anchor = ANCHORS.includes(pick("anchor")) ? pick("anchor") : "before_arrival";
+    const m = {
+      id: cleanStr(String(pick("id", "") || ""), 40).replace(/[^a-z0-9_-]/gi, "") || "m" + randomToken(6).replace(/[^a-z0-9]/gi, "").slice(0, 8),
+      name: cleanStr(String(pick("name", "") || ""), 60) || "Message",
+      on: !!pick("on", false),
+      anchor,
+      days: Math.max(0, Math.min(365, Math.round(Number(pick("days", 0))) || 0)),
+      date: DATE_RE.test(String(pick("date", "") || "")) ? String(pick("date")) : "",
+      time: TIME_RE.test(String(pick("time", "") || "")) ? String(pick("time")) : "10:00",
+      wa: pick("wa", true) !== false,
+      email: pick("email", true) !== false,
+      subject: cleanStr(String(pick("subject", "") || ""), 150),
+      text: cleanStr(String(pick("text", "") || ""), 3000),
+    };
+    if (anchor === "date" && !m.date) m.on = false;
+    return m;
+  }
+  function msgList(prop) {
     const m = prop.messages || {};
-    const one = (k) => Object.assign({}, MSG_DEFAULTS[k], m[k] || {});
-    return { welcome: one("welcome"), after: one("after") };
+    if (Array.isArray(m.list)) return m.list.map((x) => cleanMessage(x));
+    // Old shape (welcome + after) or nothing yet: the two starter messages.
+    return ["welcome", "after"].map((k) => {
+      const old = m[k] || {};
+      const base = Object.assign({}, MSG_DEFAULTS[k], old, { id: k, anchor: MSG_DEFAULTS[k].anchor, wa: true, email: old.email !== undefined ? old.email : (m[k] ? false : MSG_DEFAULTS[k].email) });
+      return cleanMessage(base);
+    });
   }
   const SAST = "+02:00";
-  function dueAt(kind, b, ms) {
+  function stayOf(b) {
     const live = b.items.filter((i) => !i.cancelled);
     if (!live.length) return null;
-    const start = live.map((i) => i.start).sort()[0], end = live.map((i) => i.end).sort().slice(-1)[0];
-    const st = ms[kind];
-    const day = kind === "welcome" ? addDays(start, -Number(st.days || 0)) : addDays(end, Number(st.days || 0));
-    const time = /^\d{2}:\d{2}$/.test(st.time || "") ? st.time : "10:00";
-    return { at: Date.parse(day + "T" + time + ":00" + SAST), start, end };
+    return { start: live.map((i) => i.start).sort()[0], end: live.map((i) => i.end).sort().slice(-1)[0], live };
   }
-  // A message is due once its time has passed: welcome until arrival day ends, after-stay for 7 days.
-  function messageState(kind, b, ms) {
-    if (!ms[kind].on || b.status === "Cancelled") return null;
-    const d = dueAt(kind, b, ms); if (!d) return null;
-    const rec = (b.msgs || {})[kind] || {};
-    if (rec.state === "sent" || rec.state === "skipped") return { state: rec.state, at: rec.at, dueAt: d.at };
+  // When a message goes to a booking, and until when it still makes sense.
+  function timing(msg, b) {
+    const st = stayOf(b); if (!st) return null;
+    const { start, end } = st;
+    let day, lastDay;
+    switch (msg.anchor) {
+      case "before_arrival": day = addDays(start, -msg.days); lastDay = start; break;
+      case "arrival": day = start; lastDay = start; break;
+      case "during": day = addDays(start, msg.days); if (day >= end) return null; lastDay = end; break;
+      case "before_checkout": day = addDays(end, -msg.days); if (day < start) day = start; lastDay = end; break;
+      case "after_checkout": day = addDays(end, msg.days); lastDay = addDays(day, 7); break;
+      case "date": if (!msg.date || !(msg.date >= start && msg.date <= end)) return null; day = msg.date; lastDay = msg.date; break;
+      default: return null;
+    }
+    return { at: Date.parse(day + "T" + msg.time + ":00" + SAST), until: Date.parse(lastDay + "T23:59:00" + SAST), start, end };
+  }
+  function timeState(tm) {
     const t = now().getTime();
-    const until = kind === "welcome" ? Date.parse(d.start + "T23:59:00" + SAST) : d.at + 7 * 86400000;
-    if (t > until) return { state: "missed", dueAt: d.at };
-    return { state: t >= d.at ? "due" : "scheduled", dueAt: d.at };
+    if (t > tm.until) return "missed";
+    return t >= tm.at ? "due" : "scheduled";
   }
+  // { wa, email } states for one message on one booking (null = not used).
+  function messageState(msg, b) {
+    if (!msg.on || b.status === "Cancelled") return null;
+    const tm = timing(msg, b); if (!tm) return null;
+    const rec = (b.msgs || {})[msg.id] || {};
+    const ts = timeState(tm), c = contactOf(b);
+    let wa = null, email = null;
+    if (msg.wa) wa = rec.state === "sent" || rec.state === "skipped" ? rec.state : ts;
+    if (msg.email) {
+      const e = rec.email || {};
+      email = e.state === "sent" ? "sent" : ts === "missed" ? "missed" : !validEmail(c.email) ? (ts === "scheduled" ? "scheduled-no-email" : "no-email") : e.state === "failed" && ts !== "due" ? "failed" : ts;
+    }
+    return { wa, email, dueAt: tm.at, start: tm.start };
+  }
+  function validEmail(e) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e || "")); }
   function firstName(c) { return String(c.name || "").trim().split(/\s+/)[0] || ""; }
   function fillTemplate(text, prop, b, extra = {}) {
-    const c = contactOf(b), live = b.items.filter((i) => !i.cancelled);
-    const start = live.map((i) => i.start).sort()[0] || "", end = live.map((i) => i.end).sort().slice(-1)[0] || "";
+    const c = contactOf(b), st = stayOf(b) || { start: "", end: "", live: [] };
     const nice = (iso) => { if (!iso) return ""; const d = new Date(iso + "T00:00:00Z"); return d.getUTCDate() + " " + ["January","February","March","April","May","June","July","August","September","October","November","December"][d.getUTCMonth()] + " " + d.getUTCFullYear(); };
-    const vals = { first_name: firstName(c) || "there", name: c.name || "", property: prop.resortName || "", unit: live.map((i) => i.unit).join(", "),
-      check_in: nice(start), check_out: nice(end), nights: start && end ? String(nightsBetween(start, end)) : "", ref: b.ref, review_link: extra.review_link || "" };
+    const vals = { first_name: firstName(c) || "there", name: c.name || "", property: prop.resortName || "", unit: st.live.map((i) => i.unit).join(", "),
+      check_in: nice(st.start), check_out: nice(st.end), nights: st.start && st.end ? String(nightsBetween(st.start, st.end)) : "", ref: b.ref, review_link: extra.review_link || "" };
     return String(text || "").replace(/\{(\w+)\}/g, (m, k) => (k in vals ? vals[k] : m)).replace(/\n{3,}/g, "\n\n").trim();
   }
   async function reviewLinksFor(prop, b) {
     if (!reviews || !reviews.baseUrl || !reviews.secret) throw new PAError("Avante Reviews isn't connected yet, so the review link can't be added.", 503);
-    const c = contactOf(b), live = b.items.filter((i) => !i.cancelled);
+    const c = contactOf(b), st = stayOf(b) || {};
     const res = await fetchImpl(reviews.baseUrl.replace(/\/$/, "") + "/internal/review-links/" + encodeURIComponent(reviews.tenant || "avante"), {
       method: "POST", headers: { "content-type": "application/json", "x-sync-secret": reviews.secret },
       body: JSON.stringify({ resort_id: prop.resortId, resort_name: prop.resortName, booking_ref: b.ref,
-        start_date: live.map((i) => i.start).sort()[0], end_date: live.map((i) => i.end).sort().slice(-1)[0],
+        start_date: st.start, end_date: st.end,
         guest: { full_name: c.name || "Guest", email: c.email || "", whatsapp_number: waNumber(c.cell) ? "+" + waNumber(c.cell) : "" } }),
     }).catch(() => null);
     if (!res || !res.ok) throw new PAError("Avante Reviews didn't answer, so the review link can't be added right now. Try again in a minute.", 502);
     const d = await res.json();
     return { guest: d.guest_link || null, property: d.property_link || null, guestReviewed: !!d.guest_reviewed, propertyReviewed: !!d.property_reviewed, expiresAt: d.expires_at || null };
   }
-  // The text to send and a WhatsApp link to the guest. kind: welcome | after | custom
+  function findMessage(prop, id) { return msgList(prop).find((m) => m.id === id) || null; }
+  // Fills a message for one booking: { text, subject }. The review link line
+  // is dropped when there is no link to put in it.
+  async function composeFor(prop, b, text, subject, { strictReview = true } = {}) {
+    let links = null;
+    if (/\{review_link\}/.test(text)) {
+      try { links = await reviewLinksFor(prop, b); } catch (e) { if (strictReview) throw e; links = { guest: null }; }
+    }
+    if (links && !links.guest) text = text.replace(/[^\n]*\{review_link\}[^\n]*\n?/g, "");
+    return { text: fillTemplate(text, prop, b, { review_link: links && links.guest }), subject: fillTemplate(subject || "", prop, b) || ("Your stay at " + (prop.resortName || "our property")), guestReviewed: !!(links && links.guestReviewed) };
+  }
+  // The text to send and a WhatsApp link to the guest. kind: a message id, or "custom".
   async function prepareMessage(prop, ref, kind, customText) {
     const { b } = await findBooking(prop, ref);
     const c = contactOf(b);
     const wa = waNumber(c.cell);
     if (!wa) throw new PAError("Add the guest's cellphone number first (Guest details).");
-    let text = kind === "custom" ? String(customText || "") : msgSettings(prop)[kind] && msgSettings(prop)[kind].text;
-    if (!kind || (kind !== "custom" && !msgSettings(prop)[kind])) throw new PAError("Unknown message.");
-    let links = null;
-    if (/\{review_link\}/.test(text)) links = await reviewLinksFor(prop, b);
-    if (links && !links.guest) text = text.replace(/[^\n]*\{review_link\}[^\n]*\n?/g, "");
-    text = fillTemplate(text, prop, b, { review_link: links && links.guest });
-    if (!text) throw new PAError("Write the message first.");
-    return { text, whatsappUrl: "https://wa.me/" + wa + "?text=" + encodeURIComponent(text), guestReviewed: !!(links && links.guestReviewed) };
+    const msg = kind === "custom" ? null : findMessage(prop, kind);
+    if (kind !== "custom" && !msg) throw new PAError("Unknown message.");
+    const out = await composeFor(prop, b, kind === "custom" ? String(customText || "") : msg.text, msg && msg.subject);
+    if (!out.text) throw new PAError("Write the message first.");
+    return { text: out.text, subject: out.subject, whatsappUrl: "https://wa.me/" + wa + "?text=" + encodeURIComponent(out.text), guestReviewed: out.guestReviewed, hasEmail: validEmail(c.email) };
   }
   async function markMessage(prop, ref, kind, state, text) {
     const { list, b } = await findBooking(prop, ref);
-    if (!["welcome", "after", "custom"].includes(kind)) throw new PAError("Unknown message.");
-    if (kind !== "custom") { b.msgs = b.msgs || {}; b.msgs[kind] = { state: state === "skipped" ? "skipped" : "sent", at: now().toISOString() }; }
-    if (state !== "skipped") b.msgLog = (b.msgLog || []).concat([{ at: now().toISOString(), kind, text: cleanStr(String(text || ""), 1500) }]).slice(-30);
+    if (kind !== "custom" && !findMessage(prop, kind)) throw new PAError("Unknown message.");
+    if (kind !== "custom") { b.msgs = b.msgs || {}; b.msgs[kind] = Object.assign({}, b.msgs[kind] || {}, { state: state === "skipped" ? "skipped" : "sent", at: now().toISOString() }); }
+    if (state !== "skipped") b.msgLog = (b.msgLog || []).concat([{ at: now().toISOString(), kind, via: "whatsapp", text: cleanStr(String(text || ""), 1500) }]).slice(-30);
     await saveBookings(prop, list);
     return { booking: decorate(b) };
   }
+
+  // ---------- email to guests ----------
+  function linkify(s) { return s.replace(/(https?:\/\/[^\s<]+)/g, (u) => "<a href=\"" + u + "\">" + u + "</a>"); }
+  function emailHtml(prop, text) {
+    const body = linkify(esc(text)).replace(/\n/g, "<br>");
+    return "<div style=\"font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.55;color:#1f2937;max-width:560px\">" + body +
+      "<p style=\"margin-top:28px;padding-top:12px;border-top:1px solid #e5e7eb;font-size:12px;color:#6b7280\">" + esc(prop.resortName || "Your host") +
+      (prop.settings && prop.settings.email ? " · Reply to this email to reach us." : "") + "</p></div>";
+  }
+  // Sends one email to a booking's guest and records it. Returns { sent, error }.
+  async function emailGuest(prop, b, text, subject, kind) {
+    const c = contactOf(b);
+    if (!validEmail(c.email)) return { sent: false, error: "no-email" };
+    const s = prop.settings || {};
+    const ok = await sendEmail(c.email, subject, emailHtml(prop, text), { fromName: prop.resortName || "", replyTo: validEmail(s.email) ? s.email : "" }).catch(() => false);
+    if (ok) b.msgLog = (b.msgLog || []).concat([{ at: now().toISOString(), kind, via: "email", subject: cleanStr(subject, 150), text: cleanStr(text, 1500) }]).slice(-30);
+    return ok ? { sent: true } : { sent: false, error: "failed" };
+  }
+  // Email now, from the booking screen: a scheduled message (kind = its id) or a custom one.
+  async function emailNow(prop, ref, kind, customText, customSubject) {
+    const { list, b } = await findBooking(prop, ref);
+    const c = contactOf(b);
+    if (!validEmail(c.email)) throw new PAError("Add the guest's email address first (Guest details).");
+    const msg = kind === "custom" ? null : findMessage(prop, kind);
+    if (kind !== "custom" && !msg) throw new PAError("Unknown message.");
+    const text0 = kind === "custom" ? String(customText || "") : msg.text;
+    if (!text0.trim()) throw new PAError("Write the message first.");
+    const out = await composeFor(prop, b, text0, kind === "custom" ? cleanStr(String(customSubject || ""), 150) : msg.subject);
+    const r = await emailGuest(prop, b, out.text, out.subject, kind);
+    if (!r.sent) throw new PAError("The email couldn't be sent right now. Try again in a minute.", 502);
+    if (msg) { b.msgs = b.msgs || {}; b.msgs[msg.id] = Object.assign({}, b.msgs[msg.id] || {}, { email: { state: "sent", at: now().toISOString() } }); }
+    await saveBookings(prop, list);
+    return { booking: decorate(b), to: maskEmail(c.email) };
+  }
+
+  // ---------- guests staying now ----------
+  function inHouseOf(list) {
+    const t = today(), out = [];
+    for (const b of list) {
+      if (b.status === "Cancelled") continue;
+      const st = stayOf(b); if (!st) continue;
+      if (!(st.start <= t && t <= st.end)) continue;
+      if (st.end === t && st.start !== t && b.contact && b.contact.checkedOutAt) continue;
+      const c = contactOf(b);
+      out.push({ ref: b.ref, name: c.name || (b.origin === "channel" ? (b.source || CHANNELS[b.channel] || "Channel") + " guest" : "Guest"), cell: c.cell || "", email: c.email || "",
+        hasCell: !!waNumber(c.cell), hasEmail: validEmail(c.email), units: st.live.map((i) => i.unit).join(", "), start: st.start, end: st.end,
+        arriving: st.start === t, leaving: st.end === t, checkedIn: !!(c.checkedInAt), source: b.origin === "channel" ? b.source : (b.source || "Direct") });
+    }
+    return out.sort((x, y) => x.units.localeCompare(y.units, "en", { numeric: true }));
+  }
+  async function inHouse(prop) { return { guests: inHouseOf(await bookingsOf(prop)), today: today() }; }
+  // One email to every in-house guest who has an email address (each gets
+  // their own copy, with their own name filled in). refs limits it.
+  async function emailInHouse(prop, body) {
+    const text0 = String((body && body.text) || "").trim();
+    if (!text0) throw new PAError("Write the message first.");
+    const subject0 = cleanStr(String((body && body.subject) || ""), 150) || "A message from {property}";
+    const want = Array.isArray(body && body.refs) && body.refs.length ? new Set(body.refs.map((r) => cleanStr(String(r), 20))) : null;
+    const list = await bookingsOf(prop);
+    const guestsNow = inHouseOf(list).filter((g) => !want || want.has(g.ref));
+    let sent = 0, failed = 0; const noEmail = [];
+    for (const g of guestsNow) {
+      const b = list.find((x) => x.ref === g.ref);
+      if (!g.hasEmail) { noEmail.push(g.name); continue; }
+      const out = await composeFor(prop, b, text0, subject0, { strictReview: false });
+      const r = await emailGuest(prop, b, out.text, out.subject, "in-house");
+      if (r.sent) sent++; else failed++;
+    }
+    await saveBookings(prop, list);
+    return { sent, failed, noEmail };
+  }
+
   async function propertyReviewLink(prop, ref) {
     const { b } = await findBooking(prop, ref);
     const links = await reviewLinksFor(prop, b);
     return { link: links.property, reviewed: links.propertyReviewed };
   }
   function messageItems(prop, list) {
-    const ms = msgSettings(prop), out = [];
-    for (const b of list) for (const kind of ["welcome", "after"]) {
-      const st = messageState(kind, b, ms); if (!st) continue;
+    const msgs = msgList(prop), out = [];
+    for (const b of list) for (const msg of msgs) {
+      const st = messageState(msg, b); if (!st) continue;
       const c = contactOf(b);
-      out.push({ ref: b.ref, kind, state: st.state, dueAt: new Date(st.dueAt).toISOString(), name: c.name || (b.origin === "channel" ? b.source + " guest" : ""), hasCell: !!waNumber(c.cell),
-        units: b.items.filter((i) => !i.cancelled).map((i) => i.unit).join(", "), start: b.items.filter((i) => !i.cancelled).map((i) => i.start).sort()[0] });
+      out.push({ ref: b.ref, kind: msg.id, label: msg.name, wa: st.wa, email: st.email,
+        state: st.wa === "due" || st.email === "due" ? "due" : (st.wa === "scheduled" || st.email === "scheduled" || st.email === "scheduled-no-email") ? "scheduled" : (st.wa || st.email),
+        dueAt: new Date(st.dueAt).toISOString(), name: c.name || (b.origin === "channel" ? b.source + " guest" : ""), hasCell: !!waNumber(c.cell), hasEmail: validEmail(c.email),
+        units: b.items.filter((i) => !i.cancelled).map((i) => i.unit).join(", "), start: st.start });
     }
     return out.sort((x, y) => x.dueAt.localeCompare(y.dueAt));
   }
   async function messagesView(prop) {
-    const items = messageItems(prop, await bookingsOf(prop));
+    const list = await bookingsOf(prop);
+    const items = messageItems(prop, list);
     const t = now().getTime();
-    return { settings: msgSettings(prop), reviewsConnected: !!(reviews && reviews.baseUrl && reviews.secret),
-      due: items.filter((i) => i.state === "due"),
-      upcoming: items.filter((i) => i.state === "scheduled" && Date.parse(i.dueAt) - t < 14 * 86400000) };
+    return { list: msgList(prop), reviewsConnected: !!(reviews && reviews.baseUrl && reviews.secret), propertyEmail: (prop.settings && prop.settings.email) || "",
+      // WhatsApp messages waiting for the property to tap Send.
+      due: items.filter((i) => i.wa === "due"),
+      // Emails the hub couldn't send (no address yet, or the send failed).
+      emailIssues: items.filter((i) => i.wa !== "due" && (i.email === "failed" || (i.email === "no-email" && t - Date.parse(i.dueAt) < 3 * 86400000))),
+      upcoming: items.filter((i) => i.state === "scheduled" && Date.parse(i.dueAt) - t < 14 * 86400000),
+      inHouse: inHouseOf(list) };
   }
   async function saveMessages(prop, body) {
-    const cur = msgSettings(prop), out = {};
-    for (const k of ["welcome", "after"]) {
-      const v = (body && body[k]) || {};
-      const days = Math.max(0, Math.min(30, Math.round(Number(v.days !== undefined ? v.days : cur[k].days)) || 0));
-      const time = /^([01]\d|2[0-3]):[0-5]\d$/.test(v.time || "") ? v.time : cur[k].time;
-      const text = v.text !== undefined ? cleanStr(String(v.text), 1500) : cur[k].text;
-      if (v.on && !text) throw new PAError("Write the " + (k === "welcome" ? "welcome" : "after-stay") + " message before switching it on.");
-      out[k] = { on: v.on !== undefined ? !!v.on : cur[k].on, days, time, text };
-    }
-    prop.messages = out;
+    const cur = msgList(prop);
+    const incoming = Array.isArray(body && body.list) ? body.list.slice(0, MAX_MESSAGES) : null;
+    if (!incoming) throw new PAError("Nothing to save.");
+    const seen = new Set();
+    const out = incoming.map((v) => {
+      const m = cleanMessage(v, cur.find((x) => x.id === (v && v.id)));
+      while (seen.has(m.id)) m.id = "m" + randomToken(6).replace(/[^a-z0-9]/gi, "").slice(0, 8);
+      seen.add(m.id);
+      if (m.on && !m.text) throw new PAError("Write the \"" + m.name + "\" message before switching it on.");
+      if (m.on && !m.wa && !m.email) throw new PAError("Choose WhatsApp, email or both for \"" + m.name + "\".");
+      if (m.anchor === "date" && v && v.on && !m.date) throw new PAError("Choose the date for \"" + m.name + "\".");
+      return m;
+    });
+    prop.messages = { list: out };
     await setJSON("site:" + prop.siteId, prop);
     return messagesView(prop);
   }
-  // 15-minute job: email the property once when messages become due. No Stock Network calls.
+  // 15-minute job, no Stock Network calls:
+  //  - emails due messages to guests (from the property's name),
+  //  - emails the property once about WhatsApp messages that are now due.
+  const MAX_AUTO_EMAILS = 25;
   async function remindMessages(prop) {
+    const msgs = msgList(prop).filter((m) => m.on);
+    if (!msgs.length) return 0;
     const s = prop.settings || {};
-    if (!s.email || !prop.messages || !(prop.messages.welcome && prop.messages.welcome.on || prop.messages.after && prop.messages.after.on)) return 0;
     const list = await bookingsOf(prop);
-    const ms = msgSettings(prop), fresh = [];
-    for (const b of list) for (const kind of ["welcome", "after"]) {
-      const st = messageState(kind, b, ms);
-      if (!st || st.state !== "due") continue;
-      b.msgs = b.msgs || {};
-      const rec = b.msgs[kind] || {};
-      if (rec.remindedAt) continue;
-      b.msgs[kind] = Object.assign({}, rec, { remindedAt: now().toISOString() });
-      fresh.push({ b, kind });
+    const fresh = []; let emailed = 0, changed = false;
+    for (const b of list) {
+      if (b.demo) continue; // demo bookings never email anyone
+      for (const msg of msgs) {
+        const st = messageState(msg, b);
+        if (!st) continue;
+        b.msgs = b.msgs || {};
+        const rec = b.msgs[msg.id] || {};
+        if (st.email === "due" && emailed < MAX_AUTO_EMAILS && !(rec.email && rec.email.state === "failed" && now().getTime() - Date.parse(rec.email.at) < 3600000)) {
+          const out = await composeFor(prop, b, msg.text, msg.subject, { strictReview: false });
+          const r = await emailGuest(prop, b, out.text, out.subject, msg.id);
+          b.msgs[msg.id] = Object.assign({}, b.msgs[msg.id] || {}, { email: r.sent ? { state: "sent", at: now().toISOString(), auto: true } : { state: "failed", at: now().toISOString() } });
+          emailed++; changed = true;
+        }
+        if (st.wa === "due" && !rec.remindedAt) {
+          b.msgs[msg.id] = Object.assign({}, b.msgs[msg.id] || {}, { remindedAt: now().toISOString() });
+          fresh.push({ b, msg }); changed = true;
+        }
+      }
     }
-    if (!fresh.length) return 0;
-    await saveBookings(prop, list);
-    const rows = fresh.map(({ b, kind }) => { const c = contactOf(b); return "<li><b>" + esc(kind === "welcome" ? "Welcome" : "After-stay") + "</b> to " + esc(c.name || "the guest") + " (" + esc(b.ref) + ")" + (waNumber(c.cell) ? "" : " — add their cellphone number first") + "</li>"; }).join("");
-    await sendEmail(s.email, "WhatsApp messages to send: " + (prop.resortName || "your property"),
-      "<p>These guest messages are ready to send:</p><ul>" + rows + "</ul><p>Open the Avante hub, Property Affiliate → Availability, and tap <b>Send</b> on each one. WhatsApp opens with the message ready.</p>").catch(() => false);
-    return fresh.length;
+    if (changed) await saveBookings(prop, list);
+    if (fresh.length && s.email) {
+      const rows = fresh.map(({ b, msg }) => { const c = contactOf(b); return "<li><b>" + esc(msg.name) + "</b> to " + esc(c.name || "the guest") + " (" + esc(b.ref) + ")" + (waNumber(c.cell) ? "" : " — add their cellphone number first") + "</li>"; }).join("");
+      await sendEmail(s.email, "WhatsApp messages to send: " + (prop.resortName || "your property"),
+        "<p>These guest messages are ready to send on WhatsApp:</p><ul>" + rows + "</ul><p>Open the Avante hub, Property Affiliate → Communication, and tap <b>WhatsApp</b> on each one. WhatsApp opens with the message ready.</p>").catch(() => false);
+    }
+    return fresh.length + emailed;
   }
 
   // ---------- demo bookings (Property Testing, site 3, only) ----------
@@ -1069,8 +1266,9 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
         contact: { name: "Lerato Dlamini", cell: "084 555 0606", guests: 2, optOut: true } }),
     );
     await saveBookings(prop, list);
-    const m = msgSettings(prop);
-    prop.messages = { welcome: Object.assign({}, m.welcome, { on: true }), after: Object.assign({}, m.after, { on: true }) };
+    const ml = msgList(prop);
+    for (const m of ml) if (m.id === "welcome" || m.id === "after") m.on = true;
+    prop.messages = { list: ml };
     await setJSON("site:" + prop.siteId, prop);
     return { added: 6 };
   }
@@ -1082,5 +1280,5 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
   }
   function notDemo(b) { if (b && b.demo) throw new PAError("This is a demo booking: it isn't on Stock Network, so it can't be changed, paid or cancelled.", 409); }
 
-  return { connect, auth, disconnect, publicProperty, availability, search, book, cancel, cancelUnit, edit, find, saveSettings, channelsView, payInfo, markPaidEft, approvalInfo, approveCancel, affStatus, resume, seedDemo, clearDemo, isDemoSite, saveContact, checkIn, guests, messagesView, saveMessages, prepareMessage, markMessage, propertyReviewLink, remindMessages, icalFeed, runSync, syncProperty, channelEvents, addChannelEvent, snapshot, ensureWindow, resolveUnitNotice, findResortsForSite };
+  return { connect, auth, disconnect, publicProperty, availability, search, book, cancel, cancelUnit, edit, find, saveSettings, channelsView, payInfo, markPaidEft, approvalInfo, approveCancel, affStatus, resume, seedDemo, clearDemo, isDemoSite, saveContact, checkIn, guests, messagesView, saveMessages, prepareMessage, markMessage, emailNow, inHouse, emailInHouse, firstBookable, propertyReviewLink, remindMessages, icalFeed, runSync, syncProperty, channelEvents, addChannelEvent, snapshot, ensureWindow, resolveUnitNotice, findResortsForSite };
 }

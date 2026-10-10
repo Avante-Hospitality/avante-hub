@@ -146,3 +146,70 @@
 .pa-cal button.day{ font:inherit; text-align:left; cursor:pointer; width:100%; }
 .pa-dialog .pa-result .grow{ min-width:0; }
 .pa-dialog textarea{ font:14px/1.5 'Noto Sans',sans-serif; }
+
+/* ---- 2026-10 redesign: slim header, sticky tab bar, one calendar, communication ---- */
+.pa-top{ display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 10px; margin:0 0 8px; }
+.pa-kicker{ font:700 11.5px 'Montserrat',sans-serif; text-transform:uppercase; letter-spacing:.08em; color:var(--pa-teal-text); }
+.pa-propname{ font:700 17px 'Montserrat',sans-serif; color:var(--pa-ink); }
+.pa-top-meta{ font-size:12px; }
+.pa-tabbar{ position:sticky; top:0; z-index:40; display:flex; align-items:stretch; gap:6px; background:#fff; border-bottom:1px solid var(--line,#e3e9e8); padding:6px 0; margin:0 0 14px; }
+.pa-tabscroll{ display:flex; gap:4px; overflow-x:auto; scrollbar-width:none; flex:1 1 auto; min-width:0; }
+.pa-tabscroll::-webkit-scrollbar{ display:none; }
+.pa-tabbar button{ flex:none; min-height:40px; padding:0 13px; border-radius:8px; border:none; background:transparent; color:var(--pa-ink); font:600 13px 'Montserrat',sans-serif; cursor:pointer; white-space:nowrap; display:inline-flex; align-items:center; gap:6px; }
+.pa-tabbar button:hover{ background:var(--mint,#f4fbfa); }
+.pa-tabbar button[aria-current="page"]{ background:var(--pa-ink); color:#fff; font-weight:700; }
+.pa-tabbar button:focus-visible{ outline:2px solid var(--teal,#0DCDC2); outline-offset:1px; }
+.pa-badge{ min-width:20px; height:20px; border-radius:10px; background:#ED8B00; color:#fff; font:700 11px 'Montserrat',sans-serif; display:inline-flex; align-items:center; justify-content:center; padding:0 6px; }
+.pa-more{ position:relative; flex:none; border-left:1px solid var(--line,#e3e9e8); padding-left:6px; }
+.pa-menu{ position:absolute; right:0; top:calc(100% + 6px); background:#fff; border:1.5px solid var(--line,#e3e9e8); border-radius:10px; box-shadow:0 14px 36px rgba(14,47,68,.18); padding:6px; display:flex; flex-direction:column; min-width:210px; z-index:50; }
+.pa-menu button{ justify-content:flex-start; width:100%; }
+.pa-menu .pa-menu-danger{ color:#8a3a00; border-top:1px solid #eef2f2; border-radius:0 0 6px 6px; }
+.pa-note{ background:var(--mint,#f4fbfa); border:1px solid #cfe3e0; border-radius:10px; padding:10px 14px; font-size:13.5px; line-height:1.55; color:var(--pa-ink); margin-bottom:12px; }
+.pa-search{ background:var(--mint,#f4fbfa); border:1.5px solid var(--line,#e3e9e8); border-radius:12px; padding:12px 14px; margin-bottom:12px; }
+.pa-search .pa-field{ flex:1 1 150px; }
+.pa-calcard{ padding:14px 16px; }
+.pa-caltools{ display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:6px 14px; }
+.pa-calrange{ font:700 15px 'Montserrat',sans-serif; color:var(--pa-ink); min-width:150px; text-align:center; }
+.pa-legend i{ border:1.5px solid transparent; }
+.lg-open{ background:var(--teal,#0DCDC2); } .lg-hub{ background:#0e2f44; } .lg-sn{ background:#5f6b6e; }
+.lg-airbnb{ background:#ffe0da; border-color:#f3a99a !important; } .lg-bcom{ background:#dbe6ff; border-color:#9db6f0 !important; } .lg-lekke{ background:#d9f2e3; border-color:#94d3ae !important; }
+.lg-warn{ background:var(--pa-warn-bg); border:2px dashed var(--pa-warn) !important; } .lg-na{ background:var(--pa-na); border:1.5px dashed #c9d3d3 !important; }
+.pa-grid .hd.we{ color:#8a3a00; }
+.pa-grid .hd.today b{ background:var(--teal,#0DCDC2); border-radius:999px; padding:0 6px; }
+.pa-block{ min-height:44px; border-radius:8px; border:2px solid transparent; display:flex; align-items:center; padding:0 8px; min-width:0; overflow:hidden; font:700 12px 'Noto Sans',sans-serif; text-align:left; }
+.pa-block span{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+button.pa-block{ cursor:pointer; }
+button.pa-block:hover, button.pa-block:focus-visible{ outline:2px solid var(--teal,#0DCDC2); outline-offset:1px; }
+.pa-block.cont-l{ border-top-left-radius:0; border-bottom-left-radius:0; }
+.pa-block.cont-r{ border-top-right-radius:0; border-bottom-right-radius:0; }
+.bk-hub{ background:#0e2f44; color:#fff; }
+.bk-sn{ background:#5f6b6e; color:#fff; font-weight:600; }
+.bk-airbnb{ background:#ffe0da; color:#7a1f12; border-color:#f3a99a; }
+.bk-bcom{ background:#dbe6ff; color:#0b2f80; border-color:#9db6f0; }
+.bk-lekke{ background:#d9f2e3; color:#0f5a32; border-color:#94d3ae; }
+.bk-warn{ background:var(--pa-warn-bg); color:var(--pa-warn-ink); border:2px dashed var(--pa-warn); }
+.bk-na{ background:var(--pa-na); color:#6b7477; border:1.5px dashed #c9d3d3; font-weight:600; justify-content:center; }
+.pa-grid.phone .pa-block{ min-height:40px; padding:0 4px; font-size:11px; border-radius:6px; }
+.pa-msgcard{ padding:0; }
+.pa-msgcard > summary{ list-style:none; cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:14px 18px; }
+.pa-msgcard > summary::-webkit-details-marker{ display:none; }
+.pa-msgcard > summary::after{ content:'▾'; color:var(--pa-muted); font-size:14px; }
+.pa-msgcard[open] > summary::after{ content:'▴'; }
+.pa-msgsum{ display:flex; flex-direction:column; gap:2px; min-width:0; flex:1 1 auto; }
+.pa-msgsum b{ font:700 15px 'Montserrat',sans-serif; color:var(--pa-ink); }
+.pa-msgbody{ padding:0 18px 16px; border-top:1px solid #eef2f2; padding-top:12px; }
+.pa-sendby{ flex-direction:row; flex-wrap:wrap; gap:8px 18px; margin-top:12px; }
+.pa-sendby legend{ width:100%; margin-bottom:4px; }
+.pa label.pa-check{ display:flex; align-items:center; gap:8px; }
+.pa-linkbtn{ display:inline-flex; align-items:center; text-decoration:none; }
+.pa-dlgfoot{ justify-content:space-between; border-top:1px solid #eef2f2; padding-top:12px; }
+@media (max-width:600px){
+  .pa-tabbar button{ padding:0 10px; font-size:12.5px; }
+  .pa-calrange{ min-width:0; font-size:14px; }
+  .pa-search{ padding:10px; }
+  .pa-msgcard > summary{ padding:12px 14px; }
+  .pa-msgbody{ padding:12px 14px 14px; }
+}
+.pa label.pa-radio{ align-items:flex-start; }
+.pa-dialog .body > .pa-field, .pa-dialog .body > .pa-form{ flex:none; }
+.pa-radio input[type=date]{ width:100%; height:auto; min-height:44px; margin:0; accent-color:auto; }
