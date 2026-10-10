@@ -1,7 +1,7 @@
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
 import { generateHashtags } from "./lib/hashtag-helper.js";
 import { isShortLink, resolveShortLink, findExistingShortLink, createShortLink } from "./lib/short-link.js";
-import { correctBookingLinkSiteId, ADMIN_MASTER_SITE_GUID } from "./lib/booking-link.js";
+import { correctBookingLinkSiteId, ADMIN_MASTER_SITE_GUID, toHolidayBuilderUrl } from "./lib/booking-link.js";
 import { resolveHookMode } from "./lib/hook-mode.js";
 import { buildHookDraft } from "./lib/hook-draft.js";
 import { hooksLink } from "./lib/hooks-ticket.js";
@@ -1440,7 +1440,9 @@ export default async (request, context) => {
 
         const resolvedForCheck = isShortLink(booking) ? await resolveShortLink(booking, shortLinksStore) : booking;
         const result = correctBookingLinkSiteId(resolvedForCheck, affId);
-        if (!result.changed) return null;
+        // Only a wrong site counts here; a plain old-SN-to-holiday-builder
+        // conversion is convertBookingLinksToHolidayBuilder's job.
+        if (!result.siteChanged) return null;
 
         return {
           updatedRecord: { ...record, booking: result.url, updatedAt: new Date().toISOString() },
@@ -1449,6 +1451,48 @@ export default async (request, context) => {
       });
 
       return json({ ok: true, dryRun: dryRun, count: changes.length, changes: changes, writeErrors: writeErrors }, 200, cors);
+    }
+
+    if (action === "convertBookingLinksToHolidayBuilder") {
+      // One-time switch (2026-10-10) from the old Stock Network portal
+      // (stock.stocknetwork.co.za/ui/<site>?ResortID=&CheckInDT=&...) to
+      // the holiday builder search screen
+      // (avantetravel.co.za/holiday-builder/<site>.php?destination=&checkin=&...).
+      // Rewrites every saved hook's Booking link (admin defaults included —
+      // the master placeholder site is kept, so personalisation still
+      // works) and every short link whose target is an old SN link. Same
+      // site, dates and area/property; nothing else in a record changes.
+      // Everything also converts on the fly when read (hook-api.js,
+      // landing-page.js, go-redirect.js), so this only tidies what's stored.
+      //
+      // dryRun (default true unless explicitly false) only reports what
+      // would change — nothing is written.
+      const dryRun = body.dryRun !== false;
+      const shortLinksStore = getStore({ name: "short-links", consistency: "strong" });
+
+      const hookResult = await scanAndFixHooks(hookStore, dryRun, async (key, record) => {
+        const booking = typeof record.booking === "string" ? record.booking : "";
+        if (!booking) return null;
+        const converted = toHolidayBuilderUrl(booking);
+        if (converted === booking) return null;
+        return {
+          updatedRecord: { ...record, booking: converted, updatedAt: new Date().toISOString() },
+          changeInfo: { what: "Hook", oldBooking: booking, newBooking: converted },
+        };
+      });
+
+      const linkResult = await scanAndFixHooks(shortLinksStore, dryRun, async (key, record) => {
+        if (!record || typeof record.url !== "string") return null; // per-affiliate index records etc.
+        const converted = toHolidayBuilderUrl(record.url);
+        if (converted === record.url) return null;
+        return {
+          updatedRecord: { ...record, url: converted },
+          changeInfo: { what: "Short link go.avantetravel.co.za/" + key, oldBooking: record.url, newBooking: converted },
+        };
+      });
+
+      const changes = hookResult.changes.concat(linkResult.changes);
+      return json({ ok: true, dryRun: dryRun, count: changes.length, changes: changes, writeErrors: hookResult.writeErrors + linkResult.writeErrors }, 200, cors);
     }
 
     if (action === "switchHooksToAdminManaged") {

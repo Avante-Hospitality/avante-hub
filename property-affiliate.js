@@ -227,7 +227,9 @@
       '<div class="pa-stat" style="background:#f4fbfa;border:1.5px solid #e3e9e8"><b style="color:#0e2f44">' + (perNight[days[0]] || 0) + ' <small style="font-size:16px">of ' + units.length + '</small></b><span>units open on ' + nice(days[0]) + '</span></div>' +
       '<div class="pa-stat" style="background:#fff4e5;border:1.5px solid #f5c98a;color:#6b3a00"><b>' + weekend + ' <small style="font-size:16px">of ' + weekendAll + '</small></b><span>Friday and Saturday unit-nights open</span></div></div>';
     // sell these + share
-    var link = function (unit, a, b) { return 'https://stock.stocknetwork.co.za/ui/' + S.prop.siteId + '?ResortID=' + S.prop.resortId + '&CheckInDT=' + a + '&CheckOutDT=' + b + (aff ? '' : ''); };
+    // The property's own page on the Avante holiday builder search screen,
+    // pre-filled with the property and dates (see booking-links.js).
+    var link = function (unit, a, b) { return AvanteBooking.build(S.prop.siteId, { destination: S.prop.resortName, resortId: S.prop.resortId, checkIn: a, checkOut: b }); };
     var stretches = [];
     units.forEach(function (u) {
       if (S.unitFilter !== 'All units' && S.unitFilter !== u.name) return;

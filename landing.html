@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Avante Travel — Special Offers</title>
 <link rel="manifest" id="manifestLink" href="manifest.json">
+<script src="booking-links.js"></script>
 <meta name="theme-color" content="#0DCDC2">
 <link rel="icon" href="icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -22,6 +23,8 @@
     --muted:#808080;
     --mint:#f4fbfa;
     --line:#e3e9e8;
+    --teal-ink:#08776f;   /* teal dark enough for text on white */
+    --muted-ink:#5d6b73;  /* secondary text, readable on white */
   }
   *{box-sizing:border-box;}
   body{
@@ -142,75 +145,89 @@
     padding:40px 32px 80px;
   }
 
-  .hero{ text-align:center; margin-bottom:32px; }
-  .hero h1{ color:var(--teal); text-transform:uppercase; font-size:26px; margin:0 0 6px; }
-  .hero p{ color:var(--muted); margin:0; font-size:14.5px; }
+  /* ---- Offers (the promotional page) ----
+     Also shown, without the header (?embed=1), as the intro under the
+     Avante holiday builder's search form — so it reads as the next part
+     of that page: left-aligned, the first offer featured, then the rest. */
+  .offers-head{ display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:22px; }
+  .offers-head h1{ color:var(--navy); font-size:28px; font-weight:800; letter-spacing:-0.01em; margin:0; line-height:1.15; }
+  .offers-head p{ color:var(--muted-ink); margin:6px 0 0; font-size:14.5px; max-width:56ch; }
+  .offers-count{ font-family:'Montserrat',sans-serif; font-weight:700; font-size:13px; color:var(--teal-ink); background:var(--mint); border:1.5px solid #c9ece8; border-radius:100px; padding:6px 14px; white-space:nowrap; }
 
-  .promo-grid{
-    display:grid;
-    grid-template-columns:repeat(3, 1fr);
-    gap:20px;
-  }
-  @media (max-width:900px){
-    .promo-grid{ grid-template-columns:repeat(2, 1fr); }
-  }
-  @media (max-width:640px){
-    .promo-grid{ grid-template-columns:1fr; }
-  }
+  .flyer{ display:block; width:100%; aspect-ratio:4 / 5; object-fit:cover; background:var(--mint); border-radius:10px; }
+  .flyer-frame{ position:relative; background:var(--mint); border-radius:10px; overflow:hidden; }
+  .flyer-frame img{ opacity:0; transition:opacity .25s ease; }
+  .flyer-frame img.show{ opacity:1; }
 
-  .promo-card{
-    background:#fff;
-    border:1.5px solid var(--line);
-    border-radius:14px;
-    padding:20px 22px 24px;
-    box-shadow:0 8px 24px rgba(14,47,68,0.05);
-    text-align:center;
-  }
-  .promo-card-image{
-    display:none;
-    width:100%;
-    aspect-ratio:4 / 5;
-    height:auto;
-    object-fit:contain;
-    background:var(--mint);
-    border-radius:10px;
-    border:1.5px solid var(--line);
-    margin-bottom:16px;
-  }
-  .promo-card-image.show{ display:block; }
+  /* The featured offer: the one bold moment on the page. */
+  .feature{ display:grid; grid-template-columns:minmax(0, 5fr) minmax(0, 6fr); background:var(--navy); color:#fff; border-radius:18px; overflow:hidden; margin-bottom:28px; }
+  .feature .flyer-frame{ border-radius:0; background:#173f57; }
+  .feature .flyer{ border-radius:0; height:100%; }
+  .feature-body{ padding:34px 36px; display:flex; flex-direction:column; justify-content:center; gap:14px; }
+  .feature-kicker{ display:inline-flex; align-self:flex-start; gap:8px; align-items:center; font-family:'Montserrat',sans-serif; font-weight:700; font-size:12.5px; color:var(--navy); background:var(--teal); border-radius:100px; padding:5px 12px; }
+  .feature h2{ font-size:clamp(24px, 3.2vw, 36px); line-height:1.1; margin:0; font-weight:800; letter-spacing:-0.015em; }
+  .feature .place{ color:#bfe9e5; font-size:15px; margin:0; }
+  .feature .blurb{ color:#d6e2e9; font-size:14.5px; line-height:1.6; margin:0; max-width:52ch; }
+  .feature .dates{ font-family:'Montserrat',sans-serif; font-weight:700; font-size:15px; color:#fff; border-left:3px solid var(--teal); padding:2px 0 2px 12px; }
+  .feature .actions{ margin-top:6px; }
+  .feature .btn-quiet{ color:#fff; border-color:rgba(255,255,255,.45); }
+  .feature .btn-quiet:hover{ background:rgba(255,255,255,.08); }
 
-  .cta{
-    display:block;
-    width:100%;
-    padding:13px;
-    background:var(--teal);
-    color:#fff;
-    border:none;
-    border-radius:8px;
-    font-size:14.5px;
-    font-weight:700;
-    font-family:'Montserrat', sans-serif;
-    cursor:pointer;
-    text-decoration:none;
-    box-sizing:border-box;
-  }
-  .cta:hover{ background:var(--teal-dark); }
+  .offer-grid{ display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:22px; }
+  .offer{ display:flex; flex-direction:column; gap:12px; }
+  .offer-text h3{ font-size:16.5px; color:var(--navy); margin:0; line-height:1.3; font-weight:700; }
+  .offer-text .place{ color:var(--muted-ink); font-size:13.5px; margin:3px 0 0; }
+  .offer-text .dates{ font-family:'Montserrat',sans-serif; font-weight:700; color:var(--teal-ink); font-size:13px; margin:6px 0 0; }
+  .actions{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:auto; }
 
-  .cta-outline{
-    display:inline-block;
-    margin-top:12px;
-    padding:9px 18px;
-    background:#fff;
-    color:var(--teal-dark);
-    border:1.5px solid var(--teal);
-    border-radius:8px;
-    font-size:12.5px;
-    font-weight:700;
-    font-family:'Montserrat', sans-serif;
-    cursor:pointer;
-    text-decoration:none;
+  .btn{ display:inline-flex; align-items:center; justify-content:center; min-height:42px; padding:10px 18px; border-radius:10px; font-family:'Montserrat',sans-serif; font-weight:700; font-size:14px; text-decoration:none; cursor:pointer; border:1.5px solid transparent; }
+  .btn-book{ background:var(--teal); color:var(--navy); }
+  .btn-book:hover{ background:#2fdcd2; }
+  .btn-quiet{ background:transparent; color:var(--navy); border-color:var(--line); }
+  .btn-quiet:hover{ background:var(--mint); }
+  .btn:focus-visible, .chip:focus-visible, .trip-link:focus-visible, .tab:focus-visible{ outline:3px solid var(--navy); outline-offset:2px; }
+  .feature .btn:focus-visible{ outline-color:#fff; }
+
+  /* Search a place + the rest of the trip */
+  .more{ display:grid; grid-template-columns:minmax(0, 7fr) minmax(0, 5fr); gap:22px; margin-top:44px; }
+  .panel-box{ border:1.5px solid var(--line); border-radius:16px; padding:24px 26px; }
+  .panel-box h2{ font-size:18px; color:var(--navy); margin:0 0 4px; }
+  .panel-box > p{ color:var(--muted-ink); font-size:13.5px; margin:0 0 16px; }
+  .chips{ display:flex; flex-wrap:wrap; gap:8px; }
+  .chip{ display:inline-flex; align-items:center; gap:6px; padding:9px 14px; border-radius:100px; background:var(--mint); color:var(--navy); border:1.5px solid #c9ece8; font-weight:600; font-size:13.5px; text-decoration:none; }
+  .chip:hover{ background:#e1f6f4; border-color:var(--teal); }
+  .chip svg{ width:14px; height:14px; flex:none; }
+  .search-all{ display:inline-block; margin-top:14px; font-weight:700; font-size:13.5px; color:var(--teal-ink); }
+  .trip{ list-style:none; margin:0; padding:0; }
+  .trip li + li{ border-top:1px solid var(--line); }
+  .trip-link{ display:flex; align-items:center; gap:14px; padding:12px 2px; text-decoration:none; color:var(--navy); border-radius:8px; }
+  .trip-link:hover .trip-name{ color:var(--teal-ink); }
+  .trip-icon{ width:38px; height:38px; flex:none; border-radius:10px; background:var(--mint); display:grid; place-items:center; color:var(--teal-ink); }
+  .trip-icon svg{ width:20px; height:20px; }
+  .trip-name{ font-family:'Montserrat',sans-serif; font-weight:700; font-size:14.5px; display:block; }
+  .trip-note{ color:var(--muted-ink); font-size:12.5px; display:block; }
+  .trip-go{ margin-left:auto; color:var(--muted); }
+
+  .skeleton .flyer-frame{ aspect-ratio:4 / 5; }
+  .skeleton .bar{ height:12px; border-radius:6px; background:var(--mint); margin-top:10px; }
+
+  @media (max-width:980px){
+    .offer-grid{ grid-template-columns:repeat(2, minmax(0, 1fr)); }
+    .more{ grid-template-columns:1fr; }
   }
-  .cta-outline:hover{ background:var(--mint); }
+  @media (max-width:720px){
+    .feature{ grid-template-columns:1fr; }
+    .feature .flyer{ height:auto; }
+    .feature-body{ padding:24px 20px 26px; }
+    .offers-head h1{ font-size:23px; }
+    .panel-box{ padding:20px 18px; }
+  }
+  @media (max-width:520px){
+    .offer-grid{ grid-template-columns:1fr; }
+  }
+  @media (prefers-reduced-motion: reduce){
+    .flyer-frame img{ transition:none; }
+  }
 
   .placeholder{
     text-align:center;
@@ -238,8 +255,7 @@
     header.hub-header{ padding:14px 16px; }
     .brand{ font-size:19px; }
     main{ padding:24px 16px 56px; }
-    .hero h1{ font-size:21px; }
-  }
+    }
 
   .iframe-wrap{ display:none; }
   .iframe-wrap.show{ display:block; }
@@ -314,7 +330,7 @@
     display:none;
   }
   body.embed main{
-    padding-top:24px;
+    padding:8px 0 32px;
   }
 
   /* ---- Add to Home Screen ---- */
@@ -462,16 +478,32 @@
   </div>
 
   <main id="promotions">
-    <div class="hero">
-      <h1>Special Offers</h1>
-      <p>Brought to you by Avante Travel</p>
-    </div>
-    <div id="content">
-      <div class="placeholder">
-        <div class="badge">Loading</div>
-        <h3>Fetching current offers&hellip;</h3>
-        <p>One moment please.</p>
+    <div class="offers-head">
+      <div>
+        <h1>Holiday offers</h1>
+        <p>Hand-picked stays with dates ready to book. Pick one, or search any place in South Africa.</p>
       </div>
+      <span class="offers-count" id="offersCount" hidden></span>
+    </div>
+    <div id="content" aria-live="polite">
+      <div class="offer-grid skeleton" aria-label="Loading offers">
+        <div class="offer"><div class="flyer-frame"></div><div class="bar" style="width:70%"></div><div class="bar" style="width:45%"></div></div>
+        <div class="offer"><div class="flyer-frame"></div><div class="bar" style="width:62%"></div><div class="bar" style="width:40%"></div></div>
+        <div class="offer"><div class="flyer-frame"></div><div class="bar" style="width:75%"></div><div class="bar" style="width:50%"></div></div>
+      </div>
+    </div>
+    <div class="more" id="moreSection" hidden>
+      <section class="panel-box" aria-labelledby="placesHeading">
+        <h2 id="placesHeading">Search a place</h2>
+        <p>See everything open in one of these places.</p>
+        <div class="chips" id="placeChips"></div>
+        <a class="search-all" id="searchAllLink" href="#">Search all accommodation</a>
+      </section>
+      <section class="panel-box" aria-labelledby="tripHeading">
+        <h2 id="tripHeading">Plan the rest of your trip</h2>
+        <p>Through Avante Travel, opens in a new tab.</p>
+        <ul class="trip" id="tripList"></ul>
+      </section>
     </div>
   </main>
 
@@ -696,11 +728,10 @@
     // Jean will supply the real destination URL for the remaining categories.
     // Until then, each tab is shown but disabled (greyed out, not clickable).
     // Accommodation and Flights already have real, per-affiliate destinations:
-    // Accommodation goes to this affiliate's own personal StockNetwork booking
-    // portal (same base link used throughout the Hub), and Flights goes to the
+    // Accommodation goes to this affiliate's own page on the Avante holiday
+    // builder search screen (see booking-links.js), and Flights goes to the
     // shared Impact.com/Travelstart tracking link with this affiliate's ID
     // appended as a Sub ID — both track bookings back to this exact affiliate.
-    var STOCKNETWORK_BASE = 'https://stock.stocknetwork.co.za/ui/';
     var FLIGHT_BASE_URL = 'https://travelstart.zwjlk6.net/LPVYJM';
     // Car rental — test/placeholder link until a real car rental affiliate
     // program is signed up. Same subId1 tracking pattern as Flights, kept in
@@ -710,7 +741,7 @@
     // kept in sync with hub.html's ESIM_BASE_URL.
     var ESIM_BASE_URL = 'https://avante.1-esim.com/';
     var CATEGORY_LINKS = {
-      accommodation: aff ? (STOCKNETWORK_BASE + encodeURIComponent(aff)) : '',
+      accommodation: aff ? AvanteBooking.build(aff) : '',
       flights: aff ? (FLIGHT_BASE_URL + (FLIGHT_BASE_URL.indexOf('?') === -1 ? '?' : '&') + 'subId1=' + encodeURIComponent(aff)) : '',
       activities: '',
       car: aff ? (CAR_BASE_URL + (CAR_BASE_URL.indexOf('?') === -1 ? '?' : '&') + 'subId1=' + encodeURIComponent(aff)) : '',
@@ -727,8 +758,9 @@
     var accomFrame = document.getElementById('accomFrame');
     var mainEl = document.getElementById('promotions');
 
+    // url: the search page, optionally pre-filled (a place, an offer's dates).
     function showAccommodationFrame(url){
-      if(!accomFrame.getAttribute('src')){ accomFrame.src = url; }
+      if(accomFrame.getAttribute('src') !== url){ accomFrame.src = url; }
       mainEl.style.display = 'none';
       accomFrameWrap.classList.add('show');
       window.scrollTo(0, 0);
@@ -815,13 +847,13 @@
       promotionsTab.addEventListener('click', hideAccommodationFrame);
     }
 
-    // ---------- Promotions grid ----------
+    // ---------- Offers (promotions) ----------
     var content = document.getElementById('content');
     var HOOK_COUNT = 6;
 
     function escapeHtml(s){
       var d = document.createElement('div');
-      d.textContent = s;
+      d.textContent = s == null ? '' : String(s);
       return d.innerHTML;
     }
     function isSafeUrl(u){
@@ -830,14 +862,179 @@
     function renderMessage(title, body){
       content.innerHTML =
         '<div class="placeholder">' +
-          '<div class="badge">Unavailable</div>' +
           '<h3>' + escapeHtml(title) + '</h3>' +
           '<p>' + escapeHtml(body) + '</p>' +
         '</div>';
     }
 
+    // An offer's caption starts with "<Name> — <Place>" (see the hook
+    // builder); the rest is the description. Anything else: no title.
+    function describe(d){
+      var cap = (d.caption || '').trim();
+      var lines = cap.split(/\n+/);
+      var first = (lines[0] || '').trim();
+      var name = '', place = '', blurb = '';
+      var m = first.match(/^(.{2,90}?)\s+[—–-]\s+(.{2,90})$/);
+      if(m){ name = m[1].trim(); place = m[2].trim(); blurb = lines.slice(1).join(' ').trim(); }
+      else if(first && first.length <= 80){ name = first; blurb = lines.slice(1).join(' ').trim(); }
+      if(!place && d.location && d.location.label) place = d.location.label;
+      if(blurb.length > 220) blurb = blurb.slice(0, 217).replace(/\s+\S*$/, '') + '…';
+      return { name: name, place: place, blurb: blurb, dates: (d.flyerDates || '').trim(), tag: (d.flyerPromoTag || '').trim(), price: (d.flyerPrice || '').trim() };
+    }
+
+    // Booking links open the holiday builder search, pre-filled. Inside the
+    // holiday builder itself (?embed=1) they replace that page (target
+    // _top), so the guest stays on one search screen; on the storefront
+    // they open in a new tab.
+    var bookTarget = isEmbed ? '_top' : '_blank';
+    function bookAttrs(url){
+      return 'href="' + escapeHtml(url) + '" target="' + bookTarget + '"' + (isEmbed ? '' : ' rel="noopener"');
+    }
+
+    var PIN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>';
+
+    function offerActions(r, info, quiet){
+      var h = '';
+      if(isSafeUrl(r.data.booking)){
+        h += '<a class="btn btn-book" ' + bookAttrs(r.data.booking) + ' data-book>' + (info.dates ? 'Book these dates' : 'Check availability') + '</a>';
+      }
+      if(isSafeUrl(r.data.landing)){
+        h += '<a class="btn btn-quiet" href="' + escapeHtml(r.data.landing) + '" data-details>Full details</a>';
+      }
+      return h;
+    }
+    function flyer(r, info, eager){
+      return '<div class="flyer-frame"><img class="flyer" id="promoImg' + r.n + '" alt="' + escapeHtml(info.name ? info.name + ' offer flyer' : 'Holiday offer flyer') + '"' + (eager ? '' : ' loading="lazy"') + '></div>';
+    }
+
+    function renderOffers(active){
+      var infos = active.map(function(r){ return describe(r.data); });
+      var lead = active[0], leadInfo = infos[0];
+      var h = '';
+
+      h += '<article class="feature">' + flyer(lead, leadInfo, true) +
+        '<div class="feature-body">' +
+          (leadInfo.tag ? '<span class="feature-kicker">' + escapeHtml(leadInfo.tag) + '</span>' : '') +
+          (leadInfo.name ? '<h2>' + escapeHtml(leadInfo.name) + '</h2>' : '<h2>This week’s pick</h2>') +
+          (leadInfo.place ? '<p class="place">' + escapeHtml(leadInfo.place) + '</p>' : '') +
+          (leadInfo.blurb ? '<p class="blurb">' + escapeHtml(leadInfo.blurb) + '</p>' : '') +
+          (leadInfo.dates ? '<div class="dates">' + escapeHtml(leadInfo.dates) + '</div>' : '') +
+          (leadInfo.price ? '<p class="blurb">' + escapeHtml(leadInfo.price) + '</p>' : '') +
+          '<div class="actions">' + offerActions(lead, leadInfo) + '</div>' +
+        '</div></article>';
+
+      if(active.length > 1){
+        h += '<div class="offer-grid">';
+        active.slice(1).forEach(function(r, i){
+          var info = infos[i + 1];
+          h += '<article class="offer">' + flyer(r, info, false) +
+            '<div class="offer-text">' +
+              (info.name ? '<h3>' + escapeHtml(info.name) + '</h3>' : '') +
+              (info.place ? '<p class="place">' + escapeHtml(info.place) + '</p>' : '') +
+              (info.dates ? '<p class="dates">' + escapeHtml(info.dates) + '</p>' : '') +
+            '</div>' +
+            '<div class="actions">' + offerActions(r, info) + '</div>' +
+          '</article>';
+        });
+        h += '</div>';
+      }
+      content.innerHTML = h;
+
+      var countEl = document.getElementById('offersCount');
+      countEl.textContent = active.length === 1 ? '1 offer' : active.length + ' offers';
+      countEl.hidden = false;
+
+      // Book: on the storefront, try a real new tab first; if the browser
+      // blocks it, open in this page instead of doing nothing. In the
+      // holiday builder (embed) the plain target="_top" link does the job.
+      if(!isEmbed){
+        content.querySelectorAll('[data-book]').forEach(function(a){
+          a.addEventListener('click', function(e){
+            var url = a.getAttribute('href');
+            if(!url){ return; }
+            e.preventDefault();
+            var win = null;
+            try{ win = window.open(url, '_blank'); }catch(err){ win = null; }
+            if(win){ try{ win.opener = null; }catch(err){} }
+            else { window.location.href = url; }
+          });
+        });
+      }
+      // Full details opens in the in-page panel.
+      content.querySelectorAll('[data-details]').forEach(function(a){
+        a.addEventListener('click', function(e){
+          var url = a.getAttribute('href');
+          if(!url){ return; }
+          e.preventDefault();
+          openBookingModal(url);
+        });
+      });
+
+      active.forEach(function(r){
+        var img = document.getElementById('promoImg' + r.n);
+        img.onload = function(){ img.classList.add('show'); };
+        img.onerror = function(){ img.parentNode.style.display = 'none'; };
+        // Admin-managed (or expired self-managed) hooks show the admin's
+        // image, which is stored under the reserved "__admin__" key —
+        // not this affiliate's own ID.
+        var imgAff = (r.data.source === 'admin') ? '__admin__' : aff;
+        img.src = '/api/hook-image?aff=' + encodeURIComponent(imgAff) + '&hook=' + r.n;
+      });
+
+      renderMore(infos);
+    }
+
+    // "Search a place" (the offers' own places first, then a few
+    // well-known holiday areas) and "Plan the rest of your trip".
+    var POPULAR_PLACES = ['Plettenberg Bay', 'Knysna', 'Cape Town', 'Hermanus', 'Durban', 'Dullstroom'];
+    function renderMore(infos){
+      var seen = {}, places = [];
+      function add(p){
+        p = (p || '').split(',')[0].trim();
+        var k = p.toLowerCase();
+        if(p && !seen[k]){ seen[k] = 1; places.push(p); }
+      }
+      (infos || []).forEach(function(i){ add(i.place); });
+      POPULAR_PLACES.forEach(add);
+      places = places.slice(0, 10);
+
+      var chips = document.getElementById('placeChips');
+      chips.innerHTML = places.map(function(p){
+        return '<a class="chip" ' + bookAttrs(AvanteBooking.build(aff, { destination: p })) + ' data-place>' + PIN + escapeHtml(p) + '</a>';
+      }).join('');
+      var all = document.getElementById('searchAllLink');
+      all.href = AvanteBooking.build(aff);
+      all.target = bookTarget;
+      if(!isEmbed) all.rel = 'noopener';
+      // On the storefront these open in the Book Your Accommodation view
+      // (menu stays put) rather than a new tab.
+      if(!isEmbed){
+        document.querySelectorAll('#placeChips [data-place], #searchAllLink').forEach(function(a){
+          a.addEventListener('click', function(e){
+            e.preventDefault();
+            showAccommodationFrame(a.getAttribute('href'));
+          });
+        });
+      }
+
+      var TRIP = [
+        { key: 'flights', name: 'Flights', note: 'Local and international flights', icon: '<path d="M10.5 13.5 3 11l1.5-1.5 7 1 4-4.5c.9-.9 2.4-1 3-.4s.5 2.1-.4 3l-4.5 4 1 7L13.5 21l-2.5-7.5z"/>' },
+        { key: 'car', name: 'Car hire', note: 'Pick up at the airport or in town', icon: '<path d="M5 16V11l2-5h10l2 5v5"/><path d="M3 16h18v3H3z"/><circle cx="7.5" cy="19" r="1.5"/><circle cx="16.5" cy="19" r="1.5"/>' },
+        { key: 'esim', name: 'Free e-Sim', note: 'Mobile data for overseas visitors', icon: '<rect x="6" y="3" width="12" height="18" rx="2"/><path d="M10 8h4v5h-4z"/>' }
+      ].filter(function(t){ return CATEGORY_LINKS[t.key]; });
+      document.getElementById('tripList').innerHTML = TRIP.map(function(t){
+        return '<li><a class="trip-link" href="' + escapeHtml(CATEGORY_LINKS[t.key]) + '" target="_blank" rel="noopener">' +
+          '<span class="trip-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true">' + t.icon + '</svg></span>' +
+          '<span><span class="trip-name">' + t.name + '</span><span class="trip-note">' + t.note + '</span></span>' +
+          '<span class="trip-go" aria-hidden="true">›</span></a></li>';
+      }).join('');
+      if(!TRIP.length) document.getElementById('tripHeading').parentNode.hidden = true;
+
+      document.getElementById('moreSection').hidden = false;
+    }
+
     if(!aff){
-      renderMessage('This link is incomplete', 'Please check the link you were given, or contact the person who shared it with you.');
+      renderMessage('This link is incomplete', 'Check the link you were given, or ask the person who shared it for a new one.');
     } else {
       var requests = [];
       for(var i = 1; i <= HOOK_COUNT; i++){
@@ -855,77 +1052,15 @@
         var active = results.filter(function(r){
           return r.data && (isSafeUrl(r.data.booking) || isSafeUrl(r.data.landing));
         });
+        // Saved before the holiday builder switch? Book through it anyway.
+        active.forEach(function(r){ if(r.data.booking) r.data.booking = AvanteBooking.convert(r.data.booking); });
 
         if(!active.length){
-          renderMessage('No active offers right now', 'Please check back again soon.');
+          renderMessage('No offers right now', 'New offers are added often. In the meantime, search any place below.');
+          renderMore([]);
           return;
         }
-
-        var html = '<div class="promo-grid">';
-        active.forEach(function(r){
-          html += '<div class="promo-card">';
-          html += '<img class="promo-card-image" id="promoImg' + r.n + '" alt="">';
-          // Book Now is left out of the embed (?embed=1) version — the
-          // headerless link Jean embeds on her own site — because
-          // stocknetwork's sandboxed iframe blocks new-tab popups there,
-          // so the button either does nothing or falls back into the same
-          // frame and duplicates their search widget. Jean is following up
-          // with stocknetwork support to remove that block; once it's
-          // fixed this condition can come back out. Standalone (non-embed)
-          // visits are unaffected and keep the Book Now button.
-          if(isSafeUrl(r.data.booking) && !isEmbed){
-            html += '<a class="cta" href="' + escapeHtml(r.data.booking) + '" target="_blank" rel="noopener">Book Now</a>';
-          }
-          if(isSafeUrl(r.data.landing)){
-            html += '<a class="cta-outline" href="' + escapeHtml(r.data.landing) + '" target="_blank" rel="noopener">See full details</a>';
-          }
-          html += '</div>';
-        });
-        html += '</div>';
-        content.innerHTML = html;
-
-        // Book Now: try to open a real new tab first (leaves this page
-        // untouched, exactly like a plain link). stocknetwork's sandboxed
-        // embed blocks real popups outright with no way for us to grant
-        // that permission from inside the iframe — confirmed live: a
-        // plain target="_blank" link did nothing there. So if the
-        // browser silently blocks the popup (window.open returns
-        // nothing), fall back to opening within the page instead of
-        // doing nothing at all. Standalone visits and any less-locked-down
-        // embed still get a normal new tab.
-        content.querySelectorAll('.cta').forEach(function(a){
-          a.addEventListener('click', function(e){
-            var url = a.getAttribute('href');
-            if(!url){ return; }
-            e.preventDefault();
-            var win = null;
-            try{ win = window.open(url, '_blank'); }catch(err){ win = null; }
-            if(!win){
-              window.location.href = url;
-            }
-          });
-        });
-
-        // See full details keeps opening in the in-page popup.
-        content.querySelectorAll('.cta-outline').forEach(function(a){
-          a.addEventListener('click', function(e){
-            var url = a.getAttribute('href');
-            if(!url){ return; }
-            e.preventDefault();
-            openBookingModal(url);
-          });
-        });
-
-        active.forEach(function(r){
-          var img = document.getElementById('promoImg' + r.n);
-          img.onload = function(){ img.classList.add('show'); };
-          img.onerror = function(){ img.classList.remove('show'); };
-          // Admin-managed (or expired self-managed) hooks show the admin's
-          // image, which is stored under the reserved "__admin__" key —
-          // not this affiliate's own ID.
-          var imgAff = (r.data.source === 'admin') ? '__admin__' : aff;
-          img.src = '/api/hook-image?aff=' + encodeURIComponent(imgAff) + '&hook=' + r.n;
-        });
+        renderOffers(active);
       });
     }
   </script>

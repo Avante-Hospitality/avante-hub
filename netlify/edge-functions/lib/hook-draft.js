@@ -13,7 +13,7 @@
 // no-invented-flyer-content rule the rest of this app already follows.
 import { fetchResortInfo, draftHookCaption } from "./hook-source.js";
 import { generateHashtags } from "./hashtag-helper.js";
-import { ADMIN_MASTER_SITE_GUID } from "./booking-link.js";
+import { ADMIN_MASTER_SITE_GUID, holidayBuilderUrl } from "./booking-link.js";
 import { resortKey } from "./resort-key.js";
 
 // The most properties a single "selection" draft (explicit resortKeys —
@@ -192,12 +192,13 @@ export async function buildHookDraft(resortStore, input) {
   const checkIn = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, today.getUTCDate()));
   const checkOut = new Date(checkIn.getTime() + 86400000);
   const fmtDate = (d) => d.toISOString().slice(0, 10);
-  const bookingParams = new URLSearchParams({
-    CheckInDT: fmtDate(checkIn),
-    CheckOutDT: fmtDate(checkOut),
-    Filter: label,
+  // Holiday builder search screen for this site, pre-filled with the area
+  // and dates (see lib/booking-link.js).
+  const booking = holidayBuilderUrl(bookingSiteGuid, {
+    destination: label,
+    checkIn: fmtDate(checkIn),
+    checkOut: fmtDate(checkOut),
   });
-  const booking = "https://stock.stocknetwork.co.za/ui/" + encodeURIComponent(bookingSiteGuid) + "?" + bookingParams.toString();
 
   const description = sources.map((s) => s.description).filter(Boolean).join(" ");
   const attractions = sources.map((s) => s.attractions).filter(Boolean).join(" ");

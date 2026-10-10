@@ -9,22 +9,23 @@
 // Once the offer's end date has passed, or if the page doesn't exist, the
 // visitor goes straight to that affiliate's storefront.
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
-import { correctBookingLinkSiteId, ADMIN_MASTER_SITE_GUID } from "./lib/booking-link.js";
+import { correctBookingLinkSiteId, ADMIN_MASTER_SITE_GUID, holidayBuilderUrl, toHolidayBuilderUrl } from "./lib/booking-link.js";
 import { isShortLink, resolveShortLink } from "./lib/short-link.js";
 
-const SN = "https://stock.stocknetwork.co.za/ui/";
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const isAff = (v) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(v || ""));
 // Today in South Africa (UTC+2), as YYYY-MM-DD.
 const todaySA = () => new Date(Date.now() + 2 * 3600e3).toISOString().slice(0, 10);
 
-function bookUrl(agent, resortId, c) {
-  const p = new URLSearchParams();
-  if (resortId) p.set("ResortID", resortId);
-  if (c.checkIn) p.set("CheckInDT", c.checkIn);
-  if (c.checkOut) p.set("CheckOutDT", c.checkOut);
-  const q = p.toString();
-  return SN + encodeURIComponent(agent) + (q ? "?" + q : "");
+// Book now: this affiliate's holiday builder search screen, pre-filled
+// with the page's dates and (for a property page) the property.
+function bookUrl(agent, prop, c) {
+  return holidayBuilderUrl(agent, {
+    destination: prop ? prop.name || prop.town || "" : (c.area || ""),
+    resortId: prop ? prop.resortId || "" : "",
+    checkIn: c.checkIn || "",
+    checkOut: c.checkOut || "",
+  });
 }
 
 // Meta Pixel "Avante Travel Pixel" (Jean, 2026-10-09). Counts page views, and
@@ -38,7 +39,7 @@ function pixel(title, slug) {
 !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');
 fbq('init','${META_PIXEL_ID}');fbq('track','PageView');
 (function(){var info=${info};document.addEventListener('click',function(ev){var a=ev.target.closest&&ev.target.closest('a[href]');if(!a)return;var h=a.getAttribute('href')||'';
-if(/stocknetwork\\.co\\.za/i.test(h))fbq('track','InitiateCheckout',info);
+if(/stocknetwork\\.co\\.za|holiday-builder/i.test(h))fbq('track','InitiateCheckout',info);
 else if(/wa\\.me\\/|whatsapp/i.test(h))fbq('track','Contact',Object.assign({method:'whatsapp'},info));
 else if(/^tel:/i.test(h))fbq('track','Contact',Object.assign({method:'phone'},info));
 else if(/^mailto:/i.test(h))fbq('track','Contact',Object.assign({method:'email'},info));},true);})();
@@ -49,9 +50,9 @@ function page(rec, agent, origin, ownBook) {
   const c = rec.current, img = (k) => origin + "/api/landing?img=" + k;
   const cover = c.cover || (c.pages[0] && c.pages[0].img);
   const wa = c.whatsapp ? "https://wa.me/" + c.whatsapp + "?text=" + encodeURIComponent(c.waText || "Hi Avante Travel, I'd like to know more about " + c.title) : "";
-  const mainBook = c.kind === "property" && c.pages.some((p) => p.props.length) ? bookUrl(agent, c.pages.find((p) => p.props.length).props[0].resortId, c) : "";
+  const mainBook = c.kind === "property" && c.pages.some((p) => p.props.length) ? bookUrl(agent, c.pages.find((p) => p.props.length).props[0], c) : "";
   // The hook builder's own Booking link if it has one (with the affiliate's ID), else built here.
-  const allBook = ownBook || mainBook || bookUrl(agent, "", c);
+  const allBook = ownBook || mainBook || bookUrl(agent, null, c);
   const pagesHtml = c.pages.map((p, i) => {
     const spots = p.links.map((a) => {
       const href = /^https?:/i.test(a.url) ? (a.label === "Book now" ? allBook : correctBookingLinkSiteId(a.url, agent).url) : a.url;
@@ -139,7 +140,7 @@ export default async (request) => {
     ownBook = rec.current.booking;
     if (isShortLink(ownBook)) { try { ownBook = (await resolveShortLink(ownBook, getStore({ name: "short-links", consistency: "strong" }))) || ownBook; } catch (e) {} }
     // An affiliate's link (or page) credits them; otherwise the link stays exactly as built.
-    if (agent !== ADMIN_MASTER_SITE_GUID) ownBook = correctBookingLinkSiteId(ownBook, agent).url;
+    ownBook = agent !== ADMIN_MASTER_SITE_GUID ? correctBookingLinkSiteId(ownBook, agent).url : toHolidayBuilderUrl(ownBook);
   }
   return new Response(page(rec, agent, url.origin, ownBook), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=60" } });
 };

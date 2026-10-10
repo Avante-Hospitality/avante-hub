@@ -25,6 +25,7 @@
   a way that opened a real security bug — see hook-pdf-link.js itself.
 -->
 <script src="hook-pdf-link.js"></script>
+<script src="booking-links.js"></script>
 <script>
   // ---------- Auth gate ----------
   // Runs before the page renders, so the dashboard never flashes on screen
@@ -830,6 +831,21 @@
             </table>
           </div>
           <button type="button" class="primary" id="collapsedLinksApplyBtn" style="margin-top:10px;">Apply fix</button>
+        </div>
+      </div>
+      <div class="card" style="margin-bottom:20px;">
+        <h3 style="margin-top:0;">Move saved booking links to the holiday builder</h3>
+        <p class="modal-sub" style="margin:-4px 0 10px;">Finds every saved hook booking link (your defaults and every affiliate's own) and every short link that still opens the old Stock Network portal, and points it at the same affiliate's holiday builder search page instead — same dates and area. Old links are already sent to the holiday builder when they're opened, so this just tidies what's saved. Check first; nothing changes until you apply.</p>
+        <button type="button" class="btn-outline" id="hbLinksCheckBtn">Check now</button>
+        <div class="status" id="hbLinksStatus"></div>
+        <div id="hbLinksResults" style="display:none; margin-top:12px;">
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead><tr><th>What</th><th>Current link</th><th>Will become</th></tr></thead>
+              <tbody id="hbLinksBody"></tbody>
+            </table>
+          </div>
+          <button type="button" class="primary" id="hbLinksApplyBtn" style="margin-top:10px;">Move to the holiday builder</button>
         </div>
       </div>
       <div class="card" style="margin-bottom:20px;">
@@ -2326,9 +2342,10 @@
       return found ? found.label : key;
     }
 
-    // Same base used throughout the Hub/landing page for an affiliate's
-    // personal StockNetwork accommodation booking link.
-    var STOCKNETWORK_BASE = 'https://stock.stocknetwork.co.za/ui/';
+    // An affiliate's personal accommodation booking link: their own page on
+    // the Avante holiday builder search screen (see booking-links.js), the
+    // same one the Hub and storefront use.
+    function affiliateBookingLink(affId, opts){ return AvanteBooking.build(affId, opts); }
     // Jean's own "Avante Travel" master StockNetwork site number — must
     // match LEADERBOARD_EXCLUDED_SITE_NRS[0] in
     // netlify/edge-functions/lib/booking-stats.js (this page has no
@@ -2833,7 +2850,7 @@
           welcomeBtn.textContent = 'Preparing…';
 
           var hubLink = window.location.origin + '/hub.html?aff=' + encodeURIComponent(a.affId);
-          var bookingLink = STOCKNETWORK_BASE + encodeURIComponent(a.affId);
+          var bookingLink = affiliateBookingLink(a.affId);
           var storefrontLink = window.location.origin + '/landing.html?aff=' + encodeURIComponent(a.affId);
 
           Promise.all([
@@ -3672,7 +3689,7 @@
       detailsOverlay.classList.add('show');
 
       var hubLink = window.location.origin + '/hub.html?aff=' + encodeURIComponent(a.affId);
-      var bookingLink = STOCKNETWORK_BASE + encodeURIComponent(a.affId);
+      var bookingLink = affiliateBookingLink(a.affId);
       var storefrontLink = window.location.origin + '/landing.html?aff=' + encodeURIComponent(a.affId);
       var embedLink = window.location.origin + '/landing.html?aff=' + encodeURIComponent(a.affId) + '&embed=1';
       var flightLink = FLIGHT_BASE_URL + (FLIGHT_BASE_URL.indexOf('?') === -1 ? '?' : '&') + 'subId1=' + encodeURIComponent(a.affId);
@@ -4120,6 +4137,24 @@
       renderCells: function(c){
         return '<td>' + escapeHtml(c.key) + '</td>' +
           '<td>' + escapeHtml(c.wrongId) + '</td>' +
+          '<td style="word-break:break-all;">' + escapeHtml(c.oldBooking) + '</td>' +
+          '<td style="word-break:break-all;">' + escapeHtml(c.newBooking) + '</td>';
+      }
+    });
+
+    // See convertBookingLinksToHolidayBuilder in admin-api.js: saved hook
+    // booking links and short links still on the old Stock Network portal
+    // move to the holiday builder search page (same site, dates and area).
+    wireHookFixChecker({
+      idPrefix: 'hbLinks',
+      action: 'convertBookingLinksToHolidayBuilder',
+      noneLabel: 'Every saved booking link already uses the holiday builder — nothing to move.',
+      foundLabel: 'or short links still opening the old Stock Network portal:',
+      applyBtnLabel: 'Move to the holiday builder',
+      appliedVerb: 'Moved',
+      toastLabel: 'Booking links moved to the holiday builder',
+      renderCells: function(c){
+        return '<td>' + escapeHtml(c.what === 'Hook' ? 'Hook ' + c.key : c.what) + '</td>' +
           '<td style="word-break:break-all;">' + escapeHtml(c.oldBooking) + '</td>' +
           '<td style="word-break:break-all;">' + escapeHtml(c.newBooking) + '</td>';
       }
@@ -5122,9 +5157,9 @@
         }
 
         var area = document.getElementById('dh' + n + '-linkArea').value.trim();
-        var params = new URLSearchParams({ CheckInDT: checkIn, CheckOutDT: checkOut });
-        if(area) params.set('Filter', area);
-        var link = STOCKNETWORK_BASE + encodeURIComponent(ADMIN_MASTER_SITE_GUID) + '?' + params.toString();
+        // Holiday builder search under the master placeholder site, which
+        // hook-api.js swaps for the viewing affiliate's own page.
+        var link = affiliateBookingLink(ADMIN_MASTER_SITE_GUID, { destination: area, checkIn: checkIn, checkOut: checkOut });
 
         document.getElementById('dh' + n + '-booking').value = link;
         statusEl.textContent = 'Booking link filled in below — remember to click "Save default".';

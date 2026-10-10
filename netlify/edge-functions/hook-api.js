@@ -1,7 +1,7 @@
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
 import { generateHashtags } from "./lib/hashtag-helper.js";
 import { resolveShortLink as resolveShortLinkShared, isShortLink } from "./lib/short-link.js";
-import { correctBookingLinkSiteId, ADMIN_MASTER_SITE_GUID } from "./lib/booking-link.js";
+import { correctBookingLinkSiteId, ADMIN_MASTER_SITE_GUID, personalizeBookingLink, toHolidayBuilderUrl } from "./lib/booking-link.js";
 import { resolveHookMode } from "./lib/hook-mode.js";
 import { buildHookDraft } from "./lib/hook-draft.js";
 import { saveHookPhotoUrls } from "./lib/hook-photos.js";
@@ -31,30 +31,11 @@ const ADMIN_KEY = "__admin__";
 // here too so any hook not yet rebuilt with the real GUID still gets
 // personalized rather than silently shown broken. Any other URL shape is
 // left untouched — we only ever touch a link we can confidently recognize.
+// Now lives in lib/booking-link.js (personalizeBookingLink), which also
+// understands holiday builder links (".../holiday-builder/<id>.php") and
+// converts old Stock Network portal links to the holiday builder.
 function personalizeStockNetworkUrl(rawUrl, replacement) {
-  if (!rawUrl || !replacement) return rawUrl;
-  try {
-    const u = new URL(rawUrl);
-    const parts = u.pathname.split("/");
-    let lastIdx = -1;
-    for (let i = parts.length - 1; i >= 0; i--) {
-      if (parts[i]) { lastIdx = i; break; }
-    }
-    if (lastIdx === -1) return rawUrl;
-    let seg;
-    try {
-      seg = decodeURIComponent(parts[lastIdx]);
-    } catch (e) {
-      return rawUrl;
-    }
-    const isPlaceholder = seg === ADMIN_MASTER_SITE_GUID || /^Affiliate\s+\d+$/i.test(seg);
-    if (!isPlaceholder) return rawUrl;
-    parts[lastIdx] = encodeURIComponent(replacement);
-    u.pathname = parts.join("/");
-    return u.toString();
-  } catch (e) {
-    return rawUrl;
-  }
+  return personalizeBookingLink(rawUrl, replacement);
 }
 
 // If the admin's stored booking link is one of our own shortened
@@ -458,7 +439,8 @@ export default async (request, context) => {
     // for shape consistency with the admin branch above.
     const data = affRecord
       ? {
-          booking: affRecord.booking || "",
+          // Saved before the holiday builder switch? Send it there instead.
+          booking: toHolidayBuilderUrl(affRecord.booking || ""),
           landing: affRecord.landing || "",
           caption: affRecord.caption || "",
           hashtags: affRecord.hashtags || null,

@@ -19,6 +19,7 @@
   a way that opened a real security bug — see hook-pdf-link.js itself.
 -->
 <script src="hook-pdf-link.js"></script>
+<script src="booking-links.js"></script>
 <script>
   // ---------- Auth gate ----------
   // Runs immediately, before the page renders, so an unauthenticated visitor
@@ -1279,8 +1280,8 @@
       </div>
       <div class="card">
         <label for="a-baseUrl">Your booking link URL</label>
-        <input id="a-baseUrl" placeholder="e.g. https://stock.stocknetwork.co.za/ui/your-own-guid-here">
-        <div class="hint">Your own personal StockNetwork booking link — the one issued to you, not anyone else's. Paste it here once; every link this builds will use it.</div>
+        <input id="a-baseUrl" placeholder="e.g. https://avantetravel.co.za/holiday-builder/your-own-guid-here.php">
+        <div class="hint">Your own Avante Travel search page — the one set up for you, not anyone else's. It's filled in for you; every link this builds goes to it, ready searched for your destination and dates.</div>
         <div class="btn-row" id="a-baseUrlBtnRow" style="margin-top:8px;"></div>
 
         <label for="a-area">Destination or property name</label>
@@ -1573,7 +1574,7 @@
               <div class="tut-step-num">1</div>
               <div class="tut-step-body">
                 <h3>Start with the right tool</h3>
-                <p>Use <strong>Accommodation Link Builder</strong> for stays, or the ready-made "Your Flight Link", "Your Car Link" and "Your Free E-Sim Link" tabs for everything else. Your personal StockNetwork booking link is already saved here — you only ever paste it once.</p>
+                <p>Use <strong>Accommodation Link Builder</strong> for stays, or the ready-made "Your Flight Link", "Your Car Link" and "Your Free E-Sim Link" tabs for everything else. Your own Avante Travel search page is already filled in here — nothing to paste.</p>
                 <img src="tut-link-builder-1-booking-url.png" alt="Your booking link URL field, already filled in with your personal StockNetwork link">
               </div>
             </div>
@@ -1636,7 +1637,7 @@
               <div class="tut-step-num">3</div>
               <div class="tut-step-body">
                 <h3>Add your booking link</h3>
-                <p>Paste the booking link for whatever you're promoting — a specific resort, a flight deal, anything with a StockNetwork booking URL. This is required. We automatically tag it with your affiliate ID so every booking made from this card is credited to you.</p>
+                <p>Paste the booking link for whatever you're promoting — a specific resort, a flight deal, anything with an Avante Travel booking link. This is required. We automatically tag it with your affiliate ID so every booking made from this card is credited to you.</p>
               </div>
             </div>
 
@@ -2337,7 +2338,7 @@
 
     // ---------- Affiliate personalization ----------
     // Give an affiliate a link like yoursite/hub.html?aff=<their-booking-link-id>
-    // (the same ID that's the last part of their own StockNetwork booking link).
+    // (the same ID their own Avante Travel booking page is named after).
     // Every tab then pre-fills with that ID and remembers what they enter, in
     // this browser only — no login, no server, just localStorage keyed by ID.
     var AFF_ID = new URLSearchParams(window.location.search).get('aff') || '';
@@ -2411,7 +2412,10 @@
         .then(function(){ if(btn){ btn.disabled = false; btn.textContent = label; } });
     }
     window.openHookBuilder = openHookBuilder; // also used by the Property Affiliate top bar (property-affiliate.js)
-    var STOCKNETWORK_BASE = 'https://stock.stocknetwork.co.za/ui/';
+    // Accommodation bookings go through the Avante holiday builder search
+    // screen (one page per affiliate, named after their Stock Network site
+    // GUID) — see booking-links.js. myBookingLink() is this affiliate's own.
+    function myBookingLink(opts){ return AvanteBooking.build(AFF_ID, opts); }
     // Avante's own Impact.com/Travelstart tracking link. Impact.com has no
     // formal sub-affiliate feature, so each affiliate's flight link reuses
     // this one base link with their affiliate ID appended as a Sub ID
@@ -2725,11 +2729,17 @@
       var checkOutEl = document.getElementById('a-checkOut');
       var baseUrlEl = document.getElementById('a-baseUrl');
 
+      // A link saved before the switch to the holiday builder is converted;
+      // only the page itself is kept here (dates/area come from the fields).
       var savedBase = affLoad('bookingUrl');
-      if(savedBase){
+      var savedSite = savedBase ? AvanteBooking.siteId(savedBase) : '';
+      if(savedSite){
+        baseUrlEl.value = AvanteBooking.build(savedSite);
+        if(baseUrlEl.value !== savedBase) affSave('bookingUrl', baseUrlEl.value);
+      }else if(savedBase){
         baseUrlEl.value = savedBase;
       }else if(AFF_ID){
-        baseUrlEl.value = STOCKNETWORK_BASE + AFF_ID;
+        baseUrlEl.value = myBookingLink();
       }
       baseUrlEl.addEventListener('change', function(){
         affSave('bookingUrl', baseUrlEl.value.trim());
@@ -2753,7 +2763,7 @@
         errorEl.textContent = '';
 
         if(!baseUrl){
-          errorEl.textContent = 'Paste your booking link URL first (the one issued to you by StockNetwork).';
+          errorEl.textContent = 'Your booking page is missing — it should be filled in for you. Contact Avante Travel if it stays empty.';
           errorEl.className = 'status show';
           return;
         }
@@ -2768,9 +2778,17 @@
           return;
         }
 
-        var params = new URLSearchParams({ CheckInDT: checkIn, CheckOutDT: checkOut });
-        if(area) params.set('Filter', area);
-        currentLink = baseUrl + '?' + params.toString();
+        // Your holiday builder page, pre-filled with the destination and
+        // dates. A pasted link that isn't one of ours just gets the same
+        // search added to it.
+        var site = AvanteBooking.siteId(baseUrl);
+        if(site){
+          currentLink = AvanteBooking.build(site, { destination: area, checkIn: checkIn, checkOut: checkOut });
+        }else{
+          var params = new URLSearchParams({ checkin: checkIn, checkout: checkOut });
+          if(area) params.set('destination', area);
+          currentLink = baseUrl + (baseUrl.indexOf('?') === -1 ? '?' : '&') + params.toString();
+        }
 
         document.getElementById('a-finalUrl').textContent = currentLink;
         document.getElementById('a-linkBox').classList.add('show');
@@ -3201,7 +3219,7 @@
             '<div class="hint">Recommended: a square image, 1080 × 1080px — Facebook, Instagram, WhatsApp and LinkedIn each fit and crop this on their own once it\'s posted, so no extra cropping happens here.</div>' +
             '<div class="status" id="h' + i + '-imageStatus"></div>' +
             '<label for="h' + i + '-booking">Booking link</label>' +
-            '<input id="h' + i + '-booking" placeholder="Your StockNetwork booking link for this promo">' +
+            '<input id="h' + i + '-booking" placeholder="Your Avante Travel booking link for this promo">' +
             '<label for="h' + i + '-landing">Landing page link</label>' +
             '<input id="h' + i + '-landing" placeholder="Link to the promo\'s landing page">' +
             '<input type="file" accept="application/pdf" id="h' + i + '-pdfInput" style="display:none;">' +
@@ -3343,8 +3361,9 @@
 
       function isValidUrl(v){ return /^https?:\/\//i.test(v); }
 
-      // Pull the affiliate's own ID off the end of their booking link, e.g.
-      // https://stock.stocknetwork.co.za/ui/c2fef00f-7330-4eb3-b993-f5f43fc73dff
+      // Pull the affiliate's own ID out of their booking link, e.g.
+      // https://avantetravel.co.za/holiday-builder/c2fef00f-7330-4eb3-b993-f5f43fc73dff.php
+      // (or an old .../ui/<id> Stock Network link)
       // -> "c2fef00f-7330-4eb3-b993-f5f43fc73dff" (query string, if any, is ignored).
       //
       // Every save/upload/share call site below uses this ONLY as a
@@ -3363,6 +3382,8 @@
       // the fact. Getting this priority order right here is what stops
       // it from happening in the first place.
       function extractAffiliateId(bookingUrl){
+        var known = AvanteBooking.siteId(bookingUrl);
+        if(known) return known;
         try{
           var u = new URL(bookingUrl);
           var parts = u.pathname.split('/').filter(Boolean);
@@ -4377,9 +4398,9 @@
           defaultHookLocationLabel[hi] = savedLocationLabel || '';
           showHookLocationNote(hi, savedLocationLabel || '');
           if(savedB){
-            bEl.value = savedB;
+            bEl.value = AvanteBooking.convert(savedB);
           }else if(AFF_ID){
-            bEl.value = STOCKNETWORK_BASE + AFF_ID;
+            bEl.value = myBookingLink();
           }
           if(savedL) lEl.value = savedL;
           if(savedC) cEl.value = savedC;

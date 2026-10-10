@@ -1,5 +1,6 @@
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
 import { SHORT_LINK_HOST } from "./lib/short-link.js";
+import { toHolidayBuilderUrl } from "./lib/booking-link.js";
 
 const FALLBACK_URL = "https://stocknetwork-affiliate-link-builder.netlify.app/hub.html";
 
@@ -45,7 +46,10 @@ export default async (request, context) => {
       })
     );
 
-    return Response.redirect(record.url, 302);
+    // Short links made before the holiday builder switch still point at the
+    // old Stock Network portal — send those to the holiday builder search
+    // screen for the same site, dates and area instead.
+    return Response.redirect(toHolidayBuilderUrl(record.url), 302);
   } catch (err) {
     return new Response("Something went wrong resolving this link.", {
       status: 500,

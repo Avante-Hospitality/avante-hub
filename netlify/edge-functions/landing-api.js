@@ -14,7 +14,7 @@
 //   POST { op:"toHook", slug, hook, caption }            → { ok, hook }   (admin: fills Default Hook <hook>)
 //   GET  ?img=<key>                                      → the picture (public)
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
-import { ADMIN_MASTER_SITE_GUID, correctBookingLinkSiteId } from "./lib/booking-link.js";
+import { ADMIN_MASTER_SITE_GUID, correctBookingLinkSiteId, holidayBuilderUrl } from "./lib/booking-link.js";
 import { isShortLink, resolveShortLink } from "./lib/short-link.js";
 import { generateHashtags } from "./lib/hashtag-helper.js";
 import { AI_SCAN_CACHE_FIELDS_CLEARED } from "./lib/record-merge.js";
@@ -25,7 +25,6 @@ const PUBLIC_HOST = "https://go.avantetravel.co.za";
 const MAX_IMAGE = 3 * 1024 * 1024;
 const KEEP_VERSIONS = 10;
 const DEFAULT_HOOK_COUNT = 6;
-const SN = "https://stock.stocknetwork.co.za/ui/";
 const SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{1,58}[a-z0-9])$/;
 
 const enc = new TextEncoder();
@@ -133,12 +132,13 @@ export default async (request) => {
       category: c.kind === "event" ? "event" : "property", flyerDates: c.dates || "" };
     // Book now: everything available for the hook's dates (a property hook:
     // that property), under the placeholder ID hook-api.js swaps per affiliate.
-    const p = new URLSearchParams();
     const firstProp = c.kind === "property" ? (c.pages.find((x) => x.props && x.props.length) || {}).props : null;
-    if (firstProp && firstProp[0]) p.set("ResortID", firstProp[0].resortId);
-    if (c.checkIn) p.set("CheckInDT", c.checkIn);
-    if (c.checkOut) p.set("CheckOutDT", c.checkOut);
-    fields.booking = SN + ADMIN_MASTER_SITE_GUID + (p.toString() ? "?" + p : "");
+    fields.booking = holidayBuilderUrl(ADMIN_MASTER_SITE_GUID, {
+      destination: firstProp && firstProp[0] ? firstProp[0].name : "",
+      resortId: firstProp && firstProp[0] ? firstProp[0].resortId : "",
+      checkIn: c.checkIn || "",
+      checkOut: c.checkOut || "",
+    });
     // The hook builder's Booking link wins, with the placeholder ID hook-api.js swaps per affiliate.
     if (c.booking) {
       let link = c.booking;

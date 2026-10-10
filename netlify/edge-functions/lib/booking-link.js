@@ -1,60 +1,169 @@
-// Shared by hook-api.js (guarding a self-managed hook's booking link at
-// save time) and admin-api.js's fixMisattributedHookLinks (cleaning up
-// ones that already got saved wrong) — one definition of what counts as
-// a StockNetwork booking link's site identifier and how to correct it,
-// so the two can't drift apart on what they consider "confidently
-// recognizable".
-const STOCKNETWORK_HOST = "stock.stocknetwork.co.za";
+// One definition of what an accommodation booking link looks like, shared
+// by every edge function that builds, personalizes or cleans up one
+// (hook-api.js, admin-api.js, landing-api.js, landing-page.js,
+// hook-draft.js, go-redirect.js) so they can't drift apart.
+//
+// Since 2026-10-10 every booking goes through the Avante holiday builder
+// search screen (avantetravel.co.za/holiday-builder), which searches Stock
+// Network through the SN API. Each affiliate (and each property affiliate)
+// has its own company page there, named after their Stock Network site
+// GUID:
+//
+//   https://avantetravel.co.za/holiday-builder/<site GUID>.php
+//     ?destination=<area or property>&checkin=YYYY-MM-DD&checkout=YYYY-MM-DD
+//
+// Company pages are set up by hand in holiday-builder/admin/companies.php
+// (name, colours, intro iframe, the site's own SN token). The search page
+// pre-fills destination/checkin/checkout from the query string (see its
+// search.js); `resort` is passed too so a property link keeps its
+// ResortID for when the search page learns to open one property directly.
+//
+// Old Stock Network portal links (stock.stocknetwork.co.za/ui/<GUID>
+// ?ResortID=&CheckInDT=&CheckOutDT=&Filter=) are still recognised
+// everywhere and converted on the fly, so anything saved before the switch
+// (hooks, landing pages, short links) lands on the new search screen too.
+export const STOCKNETWORK_HOST = "stock.stocknetwork.co.za";
+export const HOLIDAY_BUILDER_HOST = "avantetravel.co.za";
+export const HOLIDAY_BUILDER_BASE = "https://avantetravel.co.za/holiday-builder/";
 
-// Jean's own real StockNetwork site GUID — confirmed directly by opening
-// https://stock.stocknetwork.co.za/ui/<this> and seeing it load his actual
-// site. Used as the placeholder site identifier admin default hooks are
-// built with, so hook-api.js's personalizeStockNetworkUrl can recognize
-// "nobody has customized this yet" and swap in whichever affiliate is
-// actually viewing it — the same real-GUID identifier self-managed hooks
-// already use directly (see the "Add Affiliate" modal, which requires an
-// affiliate's own ID to match their real Hub/StockNetwork ID exactly).
-// NOT the same thing as the numeric StockNetwork "Site Nr" ("36") used
-// elsewhere for CSV/leaderboard matching only (see
-// LEADERBOARD_EXCLUDED_SITE_NRS in booking-stats.js) — that number is only
-// meaningful in StockNetwork's own report exports, and confirmed NOT to
-// work as a /ui/<id> URL segment (a literal "Affiliate 36" link does not
-// open site 36 — only the real GUID does). Kept here so admin-api.js and
-// hook-api.js can't drift on which value this is.
+// Jean's own real StockNetwork site GUID — also the slug of the Avante
+// Travel company page on the holiday builder. Used as the placeholder site
+// identifier admin default hooks are built with, so hook-api.js can
+// recognise "nobody has customised this yet" and swap in whichever
+// affiliate is actually viewing it. NOT the numeric StockNetwork "Site Nr"
+// ("36") used for CSV/leaderboard matching (see booking-stats.js).
 export const ADMIN_MASTER_SITE_GUID = "c2fef00f-7330-4eb3-b993-f5f43fc73dff";
 
-// A StockNetwork booking link's site identifier is the "<id>" in
-// ".../ui/<id>" — the one exact shape every booking-link builder in this
-// codebase produces (see STOCKNETWORK_BASE in admin.html/hub.html/
-// landing.html). Leaves rawUrl completely unchanged (changed: false) if
-// it isn't that exact host+shape, if the id already matches
-// expectedSiteId, or if anything about it can't be confidently parsed —
-// we only ever touch a link we're sure we understand, the same
-// philosophy personalizeStockNetworkUrl (in hook-api.js) already follows
-// for the admin-managed "Affiliate <N>" case. previousSiteId is only
-// meaningful when changed is true — callers that just want the
-// corrected link (not caring what it was) can ignore it.
-export function correctBookingLinkSiteId(rawUrl, expectedSiteId) {
-  const unchanged = { url: rawUrl, changed: false, previousSiteId: null };
-  if (!rawUrl || !expectedSiteId) return unchanged;
+// Builds a holiday builder search link for one site (affiliate or
+// property). opts: { destination, checkIn, checkOut, resortId } — all
+// optional; empty values are left out.
+export function holidayBuilderUrl(siteId, opts = {}) {
+  if (!siteId) return "";
+  const p = new URLSearchParams();
+  if (opts.destination) p.set("destination", String(opts.destination));
+  if (opts.checkIn) p.set("checkin", String(opts.checkIn));
+  if (opts.checkOut) p.set("checkout", String(opts.checkOut));
+  if (opts.resortId) p.set("resort", String(opts.resortId));
+  const q = p.toString();
+  return HOLIDAY_BUILDER_BASE + encodeURIComponent(siteId) + ".php" + (q ? "?" + q : "");
+}
+
+// Reads a booking link of either shape. Returns null for anything else
+// (a self-managed hook's booking link doesn't have to be ours at all),
+// or { kind: "sn" | "hb", siteId, opts, url } — opts in holidayBuilderUrl's
+// terms, with any query params we don't know about kept in opts.extra.
+export function parseBookingLink(rawUrl) {
+  if (!rawUrl) return null;
   let u;
   try {
     u = new URL(rawUrl);
   } catch (e) {
-    return unchanged;
+    return null;
   }
-  if (u.hostname !== STOCKNETWORK_HOST) return unchanged;
-
   const segments = u.pathname.split("/").filter(Boolean);
-  if (segments.length !== 2 || segments[0] !== "ui") return unchanged;
-  let seg;
-  try {
-    seg = decodeURIComponent(segments[1]);
-  } catch (e) {
-    return unchanged;
+  let seg = "";
+  let kind = "";
+  if (u.hostname === STOCKNETWORK_HOST && segments.length === 2 && segments[0] === "ui") {
+    kind = "sn";
+    seg = segments[1];
+  } else if (
+    (u.hostname === HOLIDAY_BUILDER_HOST || u.hostname === "www." + HOLIDAY_BUILDER_HOST) &&
+    segments.length === 2 && segments[0] === "holiday-builder" && /\.php$/i.test(segments[1])
+  ) {
+    kind = "hb";
+    seg = segments[1].replace(/\.php$/i, "");
+  } else {
+    return null;
   }
-  if (!seg || seg === expectedSiteId) return unchanged;
+  let siteId;
+  try {
+    siteId = decodeURIComponent(seg);
+  } catch (e) {
+    return null;
+  }
+  if (!siteId) return null;
+  // Not a site page (e.g. holiday-builder/index.php, map.php): leave alone.
+  if (kind === "hb" && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(siteId)) return null;
 
-  u.pathname = "/ui/" + encodeURIComponent(expectedSiteId);
-  return { url: u.toString(), changed: true, previousSiteId: seg };
+  const q = u.searchParams;
+  const known = kind === "sn"
+    ? { ResortID: "resortId", CheckInDT: "checkIn", CheckOutDT: "checkOut", Filter: "destination" }
+    : { resort: "resortId", checkin: "checkIn", checkout: "checkOut", destination: "destination" };
+  const opts = { extra: [] };
+  for (const [k, v] of q.entries()) {
+    if (known[k]) opts[known[k]] = v;
+    else opts.extra.push([k, v]);
+  }
+  return { kind, siteId, opts, url: rawUrl };
+}
+
+function rebuild(parsed, siteId) {
+  const base = holidayBuilderUrl(siteId, parsed.opts);
+  if (!parsed.opts.extra || !parsed.opts.extra.length) return base;
+  const u = new URL(base);
+  for (const [k, v] of parsed.opts.extra) if (!u.searchParams.has(k)) u.searchParams.append(k, v);
+  return u.toString();
+}
+
+// Converts an old Stock Network portal link to the holiday builder search
+// screen for the same site, dates and area/property. A holiday builder
+// link, or anything we don't recognise, comes back unchanged.
+export function toHolidayBuilderUrl(rawUrl) {
+  const parsed = parseBookingLink(rawUrl);
+  if (!parsed || parsed.kind !== "sn") return rawUrl;
+  return rebuild(parsed, parsed.siteId);
+}
+
+// The site GUID a booking link books under (either shape), or "".
+export function bookingLinkSiteId(rawUrl) {
+  const parsed = parseBookingLink(rawUrl);
+  return parsed ? parsed.siteId : "";
+}
+
+// Makes sure a booking link books under expectedSiteId, and is on the
+// holiday builder. Leaves rawUrl completely unchanged (changed: false) if
+// it isn't one of our two booking link shapes, or it is already a holiday
+// builder link for expectedSiteId. previousSiteId is the site the link
+// pointed at before (only meaningful when the site actually changed —
+// siteChanged; a plain old-to-new conversion keeps the same site).
+export function correctBookingLinkSiteId(rawUrl, expectedSiteId) {
+  const unchanged = { url: rawUrl, changed: false, siteChanged: false, previousSiteId: null };
+  if (!rawUrl || !expectedSiteId) return unchanged;
+  const parsed = parseBookingLink(rawUrl);
+  if (!parsed) return unchanged;
+  if (parsed.kind === "hb" && parsed.siteId === expectedSiteId) return unchanged;
+  const url = rebuild(parsed, expectedSiteId);
+  const siteChanged = parsed.siteId !== expectedSiteId;
+  return { url, changed: url !== rawUrl, siteChanged, previousSiteId: siteChanged ? parsed.siteId : null };
+}
+
+// Swaps the admin placeholder site (or a legacy "Affiliate <N>" segment)
+// for the viewing affiliate's own site, converting old Stock Network links
+// to the holiday builder on the way. Any other link is returned as-is
+// (except an old SN link, which is still converted).
+export function personalizeBookingLink(rawUrl, replacement) {
+  if (!rawUrl) return rawUrl;
+  const parsed = parseBookingLink(rawUrl) || parseLegacyAffiliateSegment(rawUrl);
+  if (!parsed) return rawUrl;
+  const isPlaceholder = parsed.siteId === ADMIN_MASTER_SITE_GUID || /^Affiliate\s+\d+$/i.test(parsed.siteId);
+  if (isPlaceholder && replacement) return rebuild(parsed, replacement);
+  if (parsed.legacy) return rawUrl; // "Affiliate <N>" with nobody to swap in: nothing valid to build
+  return parsed.kind === "sn" ? rebuild(parsed, parsed.siteId) : rawUrl;
+}
+
+// Early admin default hooks used a literal "Affiliate <number>" text
+// segment on the SN portal — never a real site, but still recognised so
+// it gets personalised rather than shown broken.
+function parseLegacyAffiliateSegment(rawUrl) {
+  try {
+    const u = new URL(rawUrl);
+    const segments = u.pathname.split("/").filter(Boolean);
+    if (u.hostname !== STOCKNETWORK_HOST || segments.length !== 2 || segments[0] !== "ui") return null;
+    const seg = decodeURIComponent(segments[1]);
+    if (!/^Affiliate\s+\d+$/i.test(seg)) return null;
+    const p = parseBookingLink(u.protocol + "//" + u.host + "/ui/x" + u.search);
+    return p ? { ...p, siteId: seg, legacy: true } : null;
+  } catch (e) {
+    return null;
+  }
 }
