@@ -495,7 +495,7 @@
     <div class="more" id="moreSection" hidden>
       <section class="panel-box" aria-labelledby="placesHeading">
         <h2 id="placesHeading">Search a place</h2>
-        <p>See everything open in one of these places.</p>
+        <p id="placesIntro">See everything open around the places in these offers.</p>
         <div class="chips" id="placeChips"></div>
         <a class="search-all" id="searchAllLink" href="#">Search all accommodation</a>
       </section>
@@ -991,27 +991,39 @@
         img.src = '/api/hook-image?aff=' + encodeURIComponent(imgAff) + '&hook=' + r.n;
       });
 
-      renderMore(infos);
+      renderMore(active);
     }
 
-    // "Search a place" (the offers' own places first, then a few
-    // well-known holiday areas) and "Plan the rest of your trip".
-    var POPULAR_PLACES = ['Plettenberg Bay', 'Knysna', 'Cape Town', 'Hermanus', 'Durban', 'Dullstroom'];
-    function renderMore(infos){
+    // "Search a place": the towns and regions of the offers on show, each
+    // a link down the location tree (country › province › region › city),
+    // taken from the offers' own booking links.
+    function renderMore(active){
       var seen = {}, places = [];
-      function add(p){
-        p = (p || '').split(',')[0].trim();
-        var k = p.toLowerCase();
-        if(p && !seen[k]){ seen[k] = 1; places.push(p); }
+      function add(opts, label){
+        var url = AvanteBooking.build(aff, opts);
+        if(!label || seen[url]) return;
+        seen[url] = 1;
+        places.push({ label: label, url: url });
       }
-      (infos || []).forEach(function(i){ add(i.place); });
-      POPULAR_PLACES.forEach(add);
+      (active || []).forEach(function(r){
+        var p = r.data.booking ? AvanteBooking.parse(r.data.booking) : null;
+        var o = p && p.opts;
+        if(!o || !o.country) return;
+        var base = { country: o.country, province: o.province };
+        var region = (o.region || '').split(', ')[0];
+        if(o.city) add(Object.assign({ region: region, city: o.city }, base), o.city);
+        if(region) add(Object.assign({ region: region }, base), region);
+      });
       places = places.slice(0, 10);
 
       var chips = document.getElementById('placeChips');
       chips.innerHTML = places.map(function(p){
-        return '<a class="chip" ' + bookAttrs(AvanteBooking.build(aff, { destination: p })) + ' data-place>' + PIN + escapeHtml(p) + '</a>';
+        return '<a class="chip" ' + bookAttrs(p.url) + ' data-place>' + PIN + escapeHtml(p.label) + '</a>';
       }).join('');
+      chips.hidden = !places.length;
+      document.getElementById('placesIntro').textContent = places.length
+        ? 'See everything open around the places in these offers.'
+        : 'See everything open, anywhere.';
       var all = document.getElementById('searchAllLink');
       all.href = AvanteBooking.build(aff);
       all.target = bookTarget;

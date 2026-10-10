@@ -2,6 +2,7 @@ import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
 import { generateHashtags } from "./lib/hashtag-helper.js";
 import { isShortLink, resolveShortLink, findExistingShortLink, createShortLink } from "./lib/short-link.js";
 import { correctBookingLinkSiteId, ADMIN_MASTER_SITE_GUID, toHolidayBuilderUrl } from "./lib/booking-link.js";
+import { withTreePath } from "./lib/tree-place.js";
 import { resolveHookMode } from "./lib/hook-mode.js";
 import { buildHookDraft } from "./lib/hook-draft.js";
 import { hooksLink } from "./lib/hooks-ticket.js";
@@ -997,6 +998,7 @@ export default async (request, context) => {
       // equivalent for affiliates (hub.html) — see that file for the full
       // design notes this used to carry inline.
       const draft = await buildHookDraft(resortStore, {
+        origin: new URL(request.url).origin, // for the booking link's location tree
         resortId: body.resortId,
         siteId: body.siteId,
         query: body.query,
@@ -1467,13 +1469,17 @@ export default async (request, context) => {
       //
       // dryRun (default true unless explicitly false) only reports what
       // would change — nothing is written.
+      // A property link also gets its location tree path (country, province,
+      // region, city, suburb, property) if it doesn't carry one yet.
       const dryRun = body.dryRun !== false;
       const shortLinksStore = getStore({ name: "short-links", consistency: "strong" });
+      const origin = new URL(request.url).origin;
+      const upgrade = async (link) => withTreePath(toHolidayBuilderUrl(link), origin).catch(() => toHolidayBuilderUrl(link));
 
       const hookResult = await scanAndFixHooks(hookStore, dryRun, async (key, record) => {
         const booking = typeof record.booking === "string" ? record.booking : "";
         if (!booking) return null;
-        const converted = toHolidayBuilderUrl(booking);
+        const converted = await upgrade(booking);
         if (converted === booking) return null;
         return {
           updatedRecord: { ...record, booking: converted, updatedAt: new Date().toISOString() },
@@ -1483,7 +1489,7 @@ export default async (request, context) => {
 
       const linkResult = await scanAndFixHooks(shortLinksStore, dryRun, async (key, record) => {
         if (!record || typeof record.url !== "string") return null; // per-affiliate index records etc.
-        const converted = toHolidayBuilderUrl(record.url);
+        const converted = await upgrade(record.url);
         if (converted === record.url) return null;
         return {
           updatedRecord: { ...record, url: converted },

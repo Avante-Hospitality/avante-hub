@@ -229,7 +229,20 @@
     // sell these + share
     // The property's own page on the Avante holiday builder search screen,
     // pre-filled with the property and dates (see booking-links.js).
-    var link = function (unit, a, b) { return AvanteBooking.build(S.prop.siteId, { destination: S.prop.resortName, resortId: S.prop.resortId, checkIn: a, checkOut: b }); };
+    // ...with the property's location tree path once the tree has loaded
+    // (it re-renders when it does); until then, its name.
+    var link = function (unit, a, b) {
+      var place = (S.treePathFor === S.prop.resortId && S.treePath) || { property: S.prop.resortName };
+      return AvanteBooking.build(S.prop.siteId, Object.assign({}, place, { property: S.prop.resortName || place.property, resortId: S.prop.resortId, checkIn: a, checkOut: b }));
+    };
+    if (S.prop.resortId && S.treeLookedUp !== S.prop.resortId) {
+      var rid = S.prop.resortId;
+      S.treeLookedUp = rid;
+      AvanteBooking.loadTree().then(function (tree) {
+        var p = tree.forResort(rid);
+        if (p && p.country && S.prop && S.prop.resortId === rid) { S.treePath = p; S.treePathFor = rid; render(); }
+      }).catch(function () {});
+    }
     var stretches = [];
     units.forEach(function (u) {
       if (S.unitFilter !== 'All units' && S.unitFilter !== u.name) return;

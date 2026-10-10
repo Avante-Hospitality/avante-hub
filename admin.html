@@ -835,7 +835,7 @@
       </div>
       <div class="card" style="margin-bottom:20px;">
         <h3 style="margin-top:0;">Move saved booking links to the holiday builder</h3>
-        <p class="modal-sub" style="margin:-4px 0 10px;">Finds every saved hook booking link (your defaults and every affiliate's own) and every short link that still opens the old Stock Network portal, and points it at the same affiliate's holiday builder search page instead — same dates and area. Old links are already sent to the holiday builder when they're opened, so this just tidies what's saved. Check first; nothing changes until you apply.</p>
+        <p class="modal-sub" style="margin:-4px 0 10px;">Finds every saved hook booking link (your defaults and every affiliate's own) and every short link that still opens the old Stock Network portal, or is a property link without its location tree path, and points it at the same affiliate's holiday builder search page — same dates, with the property's country, province, region, city and suburb. Old links are already upgraded like this when they're opened, so this just tidies what's saved. Check first; nothing changes until you apply.</p>
         <button type="button" class="btn-outline" id="hbLinksCheckBtn">Check now</button>
         <div class="status" id="hbLinksStatus"></div>
         <div id="hbLinksResults" style="display:none; margin-top:12px;">
@@ -4148,8 +4148,8 @@
     wireHookFixChecker({
       idPrefix: 'hbLinks',
       action: 'convertBookingLinksToHolidayBuilder',
-      noneLabel: 'Every saved booking link already uses the holiday builder — nothing to move.',
-      foundLabel: 'or short links still opening the old Stock Network portal:',
+      noneLabel: 'Every saved booking link already uses the holiday builder with its tree path — nothing to move.',
+      foundLabel: 'or short links still on the old Stock Network portal, or without their tree path:',
       applyBtnLabel: 'Move to the holiday builder',
       appliedVerb: 'Moved',
       toastLabel: 'Booking links moved to the holiday builder',
@@ -4969,8 +4969,9 @@
             '</div>' +
             '<button type="button" class="btn-outline linkbuilder-toggle" data-linkbuilder-toggle="' + i + '">🔗 Build booking link</button>' +
             '<div class="linkbuilder-box" id="dh' + i + '-linkbuilderBox">' +
-              '<label for="dh' + i + '-linkArea">Area or resort name</label>' +
-              '<input id="dh' + i + '-linkArea" list="hookSourceOptions" placeholder="Leave blank for a link showing everything available">' +
+              '<label>Where to</label>' +
+              '<div class="hint" style="margin-top:-2px;">Pick from the location tree: a province, region, town, suburb or one property. Leave it on "Pick a country" to search everything.</div>' +
+              '<div id="dh' + i + '-linkTree" style="margin-top:6px;"></div>' +
               '<div class="linkbuilder-dates">' +
                 '<div>' +
                   '<label for="dh' + i + '-linkCheckIn">Check-in</label>' +
@@ -5141,6 +5142,8 @@
       // whichever affiliate is actually viewing the hook. Only fills in
       // the Booking link field below; "Save default" still has to be
       // clicked to persist it, same as typing one in by hand.
+      // Each Default Hook's picked location tree place, as link opts.
+      var linkTreeOpts = {};
       function buildAdminBookingLink(n){
         var statusEl = document.getElementById('dh' + n + '-linkbuilderStatus');
         statusEl.textContent = '';
@@ -5156,10 +5159,10 @@
           return;
         }
 
-        var area = document.getElementById('dh' + n + '-linkArea').value.trim();
-        // Holiday builder search under the master placeholder site, which
-        // hook-api.js swaps for the viewing affiliate's own page.
-        var link = affiliateBookingLink(ADMIN_MASTER_SITE_GUID, { destination: area, checkIn: checkIn, checkOut: checkOut });
+        // Holiday builder search under the master placeholder site (which
+        // hook-api.js swaps for the viewing affiliate's own page), with the
+        // picked place's location tree path.
+        var link = affiliateBookingLink(ADMIN_MASTER_SITE_GUID, Object.assign({}, linkTreeOpts[n] || {}, { checkIn: checkIn, checkOut: checkOut }));
 
         document.getElementById('dh' + n + '-booking').value = link;
         statusEl.textContent = 'Booking link filled in below — remember to click "Save default".';
@@ -5999,6 +6002,13 @@
         if(linkToggleN){
           loadAutobuildResorts(); // same resort/district datalist, shared with Auto-build's field
           document.getElementById('dh' + linkToggleN + '-linkbuilderBox').classList.toggle('show');
+          // The location tree picker, mounted the first time this box opens.
+          if(!linkTreeOpts.hasOwnProperty(linkToggleN)){
+            linkTreeOpts[linkToggleN] = {};
+            (function(n){
+              AvanteBooking.mountTreePicker(document.getElementById('dh' + n + '-linkTree'), function(opts){ linkTreeOpts[n] = opts; });
+            })(linkToggleN);
+          }
           return;
         }
 

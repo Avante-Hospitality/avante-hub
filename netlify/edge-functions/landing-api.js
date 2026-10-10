@@ -15,6 +15,7 @@
 //   GET  ?img=<key>                                      → the picture (public)
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
 import { ADMIN_MASTER_SITE_GUID, correctBookingLinkSiteId, holidayBuilderUrl } from "./lib/booking-link.js";
+import { propertyTreeOpts, withTreePath } from "./lib/tree-place.js";
 import { isShortLink, resolveShortLink } from "./lib/short-link.js";
 import { generateHashtags } from "./lib/hashtag-helper.js";
 import { AI_SCAN_CACHE_FIELDS_CLEARED } from "./lib/record-merge.js";
@@ -133,8 +134,11 @@ export default async (request) => {
     // Book now: everything available for the hook's dates (a property hook:
     // that property), under the placeholder ID hook-api.js swaps per affiliate.
     const firstProp = c.kind === "property" ? (c.pages.find((x) => x.props && x.props.length) || {}).props : null;
+    const propTree = firstProp && firstProp[0]
+      ? await propertyTreeOpts(firstProp[0].resortId, new URL(request.url).origin, firstProp[0].name).catch(() => ({ property: firstProp[0].name }))
+      : {};
     fields.booking = holidayBuilderUrl(ADMIN_MASTER_SITE_GUID, {
-      destination: firstProp && firstProp[0] ? firstProp[0].name : "",
+      ...propTree,
       resortId: firstProp && firstProp[0] ? firstProp[0].resortId : "",
       checkIn: c.checkIn || "",
       checkOut: c.checkOut || "",
@@ -144,6 +148,7 @@ export default async (request) => {
       let link = c.booking;
       if (isShortLink(link)) link = (await resolveShortLink(link, getStore({ name: "short-links", consistency: "strong" })).catch(() => "")) || link;
       fields.booking = correctBookingLinkSiteId(link, ADMIN_MASTER_SITE_GUID).url;
+      fields.booking = await withTreePath(fields.booking, new URL(request.url).origin).catch(() => fields.booking);
     }
     if (typeof b.caption === "string") {
       fields.caption = b.caption.trim().slice(0, 3000);

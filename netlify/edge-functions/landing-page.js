@@ -11,6 +11,7 @@
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
 import { correctBookingLinkSiteId, ADMIN_MASTER_SITE_GUID, holidayBuilderUrl, toHolidayBuilderUrl } from "./lib/booking-link.js";
 import { isShortLink, resolveShortLink } from "./lib/short-link.js";
+import { propertyTreeOpts, withTreePath } from "./lib/tree-place.js";
 
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const isAff = (v) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(v || ""));
@@ -18,10 +19,11 @@ const isAff = (v) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
 const todaySA = () => new Date(Date.now() + 2 * 3600e3).toISOString().slice(0, 10);
 
 // Book now: this affiliate's holiday builder search screen, pre-filled
-// with the page's dates and (for a property page) the property.
-function bookUrl(agent, prop, c) {
+// with the page's dates and (for a property page) the property with its
+// location tree path (tree: from lib/tree-place.js).
+function bookUrl(agent, prop, c, tree) {
   return holidayBuilderUrl(agent, {
-    destination: prop ? prop.name || prop.town || "" : (c.area || ""),
+    ...(prop ? tree || { property: prop.name || "" } : {}),
     resortId: prop ? prop.resortId || "" : "",
     checkIn: c.checkIn || "",
     checkOut: c.checkOut || "",
@@ -46,11 +48,11 @@ else if(/^mailto:/i.test(h))fbq('track','Contact',Object.assign({method:'email'}
 </script><noscript><img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=${META_PIXEL_ID}&ev=PageView&noscript=1" alt=""></noscript>`;
 }
 
-function page(rec, agent, origin, ownBook) {
+function page(rec, agent, origin, ownBook, propTree) {
   const c = rec.current, img = (k) => origin + "/api/landing?img=" + k;
   const cover = c.cover || (c.pages[0] && c.pages[0].img);
   const wa = c.whatsapp ? "https://wa.me/" + c.whatsapp + "?text=" + encodeURIComponent(c.waText || "Hi Avante Travel, I'd like to know more about " + c.title) : "";
-  const mainBook = c.kind === "property" && c.pages.some((p) => p.props.length) ? bookUrl(agent, c.pages.find((p) => p.props.length).props[0], c) : "";
+  const mainBook = c.kind === "property" && c.pages.some((p) => p.props.length) ? bookUrl(agent, c.pages.find((p) => p.props.length).props[0], c, propTree) : "";
   // The hook builder's own Booking link if it has one (with the affiliate's ID), else built here.
   const allBook = ownBook || mainBook || bookUrl(agent, null, c);
   const pagesHtml = c.pages.map((p, i) => {
@@ -117,7 +119,7 @@ footer{text-align:center;color:#6b7c87;font-size:12px;padding:8px 16px 0}
 </style></head><body>
 <header><div class="brand">AVANTE<span>TRAVEL</span></div>${wa ? `<a class="hb" href="${esc(wa)}" target="_blank" rel="noopener">Ask us</a>` : ""}</header>
 ${scenesHtml}<div class="intro"><h1>${esc(title)}</h1>${c.dates ? `<p>${esc(c.dates)}</p>` : ""}</div>
-<main>${coverHtml}${pagesHtml}<footer>Bookings are made securely through StockNetwork for Avante Travel.</footer></main>
+<main>${coverHtml}${pagesHtml}<footer>Bookings are made securely through Avante Travel.</footer></main>
 <div class="bar">${wa ? `<a class="wa" href="${esc(wa)}" target="_blank" rel="noopener">WhatsApp us</a>` : ""}</div>
 ${sc.length > 2 ? `<script>(function(){var t=0;setInterval(function(){t++;document.querySelectorAll(".side").forEach(function(s){var im=s.querySelectorAll("img");if(im.length<2)return;im.forEach(function(x,i){x.classList.toggle("on",i===t%im.length)})})},6500)})();</script>` : ""}
 </body></html>`;
@@ -139,10 +141,19 @@ export default async (request) => {
   if (rec.current.booking) {
     ownBook = rec.current.booking;
     if (isShortLink(ownBook)) { try { ownBook = (await resolveShortLink(ownBook, getStore({ name: "short-links", consistency: "strong" }))) || ownBook; } catch (e) {} }
-    // An affiliate's link (or page) credits them; otherwise the link stays exactly as built.
-    ownBook = agent !== ADMIN_MASTER_SITE_GUID ? correctBookingLinkSiteId(ownBook, agent).url : toHolidayBuilderUrl(ownBook);
+    // Always the holiday builder page of whoever the page credits: the
+    // affiliate's, else Avante Travel's own (older hook builder links carry
+    // the Stock Network agent ID, which has no holiday builder page).
+    ownBook = correctBookingLinkSiteId(ownBook, agent).url;
+    try { ownBook = await withTreePath(ownBook, url.origin); } catch (e) { /* as built */ }
   }
-  return new Response(page(rec, agent, url.origin, ownBook), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=60" } });
+  // A property page's own Book now carries the property's tree path.
+  let propTree = null;
+  const firstProp = rec.current.kind === "property" ? (rec.current.pages.find((p) => p.props && p.props.length) || {}).props : null;
+  if (!ownBook && firstProp && firstProp[0]) {
+    try { propTree = await propertyTreeOpts(firstProp[0].resortId, url.origin, firstProp[0].name); } catch (e) { propTree = null; }
+  }
+  return new Response(page(rec, agent, url.origin, ownBook, propTree), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=60" } });
 };
 
 export const config = { path: "/l/*" };

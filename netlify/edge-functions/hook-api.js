@@ -2,6 +2,7 @@ import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
 import { generateHashtags } from "./lib/hashtag-helper.js";
 import { resolveShortLink as resolveShortLinkShared, isShortLink } from "./lib/short-link.js";
 import { correctBookingLinkSiteId, ADMIN_MASTER_SITE_GUID, personalizeBookingLink, toHolidayBuilderUrl } from "./lib/booking-link.js";
+import { withTreePath } from "./lib/tree-place.js";
 import { resolveHookMode } from "./lib/hook-mode.js";
 import { buildHookDraft } from "./lib/hook-draft.js";
 import { saveHookPhotoUrls } from "./lib/hook-photos.js";
@@ -106,6 +107,7 @@ export default async (request, context) => {
       if (body.action === "draft") {
         const resortStore = getStore({ name: "resort-list", consistency: "strong" });
         const draft = await buildHookDraft(resortStore, {
+          origin: new URL(request.url).origin, // for the booking link's location tree
           resortId: body.resortId,
           siteId: body.siteId,
           query: body.query,
@@ -391,6 +393,8 @@ export default async (request, context) => {
         // segment, so it must never be used here — only a real GUID does.
         try {
           personalizedBooking = await personalizeBooking(personalizedBooking, aff);
+          // A property link saved before the location tree gets its path.
+          personalizedBooking = await withTreePath(personalizedBooking, new URL(request.url).origin);
         } catch (e) {
           // Best-effort — fall back to the admin's link exactly as saved.
         }
@@ -437,10 +441,14 @@ export default async (request, context) => {
     // source === "self". Auto-build is admin-only for now, so galleryCount/
     // details will normally be absent here — passed through defensively
     // for shape consistency with the admin branch above.
+    // Saved before the holiday builder switch (or the location tree)? Send
+    // it there, with the property's tree path.
+    const selfBooking = affRecord && affRecord.booking
+      ? await withTreePath(toHolidayBuilderUrl(affRecord.booking), new URL(request.url).origin).catch(() => toHolidayBuilderUrl(affRecord.booking))
+      : "";
     const data = affRecord
       ? {
-          // Saved before the holiday builder switch? Send it there instead.
-          booking: toHolidayBuilderUrl(affRecord.booking || ""),
+          booking: selfBooking,
           landing: affRecord.landing || "",
           caption: affRecord.caption || "",
           hashtags: affRecord.hashtags || null,

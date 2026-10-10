@@ -1284,15 +1284,11 @@
         <div class="hint">Your own Avante Travel search page — the one set up for you, not anyone else's. It's filled in for you; every link this builds goes to it, ready searched for your destination and dates.</div>
         <div class="btn-row" id="a-baseUrlBtnRow" style="margin-top:8px;"></div>
 
-        <label for="a-area">Destination or property name</label>
-        <input id="a-area" placeholder="e.g. Plettenberg Bay, or a specific resort name">
-        <div class="hint">Leave blank for a link showing everything available for these dates.</div>
+        <label>Where to</label>
+        <div class="hint" style="margin-top:-2px;">Pick from the location tree, as deep as you like: a province, a region, a town, a suburb or one property. Leave it on "Pick a country" for a link that searches everything.</div>
+        <div id="a-treePicker" style="margin-top:8px;"></div>
 
-        <label for="a-resortPicker">Or pick a resort from the list</label>
-        <select id="a-resortPicker">
-          <option value="">— Select a resort —</option>
-        </select>
-        <div class="hint" id="a-resortListMeta">Loading resort list…</div>
+        <div class="hint" id="a-resortListMeta" style="margin-top:14px;">Loading resort list…</div>
 
         <div class="btn-row" style="margin-top:10px;">
           <button type="button" class="btn-outline" id="a-resortUploadBtn">Update resort list</button>
@@ -2724,6 +2720,9 @@
     // ---------- Accommodation Link Builder ----------
     (function(){
       var currentLink = '';
+      // The place picked in the location tree, as link opts (see booking-links.js).
+      var treeOpts = {};
+      AvanteBooking.mountTreePicker(document.getElementById('a-treePicker'), function(opts){ treeOpts = opts; });
       var previewLoaded = false;
       var checkInEl = document.getElementById('a-checkIn');
       var checkOutEl = document.getElementById('a-checkOut');
@@ -2755,7 +2754,7 @@
 
       function buildLink(){
         var baseUrl = document.getElementById('a-baseUrl').value.trim().replace(/\/$/, '');
-        var area = document.getElementById('a-area').value.trim();
+        var place = treeOpts || {};
         var checkIn = checkInEl.value;
         var checkOut = checkOutEl.value;
         var errorEl = document.getElementById('a-errorStatus');
@@ -2778,16 +2777,17 @@
           return;
         }
 
-        // Your holiday builder page, pre-filled with the destination and
-        // dates. A pasted link that isn't one of ours just gets the same
-        // search added to it.
+        // Your holiday builder page with the place's location tree path
+        // (country › province › region › city › suburb › property) and the
+        // dates. A pasted link that isn't one of ours gets the same search
+        // added to it.
         var site = AvanteBooking.siteId(baseUrl);
+        var opts = Object.assign({}, place, { checkIn: checkIn, checkOut: checkOut });
         if(site){
-          currentLink = AvanteBooking.build(site, { destination: area, checkIn: checkIn, checkOut: checkOut });
+          currentLink = AvanteBooking.build(site, opts);
         }else{
-          var params = new URLSearchParams({ checkin: checkIn, checkout: checkOut });
-          if(area) params.set('destination', area);
-          currentLink = baseUrl + (baseUrl.indexOf('?') === -1 ? '?' : '&') + params.toString();
+          var built = new URL(AvanteBooking.build('00000000-0000-0000-0000-000000000000', opts));
+          currentLink = baseUrl + (baseUrl.indexOf('?') === -1 ? '?' : '&') + built.searchParams.toString();
         }
 
         document.getElementById('a-finalUrl').textContent = currentLink;
@@ -2868,12 +2868,9 @@
       return { set: set, subscribe: subscribe };
     })();
 
-    // ---------- Accommodation resort dropdown + list updater ----------
-    // Picking a resort here just fills in the "Destination or property name"
-    // field above, which still builds the link the same way as before.
+    // ---------- Accommodation resort list updater ----------
+    // (Places and properties are now picked from the location tree above.)
     (function(){
-      var picker = document.getElementById('a-resortPicker');
-      var areaInput = document.getElementById('a-area');
       var metaEl = document.getElementById('a-resortListMeta');
       var uploadBtn = document.getElementById('a-resortUploadBtn');
       var fileInput = document.getElementById('a-resortFileInput');
@@ -2888,20 +2885,6 @@
           if(key && !seen[key]){ seen[key] = true; names.push(r.name); }
         });
 
-        picker.innerHTML = '';
-        var placeholder = document.createElement('option');
-        placeholder.value = '';
-        placeholder.textContent = names.length
-          ? '— Select a resort (' + names.length + ') —'
-          : '— No resort list uploaded yet —';
-        picker.appendChild(placeholder);
-        names.forEach(function(name){
-          var opt = document.createElement('option');
-          opt.value = name;
-          opt.textContent = name;
-          picker.appendChild(opt);
-        });
-
         if(names.length && updatedAt){
           var d = new Date(updatedAt);
           metaEl.textContent = names.length + ' resorts loaded — list last updated ' + d.toLocaleDateString() + '.';
@@ -2913,10 +2896,6 @@
       }
 
       ResortData.subscribe(populatePicker);
-
-      picker.addEventListener('change', function(){
-        if(picker.value) areaInput.value = picker.value;
-      });
 
       uploadBtn.addEventListener('click', function(){ fileInput.click(); });
 

@@ -10,7 +10,17 @@
 // GUID:
 //
 //   https://avantetravel.co.za/holiday-builder/<site GUID>.php
-//     ?destination=<area or property>&checkin=YYYY-MM-DD&checkout=YYYY-MM-DD
+//     ?country=&province=&region=&city=&suburb=&property=&resort=<ResortID>
+//     &destination=<most specific of those>&checkin=YYYY-MM-DD&checkout=YYYY-MM-DD
+//
+// The place fields follow the hub's location tree (Country › Province ›
+// Region › City › Suburb › Property, see lib/tree.js) down to whatever the
+// link is for — a town link stops at city, a property link has them all.
+// A property in two regions carries both, comma-separated. Links are built
+// as if Stock Network and the holiday builder already follow the tree
+// (Jean, 2026-10-10); `destination` repeats the most specific name so the
+// search screen, which reads only destination/checkin/checkout today, still
+// works.
 //
 // Company pages are set up by hand in holiday-builder/admin/companies.php
 // (name, colours, intro iframe, the site's own SN token). The search page
@@ -34,18 +44,69 @@ export const HOLIDAY_BUILDER_BASE = "https://avantetravel.co.za/holiday-builder/
 // ("36") used for CSV/leaderboard matching (see booking-stats.js).
 export const ADMIN_MASTER_SITE_GUID = "c2fef00f-7330-4eb3-b993-f5f43fc73dff";
 
+// The tree levels a link can carry, top down.
+export const TREE_FIELDS = ["country", "province", "region", "city", "suburb", "property"];
+
+function clean(v) {
+  if (Array.isArray(v)) v = v.filter(Boolean).join(", ");
+  v = v == null ? "" : String(v).trim();
+  return /^\(/.test(v) ? "" : v; // "(no region)", "(pin needs checking)" are not places
+}
+
+// The most specific place in opts (what the search box should show).
+export function mostSpecificPlace(opts = {}) {
+  for (let i = TREE_FIELDS.length - 1; i >= 0; i--) {
+    const v = clean(opts[TREE_FIELDS[i]]);
+    if (v) return TREE_FIELDS[i] === "region" ? v.split(", ")[0] : v;
+  }
+  return "";
+}
+
 // Builds a holiday builder search link for one site (affiliate or
-// property). opts: { destination, checkIn, checkOut, resortId } — all
-// optional; empty values are left out.
+// property). opts: { country, province, region, city, suburb, property,
+// resortId, destination, checkIn, checkOut } — all optional; empty values
+// are left out. destination defaults to the most specific tree field.
 export function holidayBuilderUrl(siteId, opts = {}) {
   if (!siteId) return "";
   const p = new URLSearchParams();
-  if (opts.destination) p.set("destination", String(opts.destination));
+  for (const f of TREE_FIELDS) {
+    const v = clean(opts[f]);
+    if (v) p.set(f, v);
+  }
+  if (opts.resortId) p.set("resort", String(opts.resortId));
+  const destination = clean(opts.destination) || mostSpecificPlace(opts);
+  if (destination) p.set("destination", destination);
   if (opts.checkIn) p.set("checkin", String(opts.checkIn));
   if (opts.checkOut) p.set("checkout", String(opts.checkOut));
-  if (opts.resortId) p.set("resort", String(opts.resortId));
   const q = p.toString();
   return HOLIDAY_BUILDER_BASE + encodeURIComponent(siteId) + ".php" + (q ? "?" + q : "");
+}
+
+// A tree place ({ c, p, r: [regions], t, s } — lib/tree.js) as link opts,
+// down to `depth` (0 country … 4 suburb; default: as deep as it goes).
+// propertyName adds the property level.
+export function treeOpts(place, propertyName, depth) {
+  if (!place) return propertyName ? { property: propertyName } : {};
+  const t = clean(place.t);
+  const s = clean(place.s);
+  const all = {
+    country: clean(place.c),
+    province: clean(place.p),
+    region: clean(place.r || []),
+    city: t,
+    suburb: s && s !== t ? s : "",
+  };
+  const out = {};
+  TREE_FIELDS.slice(0, 5).forEach((f, i) => {
+    if (depth == null || i <= depth) out[f] = all[f];
+  });
+  if (propertyName && depth == null) out.property = propertyName;
+  return out;
+}
+
+// True if opts already carry any tree field.
+export function hasTreePath(opts = {}) {
+  return TREE_FIELDS.some((f) => clean(opts[f]));
 }
 
 // Reads a booking link of either shape. Returns null for anything else
@@ -88,7 +149,8 @@ export function parseBookingLink(rawUrl) {
   const q = u.searchParams;
   const known = kind === "sn"
     ? { ResortID: "resortId", CheckInDT: "checkIn", CheckOutDT: "checkOut", Filter: "destination" }
-    : { resort: "resortId", checkin: "checkIn", checkout: "checkOut", destination: "destination" };
+    : { resort: "resortId", checkin: "checkIn", checkout: "checkOut", destination: "destination",
+        country: "country", province: "province", region: "region", city: "city", suburb: "suburb", property: "property" };
   const opts = { extra: [] };
   for (const [k, v] of q.entries()) {
     if (known[k]) opts[known[k]] = v;

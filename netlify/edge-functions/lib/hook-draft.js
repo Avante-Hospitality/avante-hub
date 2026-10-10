@@ -14,6 +14,7 @@
 import { fetchResortInfo, draftHookCaption } from "./hook-source.js";
 import { generateHashtags } from "./hashtag-helper.js";
 import { ADMIN_MASTER_SITE_GUID, holidayBuilderUrl } from "./booking-link.js";
+import { commonTreeOpts } from "./tree-place.js";
 import { resortKey } from "./resort-key.js";
 
 // The most properties a single "selection" draft (explicit resortKeys —
@@ -81,6 +82,8 @@ export async function buildHookDraft(resortStore, input) {
   let label = query;
   let locationLabel = "";
   let sources = [];
+  // Which properties the draft is about, for the booking link's tree path.
+  let sourceResortIds = [];
 
   if (resortKeys.length) {
     mode = "selection";
@@ -96,6 +99,7 @@ export async function buildHookDraft(resortStore, input) {
     if (!sources.length) {
       return { ok: false, error: "Couldn't load info for the selected properties right now. Try again shortly.", status: 502 };
     }
+    sourceResortIds = matches.map((r) => r.resortId);
     locationLabel = selectionLabel || (sources.length === 1 ? sources[0].name || "" : sources.length + " properties");
     label = sources.length === 1 ? sources[0].name || locationLabel : locationLabel;
     if (sources.length === 1) mode = "property";
@@ -111,6 +115,7 @@ export async function buildHookDraft(resortStore, input) {
     const allResortsForId = listRecordForId && Array.isArray(listRecordForId.resorts) ? listRecordForId.resorts : [];
     const rowForId = allResortsForId.find((r) => r.resortId === bodyResortId && (!bodySiteId || r.siteId === bodySiteId));
     sources = [withCoords(info, rowForId)];
+    sourceResortIds = [bodyResortId];
     label = info.name || label;
   } else {
     const listRecord = await resortStore.get("current", { type: "json" });
@@ -136,6 +141,7 @@ export async function buildHookDraft(resortStore, input) {
         return { ok: false, error: "Couldn't load that property's info page. Try again, or pick a different one.", status: 502 };
       }
       sources = [withCoords(info, propertyMatch)];
+      sourceResortIds = [propertyMatch.resortId];
     } else {
       mode = "area";
       let matches = allResorts.filter((r) => r.district && r.district.toLowerCase() === queryLower);
@@ -163,6 +169,7 @@ export async function buildHookDraft(resortStore, input) {
       if (!sources.length) {
         return { ok: false, error: "Couldn't load property info for that area right now. Try again shortly.", status: 502 };
       }
+      sourceResortIds = matches.map((r) => r.resortId);
     }
   }
 
@@ -192,10 +199,21 @@ export async function buildHookDraft(resortStore, input) {
   const checkIn = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, today.getUTCDate()));
   const checkOut = new Date(checkIn.getTime() + 86400000);
   const fmtDate = (d) => d.toISOString().slice(0, 10);
-  // Holiday builder search screen for this site, pre-filled with the area
-  // and dates (see lib/booking-link.js).
+  // Holiday builder search screen for this site, with the location tree
+  // path of what the draft is about (one property: its full path and name;
+  // an area or selection: the levels all its properties share) and dates.
+  // See lib/booking-link.js. Falls back to the label as a plain destination.
+  let tree = {};
+  try {
+    const ids = [...new Set(sourceResortIds.filter(Boolean))];
+    tree = await commonTreeOpts(ids, input.origin || "https://go.avantetravel.co.za");
+    if (ids.length === 1) tree.resortId = ids[0];
+  } catch (e) {
+    tree = {};
+  }
   const booking = holidayBuilderUrl(bookingSiteGuid, {
-    destination: label,
+    ...tree,
+    destination: tree.country ? "" : label,
     checkIn: fmtDate(checkIn),
     checkOut: fmtDate(checkOut),
   });

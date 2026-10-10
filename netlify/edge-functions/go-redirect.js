@@ -1,6 +1,7 @@
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
 import { SHORT_LINK_HOST } from "./lib/short-link.js";
 import { toHolidayBuilderUrl } from "./lib/booking-link.js";
+import { withTreePath } from "./lib/tree-place.js";
 
 const FALLBACK_URL = "https://stocknetwork-affiliate-link-builder.netlify.app/hub.html";
 
@@ -49,7 +50,10 @@ export default async (request, context) => {
     // Short links made before the holiday builder switch still point at the
     // old Stock Network portal — send those to the holiday builder search
     // screen for the same site, dates and area instead.
-    return Response.redirect(toHolidayBuilderUrl(record.url), 302);
+    // A property link also gets its location tree path if it lacks one.
+    let target = toHolidayBuilderUrl(record.url);
+    try { target = await withTreePath(target, url.origin); } catch (e) { /* as saved */ }
+    return Response.redirect(target, 302);
   } catch (err) {
     return new Response("Something went wrong resolving this link.", {
       status: 500,
