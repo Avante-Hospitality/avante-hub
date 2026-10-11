@@ -28,7 +28,7 @@ async function login() {
 }
 async function token() { return TOKEN && TOKEN.expires > Date.now() + 60e3 ? TOKEN : login(); }
 
-async function search(id, checkIn, checkOut, retried) {
+async function search(id, checkIn, checkOut, retried, debug) {
   const t = await token();
   const body = { checkInDate: checkIn, checkOutDate: checkOut, resortID: id,
     geocoordinates: { latitude: 0, longitude: 0, withInKmRadius: 0 }, pricing: { minPrice: 0, maxPrice: 100000000 },
@@ -36,19 +36,26 @@ async function search(id, checkIn, checkOut, retried) {
   const r = await fetch(BASE + "/api/1/search?Offset=1&Limit=50&CallerDetails.SiteID=" + encodeURIComponent(t.siteId), {
     method: "POST", headers: { authorization: "Bearer " + t.accessToken, "content-type": "application/json", accept: "application/json" },
     body: JSON.stringify(body), signal: AbortSignal.timeout(20000) });
-  if ((r.status === 401 || r.status === 403) && !retried) { TOKEN = null; return search(id, checkIn, checkOut, true); }
+  if ((r.status === 401 || r.status === 403) && !retried) { TOKEN = null; return search(id, checkIn, checkOut, true, debug); }
   if (!r.ok) throw new Error("search " + r.status);
   const d = await r.json().catch(() => ({}));
-  let units = 0, from = null;
+  // SN lists open stretches per unit (e.g. free 1-30 Nov). A stretch counts when
+  // it covers the chosen dates; price: exact-date rate, else per-night share.
+  const nights = Math.round((Date.parse(checkOut) - Date.parse(checkIn)) / 864e5);
+  let units = 0, from = null; const sample = [];
   for (const resort of d.stockAvailability || []) {
     if (resort.resortId && String(resort.resortId).toLowerCase() !== id) continue;
     for (const rt of resort.roomTypes || []) for (const a of rt.availabilities || []) {
-      if (day(a.checkInDate) !== checkIn || day(a.checkOutDate) !== checkOut || !(a.unitsAvailable > 0)) continue;
+      const s = day(a.checkInDate), e = day(a.checkOutDate);
+      if (sample.length < 8) sample.push({ unit: String(rt.roomType || "").trim(), start: s, end: e, nights: a.nights, units: a.unitsAvailable, rate: a.rates && a.rates.rate });
+      if (!(a.unitsAvailable > 0) || s > checkIn || e < checkOut) continue;
       units += a.unitsAvailable;
-      const rate = a.rates && Number(a.rates.rate);
+      let rate = a.rates && Number(a.rates.rate);
+      if (rate > 0 && (s !== checkIn || e !== checkOut)) rate = a.nights > 0 ? Math.round(rate / a.nights * nights) : 0;
       if (rate > 0 && (from === null || rate < from)) from = rate;
     }
   }
+  if (debug) return { available: units > 0, units, from, sample, resorts: (d.stockAvailability || []).length };
   return { available: units > 0, units, from };
 }
 
@@ -62,7 +69,7 @@ export default async (req) => {
   if (!ISO.test(b.checkIn || "") || !ISO.test(b.checkOut || "") || b.checkOut <= b.checkIn) return json({ ok: false, error: "Pick a check-in and check-out date." }, 400);
   const results = {}; let i = 0;
   const worker = async () => { while (i < ids.length) { const id = ids[i++];
-    try { results[id] = await search(id, b.checkIn, b.checkOut); } catch (e) { results[id] = { error: String(e.message || e) }; } } };
+    try { results[id] = await search(id, b.checkIn, b.checkOut, false, b.debug === true && ids.length === 1); } catch (e) { results[id] = { error: String(e.message || e) }; } } };
   try { await Promise.all(Array.from({ length: 6 }, worker)); }
   catch (e) { return json({ ok: false, configured, error: e.message || "Stock Network didn't answer." }, 502); }
   return json({ ok: true, configured, results });
