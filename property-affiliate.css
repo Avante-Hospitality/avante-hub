@@ -215,3 +215,13 @@ button.pa-block:hover, button.pa-block:focus-visible{ outline:2px solid var(--te
 .pa-radio input[type=date]{ width:100%; height:auto; min-height:44px; margin:0; accent-color:auto; }
 .pa-howto{ margin-left:auto; align-self:center; display:inline-flex; align-items:center; min-height:34px; padding:0 12px; border-radius:999px; border:1.5px solid var(--pa-ink); color:var(--pa-ink); background:#fff; font:700 12.5px 'Montserrat',sans-serif; text-decoration:none; }
 .pa-howto:hover, .pa-howto:focus-visible{ background:var(--teal,#0DCDC2); border-color:var(--teal,#0DCDC2); outline:none; }
+
+/* ---- Front store tab ---- */
+.pa-qrgrid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:16px; margin-top:8px; }
+.pa-qr{ border:1.5px solid var(--line,#e3e9e8); border-radius:12px; padding:14px; display:flex; flex-direction:column; gap:4px; min-width:0; }
+.pa-qr > b{ font:700 15px 'Montserrat',sans-serif; color:var(--pa-ink); }
+.pa-qrbox{ background:#fff; align-self:flex-start; padding:4px; border:1px solid #eef2f2; border-radius:8px; }
+.pa-photos{ display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; margin-top:12px; }
+.pa-photo{ border:1.5px solid var(--line,#e3e9e8); border-radius:10px; overflow:hidden; background:#fff; }
+.pa-photo img{ display:block; width:100%; aspect-ratio:4/3; object-fit:cover; }
+.pa-photo.off img{ opacity:.35; filter:grayscale(1); }

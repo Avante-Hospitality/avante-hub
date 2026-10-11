@@ -3,6 +3,7 @@
 // 15-minute channel sync (called by netlify/functions/pa-channel-sync.mjs).
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
 import { createCore, PAError } from "./lib/pa-core.js";
+import { fetchResortInfo } from "./lib/hook-source.js";
 
 const cors = { "access-control-allow-origin": "*", "access-control-allow-methods": "POST, OPTIONS", "access-control-allow-headers": "content-type, x-pa-sync-secret" };
 const json = (obj, status = 200) => new Response(JSON.stringify(obj), { status, headers: { "content-type": "application/json", "cache-control": "no-store", ...cors } });
@@ -79,6 +80,20 @@ export default async (request) => {
       case "saveMessages": return json(Object.assign({ ok: true }, await core.saveMessages(prop, body)));
       case "prepareMessage": return json(Object.assign({ ok: true }, await core.prepareMessage(prop, body.ref, body.kind, body.text)));
       case "markMessage": return json(Object.assign({ ok: true }, await core.markMessage(prop, body.ref, body.kind, body.state, body.text)));
+      // Front store (/stay/<slug>): settings, photos, link, stats.
+      case "frontStore": {
+        // Stock Network's photos for the photo picker (same cache stay-api.js uses).
+        const st = getStore({ name: "property-affiliate", consistency: "strong" });
+        let info = await st.get("fsinfo:" + prop.siteId, { type: "json" }).catch(() => null);
+        if (!info || Date.now() - (info.at || 0) > 24 * 3600 * 1000) {
+          const fresh = await fetchResortInfo(prop.resortId, prop.site).catch(() => null);
+          if (fresh) { info = { at: Date.now(), description: fresh.description || "", attractions: fresh.attractions || "", moreInfo: fresh.moreInfo || "", images: fresh.images || [] }; await st.setJSON("fsinfo:" + prop.siteId, info).catch(() => {}); }
+        }
+        return json(Object.assign({ ok: true, snPhotos: (info && info.images) || [], snDescription: (info && info.description) || "" }, await core.frontStoreView(prop)));
+      }
+      case "saveFrontStore": return json(Object.assign({ ok: true }, await core.saveFrontStore(prop, body.frontStore || {})));
+      case "uploadFrontPhoto": return json(Object.assign({ ok: true }, await core.uploadFrontPhoto(prop, body.dataUrl)));
+      case "removeFrontPhoto": return json(Object.assign({ ok: true }, await core.removeFrontPhoto(prop, body.url)));
       case "emailNow": return json(Object.assign({ ok: true }, await core.emailNow(prop, body.ref, body.kind, body.text, body.subject)));
       case "inHouse": return json(Object.assign({ ok: true }, await core.inHouse(prop)));
       case "emailInHouse": return json(Object.assign({ ok: true }, await core.emailInHouse(prop, body)));

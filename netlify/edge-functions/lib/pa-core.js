@@ -155,9 +155,12 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     aff = cleanStr(aff, 40);
     const p = await propertyOfAff(aff);
     if (!p) throw new PAError("No property is connected to this affiliate account.", 404);
+    // At most 10 wrong passwords per affiliate per hour.
+    const fk = "resumefail:" + aff + ":" + now().toISOString().slice(0, 13), fails = (await getJSON(fk)) || 0;
+    if (fails >= 10) throw new PAError("Too many wrong passwords. Try again in an hour.", 429);
     const rec = affiliates ? await affiliates.getAuth(aff) : null;
     const stored = rec && rec.passwordHash ? rec.passwordHash : await sha256Hex(DEFAULT_AFFILIATE_PASSWORD);
-    if ((await sha256Hex(String(password || ""))) !== stored) throw new PAError("Incorrect hub password.", 403);
+    if ((await sha256Hex(String(password || ""))) !== stored) { await setJSON(fk, fails + 1); throw new PAError("Incorrect hub password.", 403); }
     return { token: await newSession(p), property: publicProperty(p) };
   }
 
@@ -292,7 +295,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
   // ---------- availability for the grid / calendar ----------
   async function availability(prop, from, to) {
     from = from || today(); to = to || addDays(from, 14);
-    if (to <= from || nightsBetween(from, to) > MAX_WINDOW_DAYS) throw new PAError("Choose a shorter date range.");
+    if (!isoDate(from) || !isoDate(to) || !(nightsBetween(from, to) >= 1 && nightsBetween(from, to) <= MAX_WINDOW_DAYS)) throw new PAError("Choose a shorter date range.");
     // Only the days on screen are read from SN (past days never are).
     const snap = to > today() ? await ensureWindow(prop, from < today() ? today() : from, to) : await loadSnap(prop);
     const bookings = await bookingsOf(prop);
@@ -321,9 +324,9 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
   }
 
   async function search(prop, checkIn, checkOut) {
-    if (!checkIn || !checkOut || checkOut <= checkIn) throw new PAError("Choose a check-out after the check-in.");
+    if (!isoDate(checkIn) || !isoDate(checkOut) || checkOut <= checkIn) throw new PAError("Choose a check-out after the check-in.");
     checkBookable(prop, checkIn);
-    if (nightsBetween(checkIn, checkOut) > MAX_WINDOW_DAYS - 2) throw new PAError("Choose a shorter stay.");
+    if (!(nightsBetween(checkIn, checkOut) <= MAX_WINDOW_DAYS - 2)) throw new PAError("Choose a shorter stay.");
     // Read the stay, and at least the 2 weeks the grid will show next, in one call.
     const wEnd = checkOut > addDays(checkIn, 14) ? checkOut : addDays(checkIn, 14);
     const snap = await ensureWindow(prop, checkIn, wEnd);
@@ -1243,6 +1246,227 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     return fresh.length + emailed;
   }
 
+  // ---------- property front store (go.avantetravel.co.za/stay/<slug>) ----------
+  // One public page per connected property: photos, live availability, book
+  // and pay on the page (a normal hub booking, source "Front store", credited
+  // to the property), plus an in-house guest page (/stay/<slug>/guest) and a
+  // printable room card with QR codes. prop.frontStore holds the settings;
+  // "fslug:<slug>" -> { siteId } finds the property from the link.
+  const FS_DEFAULTS = { on: false, slug: "", showPrices: true, showCalendar: true, showActivities: true, showOffers: true,
+    hiddenUnits: [], minNoticeDays: 0, nearbyKm: 30, welcome: "", description: "", phone: "", whatsapp: "", email: "",
+    wifiName: "", wifiPassword: "", guestNotes: "", photos: null, guestKey: "" };
+  const FS_MAX_NIGHTS = 30, FS_PER_DAY = 10, FS_PER_EMAIL_DAY = 3;
+  function isoDate(v) { v = String(v || ""); if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return ""; const d = new Date(v + "T00:00:00Z"); return !isNaN(d) && d.toISOString().slice(0, 10) === v ? v : ""; }
+  function minStayOf(prop) { return (prop.settings && prop.settings.minStay) || 2; }
+  const FS_RESERVED = ["guest", "card", "api", "admin", "hub", "new", "edit"];
+  function fsSettings(prop) {
+    const s = Object.assign({}, FS_DEFAULTS, prop.frontStore || {});
+    if (!s.slug) s.slug = slug(prop.resortName || "") || "property-" + String(prop.site || "").toLowerCase();
+    if (s.slug.length < 3) s.slug = (s.slug + "-stay").slice(0, 60);
+    return s;
+  }
+  function fsUrl(prop) { return baseUrl + "/stay/" + fsSettings(prop).slug; }
+  async function slugOwner(sl) { const r = await getJSON("fslug:" + sl); return r ? r.siteId : null; }
+  async function saveFrontStore(prop, body) {
+    body = body || {};
+    const cur = fsSettings(prop), s = Object.assign({}, cur);
+    const bool = (k) => { if (body[k] !== undefined) s[k] = !!body[k]; };
+    ["on", "showPrices", "showCalendar", "showActivities", "showOffers"].forEach(bool);
+    if (body.slug !== undefined) s.slug = slug(body.slug).slice(0, 60);
+    // Always check the link name, also the automatic one, before claiming it.
+    if (s.slug.length < 3) throw new PAError("The link name needs at least 3 letters or numbers.");
+    if (FS_RESERVED.includes(s.slug)) throw new PAError("That link name is reserved. Choose another one.");
+    const owner = await slugOwner(s.slug);
+    if (owner && owner !== prop.siteId) throw new PAError("Another property already uses /stay/" + s.slug + ". Choose another link name.");
+    // The guest page and room card need a secret key, so Wi-Fi and house info aren't public.
+    if (!s.guestKey || body.newGuestKey) s.guestKey = randomToken(9).replace(/[^a-z0-9]/gi, "").slice(0, 10).toLowerCase() || "g" + Date.now().toString(36);
+    const str = (k, n) => { if (body[k] !== undefined) s[k] = cleanStr(String(body[k] || ""), n); };
+    str("welcome", 160); str("description", 3000); str("phone", 30); str("whatsapp", 30); str("email", 120);
+    str("wifiName", 60); str("wifiPassword", 60); str("guestNotes", 1500);
+    if (s.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.email)) throw new PAError("That email address doesn't look right.");
+    if (body.nearbyKm !== undefined) s.nearbyKm = Math.max(1, Math.min(150, Math.round(Number(body.nearbyKm)) || 30));
+    if (body.minNoticeDays !== undefined) s.minNoticeDays = Math.max(0, Math.min(30, Math.round(Number(body.minNoticeDays)) || 0));
+    if (Array.isArray(body.hiddenUnits)) s.hiddenUnits = body.hiddenUnits.map((u) => cleanStr(String(u), 200)).filter((u) => prop.units.some((x) => x.name === u));
+    if (body.photos === null) s.photos = null;
+    else if (Array.isArray(body.photos)) s.photos = body.photos.map((u) => cleanStr(String(u), 600)).filter((u) => /^https:\/\//.test(u) || /^\/api\/stay\?photo=/.test(u)).slice(0, 24);
+    if (s.on && s.hiddenUnits.length >= prop.units.length) throw new PAError("Show at least one unit on your front store.");
+    // Claim the link name; free the old one.
+    if (s.on || body.slug !== undefined) {
+      await setJSON("fslug:" + s.slug, { siteId: prop.siteId });
+      if ((await slugOwner(s.slug)) !== prop.siteId) throw new PAError("Another property just took /stay/" + s.slug + ". Choose another link name.");
+    }
+    if (cur.slug && cur.slug !== s.slug && (await slugOwner(cur.slug)) === prop.siteId) await store.delete("fslug:" + cur.slug);
+    prop.frontStore = s;
+    await setJSON("site:" + prop.siteId, prop);
+    return frontStoreView(prop);
+  }
+  function monthKey(d) { return (d || now()).toISOString().slice(0, 7); }
+  async function fsStat(prop, field) {
+    const k = "fsstat:" + prop.siteId + ":" + monthKey();
+    const r = (await getJSON(k)) || {};
+    r[field] = (r[field] || 0) + 1;
+    await setJSON(k, r);
+  }
+  async function frontStoreView(prop) {
+    const s = fsSettings(prop), d = now();
+    const prev = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 1, 1));
+    const stats = { thisMonth: (await getJSON("fsstat:" + prop.siteId + ":" + monthKey(d))) || {}, lastMonth: (await getJSON("fsstat:" + prop.siteId + ":" + monthKey(prev))) || {} };
+    const photos = [];
+    for (const b of (await store.list({ prefix: "fsphoto:" + prop.siteId + ":" })).blobs) photos.push("/api/stay?photo=" + encodeURIComponent(b.key.slice(8)));
+    const k = s.guestKey ? "/" + s.guestKey : "";
+    return { settings: Object.assign({}, s, { guestKey: undefined }), url: baseUrl + "/stay/" + s.slug, guestUrl: baseUrl + "/stay/" + s.slug + "/guest" + k, cardUrl: baseUrl + "/stay/" + s.slug + "/card" + k,
+      stats, units: prop.units.map((u) => ({ name: u.name, size: u.size })), uploadedPhotos: photos,
+      propertyEmail: (prop.settings && prop.settings.email) || "", propertyPhone: (prop.settings && prop.settings.phone) || "" };
+  }
+  // Own photos (JPG/PNG/WebP, max 4 MB), served by /api/stay?photo=<siteId>:<id>.
+  async function uploadFrontPhoto(prop, dataUrl) {
+    const m = /^data:(image\/(jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl || ""));
+    if (!m) throw new PAError("Choose a JPG, PNG or WebP photo.");
+    const bin = Uint8Array.from(atob(m[3]), (c) => c.charCodeAt(0));
+    if (bin.length > 4 * 1024 * 1024) throw new PAError("That photo is bigger than 4 MB.");
+    const isJpg = bin[0] === 0xff && bin[1] === 0xd8, isPng = bin[0] === 0x89 && bin[1] === 0x50, isWebp = bin[8] === 0x57 && bin[9] === 0x45 && bin[10] === 0x42 && bin[11] === 0x50;
+    if (!(isJpg || isPng || isWebp)) throw new PAError("Choose a JPG, PNG or WebP photo.");
+    const count = (await store.list({ prefix: "fsphoto:" + prop.siteId + ":" })).blobs.length;
+    if (count >= 24) throw new PAError("You can upload up to 24 photos. Remove one first.");
+    const id = prop.siteId + ":" + randomToken(8).replace(/[^a-z0-9]/gi, "").slice(0, 10);
+    await store.set("fsphoto:" + id, bin, { metadata: { type: m[1] } });
+    return { url: "/api/stay?photo=" + encodeURIComponent(id), view: await frontStoreView(prop) };
+  }
+  async function removeFrontPhoto(prop, url) {
+    const id = decodeURIComponent((/photo=([^&]+)/.exec(String(url || "")) || [])[1] || "");
+    if (!id.startsWith(prop.siteId + ":")) throw new PAError("That photo isn't yours.");
+    await store.delete("fsphoto:" + id);
+    const s = fsSettings(prop);
+    if (Array.isArray(s.photos)) { s.photos = s.photos.filter((u) => u !== url); prop.frontStore = s; await setJSON("site:" + prop.siteId, prop); }
+    return frontStoreView(prop);
+  }
+  async function frontPhoto(id) {
+    const r = await store.getWithMetadata("fsphoto:" + cleanStr(id, 80), { type: "arrayBuffer" });
+    return r ? { data: r.data, type: (r.metadata && r.metadata.type) || "image/jpeg" } : null;
+  }
+  // The property behind a public link, or null when the link isn't (or no longer) switched on.
+  async function propertyBySlug(sl) {
+    const owner = await slugOwner(slug(sl));
+    if (!owner) return null;
+    const prop = await getJSON("site:" + owner);
+    if (!prop) return null;
+    const s = fsSettings(prop);
+    return s.on && s.slug === slug(sl) ? prop : null;
+  }
+  function fsFirstNight(prop) {
+    const s = fsSettings(prop), fb = firstBookable(prop), notice = addDays(today(), s.minNoticeDays || 0);
+    return notice > fb ? notice : fb;
+  }
+  function fsUnits(prop) { const hide = fsSettings(prop).hiddenUnits || []; return prop.units.filter((u) => !hide.includes(u.name)); }
+  // Public page facts (no guest names, no prices when switched off).
+  function publicFrontStore(prop) {
+    const s = fsSettings(prop), st = prop.settings || {};
+    return { name: prop.resortName || "", slug: s.slug, url: fsUrl(prop),
+      welcome: s.welcome, description: s.description, photos: s.photos, showPrices: s.showPrices, showCalendar: s.showCalendar,
+      showActivities: s.showActivities, showOffers: s.showOffers, nearbyKm: s.nearbyKm || 30, minStay: minStayOf(prop), firstBookable: fsFirstNight(prop),
+      contact: { phone: s.phone || st.phone || "", whatsapp: waNumber(s.whatsapp || s.phone || st.phone || ""), email: s.email || st.email || "" },
+      units: fsUnits(prop).map((u) => ({ name: u.name, size: u.size || "" })), payMode: payMode(prop) };
+  }
+  function guestKeyOk(prop, key) {
+    const want = fsSettings(prop).guestKey || "", got = String(key || "");
+    if (!want || want.length !== got.length) return false;
+    let d = 0; for (let i = 0; i < want.length; i++) d |= want.charCodeAt(i) ^ got.charCodeAt(i);
+    return d === 0;
+  }
+  function publicGuestInfo(prop) {
+    const s = fsSettings(prop);
+    return { wifiName: s.wifiName, wifiPassword: s.wifiPassword, guestNotes: s.guestNotes };
+  }
+  // The property's own current offers (hooks it manages itself), for the page.
+  async function publicOffers(prop, hookStore) {
+    if (!prop.aff || !hookStore || !fsSettings(prop).showOffers) return [];
+    const out = [], t = today();
+    for (const b of (await hookStore.list({ prefix: prop.aff + ":" })).blobs) {
+      const n = Number(b.key.slice(prop.aff.length + 1)); if (!Number.isInteger(n) || n < 1) continue;
+      const r = await hookStore.get(b.key, { type: "json" }).catch(() => null);
+      if (!r || r.mode !== "self" || r.hidden || !(r.booking || r.landing)) continue;
+      const end = isoDate(r.endDate) || isoDate((/[?&]checkout=(\d{4}-\d{2}-\d{2})/.exec(r.booking || "") || [])[1]);
+      if (end && end < t) continue;
+      out.push({ hook: n, title: String(r.hookTitle || String(r.caption || "").split("\n")[0] || "Special offer").slice(0, 90), booking: isHttpsUrl(r.booking) ? r.booking : "", landing: isHttpsUrl(r.landing) ? r.landing : "", endDate: end || "",
+        image: "/api/hook-image?aff=" + encodeURIComponent(prop.aff) + "&hook=" + n });
+    }
+    return out.slice(0, 12);
+  }
+  async function publicAvailability(prop, from, to) {
+    const s = fsSettings(prop), first = fsFirstNight(prop);
+    from = isoDate(from); to = isoDate(to);
+    if (!from || !to || !(nightsBetween(from, to) >= 1 && nightsBetween(from, to) <= 62)) throw new PAError("Choose a shorter date range.");
+    if (from > addDays(today(), 548)) throw new PAError("That's too far ahead.");
+    const av = await availability(prop, from, to);
+    const units = fsUnits(prop), open = {}, rates = {};
+    for (const u of units) {
+      open[u.name] = Object.keys(av.nights[u.name] || {}).filter((n) => av.nights[u.name][n].s === "open" && n >= first).sort();
+      if (s.showPrices) rates[u.name] = av.nightRates[u.name] || {};
+    }
+    return { from: av.from, to: av.to, units: units.map((u) => ({ name: u.name, size: u.size || "" })), open, rates: s.showPrices ? rates : null, minStay: av.minStay, firstBookable: first };
+  }
+  async function publicQuote(prop, checkIn, checkOut) {
+    const s = fsSettings(prop), first = fsFirstNight(prop);
+    checkIn = isoDate(checkIn); checkOut = isoDate(checkOut);
+    if (!checkIn || !checkOut || !(nightsBetween(checkIn, checkOut) >= 1)) throw new PAError("Choose a check-out after the check-in.");
+    if (nightsBetween(checkIn, checkOut) > FS_MAX_NIGHTS) throw new PAError("For stays longer than " + FS_MAX_NIGHTS + " nights, please contact us.");
+    if (checkIn > addDays(today(), 548)) throw new PAError("That's too far ahead.");
+    if (checkIn < first) throw new PAError("The first date you can book is " + first + ".");
+    const r = await search(prop, checkIn, checkOut);
+    const hide = s.hiddenUnits || [];
+    const results = r.results.filter((x) => !hide.includes(x.unit)).map((x) => (s.showPrices ? x : Object.assign({}, x, { rate: null, total: null })));
+    return Object.assign({}, r, { results, showPrices: s.showPrices, minStay: minStayOf(prop), tooShort: r.nights < minStayOf(prop) });
+  }
+  // A guest books on the public page: a normal hub booking on Stock Network,
+  // source "Front store". The guest gets a confirmation email with how to
+  // pay; the property gets an email too.
+  async function publicBook(prop, body) {
+    body = body || {};
+    const s = fsSettings(prop);
+    const ci = isoDate(body.checkIn), co = isoDate(body.checkOut);
+    const units = [...new Set((Array.isArray(body.units) ? body.units : [body.unit]).map((u) => cleanStr(String(u || ""), 200)).filter(Boolean))].slice(0, 4);
+    if (!ci || !co) throw new PAError("Choose your dates.");
+    if (!units.length) throw new PAError("Choose a unit.");
+    if (units.some((u) => (s.hiddenUnits || []).includes(u) || !prop.units.some((x) => x.name === u))) throw new PAError("That unit can't be booked here.");
+    if (ci < fsFirstNight(prop)) throw new PAError("The first date you can book is " + fsFirstNight(prop) + ".");
+    const n = nightsBetween(ci, co);
+    if (!(n >= 1)) throw new PAError("Choose a check-out after the check-in.");
+    if (n < minStayOf(prop)) throw new PAError("The minimum stay is " + minStayOf(prop) + " nights.");
+    if (n > FS_MAX_NIGHTS) throw new PAError("For stays longer than " + FS_MAX_NIGHTS + " nights, please contact us.");
+    if (ci > addDays(today(), 548)) throw new PAError("That's too far ahead.");
+    const g = body.guest || {};
+    const email = cleanStr(g.email, 120).toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new PAError("Enter a valid email address.");
+    // Names: letters, spaces, apostrophes, dots and dashes only (no links in emails sent under the property's name).
+    const nameOk = (v) => /^[\p{L}][\p{L}\p{M} .'\-]{0,59}$/u.test(String(v || "").trim());
+    if (!nameOk(g.first) || !nameOk(g.last)) throw new PAError("Enter your first and last name (letters only).");
+    // Limits: per property per day, and per email per day.
+    const day = today(), kp = "fsbk:" + prop.siteId + ":" + day, ke = "fsbe:" + prop.siteId + ":" + day + ":" + (await sha256Hex(email)).slice(0, 16);
+    const cp = (await getJSON(kp)) || 0, ce = (await getJSON(ke)) || 0;
+    if (cp >= FS_PER_DAY || ce >= FS_PER_EMAIL_DAY) throw new PAError("We can't take more online bookings like this today. Please contact the property directly.", 429);
+    // Every night must still be open (also not held by a channel booking that isn't on Stock Network yet).
+    const av = await availability(prop, ci, co);
+    for (const u of units) for (const night of eachNight(ci, co)) { const st = av.nights[u] && av.nights[u][night]; if (!st || st.s !== "open") throw new PAError(u + " isn't free for all of those nights any more. Check availability again.", 409); }
+    await setJSON(kp, cp + 1); await setJSON(ke, ce + 1);
+    const res = await book(prop, { items: units.map((u) => ({ unit: u, start: ci, end: co })), guest: { first: String(g.first).trim(), last: String(g.last).trim(), email, cellphone: g.cellphone },
+      adults: body.adults, children: body.children, source: "Front store", notes: cleanStr(body.notes, 600) });
+    const b = res.booking, pay = res.pay || {};
+    await fsStat(prop, "bookings").catch(() => {});
+    const units2 = b.items.map((i) => i.unit + " " + i.start + " to " + i.end).join(", ");
+    const st = prop.settings || {};
+    if (st.email) await sendEmail(st.email, "New front store booking " + b.ref + " · " + (prop.resortName || ""),
+      "<p>A guest booked on your Avante front store.</p><p><b>" + esc(b.ref) + "</b> · " + esc(units2) + "<br>Guest: " + esc(b.guest.first + " " + b.guest.last) + " · " + esc(b.guest.cellphone) + " · " + esc(b.guest.email) +
+      (b.total ? "<br>Total: R" + esc(Math.round(b.total)) : "") + "</p><p>It's on Stock Network as a Request and in the hub under Property Affiliate → Bookings.</p>").catch(() => false);
+    // Built from parts: only the payment gateway address becomes a link.
+    const payLink = pay.gatewayUrl && isHttpsUrl(pay.gatewayUrl) ? "<p><a href=\"" + esc(pay.gatewayUrl) + "\" style=\"display:inline-block;background:#0DCDC2;color:#0e2f44;padding:12px 18px;border-radius:8px;text-decoration:none;font-weight:700\">Pay now</a></p>" : "";
+    const bankHtml = pay.bank ? "<p><b>" + (payLink ? "Or pay by EFT" : "Please pay by EFT") + "</b><br>Bank: " + esc(pay.bank.bankName) + "<br>Account name: " + esc(pay.bank.accountHolder) + "<br>Account number: " + esc(pay.bank.accountNumber) + "<br>Branch code: " + esc(pay.bank.branchCode || "") + "<br>Reference: <b>" + esc(b.ref) + "</b>" + (pay.bank.note ? "<br>" + esc(pay.bank.note) : "") + "</p>" : "";
+    if (payLink || bankHtml) await sendEmail(email, "Your booking " + b.ref + " at " + (prop.resortName || ""),
+      "<div style=\"font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.55;color:#1f2937;max-width:560px\"><p>Hi " + esc(b.guest.first) + ",</p><p>Thank you for booking <b>" + esc(prop.resortName || "with us") + "</b>.</p><p>Booking reference: <b>" + esc(b.ref) + "</b><br>" + esc(units2) + (b.total ? "<br>Amount: R" + esc(Math.round(b.total)) : "") + "</p>" + payLink + bankHtml + "<p>Reply to this email if you have any questions.</p></div>",
+      { fromName: prop.resortName || "", replyTo: s.email || st.email || "" }).catch(() => false);
+    return { ref: b.ref, total: b.total, items: b.items.map((i) => ({ unit: i.unit, start: i.start, end: i.end })), status: b.status,
+      pay: { gatewayUrl: pay.gatewayUrl || null, bank: pay.bank || null, noMethod: !!pay.noMethod, emailed: !!(pay.gatewayUrl || pay.bank) } };
+  }
+
   // ---------- demo bookings (Property Testing, site 3, only) ----------
   // Hub-only examples to show guest details, the Guests list and messages.
   // Never sent to Stock Network or to channel calendars.
@@ -1282,5 +1506,5 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
   }
   function notDemo(b) { if (b && b.demo) throw new PAError("This is a demo booking: it isn't on Stock Network, so it can't be changed, paid or cancelled.", 409); }
 
-  return { connect, auth, disconnect, publicProperty, availability, search, book, cancel, cancelUnit, edit, find, saveSettings, channelsView, payInfo, markPaidEft, approvalInfo, approveCancel, affStatus, resume, seedDemo, clearDemo, isDemoSite, saveContact, checkIn, guests, messagesView, saveMessages, prepareMessage, markMessage, emailNow, inHouse, emailInHouse, firstBookable, propertyReviewLink, remindMessages, icalFeed, runSync, syncProperty, channelEvents, addChannelEvent, snapshot, ensureWindow, resolveUnitNotice, findResortsForSite };
+  return { connect, auth, disconnect, publicProperty, availability, search, book, cancel, cancelUnit, edit, find, saveSettings, channelsView, payInfo, markPaidEft, approvalInfo, approveCancel, affStatus, resume, seedDemo, clearDemo, isDemoSite, saveContact, checkIn, guests, messagesView, saveMessages, prepareMessage, markMessage, emailNow, inHouse, emailInHouse, firstBookable, fsSettings, saveFrontStore, frontStoreView, uploadFrontPhoto, removeFrontPhoto, frontPhoto, propertyBySlug, publicFrontStore, publicGuestInfo, guestKeyOk, publicOffers, publicAvailability, publicQuote, publicBook, fsStat, propertyReviewLink, remindMessages, icalFeed, runSync, syncProperty, channelEvents, addChannelEvent, snapshot, ensureWindow, resolveUnitNotice, findResortsForSite };
 }

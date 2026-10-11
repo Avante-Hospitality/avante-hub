@@ -1,0 +1,424 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!--STAY-META-->
+<link rel="icon" href="/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Noto+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<!-- Property front store (/stay/<slug>), in-house guest page (/stay/<slug>/guest)
+     and printable room card (/stay/<slug>/card). Served by
+     netlify/edge-functions/stay-page.js; data from /api/stay (stay-api.js).
+     Guide: how-to-property.html#frontstore — keep it up to date (CLAUDE.md). -->
+<style>
+:root{ --ink:#0e2f44; --teal:#0DCDC2; --teal-d:#08776f; --sand:#f7f3ec; --line:#e6e2da; --muted:#66706f; --warn:#8a3a00; --bg:#fbfaf7; }
+*{ box-sizing:border-box; }
+body{ margin:0; background:var(--bg); color:#26302f; font:16px/1.6 'Noto Sans',Arial,sans-serif; -webkit-text-size-adjust:100%; }
+a{ color:var(--teal-d); }
+h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2; margin:0; }
+.wrap{ max-width:1160px; margin:0 auto; padding:0 16px; }
+.top{ background:#fff; border-bottom:1px solid var(--line); position:sticky; top:0; z-index:50; }
+.top .wrap{ display:flex; align-items:center; gap:12px; min-height:58px; }
+.top .nm{ font:800 15px 'Montserrat',sans-serif; color:var(--ink); flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.top .nm small{ display:block; font:600 11px 'Noto Sans',sans-serif; color:var(--muted); letter-spacing:.06em; text-transform:uppercase; }
+.ic{ display:inline-flex; align-items:center; justify-content:center; min-width:44px; height:44px; border-radius:999px; border:1.5px solid var(--line); background:#fff; color:var(--ink); text-decoration:none; font-weight:700; font-size:14px; padding:0 14px; gap:6px; }
+.ic.wa{ background:#25D366; border-color:#25D366; color:#fff; }
+.hero{ position:relative; height:min(62vh,560px); min-height:320px; background:#d9d4ca center/cover no-repeat; display:flex; align-items:flex-end; }
+.hero::after{ content:''; position:absolute; inset:0; background:linear-gradient(180deg,rgba(14,47,68,0) 35%,rgba(14,47,68,.82)); }
+.hero .wrap{ position:relative; z-index:1; color:#fff; padding-bottom:28px; width:100%; }
+.hero h1{ color:#fff; font-size:clamp(28px,5vw,48px); }
+.hero .pl{ font-weight:600; opacity:.92; margin-top:6px; }
+.hero .wl{ margin-top:10px; font-size:18px; max-width:640px; }
+.hero .allph{ position:absolute; right:16px; bottom:24px; z-index:2; }
+.btn{ display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:48px; padding:0 22px; border-radius:10px; border:none; background:var(--ink); color:#fff; font:700 15px 'Montserrat',sans-serif; cursor:pointer; text-decoration:none; }
+.btn.t{ background:var(--teal); color:var(--ink); }
+.btn.g{ background:#fff; color:var(--ink); border:1.5px solid var(--ink); }
+.btn.sm{ min-height:38px; padding:0 14px; font-size:13px; }
+.btn[disabled]{ opacity:.55; cursor:not-allowed; }
+.btn:focus-visible,.ic:focus-visible,.chip:focus-visible,.day:focus-visible{ outline:3px solid var(--teal); outline-offset:2px; }
+.thumbs{ display:flex; gap:8px; overflow-x:auto; padding:12px 0 4px; scrollbar-width:thin; }
+.thumbs button{ flex:0 0 auto; width:110px; height:76px; border-radius:10px; border:none; padding:0; background:#ddd center/cover; cursor:pointer; }
+.grid{ display:grid; grid-template-columns:minmax(0,1fr) 380px; gap:32px; align-items:start; padding:28px 0 60px; }
+.card{ background:#fff; border:1px solid var(--line); border-radius:18px; padding:22px; }
+.sec{ margin-bottom:34px; }
+.sec h2{ font-size:24px; margin-bottom:12px; }
+.lead{ color:var(--muted); margin:-6px 0 14px; }
+.text{ white-space:pre-line; }
+.book{ position:sticky; top:76px; box-shadow:0 18px 50px rgba(14,47,68,.10); }
+.book h2{ font-size:20px; margin-bottom:4px; }
+.f2{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:12px; }
+.fld{ display:flex; flex-direction:column; gap:4px; min-width:0; }
+.fld label{ font:700 11.5px 'Montserrat',sans-serif; text-transform:uppercase; letter-spacing:.06em; color:var(--teal-d); }
+.fld input,.fld select,.fld textarea{ width:100%; min-height:46px; border:1.5px solid #d8d3ca; border-radius:10px; padding:0 12px; font:15px 'Noto Sans',sans-serif; color:var(--ink); background:#fff; }
+.fld textarea{ padding:10px 12px; min-height:70px; }
+.res{ display:flex; flex-direction:column; gap:10px; margin-top:14px; }
+.unit{ border:1.5px solid var(--line); border-radius:14px; padding:12px 14px; display:flex; flex-wrap:wrap; gap:8px 12px; align-items:center; }
+.unit .u{ flex:1 1 150px; min-width:0; }
+.unit b{ font:700 15px 'Montserrat',sans-serif; color:var(--ink); }
+.unit .p{ font:800 17px 'Montserrat',sans-serif; color:var(--ink); }
+.muted{ color:var(--muted); font-size:13.5px; }
+.err{ background:#fff4e5; border:1px solid #f5c98a; color:var(--warn); border-radius:10px; padding:10px 12px; font-weight:600; font-size:14px; margin-top:12px; }
+.ok{ background:#e3f8f6; color:#065e58; border-radius:12px; padding:14px; margin-top:12px; }
+.cal-h{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px; flex-wrap:wrap; }
+.cal-h b{ font:800 18px 'Montserrat',sans-serif; color:var(--ink); }
+.cal{ display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:5px; }
+.cal .dw{ font:700 11px 'Montserrat',sans-serif; color:var(--muted); text-align:center; text-transform:uppercase; padding-bottom:2px; }
+.day{ min-height:52px; border-radius:10px; border:1.5px solid transparent; background:#f1eee8; color:#9aa0a0; font:700 14px 'Montserrat',sans-serif; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:0; }
+.day.op{ background:#e3f8f6; color:var(--ink); cursor:pointer; border-color:#bfece7; }
+.day.op small{ font:600 10px 'Noto Sans',sans-serif; color:var(--teal-d); }
+.day.sel{ background:var(--ink); color:#fff; border-color:var(--ink); }
+.day.sel small{ color:#cfe9ee; }
+.day.rng{ background:#cfeeea; }
+.legend{ display:flex; gap:14px; flex-wrap:wrap; font-size:13px; color:var(--muted); margin-top:10px; }
+.legend i{ display:inline-block; width:14px; height:14px; border-radius:4px; vertical-align:-2px; margin-right:5px; }
+.chips{ display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px; }
+.chip{ min-height:38px; padding:0 14px; border-radius:999px; border:1.5px solid var(--line); background:#fff; color:var(--ink); font:600 13px 'Montserrat',sans-serif; cursor:pointer; }
+.chip[aria-pressed="true"]{ background:var(--ink); border-color:var(--ink); color:#fff; }
+.acts{ display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:14px; }
+.act{ border:1px solid var(--line); border-radius:14px; overflow:hidden; background:#fff; display:flex; flex-direction:column; }
+.act .im{ height:130px; background:#e9e4da center/cover; }
+.act .bd{ padding:12px 14px; display:flex; flex-direction:column; gap:4px; flex:1; }
+.act b{ font:700 15px 'Montserrat',sans-serif; color:var(--ink); }
+#map{ height:320px; border-radius:14px; border:1px solid var(--line); margin-top:14px; z-index:0; }
+.offers{ display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:14px; }
+.offer{ border:1px solid var(--line); border-radius:14px; overflow:hidden; background:#fff; }
+.offer .im{ aspect-ratio:1/1; background:#e9e4da center/cover; }
+.offer .bd{ padding:12px 14px; display:flex; flex-direction:column; gap:8px; }
+.contact{ display:flex; flex-wrap:wrap; gap:10px; }
+.foot{ text-align:center; color:var(--muted); font-size:13px; padding:28px 0 100px; }
+.bar{ display:none; }
+.lb{ position:fixed; inset:0; background:rgba(8,20,28,.94); z-index:200; display:flex; align-items:center; justify-content:center; }
+.lb img{ max-width:94vw; max-height:84vh; border-radius:8px; }
+.lb button{ position:absolute; background:rgba(255,255,255,.14); color:#fff; border:none; width:52px; height:52px; border-radius:50%; font-size:24px; cursor:pointer; }
+.lb .x{ top:16px; right:16px; } .lb .pv{ left:12px; } .lb .nx{ right:12px; }
+.lb .n{ position:absolute; bottom:18px; color:#fff; font-size:14px; }
+.hp{ position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden; }
+.center{ text-align:center; padding:80px 16px; }
+/* guest page */
+.gwrap{ max-width:720px; margin:0 auto; padding:0 16px 80px; }
+.ghead{ background:var(--ink); color:#fff; padding:34px 16px 30px; text-align:center; }
+.ghead h1{ color:#fff; font-size:30px; }
+.ghead p{ margin:6px 0 0; opacity:.85; }
+.gbtns{ display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin:-22px 0 22px; }
+.gbtns a{ background:#fff; border:1px solid var(--line); border-radius:16px; padding:16px 8px; text-align:center; text-decoration:none; color:var(--ink); font:700 14px 'Montserrat',sans-serif; box-shadow:0 10px 26px rgba(14,47,68,.10); }
+.gbtns a span{ display:block; font-size:26px; margin-bottom:4px; }
+.wifi{ display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+.wifi code{ font:700 18px 'Montserrat',sans-serif; color:var(--ink); background:var(--sand); padding:6px 12px; border-radius:8px; }
+/* room card */
+.cardpage{ max-width:560px; margin:24px auto; padding:0 16px 40px; }
+.rc{ background:#fff; border:2px solid var(--ink); border-radius:18px; padding:28px 26px; text-align:center; }
+.rc h1{ font-size:28px; }
+.rc .sub{ color:var(--muted); margin:4px 0 18px; }
+.rc .qr{ display:flex; justify-content:center; gap:22px; flex-wrap:wrap; margin:10px 0 16px; }
+.rc .qr figure{ margin:0; }
+.rc .qr svg{ width:190px; height:190px; display:block; }
+.rc .qr.small svg{ width:120px; height:120px; }
+.rc figcaption{ font:700 13px 'Montserrat',sans-serif; color:var(--ink); margin-top:6px; }
+.rc .lines{ text-align:left; display:inline-block; margin:6px auto 0; font-size:16px; line-height:1.9; }
+.rc .lines b{ display:inline-block; min-width:96px; color:var(--teal-d); font:700 13px 'Montserrat',sans-serif; text-transform:uppercase; letter-spacing:.05em; }
+.rc .by{ margin-top:18px; font-size:12px; color:var(--muted); }
+.cardtools{ display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-bottom:18px; }
+@media print{
+  @page{ size:A5 portrait; margin:10mm; }
+  body{ background:#fff; }
+  .cardtools,.noprint{ display:none !important; }
+  .cardpage{ margin:0; max-width:none; padding:0; }
+  .rc{ border-width:1.5px; }
+}
+@media (max-width:900px){
+  .grid{ grid-template-columns:1fr; gap:22px; }
+  .book{ position:static; order:-1; }
+  .bar{ display:flex; position:fixed; left:0; right:0; bottom:0; z-index:60; background:#fff; border-top:1px solid var(--line); padding:10px 16px calc(10px + env(safe-area-inset-bottom)); gap:10px; align-items:center; box-shadow:0 -8px 24px rgba(14,47,68,.10); }
+  .bar .t{ flex:1; min-width:0; font-size:13px; color:var(--muted); }
+  .bar .t b{ display:block; color:var(--ink); font:700 15px 'Montserrat',sans-serif; }
+  .hero{ height:52vh; }
+  .hero .allph{ display:none; }
+}
+@media (max-width:480px){ .f2{ grid-template-columns:1fr 1fr; } .top .ic span{ display:none; } .day{ min-height:44px; font-size:13px; } }
+@media (prefers-reduced-motion:reduce){ *{ scroll-behavior:auto !important; } }
+</style>
+</head>
+<body>
+<div id="app"><div class="center muted">Loading…</div></div>
+<script src="/qrcode.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+(function () {
+  'use strict';
+  var CFG = window.STAY || {};
+  if (!CFG.slug) { var parts = location.pathname.split('/').filter(Boolean); CFG = { slug: parts[1] || new URLSearchParams(location.search).get('slug') || '', mode: parts[2] || new URLSearchParams(location.search).get('mode') || 'store', key: parts[3] || '' }; }
+  var app = document.getElementById('app');
+  var MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'], MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  var S = { d: null, ci: '', co: '', adults: 2, children: 0, quote: null, pick: null, booked: null, err: '', busy: false, month: null, monthData: {}, calUnit: '', km: null, offers: null, lb: -1 };
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function today() { var d = new Date(); return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())).toISOString().slice(0, 10); }
+  function add(iso, n) { var d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
+  function nights(a, b) { return Math.round((new Date(b + 'T00:00:00Z') - new Date(a + 'T00:00:00Z')) / 86400000); }
+  function nice(iso) { var d = new Date(iso + 'T00:00:00Z'); return d.getUTCDate() + ' ' + MON[d.getUTCMonth()] + ' ' + d.getUTCFullYear(); }
+  function money(n) { return n == null ? '' : 'R' + String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+  // Only plain web links and the hub's own photo addresses go into links and backgrounds.
+  function safeUrl(u) { u = String(u || ''); return /^(https?:\/\/|\/api\/)[^'"()\s<>]+$/i.test(u) ? u : ''; }
+  function safeLink(u) { u = String(u || ''); return /^(https?:\/\/|mailto:|tel:)/i.test(u) ? u : ''; }
+  function api(q) { return fetch('/api/stay?' + q).then(function (r) { return r.json(); }); }
+  function post(b) { return fetch('/api/stay', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(Object.assign({ slug: CFG.slug }, b)) }).then(function (r) { return r.json(); }); }
+  function placeLine(p) { if (!p) return ''; var bits = [p.suburb, p.city, p.region && p.region.split(', ')[0], p.province].filter(Boolean); var out = []; bits.forEach(function (b) { if (out.indexOf(b) < 0) out.push(b); }); return out.join(', '); }
+  function waLink(d, text) { return d.contact.whatsapp ? 'https://wa.me/' + d.contact.whatsapp + (text ? '?text=' + encodeURIComponent(text) : '') : ''; }
+  function telLink(d) { return d.contact.phone ? 'tel:' + String(d.contact.phone).replace(/[^\d+]/g, '') : ''; }
+  function mapsLink(d) { return d.latitude != null ? 'https://www.google.com/maps/dir/?api=1&destination=' + d.latitude + ',' + d.longitude : 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(d.name + ' ' + placeLine(d.place)); }
+  function storeUrl() { return location.origin + '/stay/' + CFG.slug; }
+  function guestUrl() { return location.origin + '/stay/' + CFG.slug + '/guest' + (CFG.key ? '/' + CFG.key : ''); }
+  function qrSvg(text) { try { var q = qrcode(0, 'M'); q.addData(text); q.make(); return q.createSvgTag({ cellSize: 6, margin: 2, scalable: true }); } catch (e) { return ''; } }
+
+  function load(km) {
+    var q = 'slug=' + encodeURIComponent(CFG.slug) + (CFG.mode === 'guest' ? '&guest=1' : CFG.mode === 'card' ? '&card=1' : '') + (CFG.key ? '&key=' + encodeURIComponent(CFG.key) : '') + (km ? '&km=' + km : '');
+    return api(q).then(function (d) {
+      if (!d.ok) { app.innerHTML = '<div class="center"><h1>This page isn\'t available</h1><p class="muted">The link may be wrong, or the property has switched its page off.</p></div>'; return; }
+      S.d = d; S.km = d.nearbyKm;
+      if (!S.ci) { S.ci = d.firstBookable; S.co = add(d.firstBookable, Math.max(1, d.minStay || 1)); }
+      if (!S.month) S.month = d.firstBookable.slice(0, 7);
+      render();
+      if (CFG.mode === 'store') { S.offers = (d.offers || []).filter(function (o) { return o.booking || o.landing; }); loadMonth(); }
+    }).catch(function () { app.innerHTML = '<div class="center"><h1>Couldn\'t load this page</h1><p class="muted">Check your connection and try again.</p></div>'; });
+  }
+  function loadMonth() {
+    var m = S.month; if (S.monthData[m] || !S.d.showCalendar) return;
+    var first = m + '-01', y = +m.slice(0, 4), mo = +m.slice(5, 7), next = new Date(Date.UTC(y, mo, 1)).toISOString().slice(0, 10);
+    var from = first < today() ? today() : first;
+    if (next <= from) return;
+    S.monthData[m] = 'loading';
+    api('slug=' + encodeURIComponent(CFG.slug) + '&from=' + from + '&to=' + next).then(function (r) { S.monthData[m] = r.ok ? r : null; drawCal(); }).catch(function () { S.monthData[m] = null; drawCal(); });
+  }
+
+  // ---------- front store ----------
+  function render() {
+    if (CFG.mode === 'guest') return renderGuest();
+    if (CFG.mode === 'card') return renderCard();
+    var d = S.d, ph = (d.photos || []).map(safeUrl).filter(Boolean); d.photos = ph;
+    var h = '<header class="top"><div class="wrap"><div class="nm"><small>Book direct</small>' + esc(d.name) + '</div>' +
+      (waLink(d) ? '<a class="ic wa" href="' + esc(waLink(d, 'Hi, I have a question about ' + d.name + '.')) + '" target="_blank" rel="noopener" aria-label="WhatsApp ' + esc(d.name) + '">💬 <span>WhatsApp</span></a>' : '') +
+      (telLink(d) ? '<a class="ic" href="' + esc(telLink(d)) + '" aria-label="Call ' + esc(d.name) + '">📞 <span>Call</span></a>' : '') + '</div></header>';
+    h += '<section class="hero" style="background-image:url(\'' + esc(ph[0] || '/home-hero.jpg') + '\')"><div class="wrap"><h1>' + esc(d.name) + '</h1>' +
+      (placeLine(d.place) ? '<div class="pl">📍 ' + esc(placeLine(d.place)) + '</div>' : '') + (d.welcome ? '<div class="wl">' + esc(d.welcome) + '</div>' : '') + '</div>' +
+      (ph.length > 1 ? '<button type="button" class="btn g sm allph" data-act="lb" data-i="0">See all ' + ph.length + ' photos</button>' : '') + '</section>';
+    h += '<div class="wrap">';
+    if (ph.length > 1) h += '<div class="thumbs" aria-label="Photos">' + ph.map(function (u, i) { return '<button type="button" data-act="lb" data-i="' + i + '" style="background-image:url(\'' + esc(u) + '\')" aria-label="Photo ' + (i + 1) + ' of ' + ph.length + '"></button>'; }).join('') + '</div>';
+    h += '<div class="grid"><main>';
+    if (d.showCalendar) h += '<section class="sec" id="calsec"><h2>Availability</h2><p class="lead">Tap your arrival day, then your last night. Green days are open.</p><div class="card" id="cal"></div></section>';
+    if (d.description || d.attractions || d.moreInfo) h += '<section class="sec"><h2>About ' + esc(d.name) + '</h2>' + (d.description ? '<div class="text">' + esc(d.description) + '</div>' : '') +
+      (d.attractions ? '<h3 style="margin:18px 0 6px;font-size:17px">In the area</h3><div class="text">' + esc(d.attractions) + '</div>' : '') +
+      (d.moreInfo ? '<h3 style="margin:18px 0 6px;font-size:17px">Good to know</h3><div class="text">' + esc(d.moreInfo) + '</div>' : '') + '</section>';
+    if (d.units.length) h += '<section class="sec"><h2>Places to stay</h2><div class="acts">' + d.units.map(function (u) { return '<div class="act"><div class="bd"><b>' + esc(u.name) + '</b>' + (u.size ? '<span class="muted">' + esc(u.size) + '</span>' : '') + '</div></div>'; }).join('') + '</div></section>';
+    if (d.showOffers) h += offersHtml();
+    if (d.showActivities) h += nearbyHtml();
+    h += '<section class="sec"><h2>Contact ' + esc(d.name) + '</h2><div class="contact">' +
+      (waLink(d) ? '<a class="btn" style="background:#25D366" href="' + esc(waLink(d, 'Hi, I have a question about ' + d.name + '.')) + '" target="_blank" rel="noopener">💬 WhatsApp</a>' : '') +
+      (telLink(d) ? '<a class="btn g" href="' + esc(telLink(d)) + '">📞 ' + esc(d.contact.phone) + '</a>' : '') +
+      (d.contact.email ? '<a class="btn g" href="mailto:' + esc(d.contact.email) + '">✉️ Email</a>' : '') +
+      '<a class="btn g" href="' + esc(mapsLink(d)) + '" target="_blank" rel="noopener">🧭 Directions</a></div></section>';
+    h += '</main><aside class="card book" id="book" aria-label="Book your stay">' + bookHtml() + '</aside></div></div>';
+    h += '<p class="foot">Book direct with ' + esc(d.name) + ' · secure booking through Avante Travel</p>';
+    h += '<div class="bar"><div class="t"><b>' + (S.quote ? 'Pick a unit' : 'Book direct') + '</b>' + esc(nice(S.ci) + ' – ' + nice(S.co)) + '</div><button type="button" class="btn t" data-act="toBook">Check availability</button></div>';
+    app.innerHTML = h;
+    drawCal(); drawMap();
+  }
+  function bookHtml() {
+    var d = S.d;
+    if (S.booked) {
+      var b = S.booked, p = b.pay || {};
+      return '<h2>Booking ' + esc(b.ref) + ' received 🎉</h2><div class="ok">' + b.items.map(function (i) { return esc(i.unit) + ' · ' + esc(nice(i.start)) + ' – ' + esc(nice(i.end)); }).join('<br>') + (b.total ? '<br><b>Total ' + money(b.total) + '</b>' : '') + '</div>' +
+        (safeLink(p.gatewayUrl) ? '<p style="margin:14px 0 8px">Pay now to secure your booking:</p><a class="btn t" style="width:100%" href="' + esc(safeLink(p.gatewayUrl)) + '" target="_blank" rel="noopener">Pay now (card or Instant EFT)</a>' : '') +
+        (p.bank ? '<div class="card" style="margin-top:14px;padding:14px"><b>' + (p.gatewayUrl ? 'Or pay by EFT' : 'Pay by EFT') + '</b><div class="muted" style="font-size:14.5px;color:#26302f;line-height:1.7;margin-top:6px">Bank: ' + esc(p.bank.bankName) + '<br>Account name: ' + esc(p.bank.accountHolder) + '<br>Account number: ' + esc(p.bank.accountNumber) + '<br>Branch code: ' + esc(p.bank.branchCode || '') + '<br>Reference: <b>' + esc(b.ref) + '</b>' + (p.bank.note ? '<br>' + esc(p.bank.note) : '') + '</div></div>' : '') +
+        (p.noMethod ? '<p class="muted">' + esc(d.name) + ' will contact you about payment.</p>' : '') +
+        '<p class="muted" style="margin-top:12px">' + (p.emailed ? 'We\'ve emailed you these details. ' : '') + 'Questions? Contact ' + esc(d.name) + (waLink(d) ? ' on <a href="' + esc(waLink(d, 'Hi, about my booking ' + b.ref)) + '" target="_blank" rel="noopener">WhatsApp</a>' : '') + '.</p>' +
+        '<button type="button" class="btn g sm" data-act="again">Make another booking</button>';
+    }
+    var h = '<h2>Book your stay</h2><div class="muted">Minimum ' + (d.minStay || 1) + (d.minStay === 1 ? ' night' : ' nights') + '. Best rate when you book direct.</div>' +
+      '<div class="f2"><div class="fld"><label for="ci">Check-in</label><input id="ci" type="date" value="' + S.ci + '" min="' + d.firstBookable + '"></div>' +
+      '<div class="fld"><label for="co">Check-out</label><input id="co" type="date" value="' + S.co + '" min="' + add(d.firstBookable, 1) + '"></div>' +
+      '<div class="fld"><label for="ad">Adults</label><select id="ad">' + [1,2,3,4,5,6,7,8,9,10].map(function (n) { return '<option' + (n === S.adults ? ' selected' : '') + '>' + n + '</option>'; }).join('') + '</select></div>' +
+      '<div class="fld"><label for="ch">Children</label><select id="ch">' + [0,1,2,3,4,5,6].map(function (n) { return '<option' + (n === S.children ? ' selected' : '') + '>' + n + '</option>'; }).join('') + '</select></div></div>' +
+      '<button type="button" class="btn" style="width:100%;margin-top:14px" data-act="quote"' + (S.busy ? ' disabled' : '') + '>' + (S.busy === 'quote' ? 'Checking…' : 'Check availability') + '</button>';
+    if (S.err) h += '<div class="err" role="alert">' + esc(S.err) + '</div>';
+    if (S.quote && !S.pick) {
+      var q = S.quote;
+      h += '<div class="res" aria-live="polite"><b style="font-family:Montserrat,sans-serif">' + (q.results.length ? q.results.length + (q.results.length === 1 ? ' unit' : ' units') + ' free · ' : '') + nights(q.checkIn, q.checkOut) + ' nights</b>';
+      if (q.tooShort) h += '<div class="err">The minimum stay is ' + q.minStay + ' nights. Choose a later check-out.</div>';
+      else h += q.results.length ? q.results.map(function (r) {
+        return '<div class="unit"><div class="u"><b>' + esc(r.unit) + '</b><div class="muted">' + esc(r.size || '') + (r.rate ? ' · ' + money(r.rate) + ' per night' : '') + '</div></div>' + (r.total ? '<span class="p">' + money(r.total) + '</span>' : '') +
+          '<button type="button" class="btn t sm" data-act="pick" data-u="' + esc(r.unit) + '">Book this unit</button></div>';
+      }).join('') : '<div class="err">Nothing is free for all of those nights. Try other dates' + (S.d.showCalendar ? ' (see the calendar)' : '') + ', or contact us.</div>';
+      h += '</div>';
+    }
+    if (S.pick) {
+      var r = S.pick;
+      h += '<div class="unit" style="margin-top:14px"><div class="u"><b>' + esc(r.unit) + '</b><div class="muted">' + esc(nice(S.quote.checkIn)) + ' – ' + esc(nice(S.quote.checkOut)) + '</div></div>' + (r.total ? '<span class="p">' + money(r.total) + '</span>' : '') + '<button type="button" class="btn g sm" data-act="unpick">Change</button></div>' +
+        '<div class="f2"><div class="fld"><label for="gf">First name</label><input id="gf" autocomplete="given-name"></div><div class="fld"><label for="gl">Last name</label><input id="gl" autocomplete="family-name"></div></div>' +
+        '<div class="fld" style="margin-top:10px"><label for="ge">Email</label><input id="ge" type="email" autocomplete="email"></div>' +
+        '<div class="fld" style="margin-top:10px"><label for="gc">Cellphone</label><input id="gc" type="tel" autocomplete="tel"></div>' +
+        '<div class="fld" style="margin-top:10px"><label for="gn">Anything we should know? (optional)</label><textarea id="gn" rows="2"></textarea></div>' +
+        '<div class="hp" aria-hidden="true"><label>Website <input id="website" tabindex="-1" autocomplete="off"></label></div>' +
+        '<button type="button" class="btn t" style="width:100%;margin-top:14px" data-act="book"' + (S.busy ? ' disabled' : '') + '>' + (S.busy === 'book' ? 'Booking…' : 'Confirm booking' + (r.total ? ' · ' + money(r.total) : '')) + '</button>' +
+        '<p class="muted" style="margin-top:8px">You\'ll see how to pay straight after booking, and get it by email.</p>';
+    }
+    return h;
+  }
+  function drawBook() { var el = document.getElementById('book'); if (el) el.innerHTML = bookHtml(); }
+  function drawCal() {
+    var el = document.getElementById('cal'); if (!el) return;
+    var d = S.d, m = S.month, y = +m.slice(0, 4), mo = +m.slice(5, 7) - 1, data = S.monthData[m];
+    var first = m + '-01', days = new Date(Date.UTC(y, mo + 1, 0)).getUTCDate(), lead = (new Date(first + 'T00:00:00Z').getUTCDay() + 6) % 7;
+    var canPrev = m > today().slice(0, 7);
+    var h = '<div class="cal-h"><button type="button" class="btn g sm" data-act="mon" data-n="-1"' + (canPrev ? '' : ' disabled') + ' aria-label="Previous month">‹</button><b>' + MONTHS[mo] + ' ' + y + '</b><button type="button" class="btn g sm" data-act="mon" data-n="1" aria-label="Next month">›</button></div>';
+    if (d.units.length > 1) h += '<div class="chips" role="group" aria-label="Unit">' + [''].concat(d.units.map(function (u) { return u.name; })).map(function (n) { return '<button type="button" class="chip" data-act="calUnit" data-u="' + esc(n) + '" aria-pressed="' + (S.calUnit === n) + '">' + esc(n || 'Any unit') + '</button>'; }).join('') + '</div>';
+    h += '<div class="cal">' + ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(function (x) { return '<div class="dw">' + x + '</div>'; }).join('');
+    for (var i = 0; i < lead; i++) h += '<div></div>';
+    for (var dd = 1; dd <= days; dd++) {
+      var iso = m + '-' + (dd < 10 ? '0' + dd : dd), open = false, price = null;
+      if (data && data !== 'loading') {
+        var us = S.calUnit ? [S.calUnit] : Object.keys(data.open || {});
+        us.forEach(function (u) { if ((data.open[u] || []).indexOf(iso) >= 0) { open = true; var r = data.rates && data.rates[u] && data.rates[u][iso]; if (r && (price == null || r < price)) price = r; } });
+      }
+      var sel = iso === S.ci || iso === add(S.co, -1), rng = iso > S.ci && iso < add(S.co, -1);
+      h += open ? '<button type="button" class="day op' + (sel ? ' sel' : rng ? ' rng' : '') + '" data-act="day" data-d="' + iso + '" aria-label="' + nice(iso) + ', open' + (price ? ', from ' + money(price) : '') + '">' + dd + (price ? '<small>' + money(price) + '</small>' : '') + '</button>'
+        : '<div class="day' + (sel ? ' sel' : '') + '" aria-label="' + nice(iso) + ', not available">' + dd + '</div>';
+    }
+    h += '</div><div class="legend"><span><i style="background:#e3f8f6;border:1.5px solid #bfece7"></i>Open</span><span><i style="background:#f1eee8"></i>Not available</span><span><i style="background:#0e2f44"></i>Your dates</span></div>';
+    if (data === 'loading' || !data && data !== null) h += '<p class="muted" style="margin:8px 0 0">Loading availability…</p>';
+    el.innerHTML = h;
+  }
+  function offersHtml() {
+    if (!S.offers || !S.offers.length) return '<div id="offers"></div>';
+    return '<section class="sec" id="offers"><h2>Special offers</h2><div class="offers">' + S.offers.map(function (o) {
+      var img = safeUrl(o.image);
+      return '<article class="offer">' + (img ? '<div class="im" style="background-image:url(\'' + esc(img) + '\')"></div>' : '') + '<div class="bd"><b style="font-family:Montserrat,sans-serif;color:#0e2f44">' + esc(o.title || 'Special offer') + '</b>' +
+        (o.endDate ? '<span class="muted">Until ' + esc(nice(o.endDate)) + '</span>' : '') +
+        (safeLink(o.booking) ? '<a class="btn t sm" href="' + esc(safeLink(o.booking)) + '" target="_blank" rel="noopener">Book these dates</a>' : '') + (safeLink(o.landing) ? '<a class="btn g sm" href="' + esc(safeLink(o.landing)) + '" target="_blank" rel="noopener">Full details</a>' : '') + '</div></article>';
+    }).join('') + '</div></section>';
+  }
+  function nearbyHtml() {
+    var d = S.d, list = d.nearby || [], kms = [10, 30, 50, 100];
+    if (kms.indexOf(S.km) < 0) { kms.push(S.km); kms.sort(function (a, b) { return a - b; }); }
+    var h = '<section class="sec" id="nearby"><h2>Things to do nearby</h2><div class="chips" role="group" aria-label="Distance">' +
+      kms.map(function (k) { return '<button type="button" class="chip" data-act="km" data-k="' + k + '" aria-pressed="' + (k === S.km) + '">Within ' + k + ' km</button>'; }).join('') + '</div>';
+    h += list.length ? '<div class="acts">' + list.map(function (a) {
+      return '<article class="act">' + (safeUrl(a.photo) ? '<div class="im" style="background-image:url(\'' + esc(safeUrl(a.photo)) + '\')"></div>' : '') + '<div class="bd"><b>' + esc(a.name) + '</b><span class="muted">' + esc([a.distance, a.area, a.price].filter(Boolean).join(' · ')) + '</span>' +
+        (a.description ? '<span style="font-size:14px">' + esc(a.description) + '</span>' : '') + (safeLink(a.link) ? '<a href="' + esc(safeLink(a.link)) + '" target="_blank" rel="noopener" style="font-weight:700;margin-top:auto">Book / contact →</a>' : '') + '</div></article>';
+    }).join('') + '</div>' : '<p class="muted">Nothing listed within ' + S.km + ' km yet. Try a bigger distance.</p>';
+    if (d.latitude != null) h += '<div id="map" role="img" aria-label="Map of ' + esc(d.name) + ' and things to do nearby"></div>';
+    return h + '</section>';
+  }
+  var map = null;
+  function drawMap() {
+    var el = document.getElementById('map'); if (!el || !window.L) return;
+    var d = S.d;
+    if (map) { map.remove(); map = null; }
+    map = L.map(el, { scrollWheelZoom: false });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
+    var home = L.circleMarker([d.latitude, d.longitude], { radius: 10, color: '#0e2f44', fillColor: '#0DCDC2', fillOpacity: 1, weight: 3 }).addTo(map).bindPopup('<b>' + esc(d.name) + '</b>');
+    var pts = [[d.latitude, d.longitude]];
+    (d.nearby || []).forEach(function (a) { if (isFinite(a.latitude) && isFinite(a.longitude)) { pts.push([a.latitude, a.longitude]); L.circleMarker([a.latitude, a.longitude], { radius: 7, color: '#ED8B00', fillColor: '#ffd59a', fillOpacity: 1, weight: 2 }).addTo(map).bindPopup('<b>' + esc(a.name) + '</b><br>' + esc(a.distance || '')); } });
+    if (pts.length > 1) map.fitBounds(pts, { padding: [24, 24], maxZoom: 13 }); else map.setView(pts[0], 12);
+    void home;
+  }
+
+  // ---------- in-house guest page ----------
+  function renderGuest() {
+    var d = S.d, g = d.guest || {};
+    var h = '<header class="ghead"><p style="margin:0;letter-spacing:.08em;text-transform:uppercase;font-size:12px;font-weight:700">Guest information</p><h1>Welcome to ' + esc(d.name) + '</h1>' + (placeLine(d.place) ? '<p>📍 ' + esc(placeLine(d.place)) + '</p>' : '') + '</header>';
+    h += '<div class="gwrap"><div class="gbtns">' +
+      (waLink(d) ? '<a href="' + esc(waLink(d, 'Hi, I\'m staying at ' + d.name + '. ')) + '" target="_blank" rel="noopener"><span>💬</span>WhatsApp us</a>' : '<a aria-disabled="true"><span>💬</span>WhatsApp</a>') +
+      (telLink(d) ? '<a href="' + esc(telLink(d)) + '"><span>📞</span>Call us</a>' : '<a aria-disabled="true"><span>📞</span>Call</a>') +
+      (d.contact.email ? '<a href="mailto:' + esc(d.contact.email) + '"><span>✉️</span>Email us</a>' : '<a href="' + esc(mapsLink(d)) + '" target="_blank" rel="noopener"><span>🧭</span>Directions</a>') + '</div>';
+    if (g.wifiName || g.wifiPassword) h += '<section class="card sec"><h2 style="font-size:20px;margin-bottom:10px">📶 Wi-Fi</h2><div class="wifi">' + (g.wifiName ? '<div><div class="muted">Network</div><code>' + esc(g.wifiName) + '</code></div>' : '') +
+      (g.wifiPassword ? '<div><div class="muted">Password</div><code>' + esc(g.wifiPassword) + '</code></div><button type="button" class="btn g sm" data-act="copyWifi">Copy password</button>' : '') + '</div></section>';
+    if (g.guestNotes) h += '<section class="card sec"><h2 style="font-size:20px;margin-bottom:8px">ℹ️ Good to know</h2><div class="text">' + esc(g.guestNotes) + '</div></section>';
+    if (d.contact.phone || d.contact.email) h += '<section class="card sec"><h2 style="font-size:20px;margin-bottom:8px">Contact</h2>' + (d.contact.phone ? '<div>📞 <a href="' + esc(telLink(d)) + '">' + esc(d.contact.phone) + '</a></div>' : '') + (d.contact.email ? '<div>✉️ <a href="mailto:' + esc(d.contact.email) + '">' + esc(d.contact.email) + '</a></div>' : '') +
+      '<div style="margin-top:6px">🧭 <a href="' + esc(mapsLink(d)) + '" target="_blank" rel="noopener">Directions</a></div></section>';
+    if (d.showActivities) h += nearbyHtml();
+    h += '<section class="card sec" style="text-align:center"><h2 style="font-size:20px">Loved your stay?</h2><p class="muted">Come back soon. Book direct for our best rate.</p><a class="btn t" href="' + esc(storeUrl()) + '">Book your next stay</a></section>';
+    h += '<p class="foot" style="padding-bottom:30px">' + esc(d.name) + ' · Avante Travel</p></div>';
+    app.innerHTML = h; drawMap();
+  }
+
+  // ---------- printable room card ----------
+  function renderCard() {
+    var d = S.d, g = d.guest || {};
+    var h = '<div class="cardpage"><div class="cardtools"><button type="button" class="btn" data-act="print">🖨️ Print this card</button><a class="btn g" href="' + esc(guestUrl()) + '" target="_blank" rel="noopener">Open the guest page</a></div>' +
+      '<div class="rc"><h1>Welcome to ' + esc(d.name) + '</h1><p class="sub">We\'re glad you\'re here. Everything you need is one scan away.</p>' +
+      '<div class="qr"><figure>' + qrSvg(guestUrl()) + '<figcaption>Scan for guest information</figcaption></figure></div>' +
+      '<div class="lines">' + (d.contact.phone ? '<div><b>Call</b> ' + esc(d.contact.phone) + '</div>' : '') + (d.contact.whatsapp ? '<div><b>WhatsApp</b> +' + esc(d.contact.whatsapp) + '</div>' : '') + (d.contact.email ? '<div><b>Email</b> ' + esc(d.contact.email) + '</div>' : '') +
+      (g.wifiName ? '<div><b>Wi-Fi</b> ' + esc(g.wifiName) + '</div>' : '') + (g.wifiPassword ? '<div><b>Password</b> ' + esc(g.wifiPassword) + '</div>' : '') + '</div>' +
+      '<div class="qr small" style="margin-top:20px"><figure>' + qrSvg(storeUrl()) + '<figcaption>Book your next stay direct</figcaption></figure></div>' +
+      '<div class="by">' + esc(storeUrl().replace(/^https?:\/\//, '')) + '</div></div>' +
+      '<p class="muted noprint" style="text-align:center;margin-top:14px">Prints on A5. Change the details in the hub: Property Affiliate → Front store.</p></div>';
+    app.innerHTML = h;
+  }
+
+  // ---------- actions ----------
+  function val(id) { var el = document.getElementById(id); return el ? el.value : ''; }
+  function syncForm() { if (document.getElementById('ci')) { S.ci = val('ci'); S.co = val('co'); S.adults = +val('ad') || 2; S.children = +val('ch') || 0; } }
+  app.addEventListener('change', function (e) {
+    if (e.target.id === 'ci') { syncForm(); if (S.co <= S.ci) { S.co = add(S.ci, Math.max(1, S.d.minStay || 1)); var co = document.getElementById('co'); if (co) co.value = S.co; } S.quote = null; S.pick = null; drawCal(); }
+    if (e.target.id === 'co') { syncForm(); S.quote = null; S.pick = null; drawCal(); }
+  });
+  document.addEventListener('keydown', function (e) {
+    if (S.lb < 0) return;
+    if (e.key === 'Escape') { closeLb(); } else if (e.key === 'ArrowRight') { showLb(S.lb + 1); } else if (e.key === 'ArrowLeft') { showLb(S.lb - 1); }
+  });
+  var lbEl = null, lbBack = null;
+  function showLb(i) {
+    var ph = S.d.photos || []; if (!ph.length) return; S.lb = (i + ph.length) % ph.length;
+    if (!lbEl) { lbBack = document.activeElement; lbEl = document.createElement('div'); lbEl.className = 'lb'; lbEl.setAttribute('role', 'dialog'); lbEl.setAttribute('aria-modal', 'true'); lbEl.setAttribute('aria-label', 'Photos'); document.body.appendChild(lbEl);
+      lbEl.addEventListener('click', function (e) { var a = e.target.closest('[data-lb]'); if (a) { var k = a.getAttribute('data-lb'); if (k === 'x') closeLb(); else showLb(S.lb + (k === 'n' ? 1 : -1)); } else if (e.target === lbEl) closeLb(); }); }
+    lbEl.innerHTML = '<img src="' + esc(ph[S.lb]) + '" alt="' + esc(S.d.name) + ' photo ' + (S.lb + 1) + '"><button type="button" class="x" data-lb="x" aria-label="Close">✕</button>' + (ph.length > 1 ? '<button type="button" class="pv" data-lb="p" aria-label="Previous photo">‹</button><button type="button" class="nx" data-lb="n" aria-label="Next photo">›</button>' : '') + '<div class="n">' + (S.lb + 1) + ' / ' + ph.length + '</div>';
+    lbEl.querySelector('.x').focus();
+  }
+  function closeLb() { if (lbEl) { lbEl.remove(); lbEl = null; } S.lb = -1; if (lbBack) lbBack.focus(); }
+  app.addEventListener('click', function (e) {
+    var t = e.target.closest('[data-act]'); if (!t) return;
+    var a = t.getAttribute('data-act');
+    if (a === 'lb') return showLb(+t.getAttribute('data-i'));
+    if (a === 'toBook') { var b = document.getElementById('book'); if (b) { b.scrollIntoView({ behavior: 'smooth', block: 'start' }); } return; }
+    if (a === 'mon') { var y = +S.month.slice(0, 4), mo = +S.month.slice(5, 7) - 1 + (+t.getAttribute('data-n')); S.month = new Date(Date.UTC(y, mo, 1)).toISOString().slice(0, 7); drawCal(); loadMonth(); return; }
+    if (a === 'calUnit') { S.calUnit = t.getAttribute('data-u'); return drawCal(); }
+    if (a === 'day') {
+      var dsel = t.getAttribute('data-d'); syncForm();
+      if (!S.picking || dsel <= S.ci) { S.ci = dsel; S.co = add(dsel, Math.max(1, S.d.minStay || 1)); S.picking = true; }
+      else { S.co = add(dsel, 1); S.picking = false; }
+      S.quote = null; S.pick = null; drawCal(); drawBook(); return;
+    }
+    if (a === 'quote') {
+      syncForm(); S.err = ''; S.pick = null;
+      if (!S.ci || !S.co || S.co <= S.ci) { S.err = 'Choose a check-out after the check-in.'; return drawBook(); }
+      S.busy = 'quote'; drawBook();
+      return post({ action: 'quote', checkIn: S.ci, checkOut: S.co }).then(function (r) { S.busy = false; if (!r.ok) { S.err = r.error; S.quote = null; } else S.quote = r; drawBook(); }).catch(function () { S.busy = false; S.err = 'Couldn\'t check right now. Try again.'; drawBook(); });
+    }
+    if (a === 'pick') { S.pick = S.quote.results.find(function (r) { return r.unit === t.getAttribute('data-u'); }); drawBook(); var f = document.getElementById('gf'); if (f) f.focus(); return; }
+    if (a === 'unpick') { S.pick = null; return drawBook(); }
+    if (a === 'book') {
+      var g = { first: val('gf').trim(), last: val('gl').trim(), email: val('ge').trim(), cellphone: val('gc').trim() };
+      S.err = '';
+      if (!g.first || !g.last) S.err = 'Enter your first and last name.';
+      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(g.email)) S.err = 'Enter a valid email address.';
+      else if (g.cellphone.replace(/\D/g, '').length < 9) S.err = 'Enter your cellphone number.';
+      if (S.err) { var keep = { gf: val('gf'), gl: val('gl'), ge: val('ge'), gc: val('gc'), gn: val('gn') }; drawBook(); Object.keys(keep).forEach(function (k) { var el = document.getElementById(k); if (el) el.value = keep[k]; }); return; }
+      S.busy = 'book'; t.disabled = true; t.textContent = 'Booking…';
+      return post({ action: 'book', checkIn: S.quote.checkIn, checkOut: S.quote.checkOut, unit: S.pick.unit, guest: g, adults: S.adults, children: S.children, notes: val('gn'), website: val('website') }).then(function (r) {
+        S.busy = false;
+        if (!r.ok) { S.err = r.error || 'The booking didn\'t go through.'; t.disabled = false; t.textContent = 'Confirm booking'; var er = document.querySelector('#book .err'); if (er) er.remove(); t.insertAdjacentHTML('afterend', '<div class="err" role="alert">' + esc(S.err) + '</div>'); return; }
+        S.booked = r; S.quote = null; S.pick = null; S.monthData = {}; drawBook(); loadMonth(); document.getElementById('book').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }).catch(function () { S.busy = false; t.disabled = false; t.textContent = 'Confirm booking'; });
+    }
+    if (a === 'again') { S.booked = null; return drawBook(); }
+    if (a === 'km') { S.km = +t.getAttribute('data-k'); return api('slug=' + encodeURIComponent(CFG.slug) + (CFG.mode === 'guest' ? '&guest=1' + (CFG.key ? '&key=' + encodeURIComponent(CFG.key) : '') : '') + '&km=' + S.km).then(function (d) { if (d.ok) { S.d.nearby = d.nearby; S.km = d.nearbyKm; var el = document.getElementById('nearby'); if (el) { el.outerHTML = nearbyHtml(); drawMap(); } } }); }
+    if (a === 'copyWifi') { var pw = (S.d.guest || {}).wifiPassword || ''; (navigator.clipboard ? navigator.clipboard.writeText(pw) : Promise.reject()).then(function () { t.textContent = 'Copied ✓'; }, function () { prompt('Wi-Fi password:', pw); }); return; }
+    if (a === 'print') { window.print(); return; }
+  });
+  if (!CFG.slug) { app.innerHTML = '<div class="center"><h1>This link is incomplete</h1></div>'; return; }
+  load();
+})();
+</script>
+</body>
+</html>

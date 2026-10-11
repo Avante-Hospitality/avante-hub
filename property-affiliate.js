@@ -99,13 +99,13 @@
   // ---------- render ----------
   // Slim header + one sticky tab bar. Calendar is the home view (the date
   // search with the unit calendar right under it).
-  var TABS = [['avail', 'Calendar'], ['book', 'Bookings'], ['guests', 'Guests'], ['msgs', 'Communication'], ['chan', 'Channels'], ['rev', 'Reviews']];
+  var TABS = [['avail', 'Calendar'], ['book', 'Bookings'], ['guests', 'Guests'], ['msgs', 'Communication'], ['front', 'Front store'], ['chan', 'Channels'], ['rev', 'Reviews']];
   function render() {
     if (S.view === 'msgs') collectMsgEdit(); // keep what was typed in the scheduled messages
     var connected = !!(S.token && S.prop);
     var h = '<div class="pa">';
     // "How to" opens this screen's part of the property affiliate guide (how-to-property.html).
-    var howTo = !connected ? 'how-to-property.html#connect' : S.view === 'onb' ? 'how-to.html#property' : 'how-to-property.html#' + ({ avail: 'avail', book: 'book', guests: 'guests', msgs: 'msgs', chan: 'chan', rev: 'rev' }[S.view] || 'tabs');
+    var howTo = !connected ? 'how-to-property.html#connect' : S.view === 'onb' ? 'how-to.html#property' : 'how-to-property.html#' + ({ avail: 'avail', book: 'book', guests: 'guests', msgs: 'msgs', front: 'frontstore', chan: 'chan', rev: 'rev' }[S.view] || 'tabs');
     h += '<header class="pa-top"><span class="pa-kicker">Property Affiliate</span>' + (connected ? '<b class="pa-propname">' + esc(S.prop.resortName || 'Your property') + '</b><span class="pa-hint pa-top-meta">' + S.prop.units.length + ' units · SN site ' + esc(S.prop.site) + '</span>' : '') +
       '<a class="pa-howto" href="' + howTo + '" target="_blank" rel="noopener" aria-label="How to use this screen (opens the guide in a new tab)">❓ How to</a></header>';
     var inMore = S.view === 'onb';
@@ -127,6 +127,7 @@
     else if (S.view === 'guests') h += viewGuests();
     else if (S.view === 'msgs') h += viewMessages();
     else if (S.view === 'rev') h += viewReviews();
+    else if (S.view === 'front') h += viewFront();
     h += '</div>';
     if (S.modal) h += '<div class="pa">' + viewModal() + '</div>';
     root.innerHTML = h;
@@ -602,6 +603,91 @@
     return String(text || '').replace(/\{(\w+)\}/g, function (m, k) { return k in vals ? vals[k] : m; }).trim();
   }
 
+  // ---- Front store (public page /stay/<slug>, guest page, room card) ----
+  function qrSvg(text, px) {
+    try { var q = qrcode(0, 'M'); q.addData(text); q.make(); return q.createSvgTag({ cellSize: 4, margin: 2, scalable: true }).replace('<svg ', '<svg style="width:' + (px || 150) + 'px;height:' + (px || 150) + 'px" role="img" aria-label="QR code for ' + esc(text) + '" '); } catch (e) { return ''; }
+  }
+  function frontPhotos() {
+    var F = S.front, all = [];
+    (F.uploadedPhotos || []).concat(F.snPhotos || []).forEach(function (u) { if (all.indexOf(u) < 0) all.push(u); });
+    var chosen = Array.isArray(F.settings.photos) ? F.settings.photos.slice() : null;
+    return { all: all, chosen: chosen };
+  }
+  function linkRow(label, url, act) {
+    return '<div class="pa-field" style="margin-top:10px"><span class="pa-label">' + label + '</span><div class="pa-copy"><input type="text" readonly value="' + esc(url) + '" aria-label="' + esc(label) + '">' +
+      '<button type="button" class="pa-btn small" data-act="copy" data-text="' + esc(url) + '">Copy</button><a class="pa-btn small ghost pa-linkbtn" href="' + esc(url) + '" target="_blank" rel="noopener">Open</a></div></div>';
+  }
+  function viewFront() {
+    var F = S.front;
+    if (!F) return '<div class="pa-card pa-hint">Loading…</div>';
+    var st = F.settings, on = st.on, ph = frontPhotos();
+    var h = '<section class="pa-card" aria-label="Front store"><div class="pa-row" style="justify-content:space-between;align-items:center"><div><p class="pa-h2" style="margin:0">Your front store</p>' +
+      '<p class="pa-hint" style="margin:0">Your own page that sells only ' + esc(S.prop.resortName || 'your property') + ': photos, live availability, and guests book and pay on the page. Bookings come in as normal bookings (source "Front store").</p></div>' +
+      '<span class="pa-pill" style="background:' + (on ? '#d4f5f2;color:#065e58' : '#eef2f2;color:#333') + '">' + (on ? 'On' : 'Off') + '</span></div>' +
+      '<div class="pa-row" style="margin-top:12px;align-items:flex-end"><div class="pa-field" style="flex:2 1 260px"><label class="pa-label" for="fs-slug">Link name</label><div class="pa-copy"><span style="align-self:center;font-size:13px;color:#5f6b6e;white-space:nowrap">go.avantetravel.co.za/stay/</span><input id="fs-slug" type="text" value="' + esc(st.slug) + '" maxlength="60" autocapitalize="off" spellcheck="false"></div></div>' +
+      '<label class="pa-check" style="min-height:44px"><input type="checkbox" id="fs-on"' + (on ? ' checked' : '') + '> Front store switched on</label></div>' +
+      '<div class="pa-row" style="margin-top:10px"><button type="button" class="pa-btn" data-act="saveFront">Save</button></div></section>';
+    if (on) {
+      h += '<section class="pa-card" aria-label="Links and QR codes"><p class="pa-h2">Links and QR codes</p><div class="pa-qrgrid">' +
+        '<div class="pa-qr"><div class="pa-qrbox">' + qrSvg(F.url, 150) + '</div><b>Front store</b><span class="pa-hint">For your website, Instagram bio, WhatsApp status, flyers and guests.</span>' + linkRow('Link', F.url) +
+        '<div class="pa-actions" style="margin-top:8px"><button type="button" class="pa-btn small ghost" data-act="dlQr" data-url="' + esc(F.url) + '" data-name="front-store">Download QR</button><a class="pa-btn small ghost pa-linkbtn" href="https://wa.me/?text=' + encodeURIComponent('Book ' + (S.prop.resortName || 'with us') + ' direct: ' + F.url) + '" target="_blank" rel="noopener">Share on WhatsApp</a></div></div>' +
+        '<div class="pa-qr"><div class="pa-qrbox">' + qrSvg(F.guestUrl, 150) + '</div><b>Guest page (in-house guests)</b><span class="pa-hint">Contact details, Wi-Fi, house info and things to do. For guests who are staying.</span>' + linkRow('Link', F.guestUrl) +
+        '<div class="pa-actions" style="margin-top:8px"><button type="button" class="pa-btn small ghost" data-act="dlQr" data-url="' + esc(F.guestUrl) + '" data-name="guest-page">Download QR</button><a class="pa-btn small teal pa-linkbtn" href="' + esc(F.cardUrl) + '" target="_blank" rel="noopener">🖨️ Print room card</a><button type="button" class="pa-btn small ghost" data-act="fsNewKey">New guest link</button></div></div></div>' +
+        '<p class="pa-hint" style="margin:10px 0 0">The room card has the guest page QR, your contact details and Wi-Fi, and a small QR to book the next stay. Print one for every room. The guest page link is secret (Wi-Fi is on it): only give it to guests. <b>New guest link</b> makes a new one; old cards and links then stop showing Wi-Fi and house info.</p></section>';
+      var s1 = F.stats.thisMonth || {}, s0 = F.stats.lastMonth || {};
+      h += '<div class="pa-stats"><div class="pa-stat" style="background:#0e2f44;color:#fff"><b>' + (s1.visits || 0) + '</b><span style="color:#d6e2e9">front store visits this month (last month ' + (s0.visits || 0) + ')</span></div>' +
+        '<div class="pa-stat" style="background:#f4fbfa;border:1.5px solid #e3e9e8"><b style="color:#0e2f44">' + (s1.bookings || 0) + '</b><span>bookings from the front store this month (last month ' + (s0.bookings || 0) + ')</span></div>' +
+        '<div class="pa-stat" style="background:#fff4e5;border:1.5px solid #f5c98a;color:#6b3a00"><b>' + (s1.guestVisits || 0) + '</b><span>guest page visits this month</span></div></div>';
+    }
+    // what shows
+    h += '<section class="pa-card" aria-label="What shows"><p class="pa-h2">What shows on the page</p><div class="pa-form" style="margin-top:6px">' +
+      [['fs-prices', 'showPrices', 'Prices'], ['fs-cal', 'showCalendar', 'Availability calendar'], ['fs-acts', 'showActivities', 'Things to do nearby'], ['fs-offers', 'showOffers', 'Your special offers (hooks you manage yourself)']].map(function (x) {
+        return '<label class="pa-check"><input type="checkbox" id="' + x[0] + '"' + (st[x[1]] ? ' checked' : '') + '> ' + x[2] + '</label>'; }).join('') + '</div>' +
+      '<div class="pa-row" style="margin-top:12px"><div class="pa-field" style="flex:0 1 220px"><label class="pa-label" for="fs-km">Things to do: within</label><select id="fs-km">' + [5, 10, 20, 30, 50, 75, 100, 150].map(function (k) { return '<option value="' + k + '"' + (+st.nearbyKm === k ? ' selected' : '') + '>' + k + ' km</option>'; }).join('') + '</select></div>' +
+      '<div class="pa-field" style="flex:0 1 220px"><label class="pa-label" for="fs-notice">Book at least … days ahead</label><input id="fs-notice" type="number" min="0" max="30" value="' + esc(st.minNoticeDays || 0) + '"></div></div>' +
+      '<p class="pa-hint">Guests can also pick another distance on the page. 0 days ahead means guests can book for tonight. Your minimum stay and calendar start date (Channels) also apply.</p>' +
+      '<fieldset class="pa-fieldset"><legend class="pa-label">Units on the page</legend>' + F.units.map(function (u) { return '<label class="pa-check"><input type="checkbox" data-fsunit="' + esc(u.name) + '"' + ((st.hiddenUnits || []).indexOf(u.name) < 0 ? ' checked' : '') + '> ' + esc(u.name) + (u.size ? ' <span class="pa-hint">· ' + esc(u.size) + '</span>' : '') + '</label>'; }).join('') + '</fieldset></section>';
+    // words + contact
+    h += '<section class="pa-card" aria-label="Words and contact"><p class="pa-h2">Words and contact details</p>' +
+      '<div class="pa-field"><label class="pa-label" for="fs-welcome">Welcome line (under your name)</label><input id="fs-welcome" type="text" maxlength="160" value="' + esc(st.welcome) + '" placeholder="e.g. Beachfront cottages on Keurbooms lagoon"></div>' +
+      '<div class="pa-field" style="margin-top:10px"><label class="pa-label" for="fs-desc">About the property</label><textarea id="fs-desc" rows="6" placeholder="' + esc(F.snDescription ? 'Empty = your Stock Network description is used' : 'Tell guests about your property') + '">' + esc(st.description) + '</textarea></div>' +
+      '<div class="pa-form" style="margin-top:10px"><div class="pa-field"><label class="pa-label" for="fs-phone">Phone</label><input id="fs-phone" type="tel" value="' + esc(st.phone) + '" placeholder="' + esc(F.propertyPhone || '') + '"></div>' +
+      '<div class="pa-field"><label class="pa-label" for="fs-wa">WhatsApp number</label><input id="fs-wa" type="tel" value="' + esc(st.whatsapp) + '" placeholder="Empty = the phone number"></div>' +
+      '<div class="pa-field"><label class="pa-label" for="fs-email">Email</label><input id="fs-email" type="email" value="' + esc(st.email) + '" placeholder="' + esc(F.propertyEmail || '') + '"></div></div>' +
+      '<p class="pa-hint">Empty boxes use your Reservation settings (Channels).</p></section>';
+    // in-house guests
+    h += '<section class="pa-card" aria-label="Guest page"><p class="pa-h2">Guest page and room card</p><p class="pa-hint">Only on the guest page and the printed room card, not on the public front store.</p>' +
+      '<div class="pa-form"><div class="pa-field"><label class="pa-label" for="fs-wifi">Wi-Fi network</label><input id="fs-wifi" type="text" value="' + esc(st.wifiName) + '"></div>' +
+      '<div class="pa-field"><label class="pa-label" for="fs-wifipw">Wi-Fi password</label><input id="fs-wifipw" type="text" value="' + esc(st.wifiPassword) + '"></div></div>' +
+      '<div class="pa-field" style="margin-top:10px"><label class="pa-label" for="fs-notes">Good to know (house info)</label><textarea id="fs-notes" rows="5" placeholder="e.g. Check-out by 10:00. Braai wood at reception. Gate code 1234. Quiet time after 22:00.">' + esc(st.guestNotes) + '</textarea></div></section>';
+    // photos
+    var shown = ph.chosen || ph.all;
+    h += '<section class="pa-card" aria-label="Photos"><div class="pa-row" style="justify-content:space-between;align-items:center"><div><p class="pa-h2" style="margin:0">Photos</p><p class="pa-hint" style="margin:0">' + (ph.chosen ? 'Your own choice and order. The first photo is the big one at the top.' : 'Automatic: your uploaded photos, then Stock Network\'s. Untick or move one to make your own choice.') + '</p></div>' +
+      '<div class="pa-actions"><button type="button" class="pa-btn small" data-act="fsUpload">Upload photo</button><input type="file" id="fs-file" accept="image/jpeg,image/png,image/webp" style="display:none">' + (ph.chosen ? '<button type="button" class="pa-btn small ghost" data-act="fsAuto">Back to automatic</button>' : '') + '</div></div>';
+    h += ph.all.length ? '<div class="pa-photos">' + ph.all.slice().sort(function (a, b) { var ia = shown.indexOf(a), ib = shown.indexOf(b); return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib); }).map(function (u) {
+      var i = shown.indexOf(u), mine = (F.uploadedPhotos || []).indexOf(u) >= 0;
+      return '<div class="pa-photo' + (i < 0 ? ' off' : '') + '"><img src="' + esc(u) + '" alt="" loading="lazy"><div class="pa-actions" style="gap:4px;padding:6px">' +
+        '<label class="pa-check" style="font-size:12.5px"><input type="checkbox" data-fsphoto="' + esc(u) + '"' + (i >= 0 ? ' checked' : '') + '> ' + (i === 0 ? 'Cover' : 'Show') + '</label>' +
+        (i > 0 ? '<button type="button" class="pa-btn small ghost" data-act="fsUp" data-u="' + esc(u) + '" aria-label="Move earlier">↑</button>' : '') +
+        (mine ? '<button type="button" class="pa-btn small danger" data-act="fsDel" data-u="' + esc(u) + '" aria-label="Delete photo">✕</button>' : '') + '</div></div>';
+    }).join('') + '</div>' : '<p class="pa-hint">No photos yet. Upload some, or add photos on Stock Network.</p>';
+    h += '</section><div class="pa-row" style="margin-bottom:18px"><button type="button" class="pa-btn" data-act="saveFront">Save front store</button>' + (on ? '<a class="pa-btn ghost pa-linkbtn" href="' + esc(F.url) + '" target="_blank" rel="noopener">View my front store</a>' : '') + '</div>';
+    return h;
+  }
+  function collectFront() {
+    var F = S.front, b = {};
+    var g = function (id) { var el = document.getElementById(id); return el ? el : null; };
+    if (!g('fs-slug')) return null;
+    b.slug = g('fs-slug').value; b.on = g('fs-on').checked;
+    b.showPrices = g('fs-prices').checked; b.showCalendar = g('fs-cal').checked; b.showActivities = g('fs-acts').checked; b.showOffers = g('fs-offers').checked;
+    b.nearbyKm = +g('fs-km').value; b.minNoticeDays = g('fs-notice').value;
+    b.hiddenUnits = [].slice.call(root.querySelectorAll('[data-fsunit]')).filter(function (x) { return !x.checked; }).map(function (x) { return x.dataset.fsunit; });
+    b.welcome = g('fs-welcome').value; b.description = g('fs-desc').value; b.phone = g('fs-phone').value; b.whatsapp = g('fs-wa').value; b.email = g('fs-email').value;
+    b.wifiName = g('fs-wifi').value; b.wifiPassword = g('fs-wifipw').value; b.guestNotes = g('fs-notes').value;
+    b.photos = F.settings.photos; // changed by the photo controls directly
+    return b;
+  }
+
   // ---- Reviews ----
   function viewReviews() {
     return propHeader() + '<div class="pa-stats"><div class="pa-stat" style="background:#0e2f44;color:#fff"><span style="font:700 12px Montserrat,sans-serif;text-transform:uppercase;letter-spacing:.06em;color:#9fe9e3">Avante guest rating</span><span style="color:#d6e2e9;line-height:1.5">Shows on your listing once you have 3 Avante guest reviews. Until then guests see your Google reviews.</span></div>' +
@@ -749,6 +835,7 @@
     if (v === 'book') api('find', { q: S.findQ }).then(function (d) { S.bookings = d.bookings; S.payMode = d.payMode; render(); }).catch(fail);
     if (v === 'guests') api('guests').then(function (d) { S.guests = d.guests; render(); }).catch(fail);
     if (v === 'msgs') loadMessages();
+    if (v === 'front') api('frontStore').then(function (d) { S.front = d; render(); }).catch(fail);
   }
   function openBooking(bk, tab) { S.edit = bk; S.bTab = tab || 'guest'; S.modalNote = null; S.modal = { type: 'edit' }; if (!S.av) loadAvailability(S.from); if (!S.messages) loadMessages(); render(); }
   function updateBooking(bk) {
@@ -818,7 +905,39 @@
   document.addEventListener('click', function (e) { if (S.more && !e.target.closest('.pa-more')) { S.more = false; render(); } });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && S.more) { S.more = false; render(); var b = root.querySelector('[data-act="more"]'); if (b) b.focus(); } });
   // Changing when a scheduled message goes out shows the matching fields (days or date).
+  // Front store helpers: keep what was typed when the photo list re-renders; QR as a PNG.
+  function keepFront() { var b = collectFront(); if (b) Object.assign(S.front.settings, b); }
+  function mergeFront(d) { d.snPhotos = S.front && S.front.snPhotos || d.snPhotos || []; d.snDescription = S.front && S.front.snDescription || ''; S.front = d; }
+  function qrPng(text) {
+    var q = qrcode(0, 'M'); q.addData(text); q.make();
+    var n = q.getModuleCount(), cell = 20, m = 4, c = document.createElement('canvas'); c.width = c.height = (n + m * 2) * cell;
+    var x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.fillStyle = '#000';
+    for (var r = 0; r < n; r++) for (var k = 0; k < n; k++) if (q.isDark(r, k)) x.fillRect((k + m) * cell, (r + m) * cell, cell, cell);
+    return c.toDataURL('image/png');
+  }
+  function shrinkPhoto(file) {
+    return new Promise(function (resolve, reject) {
+      var img = new Image(), url = URL.createObjectURL(file);
+      img.onload = function () { var max = 1800, w = img.width, h = img.height, k = Math.min(1, max / Math.max(w, h)); var c = document.createElement('canvas'); c.width = Math.round(w * k); c.height = Math.round(h * k); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url); resolve(c.toDataURL('image/jpeg', 0.86)); };
+      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('That file isn\'t a photo the browser can read.')); };
+      img.src = url;
+    });
+  }
   root.addEventListener('change', function (e) {
+    if (e.target.dataset && e.target.dataset.fsphoto) {
+      keepFront(); var F = S.front, ph = frontPhotos(), list = ph.chosen || ph.all.slice(), u = e.target.dataset.fsphoto;
+      if (e.target.checked) { if (list.indexOf(u) < 0) list.push(u); } else list = list.filter(function (x) { return x !== u; });
+      F.settings.photos = list; return render();
+    }
+    if (e.target.id === 'fs-file') {
+      var file = e.target.files && e.target.files[0]; e.target.value = ''; if (!file) return;
+      keepFront(); S.msg = 'Uploading photo…'; render();
+      return shrinkPhoto(file).then(function (du) { return api('uploadFrontPhoto', { dataUrl: du }); }).then(function (d) {
+        var keep = S.front.settings; mergeFront(d.view); S.front.settings = Object.assign({}, S.front.settings, keep);
+        if (Array.isArray(S.front.settings.photos)) S.front.settings.photos.push(d.url);
+        S.msg = 'Photo uploaded. Tap Save front store to keep your photo choices.'; render();
+      }).catch(function (err) { S.msg = null; fail(err); });
+    }
     if (e.target.dataset && e.target.dataset.bulkref && S.modal && S.modal.type === 'bulk') {
       var bm = S.modal; bm.text = val('pa-bulk-text'); bm.subject = val('pa-bulk-subj'); bm.sel = bm.sel || {}; bm.sel[e.target.dataset.bulkref] = e.target.checked;
       var rf = e.target.dataset.bulkref; render(); var cb = root.querySelector('[data-bulkref="' + rf + '"]'); if (cb) cb.focus(); return;
@@ -1007,6 +1126,25 @@
       if (!confirm('Remove the "' + (rmM.name || 'Message') + '" message? It stops going to guests once you save.')) return;
       S.msgEdit.splice(+t.dataset.i, 1); S.msgDirty = true; return render();
     }
+    if (a === 'saveFront') {
+      var fb = collectFront(); if (!fb) return;
+      t.textContent = 'Saving…';
+      return api('saveFrontStore', { frontStore: fb }).then(function (d) { mergeFront(d); S.msg = d.settings.on ? 'Front store saved. It\'s live at ' + d.url : 'Front store saved (switched off).'; render(); window.scrollTo(0, 0); }).catch(function (e) { fail(e); window.scrollTo(0, 0); });
+    }
+    if (a === 'fsNewKey') {
+      if (!confirm('Make a new guest page link?\n\nThe old link and the QR on printed room cards stop showing your Wi-Fi and house info. Print new room cards afterwards.')) return;
+      var fk = collectFront() || {}; fk.newGuestKey = true;
+      return api('saveFrontStore', { frontStore: fk }).then(function (d) { mergeFront(d); S.msg = 'New guest link made. Print new room cards.'; render(); window.scrollTo(0, 0); }).catch(fail);
+    }
+    if (a === 'fsUpload') { var fi = document.getElementById('fs-file'); if (fi) fi.click(); return; }
+    if (a === 'fsAuto') { keepFront(); S.front.settings.photos = null; return render(); }
+    if (a === 'fsUp') { keepFront(); var ph2 = frontPhotos(), l2 = ph2.chosen || ph2.all.slice(), ix = l2.indexOf(t.dataset.u); if (ix > 0) { l2.splice(ix, 1); l2.splice(ix - 1, 0, t.dataset.u); } S.front.settings.photos = l2; return render(); }
+    if (a === 'fsDel') {
+      if (!confirm('Delete this photo? It can\'t be undone.')) return;
+      keepFront(); var keep2 = S.front.settings;
+      return api('removeFrontPhoto', { url: t.dataset.u }).then(function (d) { mergeFront(d); S.front.settings = Object.assign({}, S.front.settings, keep2, { photos: Array.isArray(keep2.photos) ? keep2.photos.filter(function (x) { return x !== t.dataset.u; }) : null }); render(); }).catch(fail);
+    }
+    if (a === 'dlQr') { try { var dl2 = document.createElement('a'); dl2.href = qrPng(t.dataset.url); dl2.download = (S.prop.resortName || 'property').replace(/[^a-z0-9]+/gi, '-').toLowerCase() + '-' + t.dataset.name + '-qr.png'; document.body.appendChild(dl2); dl2.click(); dl2.remove(); } catch (e2) { fail(e2); } return; }
     if (a === 'saveMessages') {
       collectMsgEdit();
       var sendList = msgEditList().map(function (m) { var o = Object.assign({}, m); delete o._open; return o; });
