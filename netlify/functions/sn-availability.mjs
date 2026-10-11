@@ -21,7 +21,7 @@ async function login() {
     if (!r.ok) continue;
     const d = await r.json();
     const exp = Number(d.expiresDT) || Date.parse(d.expiresDT) || Date.now() + 20 * 60e3;
-    TOKEN = { accessToken: d.accessToken, siteId: d.siteId, expires: exp };
+    TOKEN = { accessToken: d.accessToken, siteId: d.siteId, site: d.site, via: path, expires: exp };
     return TOKEN;
   }
   throw new Error("Stock Network did not accept the login.");
@@ -55,7 +55,7 @@ async function search(id, checkIn, checkOut, retried, debug) {
       if (rate > 0 && (from === null || rate < from)) from = rate;
     }
   }
-  if (debug) return { available: units > 0, units, from, sample, resorts: (d.stockAvailability || []).length };
+  if (debug) return { available: units > 0, units, from, sample, resorts: (d.stockAvailability || []).length, loginSite: t.site, loginSiteId: t.siteId, loginVia: t.via, http: r.status, keys: Object.keys(d || {}), raw: JSON.stringify(d).slice(0, 600) };
   return { available: units > 0, units, from };
 }
 
