@@ -59,6 +59,35 @@ async function search(id, checkIn, checkOut, retried, debug) {
   return { available: units > 0, units, from };
 }
 
+
+// One-property probe (debug only): ask SN the same question five ways and
+// report how many resorts/rows each returns, to find the form SN answers.
+async function probe(id, checkIn, checkOut, lat, lng) {
+  const t = await token();
+  const base = { checkInDate: checkIn, checkOutDate: checkOut, resortID: id,
+    geocoordinates: { latitude: 0, longitude: 0, withInKmRadius: 0 }, pricing: { minPrice: 0, maxPrice: 100000000 },
+    region: { name: "" }, ignoreLocationData: true, groupStockToMatchDates: false, extendDatesIfNoMatchFound: false };
+  const variants = {
+    asNow: base,
+    group: { ...base, groupStockToMatchDates: true },
+    extend: { ...base, extendDatesIfNoMatchFound: true },
+    geo: { ...base, ignoreLocationData: false, geocoordinates: { latitude: lat || 0, longitude: lng || 0, withInKmRadius: 5 } },
+    noResortGeo: { ...base, resortID: null, ignoreLocationData: false, geocoordinates: { latitude: lat || 0, longitude: lng || 0, withInKmRadius: 5 } },
+  };
+  const out = {};
+  for (const [k, body] of Object.entries(variants)) {
+    try {
+      const r = await fetch(BASE + "/api/1/search?Offset=1&Limit=50&CallerDetails.SiteID=" + encodeURIComponent(t.siteId), {
+        method: "POST", headers: { authorization: "Bearer " + t.accessToken, "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify(body), signal: AbortSignal.timeout(20000) });
+      const d = await r.json().catch(() => ({}));
+      const sa = d.stockAvailability || [];
+      out[k] = { http: r.status, rows: d.totalRowCount, resorts: sa.length, hasThis: sa.some((x) => String(x.resortId || "").toLowerCase() === id), names: sa.slice(0, 3).map((x) => x.resortName) };
+    } catch (e) { out[k] = { error: String(e.message || e) }; }
+  }
+  return out;
+}
+
 export default async (req) => {
   if (req.method !== "POST") return json({ ok: false, error: "Use POST." }, 405);
   const configured = !!(process.env.STOCKNETWORK_USERNAME && process.env.STOCKNETWORK_CLIENT_ID && process.env.STOCKNETWORK_CLIENT_SECRET);
@@ -67,6 +96,7 @@ export default async (req) => {
   if (!configured) return json({ ok: true, configured: false, results: {} });
   const ids = [...new Set((Array.isArray(b.ids) ? b.ids : []).map((x) => String(x).toLowerCase()).filter((x) => GUID.test(x)))].slice(0, 60);
   if (!ISO.test(b.checkIn || "") || !ISO.test(b.checkOut || "") || b.checkOut <= b.checkIn) return json({ ok: false, error: "Pick a check-in and check-out date." }, 400);
+  if (b.probe === true && ids.length === 1) return json({ ok: true, probe: await probe(ids[0], b.checkIn, b.checkOut, Number(b.lat), Number(b.lng)) });
   const results = {}; let i = 0;
   const worker = async () => { while (i < ids.length) { const id = ids[i++];
     try { results[id] = await search(id, b.checkIn, b.checkOut, false, b.debug === true && ids.length === 1); } catch (e) { results[id] = { error: String(e.message || e) }; } } };
