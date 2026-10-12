@@ -7,6 +7,7 @@ import { createCore } from "./lib/pa-core.js";
 import { addDays } from "./lib/sn-client.js";
 
 const json = (o, s = 200) => new Response(JSON.stringify(o, null, 1), { status: s, headers: { "content-type": "application/json", "cache-control": "no-store" } });
+const isTest = (p) => String(p.site) === "3" || /test/i.test(p.resortName || "");
 const cut = (v) => { const t = typeof v === "string" ? v : JSON.stringify(v); return t && t.length > 2500 ? t.slice(0, 2500) + "…" : t; };
 
 export default async (request) => {
@@ -19,9 +20,15 @@ export default async (request) => {
   const env = (k) => (typeof Netlify !== "undefined" ? Netlify.env.get(k) : Deno.env.get(k)) || "";
   const store = getStore({ name: "property-affiliate", consistency: "strong" });
   const core = createCore({ store, resortStore: getStore({ name: "resort-list", consistency: "strong" }), encKey: env("PA_ENC_KEY"), baseUrl: new URL(request.url).origin });
-  let prop = null;
-  for (const b of (await store.list({ prefix: "site:" })).blobs) { const p = await store.get(b.key, { type: "json" }); if (p && String(p.site) === "3") { prop = p; break; } }
-  if (!prop) return json({ ok: false, error: "Property Testing (site 3) isn't connected in Property Affiliate." }, 404);
+  // Every property connected in Property Affiliate (site number and name only).
+  const props = [];
+  for (const b of (await store.list({ prefix: "site:" })).blobs) { const p = await store.get(b.key, { type: "json" }).catch(() => null); if (p && p.credsEnc) props.push(p); }
+  const brief = props.map((p) => ({ site: String(p.site), name: p.resortName || "", testSite: isTest(p) }));
+  if (body.action === "sites") return json({ ok: true, sites: brief });
+  const prop = props.find((p) => String(p.site) === String(body.site || "3"));
+  if (!prop) return json({ ok: false, error: "Site " + (body.site || "3") + " isn't connected in Property Affiliate.", connected: brief }, 404);
+  // Test bookings only on a test site, never on a real property.
+  if (body.action === "cycle" && !isTest(prop)) return json({ ok: false, error: "Booking tests only run on a test site (site 3 or a name with \"test\"). " + (prop.resortName || "") + " is a real property." }, 403);
   const c = await core.clientFor(prop);
   const t = await c.token();
   const log = [];

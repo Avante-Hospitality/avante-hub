@@ -5,9 +5,10 @@
 <body>
 <!-- TEMPORARY (Oct 2026): remove with netlify/edge-functions/sn-probe-api.js after testing. -->
 <h1>Stock Network API test (temporary)</h1>
-<p class="n">Admin only. Works on the <b>Property Testing</b> site (site 3) only. If a password box shows, log in there first.<br>
+<p class="n">Admin only. Choose the site (tap Show connected sites). The read test works on any site; booking tests only on a test site. If a password box shows, log in there first.<br>
 <b>1. Read test</b> only reads. <b>2. Booking test</b> makes one test booking ("API Test (please ignore)", 30–75 days ahead), tries Booked, a R1 EFT payment and Confirmed, then cancels it. <b>3</b> does the same with "request and pay".</p>
 <p id="loginRow" style="display:none"><label>Admin password <input id="pw" type="password" style="min-height:40px;padding:0 10px;border:1px solid #ccc;border-radius:8px"></label> <button type="button" id="loginBtn">Log in</button></p>
+<p><label>Site: <select id="site" style="min-height:40px"><option value="3">3 (Property Testing)</option></select></label> <button type="button" class="g" id="loadSites">Show connected sites</button></p>
 <button type="button" data-a="read">1. Read test</button><button type="button" data-a="cycle">2. Booking test</button><button type="button" data-a="cycle" data-rp="1" class="g">3. Booking test (request and pay)</button><button type="button" id="copy" class="g">Copy results</button>
 <pre id="out">Results appear here. Then tap Copy results and paste them to Claude.</pre>
 <script>
@@ -25,9 +26,16 @@ document.querySelectorAll('[data-a]').forEach(function (b) { b.addEventListener(
   var tok = tokenNow();
   if (b.dataset.a === 'cycle' && !confirm('Make one test booking on Property Testing and cancel it again?')) return;
   b.disabled = true; out.textContent = 'Running…';
-  fetch('/api/sn-probe', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: tok, action: b.dataset.a, requestAndPay: !!b.dataset.rp }) })
+  fetch('/api/sn-probe', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: tok, action: b.dataset.a, requestAndPay: !!b.dataset.rp, site: document.getElementById('site').value }) })
     .then(function (r) { return r.text(); }).then(function (t) { if (/Log in to admin first/.test(t)) { try { sessionStorage.removeItem('avante-admin-token'); } catch (e) {} document.getElementById('loginRow').style.display = ''; } all.push('### ' + b.textContent + '\n' + t); out.textContent = all.join('\n\n'); b.disabled = false; })
     .catch(function (e) { out.textContent = 'Error: ' + e; b.disabled = false; });
 }); });
+document.getElementById('loadSites').addEventListener('click', function () {
+  fetch('/api/sn-probe', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: tokenNow(), action: 'sites' }) }).then(function (r) { return r.json(); }).then(function (d) {
+    if (!d.ok) { out.textContent = d.error || 'Error'; if (/Log in/.test(d.error || '')) document.getElementById('loginRow').style.display = ''; return; }
+    var sel = document.getElementById('site'); sel.innerHTML = d.sites.map(function (x) { return '<option value="' + x.site + '">' + x.site + ' · ' + x.name.replace(/</g, '') + (x.testSite ? ' (test)' : '') + '</option>'; }).join('') || '<option value="">None connected</option>';
+    out.textContent = d.sites.length + ' connected site(s). Booking tests only run on a test site; the read test works on any.';
+  });
+});
 document.getElementById('copy').addEventListener('click', function () { navigator.clipboard.writeText(out.textContent).then(function () { document.getElementById('copy').textContent = 'Copied ✓'; }, function () { prompt('Copy:', out.textContent); }); });
 </script></body></html>
