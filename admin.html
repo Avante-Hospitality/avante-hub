@@ -533,6 +533,21 @@
     </span>
   </div>
 
+  <!-- Post to Facebook preview (Jean, 2026-10-12): the exact picture and
+       wording that will be posted, before anything goes public. -->
+  <div class="modal-overlay" id="fbPostOverlay" style="z-index:2147483100;">
+    <div class="modal-card" style="max-width:460px; max-height:92vh; overflow:auto;">
+      <h2>Post to Facebook</h2>
+      <p class="modal-sub">This is exactly what goes on the Avante Travel Page. It goes public straight away.</p>
+      <img id="fbPostImg" alt="The Facebook picture" style="display:block; width:auto; max-width:100%; max-height:50vh; margin:0 auto; border-radius:8px; border:1px solid var(--line);">
+      <div id="fbPostText" style="white-space:pre-line; font-size:13px; line-height:1.5; margin-top:12px; color:var(--ink); max-height:18vh; overflow:auto; border-top:1px solid var(--line); padding-top:8px;"></div>
+      <div class="modal-actions">
+        <button type="button" class="modal-btn-secondary" id="fbPostCancel">Cancel</button>
+        <button type="button" class="modal-btn-primary" id="fbPostGo">Post now</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-overlay" id="pwModalOverlay">
     <div class="modal-card">
       <h2>Change Admin Password</h2>
@@ -2411,6 +2426,21 @@
     // "Post to Facebook" under each Default Hook (Jean, 2026-10-09): shows
     // exactly what will be posted, asks, then posts the hook's caption and
     // landing page link to the Avante Travel Page via /api/fb-post.
+    // Shows the picture and wording; resolves true on Post now.
+    function fbPreview(p){
+      return new Promise(function(done){
+        var ov = document.getElementById('fbPostOverlay');
+        document.getElementById('fbPostImg').src = p.image || '';
+        document.getElementById('fbPostImg').style.display = p.image ? 'block' : 'none';
+        document.getElementById('fbPostText').textContent = p.message || '';
+        ov.classList.add('show');
+        var go = document.getElementById('fbPostGo'), cancel = document.getElementById('fbPostCancel');
+        function close(v){ ov.classList.remove('show'); go.onclick = cancel.onclick = ov.onclick = null; done(v); }
+        go.onclick = function(){ close(true); };
+        cancel.onclick = function(){ close(false); };
+        ov.onclick = function(e){ if(e.target === ov) close(false); };
+      });
+    }
     document.addEventListener('click', function(ev){
       var btn = ev.target.closest && ev.target.closest('[data-fbpost]');
       if(!btn) return;
@@ -2425,10 +2455,11 @@
       btn.disabled = true; say('Getting the post ready…');
       call({ op: 'preview', hook: n }).then(function(p){
         if(!p.ok){ if(p.relogin) return goToLogin(); throw new Error(p.error || 'Could not prepare this hook.'); }
-        var text = (p.message || '').slice(0, 600) + ((p.message || '').length > 600 ? '…' : '');
-        if(!window.confirm('Post this to the Avante Travel Facebook Page now? It goes public straight away.\n\n' + text + '\n\nLink: ' + (p.link || '(none)'))){ say('Not posted.'); return null; }
-        say('Posting to Facebook…');
-        return call({ op: 'post', hook: n });
+        return fbPreview(p).then(function(yes){
+          if(!yes){ say('Not posted.'); return null; }
+          say('Posting to Facebook…');
+          return call({ op: 'post', hook: n });
+        });
       }).then(function(r){
         if(!r) return;
         if(!r.ok) throw new Error(r.error || 'Facebook did not accept the post.');
