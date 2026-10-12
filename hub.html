@@ -486,7 +486,9 @@
   main.wide{ max-width:960px; }
   .hook-grid{
     display:grid;
-    grid-template-columns:repeat(2, 1fr);
+    /* minmax(0,1fr): a long link inside a card can never push the two
+       columns wider than the page (Jean, 2026-10-12) */
+    grid-template-columns:repeat(2, minmax(0, 1fr));
     gap:18px;
   }
   @media (max-width:640px){
@@ -548,6 +550,8 @@
   .hook-card .link-box .url{ font-size:11.5px; }
   .hook-row + .hook-row{ margin-top:14px; }
   body.fbpost-on .fbpost-box{ display:block !important; }
+  .hook-card{ min-width:0; }
+  .hook-card .url{ word-break:break-all; overflow-wrap:anywhere; }
   .hook-card .caption-preview{ font-size:12.5px; color:var(--ink); line-height:1.5; white-space:pre-line; }
 
   /* ---- Auto-build (draft a hook from a property or area) — same as admin.html's Default Hooks panel */
