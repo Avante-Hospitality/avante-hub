@@ -39,6 +39,14 @@ export function nightsBetween(start, end) {
   return Math.round((Date.parse(end + "T00:00:00Z") - Date.parse(start + "T00:00:00Z")) / 86400000);
 }
 
+// Stock Network's own words from an error answer, short, for the person to see.
+function snErrorText(data) {
+  if (!data) return "";
+  const t = typeof data === "string" ? data : (data.detail || data.title || data.message || data.error || (data.errors && JSON.stringify(data.errors)) || "");
+  const clean = String(t).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 160);
+  return clean ? ": " + clean : "";
+}
+
 export class SNClient {
   constructor(creds, fetchImpl) {
     this.creds = creds;
@@ -92,7 +100,7 @@ export class SNClient {
       ignoreLocationData: true, groupStockToMatchDates: false, extendDatesIfNoMatchFound: false,
     };
     const r = await this.call("/api/1/search?Offset=1&Limit=50&CallerDetails.SiteID=" + encodeURIComponent(t.siteId), { body });
-    if (!r.ok) throw new SNError("Availability search failed (" + r.status + ").", r.status, r.data);
+    if (!r.ok) throw new SNError("Availability search failed (" + r.status + ")" + snErrorText(r.data) + ".", r.status, r.data);
     return r.data || {};
   }
 

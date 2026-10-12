@@ -20,6 +20,7 @@ import { parseIcs, buildIcs, nightsToRanges } from "./ical.js";
 import { encryptJSON, decryptJSON, randomToken, sha256Hex } from "./pa-crypto.js";
 
 export const CHANNELS = { bcom: "Booking.com", airbnb: "Airbnb", lekke: "LekkeSlaap" };
+const CONNECT_DAYS = [60, 14];           // connect reads a short window (shorter again if SN refuses); later days load as the calendar moves
 const HORIZON_DAYS = 365;               // full read: at connect, and every SYNC_FULL_MS for channel-linked properties
 const SYNC_NEAR_DAYS = 60;              // every 15-minute sync reads only this far ahead
 const SYNC_FULL_MS = 2 * 3600 * 1000;   // ... and the full year this often
@@ -73,8 +74,14 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
       if (matches.length === 1) rid = matches[0].resortId;
       else return { needResort: true, site: tok.site, candidates: matches };
     }
-    const snap = await client.openStretches(rid, today(), addDays(today(), HORIZON_DAYS));
     const existing = await getJSON("site:" + tok.siteId);
+    // Start on the property's calendar start date (if it was connected before), today otherwise.
+    const from0 = existing ? firstBookable(existing) : today();
+    let snap = null, readTo = from0, lastErr = null;
+    for (const days of CONNECT_DAYS) {
+      try { snap = await client.openStretches(rid, from0, addDays(from0, days)); readTo = addDays(from0, days); break; } catch (e) { lastErr = e; }
+    }
+    if (!snap) throw new PAError("Stock Network couldn't read this property's availability. " + ((lastErr && lastErr.message) || ""), 502);
     const units = Object.values(snap.units).map((u) => ({ name: u.name, size: u.size, roomId: u.roomId }));
     const prop = Object.assign({
       siteId: tok.siteId, site: tok.site, feedToken: randomToken(18), createdAt: now().toISOString(),
@@ -89,7 +96,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     const token = await newSession(prop);
     if (prop.aff) await setJSON("aff:" + prop.aff, { siteId: prop.siteId });
     // Connecting reads the full year once, to find every unit and its open nights.
-    await mergeWindow(prop, snap, today(), addDays(today(), HORIZON_DAYS), { first: true });
+    await mergeWindow(prop, snap, from0, readTo, { first: true });
     await setJSON("tok:" + prop.siteId, { enc: await encryptJSON(tok, encKey), until: Math.min(tok.expires || Infinity, now().getTime() + TOKEN_REUSE_MS) });
     return { token, property: publicProperty(prop) };
   }
@@ -777,8 +784,15 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     // Near dates every run; the whole year every SYNC_FULL_MS (or when asked).
     const snap0 = await loadSnap(prop);
     const doFull = full || !snap0.fullAt || now().getTime() - Date.parse(snap0.fullAt) > SYNC_FULL_MS - 5 * 60000;
-    const snapR = await ensureWindow(prop, today(), addDays(today(), doFull ? HORIZON_DAYS : SYNC_NEAR_DAYS), { client, force: true });
-    if (doFull) { snapR.fullAt = now().toISOString(); await setJSON("snap:" + prop.siteId, snapR); }
+    let snapR;
+    try { snapR = await ensureWindow(prop, today(), addDays(today(), doFull ? HORIZON_DAYS : SYNC_NEAR_DAYS), { client, force: true }); }
+    catch (e) {
+      // SN refused the long read: keep syncing the near dates and try the full year next time.
+      if (!doFull) throw e;
+      snapR = await ensureWindow(prop, today(), addDays(today(), SYNC_NEAR_DAYS), { client, force: true });
+      snapR.fullError = String(e.message || e).slice(0, 300);
+    }
+    if (doFull && !snapR.fullError) { snapR.fullAt = now().toISOString(); await setJSON("snap:" + prop.siteId, snapR); }
     prop = (await getJSON("site:" + prop.siteId)) || prop; // may have gained units
     const events = (await getJSON("chan:" + prop.siteId)) || {};
     const list = await bookingsOf(prop);
