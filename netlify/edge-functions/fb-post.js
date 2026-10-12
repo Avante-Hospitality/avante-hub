@@ -91,16 +91,21 @@ function buildPost(h) {
   return { message, link };
 }
 
-// The hook's flyer (page 1): the landing page's own preview picture.
+// The hook's Facebook-size flyer (4:5), saved on its landing page by the hook
+// builder when the landing page is published (Jean, 2026-10-09).
+// Jean, 2026-10-12: never fall back to the A4 page-1 picture any more: it is
+// taller than 4:5, so Facebook's phone feed cut off its top and bottom.
+// { image, missing: true when the landing page has no Facebook picture yet }
 async function flyerImage(link) {
-  if (!/^https:\/\/go\.avantetravel\.co\.za\/l\//i.test(link || "")) return "";
+  if (!/^https:\/\/go\.avantetravel\.co\.za\/l\//i.test(link || "")) return { image: "", missing: false };
   try {
     const html = await (await fetch(link)).text();
-    // The Facebook-size picture from the hook builder (Jean, 2026-10-09), else page 1.
-    const m = html.match(/<meta name="avante:fb-image" content="([^"]+)"/i) || html.match(/<meta property="og:image" content="([^"]+)"/i);
-    return m ? m[1].replace(/&amp;/g, "&") : "";
-  } catch (e) { return ""; }
+    const m = html.match(/<meta name="avante:fb-image" content="([^"]+)"/i);
+    return m ? { image: m[1].replace(/&amp;/g, "&"), missing: false } : { image: "", missing: true };
+  } catch (e) { return { image: "", missing: true }; }
 }
+
+const NO_FB_PICTURE = "This hook's Facebook-size picture isn't ready yet. In the hook builder, open this hook and publish its landing page again, then try again.";
 
 export default async (request) => {
   if (request.method !== "POST") return json({ ok: false, error: "Use POST." }, 405);
@@ -130,7 +135,9 @@ export default async (request) => {
   if (h.expired) return json({ ok: false, error: "This hook's offer has ended." }, 400);
   const post = buildPost(h);
   if (!post.message && !post.link) return json({ ok: false, error: "This hook has no caption or link yet." }, 400);
-  post.image = await flyerImage(post.link);
+  const pic = await flyerImage(post.link);
+  if (pic.missing) return json({ ok: false, error: NO_FB_PICTURE }, 409);
+  post.image = pic.image;
   if (op === "preview") return json({ ok: true, configured, ...post });
   if (op !== "post") return json({ ok: false, error: "Unknown op." }, 400);
   if (!configured) return json({ ok: false, error: "Facebook isn't connected yet (FB_PAGE_ID / FB_USER_TOKEN missing in Netlify)." }, 503);
