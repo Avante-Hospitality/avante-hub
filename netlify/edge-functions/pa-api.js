@@ -4,6 +4,7 @@
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
 import { createCore, PAError } from "./lib/pa-core.js";
 import { fetchResortInfo } from "./lib/hook-source.js";
+import { createActivities } from "./lib/pa-activities.js";
 
 const cors = { "access-control-allow-origin": "*", "access-control-allow-methods": "POST, OPTIONS", "access-control-allow-headers": "content-type, x-pa-sync-secret" };
 const json = (obj, status = 200) => new Response(JSON.stringify(obj), { status, headers: { "content-type": "application/json", "cache-control": "no-store", ...cors } });
@@ -14,6 +15,20 @@ export default async (request) => {
   let body;
   try { body = await request.json(); } catch (_) { return json({ ok: false, error: "Invalid JSON" }, 400); }
   const env = (k) => (typeof Netlify !== "undefined" ? Netlify.env.get(k) : Deno.env.get(k)) || "";
+  // Guest emails go out under the property's name, with replies going to
+  // the property's own email address (opts.fromName / opts.replyTo).
+  const sendEmail = async (to, subject, html, opts = {}) => {
+    const key = env("RESEND_API_KEY");
+    if (!key || !to) return false;
+    const name = String(opts.fromName || "").replace(/[\r\n"<>]/g, "").trim().slice(0, 80);
+    const msg = { from: (name ? '"' + name + '"' : "Avante Travel") + " <bookings@go.avantetravel.co.za>", to: [to], subject, html };
+    if (opts.replyTo) msg.reply_to = [opts.replyTo];
+    try {
+      const r = await fetch("https://api.resend.com/emails", { method: "POST", headers: { authorization: "Bearer " + key, "content-type": "application/json" },
+        body: JSON.stringify(msg) });
+      return r.ok;
+    } catch (_) { return false; }
+  };
   const core = createCore({
     store: getStore({ name: "property-affiliate", consistency: "strong" }),
     resortStore: getStore({ name: "resort-list", consistency: "strong" }),
@@ -26,20 +41,7 @@ export default async (request) => {
       getAuth: (aff) => getStore({ name: "affiliate-auth", consistency: "strong" }).get(aff, { type: "json" }),
       getProfile: (aff) => getStore({ name: "affiliates-directory", consistency: "strong" }).get(aff, { type: "json" }),
     },
-    // Guest emails go out under the property's name, with replies going to
-    // the property's own email address (opts.fromName / opts.replyTo).
-    sendEmail: async (to, subject, html, opts = {}) => {
-      const key = env("RESEND_API_KEY");
-      if (!key || !to) return false;
-      const name = String(opts.fromName || "").replace(/[\r\n"<>]/g, "").trim().slice(0, 80);
-      const msg = { from: (name ? '"' + name + '"' : "Avante Travel") + " <bookings@go.avantetravel.co.za>", to: [to], subject, html };
-      if (opts.replyTo) msg.reply_to = [opts.replyTo];
-      try {
-        const r = await fetch("https://api.resend.com/emails", { method: "POST", headers: { authorization: "Bearer " + key, "content-type": "application/json" },
-          body: JSON.stringify(msg) });
-        return r.ok;
-      } catch (_) { return false; }
-    },
+    sendEmail,
   });
   try {
     const a = String(body.action || "");
@@ -56,6 +58,28 @@ export default async (request) => {
     if (a === "approvalInfo") return json(Object.assign({ ok: true }, await core.approvalInfo(body.t)));
     if (a === "approveCancel") return json(Object.assign({ ok: true }, await core.approveCancel(body.t, body.password)));
     const prop = await core.auth(body.token);
+    // Activities the property sells to guests, with the supplier's reference numbers.
+    if (a.startsWith("act")) {
+      const acts = createActivities({
+        store: getStore({ name: "property-affiliate", consistency: "strong" }),
+        sendEmail,
+        getHubActivities: () => getStore({ name: "map-activities", consistency: "strong" }).get("all", { type: "json" }).catch(() => []),
+        getPin: async (p) => {
+          const rl = await getStore({ name: "resort-list", consistency: "strong" }).get("current", { type: "json" }).catch(() => null);
+          return ((rl && rl.resorts) || []).find((r) => r && r.resortId === p.resortId) || null;
+        },
+      });
+      const replyTo = (prop.frontStore && prop.frontStore.email) || (prop.settings && prop.settings.email) || "";
+      switch (a) {
+        case "activities": return json(Object.assign({ ok: true }, await acts.view(prop)));
+        case "actSave": return json(Object.assign({ ok: true }, await acts.save(prop, body.activity || {})));
+        case "actDelete": return json(Object.assign({ ok: true }, await acts.remove(prop, body.id)));
+        case "actNearby": return json(Object.assign({ ok: true }, await acts.nearby(prop, body.km)));
+        case "actBook": return json(Object.assign({ ok: true }, await acts.book(prop, body.booking || {})));
+        case "actUpdate": return json(Object.assign({ ok: true }, await acts.update(prop, body.ref, body.change || {})));
+        case "actSend": return json(Object.assign({ ok: true }, await acts.sendRequest(prop, body.ref, replyTo)));
+      }
+    }
     switch (a) {
       case "status": return json({ ok: true, property: core.publicProperty(prop) });
       case "disconnect": return json(await core.disconnect(body.token));

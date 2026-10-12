@@ -99,13 +99,13 @@
   // ---------- render ----------
   // Slim header + one sticky tab bar. Calendar is the home view (the date
   // search with the unit calendar right under it).
-  var TABS = [['avail', 'Calendar'], ['book', 'Bookings'], ['guests', 'Guests'], ['msgs', 'Communication'], ['front', 'Front store'], ['chan', 'Channels'], ['rev', 'Reviews']];
+  var TABS = [['avail', 'Calendar'], ['book', 'Bookings'], ['guests', 'Guests'], ['acts', 'Activities'], ['msgs', 'Communication'], ['front', 'Front store'], ['chan', 'Channels'], ['rev', 'Reviews']];
   function render() {
     if (S.view === 'msgs') collectMsgEdit(); // keep what was typed in the scheduled messages
     var connected = !!(S.token && S.prop);
     var h = '<div class="pa">';
     // "How to" opens this screen's part of the property affiliate guide (how-to-property.html).
-    var howTo = !connected ? 'how-to-property.html#connect' : S.view === 'onb' ? 'how-to.html#property' : 'how-to-property.html#' + ({ avail: 'avail', book: 'book', guests: 'guests', msgs: 'msgs', front: 'frontstore', chan: 'chan', rev: 'rev' }[S.view] || 'tabs');
+    var howTo = !connected ? 'how-to-property.html#connect' : S.view === 'onb' ? 'how-to.html#property' : 'how-to-property.html#' + ({ avail: 'avail', book: 'book', guests: 'guests', acts: 'acts', msgs: 'msgs', front: 'frontstore', chan: 'chan', rev: 'rev' }[S.view] || 'tabs');
     h += '<header class="pa-top"><span class="pa-kicker">Property Affiliate</span>' + (connected ? '<b class="pa-propname">' + esc(S.prop.resortName || 'Your property') + '</b><span class="pa-hint pa-top-meta">' + S.prop.units.length + ' units · SN site ' + esc(S.prop.site) + '</span>' : '') +
       '<a class="pa-howto" href="' + howTo + '" target="_blank" rel="noopener" aria-label="How to use this screen (opens the guide in a new tab)">❓ How to</a></header>';
     var inMore = S.view === 'onb';
@@ -125,6 +125,7 @@
     else if (S.view === 'chan') h += viewChan();
     else if (S.view === 'book') h += viewBookings();
     else if (S.view === 'guests') h += viewGuests();
+    else if (S.view === 'acts') h += viewActivities();
     else if (S.view === 'msgs') h += viewMessages();
     else if (S.view === 'rev') h += viewReviews();
     else if (S.view === 'front') h += viewFront();
@@ -824,6 +825,207 @@
     return h + '</div></div></div>';
   }
 
+
+  // ---- Activities (2026-10-12): the property's own activity list, with the
+  // supplier's reference numbers, and activity bookings for guests. ----
+  var ACT_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  var ACT_STATUS_CLASS = { 'Requested': 'pa-warn', 'Sent to supplier': 'pa-hint', 'Confirmed': 'pa-okt', 'Cancelled': 'pa-hint' };
+  // [id, label, type, hint, width]
+  var ACT_FIELDS = [
+    ['h', 'The activity'],
+    ['name', 'Activity name', 'text', 'e.g. Robberg seal swim'], ['supplier', 'Supplier / operator', 'text', 'Company that runs it'],
+    ['category', 'Category', 'text', 'e.g. Water, Adventure, Wine'], ['duration', 'Duration', 'text', 'e.g. 2 hours'],
+    ['startTimes', 'Start times', 'text', 'e.g. 08:00, 11:00'], ['meetingPoint', 'Meeting point', 'text', 'Where guests go'],
+    ['description', 'Description', 'area', 'What guests will do'], ['whatToBring', 'What to bring', 'text', 'e.g. Towel, sunscreen'],
+    ['h', 'Reference numbers (to book it)'],
+    ['bookingSystem', 'Booking system', 'system'], ['systemName', 'System name', 'text', 'Name of the booking system'],
+    ['supplierRef', 'Operator / supplier account', 'text', 'Activitar: name before .activitar.com · ActivityBridge: supplier ID'], ['productCode', 'Product code / activity ID', 'text', 'Activitar: service nr · ActivityBridge: activity ID'],
+    ['optionCode', 'Option / rate code', 'text', 'e.g. Morning trip, adult rate'],
+    ['h', 'Price and rules'],
+    ['adultPrice', 'Adult price (R)', 'number'], ['childPrice', 'Child price (R)', 'number'], ['childAge', 'Child up to age', 'number'],
+    ['netPrice', 'Net price to supplier (R)', 'number'], ['commissionPct', 'Commission %', 'number'],
+    ['minPax', 'Minimum people', 'number'], ['maxPax', 'Maximum people', 'number'], ['cutoffHours', 'Book at least … hours before', 'number'],
+    ['days', 'Runs on', 'days'], ['pickup', 'Pick-up from the property possible', 'check'],
+    ['h', 'How to book it with the supplier'],
+    ['bookingUrl', 'Booking link', 'url', 'Paste the Activitar / ActivityBridge link: codes fill in'], ['bookingEmail', 'Booking email', 'email', 'Booking requests are emailed here'], ['bookingPhone', 'Booking phone', 'tel'],
+    ['notes', 'Notes for your staff', 'area'], ['active', 'Available to book', 'check'],
+  ];
+  function loadActivities() { return api('activities').then(function (d) { S.acts = d; render(); }).catch(fail); }
+  function actById(id) { return ((S.acts && S.acts.activities) || []).find(function (a) { return a.id === id; }); }
+  function actField(f, a) {
+    var id = 'pa-a-' + f[0], v = a[f[0]], h = '';
+    if (f[2] === 'check') return '<label class="pa-check" style="min-height:44px"><input type="checkbox" id="' + id + '"' + (v || (v === undefined && f[0] === 'active') ? ' checked' : '') + '> ' + esc(f[1]) + '</label>';
+    if (f[2] === 'days') return '<fieldset class="pa-fieldset" style="grid-column:1/-1"><legend class="pa-label">' + esc(f[1]) + ' <span class="pa-hint" style="text-transform:none;letter-spacing:0">(none ticked = every day)</span></legend><div class="pa-row" style="gap:4px 14px">' +
+      ACT_DAYS.map(function (d) { return '<label class="pa-check"><input type="checkbox" data-actday="' + d + '"' + ((v || []).indexOf(d) >= 0 ? ' checked' : '') + '> ' + d + '</label>'; }).join('') + '</div></fieldset>';
+    if (f[0] === 'systemName' && (a.bookingSystem || 'direct') !== 'other') return '';
+    h += '<div class="pa-field"' + (f[2] === 'area' ? ' style="grid-column:1/-1"' : '') + '><label class="pa-label" for="' + id + '">' + esc(f[1]) + '</label>';
+    if (f[2] === 'system') {
+      var sy = (S.acts && S.acts.systems) || { direct: 'Direct with the supplier' };
+      h += '<select id="' + id + '" data-actrerender="1">' + Object.keys(sy).map(function (k) { return '<option value="' + k + '"' + ((a.bookingSystem || 'direct') === k ? ' selected' : '') + '>' + esc(sy[k]) + '</option>'; }).join('') + '</select>';
+    } else if (f[2] === 'area') h += '<textarea id="' + id + '" rows="3" placeholder="' + esc(f[3] || '') + '">' + esc(v || '') + '</textarea>';
+    else h += '<input id="' + id + '" type="' + f[2] + '"' + (f[2] === 'number' ? ' min="0" step="any" inputmode="decimal"' : '') + ' value="' + esc(v == null ? '' : v) + '" placeholder="' + esc(f[3] || '') + '">';
+    return h + '</div>';
+  }
+  function collectAct() {
+    var a = Object.assign({}, S.actEdit || {});
+    ACT_FIELDS.forEach(function (f) {
+      if (f[0] === 'h') return;
+      if (f[2] === 'days') { a.days = Array.prototype.slice.call(root.querySelectorAll('[data-actday]:checked')).map(function (x) { return x.dataset.actday; }); return; }
+      var el = document.getElementById('pa-a-' + f[0]); if (!el) return;
+      a[f[0]] = f[2] === 'check' ? el.checked : el.value;
+    });
+    return a;
+  }
+  function viewActEdit() {
+    var a = S.actEdit, h = '<section class="pa-card" id="pa-actform"><p class="pa-h2">' + (a.id ? 'Edit ' + esc(a.name) : 'New activity') + '</p>';
+    if (a.hubActivityId) h += '<p class="pa-hint">Copied from the hub\'s activity list. Add the supplier\'s reference numbers so it can be booked.</p>';
+    var open = false;
+    ACT_FIELDS.forEach(function (f) {
+      if (f[0] === 'h') { if (open) h += '</div>'; h += '<p class="pa-label" style="margin:16px 0 8px;font-size:12.5px;color:#0e2f44">' + esc(f[1]) + '</p><div class="pa-form">'; open = true; return; }
+      h += actField(f, a);
+    });
+    if (open) h += '</div>';
+    h += '<div class="pa-row" style="margin-top:14px"><button type="button" class="pa-btn" data-act="actSave"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'Saving…' : 'Save activity') + '</button><button type="button" class="pa-btn ghost" data-act="actCancelEdit">Cancel</button>' +
+      (a.id ? '<button type="button" class="pa-btn danger" data-act="actDelete" data-id="' + esc(a.id) + '">Delete</button>' : '') + '</div></section>';
+    return h;
+  }
+  function actPrice(act, ad, ch) { if (act.adultPrice == null || act.adultPrice === '') return null; return Math.round(act.adultPrice * ad + (act.childPrice != null && act.childPrice !== '' ? act.childPrice : act.adultPrice) * ch); }
+  function viewActBook() {
+    var b = S.actBook, act = actById(b.activityId), list = ((S.acts && S.acts.activities) || []).filter(function (x) { return x.active; });
+    var h = '<section class="pa-card" id="pa-actbook"><p class="pa-h2">Book an activity for a guest</p><div class="pa-form">' +
+      '<div class="pa-field" style="grid-column:1/-1"><label class="pa-label" for="pa-ab-act">Activity</label><select id="pa-ab-act" data-actrerender="1"><option value="">Choose…</option>' + list.map(function (x) { return '<option value="' + esc(x.id) + '"' + (x.id === b.activityId ? ' selected' : '') + '>' + esc(x.name) + (x.supplier ? ' · ' + esc(x.supplier) : '') + '</option>'; }).join('') + '</select></div>';
+    if (act) {
+      h += '<div class="pa-note" style="grid-column:1/-1">' + [act.supplier, act.productCode && 'Product ' + act.productCode, act.optionCode && 'Option ' + act.optionCode, act.supplierRef && 'Account ' + act.supplierRef, act.days.length && 'Runs ' + act.days.join(', '), act.startTimes && 'Starts ' + act.startTimes, act.minPax && 'Min ' + act.minPax, act.maxPax && 'Max ' + act.maxPax, act.cutoffHours && 'Book ' + act.cutoffHours + ' h ahead'].filter(Boolean).map(esc).join(' · ') + '</div>';
+    }
+    h += '<div class="pa-field"><label class="pa-label" for="pa-ab-date">Date</label><input id="pa-ab-date" type="date" min="' + today() + '" value="' + esc(b.date || '') + '"></div>' +
+      '<div class="pa-field"><label class="pa-label" for="pa-ab-time">Time</label><input id="pa-ab-time" type="time" value="' + esc(b.time || '') + '"></div>' +
+      '<div class="pa-field"><label class="pa-label" for="pa-ab-ad">Adults</label><input id="pa-ab-ad" type="number" min="0" inputmode="numeric" value="' + esc(b.adults == null ? 2 : b.adults) + '" data-actrerender="1"></div>' +
+      '<div class="pa-field"><label class="pa-label" for="pa-ab-ch">Children</label><input id="pa-ab-ch" type="number" min="0" inputmode="numeric" value="' + esc(b.children || 0) + '" data-actrerender="1"></div>' +
+      '<div class="pa-field"><label class="pa-label" for="pa-ab-gn">Guest name</label><input id="pa-ab-gn" type="text" value="' + esc(b.guestName || '') + '"></div>' +
+      '<div class="pa-field"><label class="pa-label" for="pa-ab-gc">Guest cellphone</label><input id="pa-ab-gc" type="tel" value="' + esc(b.guestCell || '') + '"></div>' +
+      '<div class="pa-field"><label class="pa-label" for="pa-ab-ge">Guest email</label><input id="pa-ab-ge" type="email" value="' + esc(b.guestEmail || '') + '"></div>' +
+      '<div class="pa-field"><label class="pa-label" for="pa-ab-sr">Stay booking ref (optional)</label><input id="pa-ab-sr" type="text" value="' + esc(b.stayRef || '') + '" placeholder="Links it to the guest\'s stay"></div>';
+    var est = act ? actPrice(act, +b.adults || 0, +b.children || 0) : null;
+    h += '<div class="pa-field"><label class="pa-label" for="pa-ab-tot">Total (R)</label><input id="pa-ab-tot" type="number" min="0" step="any" value="' + esc(b.total != null && b.total !== '' ? b.total : est == null ? '' : est) + '"></div>';
+    if (act && act.pickup) h += '<label class="pa-check" style="min-height:44px"><input type="checkbox" id="pa-ab-pu"' + (b.pickup ? ' checked' : '') + '> Pick up from the property</label>';
+    h += '<div class="pa-field" style="grid-column:1/-1"><label class="pa-label" for="pa-ab-no">Notes for the supplier</label><textarea id="pa-ab-no" rows="2">' + esc(b.notes || '') + '</textarea></div></div>' +
+      '<div class="pa-row" style="margin-top:14px"><button type="button" class="pa-btn" data-act="actBookSave"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'Booking…' : 'Make activity booking') + '</button><button type="button" class="pa-btn ghost" data-act="actCancelBook">Cancel</button></div></section>';
+    return h;
+  }
+  function collectActBook() {
+    var b = S.actBook || {};
+    b.activityId = val('pa-ab-act'); b.date = val('pa-ab-date'); b.time = val('pa-ab-time'); b.adults = val('pa-ab-ad'); b.children = val('pa-ab-ch');
+    b.guestName = val('pa-ab-gn'); b.guestCell = val('pa-ab-gc'); b.guestEmail = val('pa-ab-ge'); b.stayRef = val('pa-ab-sr'); b.notes = val('pa-ab-no');
+    var tot = document.getElementById('pa-ab-tot'); b.total = tot && tot.dataset.touched ? tot.value : undefined;
+    var pu = document.getElementById('pa-ab-pu'); b.pickup = !!(pu && pu.checked);
+    return b;
+  }
+  function viewActivities() {
+    if (!S.acts) return '<div class="pa-card pa-hint">Loading activities…</div>';
+    var A = S.acts, h = '';
+    if (S.actEdit) h += viewActEdit();
+    if (S.actBook) h += viewActBook();
+    // Activity bookings
+    var upcoming = A.bookings.filter(function (b) { return b.date >= today() || S.actShowPast; });
+    h += '<section class="pa-card"><div class="pa-row" style="justify-content:space-between;align-items:center"><p class="pa-h2" style="margin:0">Activity bookings</p><div class="pa-row" style="gap:8px">' +
+      '<label class="pa-check"><input type="checkbox" data-act="actPast"' + (S.actShowPast ? ' checked' : '') + '> Show past</label>' +
+      (A.activities.some(function (x) { return x.active; }) ? '<button type="button" class="pa-btn" data-act="actNewBook">Book an activity</button>' : '') + '</div></div>';
+    if (!upcoming.length) h += '<p class="pa-hint" style="margin-top:10px">' + (A.activities.length ? 'No activity bookings yet.' : 'Add an activity below first, then book it for guests here.') + '</p>';
+    else h += '<div class="pa-bk-list" style="margin-top:10px">' + upcoming.map(function (b) {
+      var cls = ACT_STATUS_CLASS[b.status] || 'pa-hint';
+      return '<article class="pa-bk"><div class="pa-row" style="justify-content:space-between;gap:6px"><b style="color:#0e2f44">' + esc(b.activity) + '</b><span class="' + cls + '" style="font-weight:700">' + esc(b.status) + '</span></div>' +
+        '<div style="font-size:13px;line-height:1.55;margin-top:4px">' + nice(b.date) + (b.time ? ' ' + esc(b.time) : '') + ' · ' + b.adults + (b.adults === 1 ? ' adult' : ' adults') + (b.children ? ', ' + b.children + (b.children === 1 ? ' child' : ' children') : '') + (b.total != null ? ' · ' + money(b.total) : '') + '<br>' +
+        esc(b.guestName) + (b.guestCell ? ' · ' + esc(b.guestCell) : '') + (b.stayRef ? ' · stay ' + esc(b.stayRef) : '') + '</div>' +
+        '<div class="pa-hint">' + esc(b.ref) + (b.supplier ? ' · ' + esc(b.supplier) : '') + (b.productCode ? ' · product ' + esc(b.productCode) : '') + (b.optionCode ? ' · option ' + esc(b.optionCode) : '') + (b.supplierConfirmation ? ' · supplier conf. ' + esc(b.supplierConfirmation) : '') + '</div>' +
+        (b.status !== 'Cancelled' ? '<div class="pa-actions" style="margin-top:6px">' +
+          (b.bookingPage && b.status !== 'Confirmed' ? '<a class="pa-btn small ghost" style="display:inline-flex;align-items:center;text-decoration:none" href="' + esc(b.bookingPage) + '" target="_blank" rel="noopener">' + (b.bookingSystem === 'activitar' ? 'Book on Activitar' : b.bookingSystem === 'activitybridge' ? 'Book on ActivityBridge' : 'Supplier booking page') + '</a>' : '') +
+          (b.status !== 'Confirmed' ? '<button type="button" class="pa-btn small ghost" data-act="actSend" data-ref="' + esc(b.ref) + '">' + (b.sentAt ? 'Email supplier again' : 'Email booking to supplier') + '</button><button type="button" class="pa-btn small" data-act="actConfirm" data-ref="' + esc(b.ref) + '">Confirmed by supplier</button>' : '') +
+          '<button type="button" class="pa-btn small danger" data-act="actCancelBk" data-ref="' + esc(b.ref) + '">Cancel</button></div>' : '') + '</article>';
+    }).join('') + '</div>';
+    h += '</section>';
+    // The property's activity list
+    h += '<section class="pa-card"><div class="pa-row" style="justify-content:space-between;align-items:center"><div><p class="pa-h2" style="margin:0">Your activities</p><p class="pa-hint" style="margin:4px 0 0">Activities you sell to guests, with the supplier\'s reference numbers.</p></div>' +
+      '<div class="pa-row" style="gap:8px"><button type="button" class="pa-btn ghost" data-act="actNearby">Add from nearby activities</button><button type="button" class="pa-btn" data-act="actNew">Add activity</button></div></div>';
+    if (S.actNear) {
+      var N = S.actNear;
+      h += '<div class="pa-results" style="margin-top:12px"><div class="pa-row" style="justify-content:space-between;align-items:center"><b style="font-size:13px;color:#0e2f44">' + (N.noPin ? 'Your property has no map pin yet, so nearby activities can\'t be found.' : N.nearby.length + ' hub activities within ' + N.km + ' km') + '</b>' +
+        '<div class="pa-row" style="gap:6px;align-items:center"><label class="pa-label" for="pa-a-km">Distance</label><select id="pa-a-km" data-act-km="1">' + [10, 25, 50, 100, 150].map(function (k) { return '<option' + (k === N.km ? ' selected' : '') + '>' + k + '</option>'; }).join('') + '</select><button type="button" class="pa-btn small ghost" data-act="actNearClose">Close</button></div></div>' +
+        N.nearby.map(function (x) {
+          return '<div class="pa-result"><div class="grow"><b>' + esc(x.name) + '</b><div class="pa-hint">' + esc([x.area, x.distance, x.price, x.system && (S.acts.systems || {})[x.system]].filter(Boolean).join(' · ')) + '</div></div>' +
+            (x.added ? '<span class="pa-hint">Added</span>' : '<button type="button" class="pa-btn small" data-act="actCopy" data-id="' + esc(x.id) + '">Add</button>') + '</div>';
+        }).join('') + '</div>';
+    }
+    if (!A.activities.length) h += '<p class="pa-hint" style="margin-top:12px">No activities yet. Add one, or pick from the hub\'s activities near you.</p>';
+    else h += '<div class="pa-bk-list" style="margin-top:12px">' + A.activities.map(function (x) {
+      var missing = [];
+      if (!x.productCode && x.bookingSystem !== 'direct') missing.push('product code');
+      if (!x.bookingEmail && !x.bookingPhone && !x.bookingUrl) missing.push('booking contact');
+      if (x.adultPrice == null) missing.push('price');
+      return '<article class="pa-bk"><div class="pa-row" style="justify-content:space-between;gap:6px"><b style="color:#0e2f44">' + esc(x.name) + '</b><span class="pa-hint">' + (x.active ? esc((A.systems || {})[x.bookingSystem] || x.bookingSystem) + (x.systemName ? ': ' + esc(x.systemName) : '') : 'Switched off') + '</span></div>' +
+        '<div style="font-size:13px;line-height:1.55;margin-top:4px">' + esc([x.supplier, x.duration, x.adultPrice != null ? money(x.adultPrice) + ' adult' : '', x.childPrice != null ? money(x.childPrice) + ' child' : '', x.commissionPct != null ? x.commissionPct + '% commission' : ''].filter(Boolean).join(' · ')) + '</div>' +
+        '<div class="pa-hint">' + esc([x.supplierRef && 'Account ' + x.supplierRef, x.productCode && 'Product ' + x.productCode, x.optionCode && 'Option ' + x.optionCode].filter(Boolean).join(' · ') || 'No reference numbers yet') + '</div>' +
+        (missing.length ? '<div class="pa-warn" style="font-size:12.5px">Missing: ' + missing.join(', ') + '</div>' : '') +
+        '<div class="pa-actions" style="margin-top:6px">' + (x.bookingPage ? '<a class="pa-btn small ghost" style="display:inline-flex;align-items:center;text-decoration:none" href="' + esc(x.bookingPage) + '" target="_blank" rel="noopener">Booking page</a>' : '') + '<button type="button" class="pa-btn small ghost" data-act="actEdit" data-id="' + esc(x.id) + '">Edit</button>' + (x.active ? '<button type="button" class="pa-btn small" data-act="actNewBook" data-id="' + esc(x.id) + '">Book</button>' : '') + '</div></article>';
+    }).join('') + '</div>';
+    return h + '</section>';
+  }
+  function actScroll(id) { setTimeout(function () { var el = document.getElementById(id); if (el) el.scrollIntoView({ block: 'start', behavior: 'smooth' }); }, 0); }
+  function actDone(d, msg) { S.busy = false; S.acts = d; S.msg = msg || null; S.err = null; render(); }
+  function loadNearby(km) { S.actNear = S.actNear || { nearby: [], km: km || 50 }; return api('actNearby', { km: km || S.actNear.km || 50 }).then(function (d) { S.actNear = d; render(); }).catch(fail); }
+  var ACT_ACTIONS = {
+    actNew: function () { S.actEdit = { active: true, bookingSystem: 'direct', days: [] }; S.actBook = null; render(); actScroll('pa-actform'); },
+    actEdit: function (t) { S.actEdit = Object.assign({}, actById(t.dataset.id)); S.actBook = null; render(); actScroll('pa-actform'); },
+    actCancelEdit: function () { S.actEdit = null; S.err = null; render(); },
+    actSave: function () {
+      var a = collectAct(); S.actEdit = a; S.err = null; busy(true); render();
+      api('actSave', { activity: a }).then(function (d) { S.actEdit = null; if (S.actNear) loadNearby(S.actNear.km); actDone(d, d.saved.name + ' saved.'); }).catch(fail);
+    },
+    actDelete: function (t) {
+      var x = actById(t.dataset.id); if (!confirm('Delete ' + (x ? x.name : 'this activity') + '? Past bookings stay in the list.')) return;
+      api('actDelete', { id: t.dataset.id }).then(function (d) { S.actEdit = null; actDone(d, 'Activity deleted.'); }).catch(fail);
+    },
+    actNearby: function () { loadNearby(50); },
+    actNearClose: function () { S.actNear = null; render(); },
+    actCopy: function (t) {
+      var x = (S.actNear.nearby || []).find(function (n) { return n.id === t.dataset.id; }); if (!x) return;
+      var p = parseFloat(String(x.price || '').replace(/[^\d.]/g, ''));
+      S.actEdit = { name: x.name, description: x.description, bookingUrl: /^https?:\/\//.test(x.link) ? x.link : '', adultPrice: isFinite(p) ? p : '', hubActivityId: x.id, active: true, bookingSystem: x.system || 'direct', days: [] };
+      var am = /^https:\/\/([a-z0-9-]+)\.activitar\.com\/services\/(\d+)/i.exec(x.link || ''), bm = /activitybridge\.com\/book\?.*activityid=(\d+)/i.exec(x.link || '');
+      if (am) { S.actEdit.supplierRef = am[1]; S.actEdit.productCode = am[2]; } else if (bm) S.actEdit.productCode = bm[1];
+      S.actBook = null; render(); actScroll('pa-actform');
+    },
+    actNewBook: function (t) { S.actBook = { activityId: t.dataset.id || '', adults: 2, children: 0 }; S.actEdit = null; render(); actScroll('pa-actbook'); },
+    actCancelBook: function () { S.actBook = null; S.err = null; render(); },
+    actBookSave: function () {
+      var b = collectActBook(); S.err = null; busy(true); render();
+      api('actBook', { booking: b }).then(function (d) { S.actBook = null; actDone(d, 'Booked ' + d.booking.activity + ' (' + d.booking.ref + '). Now send it to the supplier.'); }).catch(fail);
+    },
+    actSend: function (t) {
+      t.textContent = 'Sending…';
+      api('actSend', { ref: t.dataset.ref }).then(function (d) { actDone(d, 'Booking request emailed to ' + d.sentTo + '. Mark it confirmed when the supplier replies.'); }).catch(fail);
+    },
+    actConfirm: function (t) {
+      var nr = prompt('The supplier\'s confirmation number:'); if (nr == null) return; nr = nr.trim(); if (!nr) return;
+      api('actUpdate', { ref: t.dataset.ref, change: { status: 'Confirmed', supplierConfirmation: nr } }).then(function (d) { actDone(d, t.dataset.ref + ' confirmed.'); }).catch(fail);
+    },
+    actCancelBk: function (t) {
+      if (!confirm('Cancel activity booking ' + t.dataset.ref + '?\n\nThis only marks it cancelled in the hub. Tell the supplier too.')) return;
+      api('actUpdate', { ref: t.dataset.ref, change: { status: 'Cancelled' } }).then(function (d) { actDone(d, t.dataset.ref + ' cancelled in the hub. Remember to tell the supplier.'); }).catch(fail);
+    },
+    actPast: function (t) { S.actShowPast = t.checked; render(); },
+  };
+  // Re-draw the activity forms when a choice changes what they show.
+  root.addEventListener('change', function (e) {
+    var t = e.target;
+    if (t.id === 'pa-a-km') return loadNearby(+t.value);
+    if (t.dataset && t.dataset.actrerender) {
+      if (S.actEdit && document.getElementById('pa-actform')) S.actEdit = collectAct();
+      if (S.actBook && document.getElementById('pa-actbook')) S.actBook = collectActBook();
+      var id = t.id; render(); var el = document.getElementById(id); if (el) el.focus();
+    }
+  });
+  root.addEventListener('input', function (e) { if (e.target.id === 'pa-ab-tot') e.target.dataset.touched = '1'; });
+
   // ---------- actions ----------
   function val(id) { var el = document.getElementById(id); return el ? el.value : ''; }
   function setView(v) {
@@ -833,6 +1035,7 @@
     if (v === 'avail') loadAvailability(S.from);
     if (v === 'chan') Promise.all([api('channels'), api('channelEvents')]).then(function (r) { S.channels = r[0]; S.events = r[1].events; render(); }).catch(fail);
     if (v === 'book') api('find', { q: S.findQ }).then(function (d) { S.bookings = d.bookings; S.payMode = d.payMode; render(); }).catch(fail);
+    if (v === 'acts') loadActivities();
     if (v === 'guests') api('guests').then(function (d) { S.guests = d.guests; render(); }).catch(fail);
     if (v === 'msgs') loadMessages();
     if (v === 'front') api('frontStore').then(function (d) { S.front = d; render(); }).catch(fail);
@@ -954,6 +1157,7 @@
     var a = t.dataset.act;
     if (a === 'backdrop' && e.target !== t) return;
     if (a === 'view') return setView(t.dataset.v);
+    if (a.indexOf('act') === 0 && ACT_ACTIONS[a]) return ACT_ACTIONS[a](t);
     if (a === 'more') { S.more = !S.more; return render(); }
     if (S.more && a !== 'more' && a !== 'hookbuilder') S.more = false;
     if (a === 'goStart') { S.searched = null; return loadAvailability(startDate()); }
