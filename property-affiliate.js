@@ -332,8 +332,9 @@
     h += '<section class="pa-card" aria-label="Guest payments"><p class="pa-h2">Guest payments</p><p class="pa-hint">How guests pay for bookings you make in the hub. Bookings from Airbnb, Booking.com and LekkeSlaap are paid on those channels.</p>' +
       '<fieldset class="pa-fieldset"><legend class="pa-label">How guests can pay</legend>' +
       pmOpt('both', 'Both (recommended)', 'Avante payment gateway link and EFT to your bank account.') +
-      pmOpt('gateway', 'Avante payment gateway only', 'Stock Network sets the booking to Paid automatically.') +
-      pmOpt('eft', 'EFT to our bank account only', 'You mark EFT payments as paid in the hub, and in Stock Network.') + '</fieldset>' +
+      pmOpt('gateway', 'Avante payment gateway only', 'The gateway sets the booking to Paid. Unpaid bookings are cancelled by Stock Network after its payment time.') +
+      pmOpt('eft', 'EFT to our bank account only', 'Bookings are Booked straight away. Tap Paid by EFT when the money is in: the hub records it on Stock Network, which sets Paid.') + '</fieldset>' +
+      '<label class="pa-check" style="display:flex;align-items:flex-start;gap:10px;margin-top:14px"><input id="pa-appr" type="checkbox"' + (st.approveGuests ? ' checked' : '') + ' style="width:18px;height:18px;margin-top:2px"><span><b>Approve each new front store guest</b><br><span class="pa-hint">Front store bookings wait as a Request until you tap Accept (Booked) or Decline (cancelled). If you don\'t answer, Stock Network cancels the request after the number of days set in its back office.</span></span></label>' +
       '<p class="pa-label" style="margin:16px 0 6px">Your bank account for EFT</p><div class="pa-form">' +
       '<div class="pa-field"><label class="pa-label" for="pa-bn" style="color:#0e2f44">Bank</label><input id="pa-bn" type="text" value="' + esc(bk.bankName || '') + '" placeholder="e.g. FNB"></div>' +
       '<div class="pa-field"><label class="pa-label" for="pa-bh" style="color:#0e2f44">Account holder</label><input id="pa-bh" type="text" value="' + esc(bk.accountHolder || '') + '"></div>' +
@@ -378,10 +379,14 @@
     var live = b.items.filter(function (i) { return !i.cancelled; });
     if (b.status === 'Cancelled' || !live.length) return '';
     var h = '<button type="button" class="pa-btn small" data-act="editBooking" data-ref="' + esc(b.ref) + '">Open</button>';
-    if (b.origin !== 'channel' && !b.locked && !b.demo) {
+    if (b.approval && b.approval.state === 'pending') {
+      h += '<button type="button" class="pa-btn small" data-act="decide" data-yes="1" data-ref="' + esc(b.ref) + '">Accept</button><button type="button" class="pa-btn small danger" data-act="decide" data-ref="' + esc(b.ref) + '">Decline</button>' +
+        '<span class="pa-hint" style="width:100%">Waiting for you to accept. Stock Network cancels it if not accepted in time.</span>';
+    } else if (b.origin !== 'channel' && !b.locked && !b.demo) {
       h += '<button type="button" class="pa-btn small ghost" data-act="payLink" data-ref="' + esc(b.ref) + '">Payment link</button>';
-      if (S.payMode !== 'gateway') h += '<button type="button" class="pa-btn small ghost" data-act="markPaid" data-ref="' + esc(b.ref) + '">Mark paid (EFT)</button>';
+      if (S.payMode !== 'gateway') h += '<button type="button" class="pa-btn small ghost" data-act="markPaid" data-type="EFT" data-ref="' + esc(b.ref) + '">Paid by EFT</button><button type="button" class="pa-btn small ghost" data-act="markPaid" data-type="Cash" data-ref="' + esc(b.ref) + '">Paid on arrival</button>';
     }
+    if (b.statusError) h += '<span class="pa-err" style="width:100%;font-size:12.5px">' + esc(b.statusError) + '</span>';
     if (b.cancelRequest) h += '<span class="pa-hint" style="width:100%">Cancellation waiting for affiliate approval</span>';
     return '<div class="pa-actions">' + h + '</div>';
   }
@@ -817,8 +822,10 @@
         '<div class="pa-field"><label class="pa-label" for="pa-gs">Booked through</label><select id="pa-gs"><option>Direct</option><option>Walk-in</option><option>Booking.com</option><option>Airbnb</option><option>LekkeSlaap</option><option>Other</option></select></div><div class="pa-field"><label class="pa-label" for="pa-gr">Channel reference</label><input id="pa-gr" type="text" placeholder="Optional"></div>';
       h += '</div>';
       if (!editing) h += '<div class="pa-field"><label class="pa-label" for="pa-gn">Notes</label><textarea id="pa-gn" rows="2"></textarea></div>';
+      if (!editing && ((S.prop.settings || {}).payMode || 'both') === 'both') h += '<fieldset class="pa-fieldset"><legend class="pa-label">Guest pays by</legend><label class="pa-check pa-radio"><input type="radio" name="pa-payby" value="eft" checked><span><b>EFT or on arrival</b><br><span class="pa-hint">Booked straight away. You record the payment when it arrives.</span></span></label>' +
+        '<label class="pa-check pa-radio"><input type="radio" name="pa-payby" value="gateway"><span><b>Payment gateway (pay now)</b><br><span class="pa-hint">Booked; Stock Network cancels it if the guest doesn\'t pay within its payment time.</span></span></label></fieldset>';
     }
-    h += '<p class="pa-hint">' + (editing ? (live.length === 1 ? 'Saving a new unit or new dates cancels ' + b.ref + ' on Stock Network and makes a new booking with a new reference.' : 'Removing a unit cancels only that unit on Stock Network; the booking keeps its reference. To change dates, cancel and book again.') : (items.length > 1 ? 'All units go on one Stock Network reservation with one reference.' : 'Created on Stock Network as a Request, then blocked on your other channels within 15 minutes.')) + '</p>';
+    h += '<p class="pa-hint">' + (editing ? (live.length === 1 ? 'Saving a new unit or new dates cancels ' + b.ref + ' on Stock Network and makes a new booking with a new reference.' : 'Removing a unit cancels only that unit on Stock Network; the booking keeps its reference. To change dates, cancel and book again.') : (items.length > 1 ? 'All units go on one Stock Network reservation with one reference, as Booked.' : 'Created on Stock Network as Booked, then blocked on your other channels within 15 minutes.')) + '</p>';
     if (editing && b.origin !== 'channel') h += '<div class="pa-row"><button type="button" class="pa-btn small ghost" data-act="payLink" data-ref="' + esc(b.ref) + '">Payment link</button></div>';
     h += '<div class="pa-row">' + (editing ? (live.length === 1 ? '<button type="button" class="pa-btn" data-act="saveEdit"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'Saving…' : 'Save changes') + '</button>' : '') + '<button type="button" class="pa-btn danger" data-act="cancelBooking">Cancel this booking</button>'
       : '<button type="button" class="pa-btn" data-act="confirmBook"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'Booking…' : (items.length > 1 ? 'Book ' + items.length + ' units on Stock Network' : 'Make booking on Stock Network')) + '</button>') + '<button type="button" class="pa-btn ghost" data-act="close">Close</button></div>';
@@ -1190,8 +1197,17 @@
       }).catch(fail);
     }
     if (a === 'markPaid') {
-      if (!confirm('Mark ' + t.dataset.ref + ' as paid by EFT?\n\nOnly do this once the money is in your account. A paid booking is locked: it can\'t be changed in the hub, and cancelling needs the affiliate\'s approval.\n\nAlso mark it paid in Stock Network, so SN doesn\'t auto-cancel the request.')) return;
-      return api('markPaid', { ref: t.dataset.ref }).then(function () { S.msg = t.dataset.ref + ' marked as paid (EFT). Remember to mark it paid in Stock Network too.'; return api('find', { q: S.findQ }).then(function (d) { S.bookings = d.bookings; S.payMode = d.payMode; render(); }); }).catch(fail);
+      var how = t.dataset.type === 'Cash' ? 'on arrival (cash or card)' : 'by EFT';
+      if (!confirm('Record ' + t.dataset.ref + ' as paid ' + how + '?\n\nOnly do this once you have the money. The hub records the payment on Stock Network, which sets the booking to Paid. A paid booking is locked: it can\'t be changed in the hub, and cancelling needs approval.')) return;
+      t.textContent = 'Saving…';
+      return api('markPaid', { ref: t.dataset.ref, type: t.dataset.type || 'EFT' }).then(function (d) { S.msg = t.dataset.ref + ' recorded as paid ' + how + '. Stock Network now shows ' + (d.booking.snStatus || d.booking.status) + '.'; return api('find', { q: S.findQ }).then(function (d2) { S.bookings = d2.bookings; S.payMode = d2.payMode; render(); }); }).catch(fail);
+    }
+    if (a === 'decide') {
+      var yes = !!t.dataset.yes, why = '';
+      if (yes) { if (!confirm('Accept ' + t.dataset.ref + '? It becomes Booked on Stock Network and the guest gets the payment details by email.')) return; }
+      else { why = prompt('Decline ' + t.dataset.ref + '? It is cancelled on Stock Network and the guest gets a polite email.\n\nOptional short reason for the guest:', ''); if (why === null) return; }
+      t.textContent = yes ? 'Accepting…' : 'Declining…';
+      return api('decide', { ref: t.dataset.ref, accept: yes, reason: why }).then(function (d) { S.msg = t.dataset.ref + (yes ? ' accepted: Booked on Stock Network. The guest was emailed the payment details.' : ' declined and cancelled. The guest was emailed.'); return api('find', { q: S.findQ }).then(function (d2) { S.bookings = d2.bookings; S.payMode = d2.payMode; render(); }); }).catch(fail);
     }
     if (a === 'shift') { var nf = add(S.from, +t.dataset.n); if (nf < today()) nf = today(); return loadAvailability(nf); }
     if (a === 'search') {
@@ -1221,7 +1237,7 @@
       return;
     }
     if (a === 'confirmBook') {
-      var bookBody = { items: S.cart, guest: { first: val('pa-gf'), last: val('pa-gl'), email: val('pa-ge'), cellphone: val('pa-gc') }, adults: val('pa-ga'), children: val('pa-gk'), source: val('pa-gs'), channelRef: val('pa-gr'), notes: val('pa-gn') };
+      var bookBody = { items: S.cart, guest: { first: val('pa-gf'), last: val('pa-gl'), email: val('pa-ge'), cellphone: val('pa-gc') }, adults: val('pa-ga'), children: val('pa-gk'), source: val('pa-gs'), channelRef: val('pa-gr'), notes: val('pa-gn'), payBy: (root.querySelector('input[name="pa-payby"]:checked') || {}).value };
       if (!bookBody.guest.cellphone.trim()) { var gc = document.getElementById('pa-gc'); if (gc) { gc.focus(); gc.setAttribute('aria-invalid', 'true'); } return; }
       busy(true); render();
       return api('book', bookBody)
@@ -1260,7 +1276,7 @@
       var pmEl = root.querySelector('input[name="pa-pm"]:checked');
       var csMode = root.querySelector('input[name="pa-cs-mode"]:checked');
       return api('saveSettings', { calendarStart: { mode: csMode ? csMode.value : 'today', date: val('pa-cs-date') }, email: val('pa-se'), phone: val('pa-sp'), minStay: val('pa-sm'), autoBook: document.getElementById('pa-auto').checked, prices: prices, channels: channels,
-        payMode: pmEl ? pmEl.value : 'both', bank: { bankName: val('pa-bn'), accountHolder: val('pa-bh'), accountNumber: val('pa-ba'), branchCode: val('pa-bb'), accountType: val('pa-bt'), note: val('pa-bx') } })
+        payMode: pmEl ? pmEl.value : 'both', approveGuests: !!(document.getElementById('pa-appr') || {}).checked, bank: { bankName: val('pa-bn'), accountHolder: val('pa-bh'), accountNumber: val('pa-ba'), branchCode: val('pa-bb'), accountType: val('pa-bt'), note: val('pa-bx') } })
         .then(function (d) { S.channels = d; S.prop.settings = d.settings; if (d.firstBookable) S.prop.firstBookable = d.firstBookable; S.from = startDate(); S.searched = null; S.msg = 'Saved. The hub reads your channel links every 15 minutes.'; render(); window.scrollTo(0, 0); }).catch(function (e) { fail(e); window.scrollTo(0, 0); });
     }
     if (a === 'unitMove' || a === 'unitNew') {

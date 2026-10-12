@@ -227,6 +227,9 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
     var d = S.d;
     if (S.booked) {
       var b = S.booked, p = b.pay || {};
+      if (b.awaitingApproval) return '<h2>Request ' + esc(b.ref) + ' sent</h2><div class="ok">' + b.items.map(function (i) { return esc(i.unit) + ' · ' + esc(nice(i.start)) + ' – ' + esc(nice(i.end)); }).join('<br>') + (b.total ? '<br><b>Total ' + money(b.total) + '</b>' : '') + '</div>' +
+        '<p style="margin-top:14px">' + esc(d.name) + ' will confirm your booking soon. As soon as it\'s accepted, we\'ll email you the payment details. You haven\'t been charged.</p>' +
+        '<button type="button" class="btn g sm" data-act="again">Make another booking</button>';
       return '<h2>Booking ' + esc(b.ref) + ' received 🎉</h2><div class="ok">' + b.items.map(function (i) { return esc(i.unit) + ' · ' + esc(nice(i.start)) + ' – ' + esc(nice(i.end)); }).join('<br>') + (b.total ? '<br><b>Total ' + money(b.total) + '</b>' : '') + '</div>' +
         (safeLink(p.gatewayUrl) ? '<p style="margin:14px 0 8px">Pay now to secure your booking:</p><a class="btn t" style="width:100%" href="' + esc(safeLink(p.gatewayUrl)) + '" target="_blank" rel="noopener">Pay now (card or Instant EFT)</a>' : '') +
         (p.bank ? '<div class="card" style="margin-top:14px;padding:14px"><b>' + (p.gatewayUrl ? 'Or pay by EFT' : 'Pay by EFT') + '</b><div class="muted" style="font-size:14.5px;color:#26302f;line-height:1.7;margin-top:6px">Bank: ' + esc(p.bank.bankName) + '<br>Account name: ' + esc(p.bank.accountHolder) + '<br>Account number: ' + esc(p.bank.accountNumber) + '<br>Branch code: ' + esc(p.bank.branchCode || '') + '<br>Reference: <b>' + esc(b.ref) + '</b>' + (p.bank.note ? '<br>' + esc(p.bank.note) : '') + '</div></div>' : '') +
@@ -258,9 +261,12 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
         '<div class="fld" style="margin-top:10px"><label for="ge">Email</label><input id="ge" type="email" autocomplete="email"></div>' +
         '<div class="fld" style="margin-top:10px"><label for="gc">Cellphone</label><input id="gc" type="tel" autocomplete="tel"></div>' +
         '<div class="fld" style="margin-top:10px"><label for="gn">Anything we should know? (optional)</label><textarea id="gn" rows="2"></textarea></div>' +
+        (d.payMode === 'both' && !d.approveGuests ? '<fieldset class="fld" style="margin-top:10px;border:none;padding:0"><legend style="font-weight:700;margin-bottom:6px">How will you pay?</legend>' +
+          '<label style="display:flex;gap:8px;align-items:center;min-height:40px"><input type="radio" name="payby" value="gateway"' + (S.payBy !== 'eft' ? ' checked' : '') + '> Pay now online (card or Instant EFT)</label>' +
+          '<label style="display:flex;gap:8px;align-items:center;min-height:40px"><input type="radio" name="payby" value="eft"' + (S.payBy === 'eft' ? ' checked' : '') + '> EFT to the property\'s bank account</label></fieldset>' : '') +
         '<div class="hp" aria-hidden="true"><label>Website <input id="website" tabindex="-1" autocomplete="off"></label></div>' +
-        '<button type="button" class="btn t" style="width:100%;margin-top:14px" data-act="book"' + (S.busy ? ' disabled' : '') + '>' + (S.busy === 'book' ? 'Booking…' : 'Confirm booking' + (r.total ? ' · ' + money(r.total) : '')) + '</button>' +
-        '<p class="muted" style="margin-top:8px">You\'ll see how to pay straight after booking, and get it by email.</p>';
+        '<button type="button" class="btn t" style="width:100%;margin-top:14px" data-act="book"' + (S.busy ? ' disabled' : '') + '>' + (S.busy === 'book' ? 'Booking…' : (d.approveGuests ? 'Send booking request' : 'Confirm booking') + (r.total ? ' · ' + money(r.total) : '')) + '</button>' +
+        '<p class="muted" style="margin-top:8px">' + (d.approveGuests ? 'This sends a booking request. ' + esc(d.name) + ' confirms it, then you get the payment details by email.' : 'You\'ll see how to pay straight after booking, and get it by email.' + (d.payMode !== 'eft' ? ' Online payments must be made within the payment time, or the booking is cancelled.' : '')) + '</p>';
     }
     return h;
   }
@@ -405,7 +411,7 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
       else if (g.cellphone.replace(/\D/g, '').length < 9) S.err = 'Enter your cellphone number.';
       if (S.err) { var keep = { gf: val('gf'), gl: val('gl'), ge: val('ge'), gc: val('gc'), gn: val('gn') }; drawBook(); Object.keys(keep).forEach(function (k) { var el = document.getElementById(k); if (el) el.value = keep[k]; }); return; }
       S.busy = 'book'; t.disabled = true; t.textContent = 'Booking…';
-      return post({ action: 'book', checkIn: S.quote.checkIn, checkOut: S.quote.checkOut, unit: S.pick.unit, guest: g, adults: S.adults, children: S.children, notes: val('gn'), website: val('website') }).then(function (r) {
+      return post({ action: 'book', checkIn: S.quote.checkIn, checkOut: S.quote.checkOut, unit: S.pick.unit, guest: g, adults: S.adults, children: S.children, notes: val('gn'), website: val('website'), payBy: (document.querySelector('input[name="payby"]:checked') || {}).value }).then(function (r) {
         S.busy = false;
         if (!r.ok) { S.err = r.error || 'The booking didn\'t go through.'; t.disabled = false; t.textContent = 'Confirm booking'; var er = document.querySelector('#book .err'); if (er) er.remove(); t.insertAdjacentHTML('afterend', '<div class="err" role="alert">' + esc(S.err) + '</div>'); return; }
         S.booked = r; S.quote = null; S.pick = null; S.monthData = {}; drawBook(); loadMonth(); document.getElementById('book').scrollIntoView({ behavior: 'smooth', block: 'start' });

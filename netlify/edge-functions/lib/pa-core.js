@@ -353,7 +353,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
   // ---------- bookings ----------
   async function saveBookings(prop, list) { await setJSON("book:" + prop.siteId, list); }
 
-  async function createOnSN(prop, client, items, guest, { reference, notes, amountFor } = {}) {
+  async function createOnSN(prop, client, items, guest, { reference, notes, amountFor, requestAndPay = false } = {}) {
     const snItems = [];
     for (const it of items) {
       if (!prop.units.find((u) => u.name === it.unit)) throw new PAError("Unknown unit " + it.unit + ".");
@@ -363,11 +363,22 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
       snItems.push(client.buildItem(stock, { adults: it.adults || 2, children: it.children || 0, amount: amountFor ? amountFor(it, stock) : undefined }));
     }
     try {
-      return await client.createReservation({ items: snItems, guest, reference, notes });
+      return await client.createReservation({ items: snItems, guest, reference, notes, requestAndPay });
     } catch (e) {
       if (e instanceof SNError) throw new PAError(e.message + " If the nights now show as booked, Stock Network may still have taken the stock: check the back office.", 502, { sn: e.body });
       throw e;
     }
+  }
+
+  // Status rules (Jean, 2026-10-12): channel bookings and bookings paid by EFT / on arrival
+  // go to Booked right away (no Stock Network auto-cancel); bookings paid by a payment gateway
+  // are made as "request and pay" (Booked, Stock Network cancels them if unpaid in its time);
+  // front store bookings wait as Request when the property approves each new guest.
+  // Paid comes from the gateway, or from the payment the property records in the hub.
+  // Confirmed is never set by the hub.
+  async function holdBooked(client, res, note) {
+    try { const d = await client.setStatus(res.reservationId, "Booked", note || "Booked by the Avante hub"); return d.reservationStatus || "Booked"; }
+    catch (e) { return null; }
   }
 
   function validGuest(g) {
@@ -435,20 +446,98 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     return { booking: decorate(b), pay: await payInfoFor(prop, b) };
   }
 
-  async function markPaidEft(prop, ref) {
+  // The property received the money (EFT, cash or card on arrival): record it on Stock Network,
+  // which sets the booking to Paid when the balance is covered.
+  async function markPaidEft(prop, ref, type = "EFT") {
     const { list, b } = await findBooking(prop, ref);
     notDemo(b);
     if (b.origin === "channel") throw new PAError("Channel bookings are paid on the channel.");
-    if (payMode(prop) === "gateway") throw new PAError("EFT is switched off for this property (payment gateway only).");
+    if (payMode(prop) === "gateway") throw new PAError("Payments are by payment gateway only for this property: the gateway sets Paid.");
     if (b.status === "Cancelled") throw new PAError(b.ref + " is cancelled.");
-    if (!b.paidEft) b.paidEft = { at: now().toISOString() };
+    if (b.approval && b.approval.state === "pending") throw new PAError("Accept " + b.ref + " first.");
+    const kind = ["EFT", "Cash", "Card"].includes(type) ? type : "EFT";
+    const client = await clientFor(prop);
+    await refreshPayment(client, b);
+    const due = Math.max(0, Math.round(((Number(b.total) || 0) - (Number(b.amountPaid) || 0)) * 100) / 100);
+    if (due > 0 && b.reservationId) {
+      const d = await client.addPayment(b.reservationId, { type: kind, amount: due, reference: b.ref, note: kind + " received by the property (Avante hub)" });
+      b.amountPaid = Number(d.amountPaid) || (Number(b.amountPaid) || 0) + due;
+      b.snStatus = d.reservationStatus || b.snStatus;
+      // If Stock Network doesn't move a fully paid booking to Paid by itself, set it.
+      if (!/paid/i.test(String(b.snStatus)) && b.amountPaid >= (Number(b.total) || 0)) { try { const s2 = await client.setStatus(b.reservationId, "Paid", kind + " received (Avante hub)"); b.snStatus = s2.reservationStatus || "Paid"; } catch (_) {} }
+      if (b.status !== "Cancelled") b.status = b.snStatus;
+    }
+    b.paidEft = { at: now().toISOString(), type: kind, amount: due };
+    if (!b.paidAt && /paid/i.test(String(b.snStatus || "")) ) b.paidAt = now().toISOString();
     await saveBookings(prop, list);
     return { booking: decorate(b) };
   }
 
+  // Front store requests waiting for the property: Accept → Booked, Decline → cancelled.
+  async function decide(prop, ref, accept, reason) {
+    const { list, b } = await findBooking(prop, ref);
+    notDemo(b);
+    if (!(b.approval && b.approval.state === "pending")) throw new PAError(b.ref + " isn't waiting for your approval.");
+    const client = await clientFor(prop);
+    await refreshPayment(client, b);
+    if (b.status === "Cancelled") { b.approval.state = "expired"; await saveBookings(prop, list); throw new PAError(b.ref + " was already cancelled on Stock Network (its request time ran out).", 409); }
+    const g = b.guest || {}, units = b.items.filter((i) => !i.cancelled).map((i) => i.unit + " " + i.start + " to " + i.end).join(", ");
+    const fs = fsSettings(prop), replyTo = validEmail(fs.email) ? fs.email : (prop.settings && prop.settings.email) || "";
+    if (accept) {
+      const d = await client.setStatus(b.reservationId, "Booked", "Accepted by the property (Avante hub)");
+      b.status = b.snStatus = d.reservationStatus || "Booked";
+      b.approval = { state: "accepted", at: now().toISOString() };
+      await saveBookings(prop, list);
+      const pay = await payInfoFor(prop, b);
+      if (g.email && pay && !pay.noMethod) await sendEmail(g.email, "Your booking " + b.ref + " at " + (prop.resortName || "") + " is accepted",
+        "<div style=\"font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.55;color:#1f2937;max-width:560px\"><p>Hi " + esc(g.first || "") + ",</p><p>Good news: <b>" + esc(prop.resortName || "") + "</b> accepted your booking <b>" + esc(b.ref) + "</b> (" + esc(units) + ").</p><p style=\"white-space:pre-line\">" + esc(pay.message.split("\n").slice(3).join("\n")) + "</p></div>",
+        { fromName: prop.resortName || "", replyTo }).catch(() => false);
+      return { booking: decorate(b), pay };
+    }
+    await client.cancelReservation(b.reservationId);
+    b.status = "Cancelled"; b.cancelledAt = now().toISOString(); b.approval = { state: "declined", at: now().toISOString() };
+    await saveBookings(prop, list);
+    await invalidate(prop, b.items);
+    if (g.email) await sendEmail(g.email, "Your booking request at " + (prop.resortName || ""),
+      "<div style=\"font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.55;color:#1f2937;max-width:560px\"><p>Hi " + esc(g.first || "") + ",</p><p>Thank you for your interest in <b>" + esc(prop.resortName || "") + "</b>. Unfortunately we can't accept your booking request " + esc(b.ref) + " (" + esc(units) + ")." + (cleanStr(reason, 300) ? " " + esc(cleanStr(reason, 300)) : "") + "</p><p>You have not been charged.</p></div>",
+      { fromName: prop.resortName || "", replyTo }).catch(() => false);
+    return { booking: decorate(b) };
+  }
+
+  // Every 15 minutes and when Bookings opens: one "changed since" call to Stock Network
+  // picks up Paid (gateway), cancellations and status changes made in the back office.
+  async function refreshStatuses(prop, { client, minGapMs = 60000 } = {}) {
+    const key = "stchk:" + prop.siteId;
+    const last = (await getJSON(key)) || null;
+    const t = now();
+    if (last && t.getTime() - Date.parse(last.at) < minGapMs) return { skipped: true };
+    const since = last ? new Date(Date.parse(last.at) - 5 * 60000).toISOString() : new Date(t.getTime() - 30 * 864e5).toISOString();
+    const c = client || (await clientFor(prop));
+    const changed = await c.listReservations({ modifiedSince: since });
+    await setJSON(key, { at: t.toISOString() });
+    if (!changed.length) return { changed: 0 };
+    const list = await bookingsOf(prop);
+    const byId = new Map(list.filter((b) => b.reservationId).map((b) => [b.reservationId, b]));
+    let n = 0;
+    for (const r of changed) {
+      const b = byId.get(r.reservationId);
+      if (!b) continue; // made directly in Stock Network: shows as taken nights in the calendar
+      const st = String(r.reservationStatus || "");
+      b.snStatus = st || b.snStatus;
+      b.amountPaid = Number(r.amountPaid) || 0;
+      if (/cancel/i.test(st)) { if (b.status !== "Cancelled") { b.status = "Cancelled"; b.cancelledAt = t.toISOString(); b.cancelledOn = "sn"; if (b.approval && b.approval.state === "pending") b.approval.state = "expired"; } }
+      else if (b.status !== "Cancelled") b.status = st || b.status;
+      if (/paid/i.test(st) && !b.paidAt) b.paidAt = t.toISOString(); // the hub takes over from Paid
+      b.checkedAt = t.toISOString();
+      n++;
+    }
+    if (n) await saveBookings(prop, list);
+    return { changed: n };
+  }
+
   const PAID_LOCK_MSG = "This booking has been paid, so it can't be changed in the hub. The guest must contact the property; changes are made in Stock Network. To cancel it, use Request cancellation: the linked affiliate must approve.";
 
-  async function book(prop, body) {
+  async function book(prop, body, { approval = false } = {}) {
     const items = (Array.isArray(body.items) ? body.items : []).slice(0, 10).map((it) => ({ unit: cleanStr(it.unit, 60), start: cleanStr(it.start, 10), end: cleanStr(it.end, 10), adults: Math.max(1, Math.min(20, Number(it.adults) || Number(body.adults) || 2)), children: Math.max(0, Math.min(20, Number(it.children) || Number(body.children) || 0)) }));
     if (!items.length) throw new PAError("Choose at least one unit.");
     for (const it of items) checkBookable(prop, it.start);
@@ -456,11 +545,19 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     const source = cleanStr(body.source, 40) || "Direct";
     const channelRef = cleanStr(body.channelRef, 60);
     const client = await clientFor(prop);
-    const res = await createOnSN(prop, client, items, guest, { reference: channelRef, notes: [source !== "Direct" ? "Booked through " + source : "", cleanStr(body.notes, 800), "Made in the Avante hub"].filter(Boolean).join(" · ") });
-    const rec = { ref: "J" + res.refNo, reservationId: res.reservationId, status: res.status || "Request", origin: "hub", source, channelRef,
+    const mode = payMode(prop);
+    const payBy = mode === "gateway" ? "gateway" : mode === "eft" ? "eft" : (body.payBy === "gateway" ? "gateway" : "eft");
+    const waitForApproval = !!approval;
+    const res = await createOnSN(prop, client, items, guest, { reference: channelRef, requestAndPay: !waitForApproval && payBy === "gateway",
+      notes: [source !== "Direct" ? "Booked through " + source : "", cleanStr(body.notes, 800), "Made in the Avante hub"].filter(Boolean).join(" · ") });
+    let status = res.status || "Request", statusError = null;
+    if (!waitForApproval && payBy === "gateway") status = "Booked";
+    if (!waitForApproval && payBy === "eft") { const st = await holdBooked(client, res, "Booked by the Avante hub (pays by EFT or on arrival)"); if (st) status = st; else statusError = "Stock Network didn't accept Booked: it is still a Request, so its X-day rule can cancel it. Set it to Booked in Stock Network."; }
+    const rec = { ref: "J" + res.refNo, reservationId: res.reservationId, status, origin: "hub", source, channelRef, payBy, statusError: statusError || undefined,
+      approval: waitForApproval ? { state: "pending", at: now().toISOString() } : undefined,
       guest: { first: guest.first, last: guest.last, email: guest.email, cellphone: guest.cellphone },
       items: items.map((it) => { const d = res.details.find((x) => x.unit === it.unit && x.start === it.start); return { unit: it.unit, start: it.start, end: it.end, detailId: d ? d.detailId : null }; }),
-      total: res.total, paymentUrl: res.paymentUrl || null, infoUrl: res.infoUrl || null, amountPaid: res.amountPaid || 0, snStatus: res.status || "Request", createdAt: now().toISOString() };
+      total: res.total, paymentUrl: res.paymentUrl || null, infoUrl: res.infoUrl || null, amountPaid: res.amountPaid || 0, snStatus: status, createdAt: now().toISOString() };
     const list = await bookingsOf(prop); list.push(rec); await saveBookings(prop, list);
     await invalidate(prop, items);
     return { booking: decorate(rec), pay: await payInfoFor(prop, rec) };
@@ -617,9 +714,12 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
       res = await createOnSN(prop, client, [next], guest, { reference: b.channelRef, notes });
       await client.cancelReservation(b.reservationId);
     }
+    // The new booking keeps the old one's place: Booked stays Booked (a Request waiting for approval stays a Request).
+    let newStatus = res.status || "Request";
+    if (!(b.approval && b.approval.state === "pending")) newStatus = (await holdBooked(client, res, "Moved from " + b.ref + " in the Avante hub")) || newStatus;
     b.status = "Cancelled"; b.cancelledAt = now().toISOString(); b.replacedBy = "J" + res.refNo;
-    const rec = Object.assign({}, b, { ref: "J" + res.refNo, reservationId: res.reservationId, status: res.status || "Request", replaces: b.ref, cancelledAt: undefined, replacedBy: undefined,
-      paymentUrl: res.paymentUrl || null, infoUrl: res.infoUrl || null, amountPaid: res.amountPaid || 0, snStatus: res.status || "Request", checkedAt: undefined, cancelRequest: undefined,
+    const rec = Object.assign({}, b, { ref: "J" + res.refNo, reservationId: res.reservationId, status: newStatus, replaces: b.ref, cancelledAt: undefined, replacedBy: undefined,
+      paymentUrl: res.paymentUrl || null, infoUrl: res.infoUrl || null, amountPaid: res.amountPaid || 0, snStatus: newStatus, checkedAt: undefined, cancelRequest: undefined,
       guest: { first: guest.first, last: guest.last, email: guest.email, cellphone: guest.cellphone },
       items: [{ unit: next.unit, start: next.start, end: next.end, detailId: res.details[0] ? res.details[0].detailId : null }], total: res.total, createdAt: now().toISOString() });
     list.push(rec); await saveBookings(prop, list);
@@ -631,10 +731,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     const s = cleanStr(q, 80).toLowerCase();
     const list = await bookingsOf(prop);
     if (refresh) {
-      const stale = list.filter((b) => !b.demo && b.origin !== "channel" && b.status !== "Cancelled" && !isPaid(b) && (!b.checkedAt || now().getTime() - Date.parse(b.checkedAt) > 120000)).slice(-10);
-      if (stale.length) {
-        try { const client = await clientFor(prop); let changed = false; for (const b of stale) changed = (await refreshPayment(client, b)) || changed; if (changed) await saveBookings(prop, list); } catch (_) {}
-      }
+      try { const r = await refreshStatuses(prop); if (r.changed) return find(prop, q, { refresh: false }); } catch (_) {}
     }
     return { payMode: payMode(prop), bookings: list.map(decorate).filter((b) => !s || [b.ref, b.guest && b.guest.first, b.guest && b.guest.last, b.source, b.channel, b.channelRef].concat(b.items.map((i) => i.unit)).join(" ").toLowerCase().includes(s)).slice(-100).reverse() };
   }
@@ -653,6 +750,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
       s.calendarStart = { mode, date: mode === "date" ? date : "" };
     }
     if (body.payMode !== undefined) s.payMode = PAY_MODES.includes(body.payMode) ? body.payMode : "both";
+    if (body.approveGuests !== undefined) s.approveGuests = !!body.approveGuests;
     if (body.bank && typeof body.bank === "object") {
       const bk = { bankName: cleanStr(body.bank.bankName, 60), accountHolder: cleanStr(body.bank.accountHolder, 100), accountNumber: cleanStr(body.bank.accountNumber, 30).replace(/[^0-9 -]/g, ""), branchCode: cleanStr(body.bank.branchCode, 20), accountType: cleanStr(body.bank.accountType, 30), note: cleanStr(body.bank.note, 200) };
       if (bk.accountNumber && (!bk.bankName || !bk.accountHolder)) throw new PAError("Enter the bank name and account holder with the account number.");
@@ -759,7 +857,9 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
         reference: String(ev.uid).slice(0, 50), notes: label + " booking imported by the Avante hub" + (ev.summary ? " · " + ev.summary : ""),
         amountFor: (it, stock) => (s.prices && s.prices[ev.unit] ? s.prices[ev.unit] * nights : stock.availability.rates.rate),
       });
-      list.push({ ref: "J" + res.refNo, reservationId: res.reservationId, status: res.status || "Request", origin: "channel", channel: ev.channel, source: label, channelRef: ev.uid,
+      // No payment on Stock Network for channel bookings: Booked straight away, so SN's request rule can't cancel them.
+      const st = await holdBooked(client, res, label + " booking (paid on the channel)");
+      list.push({ ref: "J" + res.refNo, reservationId: res.reservationId, status: st || res.status || "Request", snStatus: st || res.status || "Request", statusError: st ? undefined : "Still a Request on Stock Network: set it to Booked there.", origin: "channel", channel: ev.channel, source: label, channelRef: ev.uid,
         guest: { first: label, last: "", email: s.email || "", cellphone: s.phone }, items: [{ unit: ev.unit, start: ev.start, end: ev.end, detailId: res.details[0] ? res.details[0].detailId : null }], total: res.total, createdAt: now().toISOString() });
       ev.status = "booked"; ev.ref = "J" + res.refNo; ev.error = null;
     } catch (e) {
@@ -857,6 +957,11 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
       const prop = await getJSON(k);
       if (!prop) continue;
       try { const n = await remindMessages(prop); if (n) out[prop.site + " messages"] = n + " reminder(s) emailed"; } catch (_) {}
+      // One light "changed since" call per property with open hub bookings (Paid, cancellations).
+      try {
+        const open = (await bookingsOf(prop)).some((b) => !b.demo && b.reservationId && b.status !== "Cancelled" && !b.paidAt && b.items.some((i) => i.end >= today()));
+        if (open) { const r = await refreshStatuses(prop, { minGapMs: 10 * 60000 }); if (r.changed) out[prop.site + " statuses"] = r.changed + " changed"; }
+      } catch (e) { out[prop.site + " statuses"] = { error: e.message }; }
       // Properties without channels make no background calls to Stock Network.
       if (!(await isLinked(prop))) { out[prop.site] = "not linked to a channel: skipped"; continue; }
       try { out[prop.site] = await syncProperty(prop); } catch (e) { out[prop.site] = { error: e.message }; }
@@ -1379,7 +1484,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
       welcome: s.welcome, description: s.description, photos: s.photos, showPrices: s.showPrices, showCalendar: s.showCalendar,
       showActivities: s.showActivities, showOffers: s.showOffers, nearbyKm: s.nearbyKm || 30, minStay: minStayOf(prop), firstBookable: fsFirstNight(prop),
       contact: { phone: s.phone || st.phone || "", whatsapp: waNumber(s.whatsapp || s.phone || st.phone || ""), email: s.email || st.email || "" },
-      units: fsUnits(prop).map((u) => ({ name: u.name, size: u.size || "" })), payMode: payMode(prop) };
+      units: fsUnits(prop).map((u) => ({ name: u.name, size: u.size || "" })), payMode: payMode(prop), approveGuests: !!(prop.settings && prop.settings.approveGuests) };
   }
   function guestKeyOk(prop, key) {
     const want = fsSettings(prop).guestKey || "", got = String(key || "");
@@ -1462,15 +1567,26 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     const av = await availability(prop, ci, co);
     for (const u of units) for (const night of eachNight(ci, co)) { const st = av.nights[u] && av.nights[u][night]; if (!st || st.s !== "open") throw new PAError(u + " isn't free for all of those nights any more. Check availability again.", 409); }
     await setJSON(kp, cp + 1); await setJSON(ke, ce + 1);
+    const approval = !!(prop.settings && prop.settings.approveGuests);
     const res = await book(prop, { items: units.map((u) => ({ unit: u, start: ci, end: co })), guest: { first: String(g.first).trim(), last: String(g.last).trim(), email, cellphone: g.cellphone },
-      adults: body.adults, children: body.children, source: "Front store", notes: cleanStr(body.notes, 600) });
+      adults: body.adults, children: body.children, source: "Front store", notes: cleanStr(body.notes, 600), payBy: body.payBy }, { approval });
+    if (approval) {
+      const b0 = res.booking, st0 = prop.settings || {}, u0 = b0.items.map((i) => i.unit + " " + i.start + " to " + i.end).join(", ");
+      await fsStat(prop, "bookings").catch(() => {});
+      if (st0.email) await sendEmail(st0.email, "Booking request to approve " + b0.ref + " · " + (prop.resortName || ""),
+        "<p>A guest asked to book on your Avante front store. Accept or decline it in the hub: Property Affiliate → Bookings.</p><p><b>" + esc(b0.ref) + "</b> · " + esc(u0) + "<br>Guest: " + esc(b0.guest.first + " " + b0.guest.last) + " · " + esc(b0.guest.cellphone) + " · " + esc(b0.guest.email) + (b0.total ? "<br>Total: R" + esc(Math.round(b0.total)) : "") + "</p><p>If you don't answer, Stock Network cancels the request after the number of days set in its back office.</p>").catch(() => false);
+      await sendEmail(email, "Booking request " + b0.ref + " at " + (prop.resortName || ""),
+        "<div style=\"font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.55;color:#1f2937;max-width:560px\"><p>Hi " + esc(b0.guest.first) + ",</p><p>Thank you. <b>" + esc(prop.resortName || "") + "</b> has your booking request <b>" + esc(b0.ref) + "</b> (" + esc(u0) + ") and will confirm it soon. You'll get the payment details as soon as it's accepted.</p></div>",
+        { fromName: prop.resortName || "", replyTo: s.email || st0.email || "" }).catch(() => false);
+      return { ref: b0.ref, total: b0.total, items: b0.items.map((i) => ({ unit: i.unit, start: i.start, end: i.end })), status: "Request", awaitingApproval: true, pay: { gatewayUrl: null, bank: null, noMethod: false, emailed: true } };
+    }
     const b = res.booking, pay = res.pay || {};
     await fsStat(prop, "bookings").catch(() => {});
     const units2 = b.items.map((i) => i.unit + " " + i.start + " to " + i.end).join(", ");
     const st = prop.settings || {};
     if (st.email) await sendEmail(st.email, "New front store booking " + b.ref + " · " + (prop.resortName || ""),
       "<p>A guest booked on your Avante front store.</p><p><b>" + esc(b.ref) + "</b> · " + esc(units2) + "<br>Guest: " + esc(b.guest.first + " " + b.guest.last) + " · " + esc(b.guest.cellphone) + " · " + esc(b.guest.email) +
-      (b.total ? "<br>Total: R" + esc(Math.round(b.total)) : "") + "</p><p>It's on Stock Network as a Request and in the hub under Property Affiliate → Bookings.</p>").catch(() => false);
+      (b.total ? "<br>Total: R" + esc(Math.round(b.total)) : "") + "</p><p>It's on Stock Network as " + esc(b.status) + " and in the hub under Property Affiliate → Bookings.</p>").catch(() => false);
     // Built from parts: only the payment gateway address becomes a link.
     const payLink = pay.gatewayUrl && isHttpsUrl(pay.gatewayUrl) ? "<p><a href=\"" + esc(pay.gatewayUrl) + "\" style=\"display:inline-block;background:#0DCDC2;color:#0e2f44;padding:12px 18px;border-radius:8px;text-decoration:none;font-weight:700\">Pay now</a></p>" : "";
     const bankHtml = pay.bank ? "<p><b>" + (payLink ? "Or pay by EFT" : "Please pay by EFT") + "</b><br>Bank: " + esc(pay.bank.bankName) + "<br>Account name: " + esc(pay.bank.accountHolder) + "<br>Account number: " + esc(pay.bank.accountNumber) + "<br>Branch code: " + esc(pay.bank.branchCode || "") + "<br>Reference: <b>" + esc(b.ref) + "</b>" + (pay.bank.note ? "<br>" + esc(pay.bank.note) : "") + "</p>" : "";
@@ -1520,5 +1636,5 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
   }
   function notDemo(b) { if (b && b.demo) throw new PAError("This is a demo booking: it isn't on Stock Network, so it can't be changed, paid or cancelled.", 409); }
 
-  return { clientFor, connect, auth, disconnect, publicProperty, availability, search, book, cancel, cancelUnit, edit, find, saveSettings, channelsView, payInfo, markPaidEft, approvalInfo, approveCancel, affStatus, resume, seedDemo, clearDemo, isDemoSite, saveContact, checkIn, guests, messagesView, saveMessages, prepareMessage, markMessage, emailNow, inHouse, emailInHouse, firstBookable, fsSettings, saveFrontStore, frontStoreView, uploadFrontPhoto, removeFrontPhoto, frontPhoto, propertyBySlug, publicFrontStore, publicGuestInfo, guestKeyOk, publicOffers, publicAvailability, publicQuote, publicBook, fsStat, propertyReviewLink, remindMessages, icalFeed, runSync, syncProperty, channelEvents, addChannelEvent, snapshot, ensureWindow, resolveUnitNotice, findResortsForSite };
+  return { decide, refreshStatuses, clientFor, connect, auth, disconnect, publicProperty, availability, search, book, cancel, cancelUnit, edit, find, saveSettings, channelsView, payInfo, markPaidEft, approvalInfo, approveCancel, affStatus, resume, seedDemo, clearDemo, isDemoSite, saveContact, checkIn, guests, messagesView, saveMessages, prepareMessage, markMessage, emailNow, inHouse, emailInHouse, firstBookable, fsSettings, saveFrontStore, frontStoreView, uploadFrontPhoto, removeFrontPhoto, frontPhoto, propertyBySlug, publicFrontStore, publicGuestInfo, guestKeyOk, publicOffers, publicAvailability, publicQuote, publicBook, fsStat, propertyReviewLink, remindMessages, icalFeed, runSync, syncProperty, channelEvents, addChannelEvent, snapshot, ensureWindow, resolveUnitNotice, findResortsForSite };
 }

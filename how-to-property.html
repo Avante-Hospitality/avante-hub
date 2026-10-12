@@ -37,6 +37,7 @@
     <div class="ht-card ht-new" aria-label="What's new">
       <h2>What's new</h2>
       <ul>
+        <li><time>12 Oct 2026</time> Bookings now go to <b>Booked</b> on Stock Network straight away, payments you record (<b>Paid by EFT</b>, <b>Paid on arrival</b>) set <b>Paid</b> on Stock Network, gateway payments show up by themselves, and you can approve each new front store guest (see <a href="#book">Bookings</a>).</li>
         <li><time>12 Oct 2026</time> Connecting a property is quicker: the hub reads only the first 14 days from Stock Network, and later days as you move through the calendar. If Stock Network refuses, you now see its own error message.</li>
         <li><time>12 Oct 2026</time> New <b>Activities</b> tab: keep the activities you sell with the supplier's reference numbers (Activitar, ActivityBridge or direct), and book them for guests (see <a href="#acts">Activities</a>).</li>
         <li><time>11 Oct 2026</time> New <b>Front store</b> tab: your own booking page (go.avantetravel.co.za/stay/…), a guest page for in-house guests, QR codes and a printable room card (see <a href="#frontstore">Front store</a>).</li>
@@ -192,9 +193,25 @@
         <li>Type in <span class="field">Search</span> to find a reference, guest, unit or channel.</li>
         <li>Tap <span class="btn">Open</span> to open a booking.</li>
         <li>Tap <span class="btn g">Payment link</span> to send the guest the payment details again.</li>
-        <li>Paid by EFT into your account? Tap <span class="btn g">Mark paid (EFT)</span>, then also mark it paid in Stock Network.</li>
+        <li>Money in your account? Tap <span class="btn g">Paid by EFT</span>. Paid at the property? Tap <span class="btn g">Paid on arrival</span>. The hub records the payment on Stock Network, which sets the booking to <b>Paid</b>. You don't have to do anything in Stock Network.</li>
       </ol>
-      <div class="tip">Each booking shows its status (Request, Booked, Cancelled …) and payment (Unpaid, Part paid, Paid, Paid (EFT), Paid on channel). Payment link and Mark paid (EFT) don't show on paid, demo or channel bookings. Mark paid (EFT) also doesn't show when guests can only pay through the payment gateway.</div>
+      <div class="tip">Each booking shows its status (Request, Booked, Paid, Cancelled) and payment (Unpaid, Part paid, Paid, Paid (EFT), Paid on channel). Paid by EFT and Paid on arrival don't show on paid, demo or channel bookings, or when guests can only pay through the payment gateway.</div>
+      <h3>How a booking's status is set</h3>
+      <table class="ht">
+        <tr><th>Booking</th><th>Status on Stock Network</th></tr>
+        <tr><td>Airbnb, Booking.com, LekkeSlaap</td><td><b>Booked</b> straight away (paid on the channel).</td></tr>
+        <tr><td>Paid by EFT or on arrival</td><td><b>Booked</b> straight away. <b>Paid</b> when you tap Paid by EFT or Paid on arrival.</td></tr>
+        <tr><td>Paid by payment gateway</td><td><b>Booked</b>. The gateway sets <b>Paid</b>. Unpaid ones are cancelled by Stock Network after its payment time.</td></tr>
+        <tr><td>Front store, with "Approve each new front store guest" on</td><td><b>Request</b> until you tap Accept (Booked) or Decline (cancelled).</td></tr>
+      </table>
+      <div class="tip">Every 15 minutes, and whenever you open Bookings, the hub asks Stock Network what changed, so gateway payments and cancellations show here. Confirmed is never set by the hub.</div>
+      <h3>Accept or decline a front store guest</h3>
+      <ol class="steps">
+        <li>Tap <b>Bookings</b>. A request waiting for you shows <span class="btn">Accept</span> and <span class="btn g">Decline</span>.</li>
+        <li>Tap <span class="btn">Accept</span>. It becomes Booked and the guest gets the payment details by email.</li>
+        <li>Or tap <span class="btn g">Decline</span>, type a short reason if you like, and tap OK. It is cancelled and the guest gets a polite email.</li>
+      </ol>
+      <div class="warn">If you don't answer, Stock Network cancels the request after the number of days set in its back office ("Cancel Requests after").</div>
       <h3>Pay now (card or Instant EFT)</h3>
       <ol class="steps">
         <li>After booking, tap <span class="btn t">Pay now</span> (only there when guests may pay through the payment gateway). The secure Stock Network payment page opens in its own window.</li>
@@ -352,6 +369,7 @@
       <ol class="steps">
         <li>Under <b>How guests can pay</b>, choose <b>Both</b>, <b>Avante payment gateway only</b> or <b>EFT to our bank account only</b>.</li>
         <li>For EFT, fill in your bank, account holder, account number, branch code, account type and (optional) a note for guests.</li>
+        <li>Want to check each new front store guest first? Tick <span class="field">Approve each new front store guest</span>.</li>
         <li>Tap <span class="btn">Save payment settings</span>.</li>
       </ol>
       <div class="tip">"EFT to our bank account only" needs your bank details first. An account number needs the bank name and account holder too.</div>

@@ -177,6 +177,41 @@ export class SNClient {
     };
   }
 
+  // Booked, Paid or Cancelled (Stock Network refuses other values, e.g. Confirmed).
+  async setStatus(reservationId, status, note) {
+    const t = await this.token();
+    const r = await this.call("/api/1/request/status/" + encodeURIComponent(reservationId) + "?CallerDetails.SiteID=" + encodeURIComponent(t.siteId), { method: "PUT", body: { status, note: String(note || "").slice(0, 300) } });
+    if (!r.ok) throw new SNError("Stock Network did not set the booking to " + status + " (" + r.status + ")" + snErrorText(r.data) + ".", r.status, r.data);
+    return r.data || {};
+  }
+
+  // A payment like Payment Overview > Add Payment: type EFT | Cash | Card | Gateway.
+  async addPayment(reservationId, { type = "EFT", amount, reference = "", note = "" }) {
+    const t = await this.token();
+    const r = await this.call("/api/1/request/payment/" + encodeURIComponent(reservationId) + "?CallerDetails.SiteID=" + encodeURIComponent(t.siteId), { body: { type, amount: Number(amount) || 0, reference: String(reference).slice(0, 50), note: String(note).slice(0, 300) } });
+    if (!r.ok) throw new SNError("Stock Network did not record the payment (" + r.status + ")" + snErrorText(r.data) + ".", r.status, r.data);
+    return r.data || {};
+  }
+
+  // The site's own bookings, e.g. { modifiedSince } for everything changed since the last check.
+  async listReservations({ modifiedSince, fromDate, toDate, status, max = 500 } = {}) {
+    const t = await this.token();
+    const q = (k, v) => (v ? "&" + k + "=" + encodeURIComponent(v) : "");
+    const out = [], seen = new Set();
+    for (let offset = 0; out.length < max; ) {
+      const r = await this.call("/api/1/request?SiteID=" + encodeURIComponent(t.siteId) + "&CallerDetails.SiteID=" + encodeURIComponent(t.siteId) +
+        q("ModifiedSince", modifiedSince) + q("FromDate", fromDate) + q("ToDate", toDate) + q("Status", status) + "&Offset=" + offset + "&Limit=100", { method: "GET" });
+      if (!r.ok) throw new SNError("Could not read the booking list (" + r.status + ")" + snErrorText(r.data) + ".", r.status, r.data);
+      const items = (r.data && r.data.items) || [];
+      let added = 0;
+      for (const it of items) if (it && it.reservationId && !seen.has(it.reservationId)) { seen.add(it.reservationId); out.push(it); added++; }
+      const total = Number(r.data && r.data.total) || 0;
+      if (!added || items.length < 100 || out.length >= total) break;
+      offset += items.length;
+    }
+    return out;
+  }
+
   async getReservation(reservationId) {
     const r = await this.call("/api/1/request/" + encodeURIComponent(reservationId), { method: "GET" });
     if (!r.ok) throw new SNError("Could not read the booking (" + r.status + ").", r.status, r.data);
