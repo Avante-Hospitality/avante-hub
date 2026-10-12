@@ -20,7 +20,7 @@ import { parseIcs, buildIcs, nightsToRanges } from "./ical.js";
 import { encryptJSON, decryptJSON, randomToken, sha256Hex } from "./pa-crypto.js";
 
 export const CHANNELS = { bcom: "Booking.com", airbnb: "Airbnb", lekke: "LekkeSlaap" };
-const CONNECT_DAYS = [60, 14];           // connect reads a short window (shorter again if SN refuses); later days load as the calendar moves
+const CONNECT_DAYS = [14];               // connect reads only the first 14 days; later days load as the calendar moves (Jean: keep SN calls light)
 const HORIZON_DAYS = 365;               // full read: at connect, and every SYNC_FULL_MS for channel-linked properties
 const SYNC_NEAR_DAYS = 60;              // every 15-minute sync reads only this far ahead
 const SYNC_FULL_MS = 2 * 3600 * 1000;   // ... and the full year this often

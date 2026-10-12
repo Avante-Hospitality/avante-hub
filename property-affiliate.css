@@ -225,3 +225,6 @@ button.pa-block:hover, button.pa-block:focus-visible{ outline:2px solid var(--te
 .pa-photo{ border:1.5px solid var(--line,#e3e9e8); border-radius:10px; overflow:hidden; background:#fff; }
 .pa-photo img{ display:block; width:100%; aspect-ratio:4/3; object-fit:cover; }
 .pa-photo.off img{ opacity:.35; filter:grayscale(1); }
+
+/* Date box inside a radio choice (Channels → Calendar opens on): not the 20px tick-box size. */
+.pa label.pa-check input[type="date"]{ width:100%; height:auto; min-height:44px; padding:8px 10px; }
