@@ -15,7 +15,7 @@ export default async (request) => {
   if (origin && origin !== new URL(request.url).origin) return json({ ok: false, error: "forbidden" }, 403);
   let body; try { body = await request.json(); } catch (_) { return json({ ok: false, error: "bad json" }, 400); }
   const sess = body.token ? await getStore({ name: "admin-sessions", consistency: "strong" }).get(String(body.token), { type: "json" }) : null;
-  if (!sess || new Date(sess.expiresAt).getTime() < Date.now()) return json({ ok: false, error: "Log in to admin first (in this browser tab)." }, 401);
+  if (!sess || new Date(sess.expiresAt).getTime() < Date.now()) return json({ ok: false, error: "Log in to admin first (use the password box on this page)." }, 401);
   const env = (k) => (typeof Netlify !== "undefined" ? Netlify.env.get(k) : Deno.env.get(k)) || "";
   const store = getStore({ name: "property-affiliate", consistency: "strong" });
   const core = createCore({ store, resortStore: getStore({ name: "resort-list", consistency: "strong" }), encKey: env("PA_ENC_KEY"), baseUrl: new URL(request.url).origin });
