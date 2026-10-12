@@ -115,14 +115,14 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     return token;
   }
 
-  async function auth(token) {
+  async function auth(token, { repairLink = false } = {}) {
     const t = cleanStr(token, 100);
     if (!t) throw new PAError("Not connected.", 401);
     const s = await getJSON("sess:" + t);
     if (!s) throw new PAError("Not connected on this device.", 401);
     const prop = await getJSON("site:" + s.siteId);
     if (!prop) throw new PAError("This property is no longer connected.", 401);
-    if (prop.aff) { const link = await getJSON("aff:" + prop.aff); if (!link) await setJSON("aff:" + prop.aff, { siteId: prop.siteId }); }
+    if (repairLink && prop.aff) { const link = await getJSON("aff:" + prop.aff); if (!link) await setJSON("aff:" + prop.aff, { siteId: prop.siteId }); }
     return prop;
   }
 
@@ -191,11 +191,9 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
   // is close to expiring (SN's expiry, capped at TOKEN_REUSE_MS); a rejected
   // login triggers one fresh login inside SNClient.call.
   async function clientFor(prop) {
-    const c = clientFactory(await decryptJSON(prop.credsEnc, encKey));
-    try {
-      const cached = await getJSON("tok:" + prop.siteId);
-      if (cached && cached.enc && cached.until > now().getTime() + 60000) c.tok = await decryptJSON(cached.enc, encKey);
-    } catch (_) {}
+    const [creds, cached] = await Promise.all([decryptJSON(prop.credsEnc, encKey), getJSON("tok:" + prop.siteId).catch(() => null)]);
+    const c = clientFactory(creds);
+    try { if (cached && cached.enc && cached.until > now().getTime() + 60000) c.tok = await decryptJSON(cached.enc, encKey); } catch (_) {}
     c.onLogin = async (tok) => {
       const until = Math.min(tok.expires || Infinity, now().getTime() + TOKEN_REUSE_MS);
       await setJSON("tok:" + prop.siteId, { enc: await encryptJSON(tok, encKey), until });
@@ -227,8 +225,8 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
   }
 
   async function mergeWindow(prop, read, from, to, { first = false } = {}) {
-    const snap = await loadSnap(prop);
-    const ours = activeNightsByUnit(await bookingsOf(prop));
+    const [snap, bks] = await Promise.all([loadSnap(prop), bookingsOf(prop)]);
+    const ours = activeNightsByUnit(bks);
     const t0 = today();
     const inWin = (n) => n >= from && n < to;
     const open = {}, rates = {};
@@ -300,14 +298,18 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
   }
 
   // ---------- availability for the grid / calendar ----------
-  async function availability(prop, from, to) {
+  // cached: answer straight from what was saved last time (no Stock Network call), so the
+  // grid shows at once; the screen then asks again without cached to refresh from SN.
+  async function availability(prop, from, to, { cached = false, timing = null } = {}) {
     from = from || today(); to = to || addDays(from, 14);
     if (!isoDate(from) || !isoDate(to) || !(nightsBetween(from, to) >= 1 && nightsBetween(from, to) <= MAX_WINDOW_DAYS)) throw new PAError("Choose a shorter date range.");
+    const mark = (k) => { if (timing) timing[k] = Date.now() - timing._t0; };
     // Only the days on screen are read from SN (past days never are).
-    const snap = to > today() ? await ensureWindow(prop, from < today() ? today() : from, to) : await loadSnap(prop);
-    const bookings = await bookingsOf(prop);
+    const snapP = cached || !(to > today()) ? loadSnap(prop) : ensureWindow(prop, from < today() ? today() : from, to);
+    const [snap, bookings, events0] = await Promise.all([snapP, bookingsOf(prop), getJSON("chan:" + prop.siteId)]);
+    mark(cached ? "savedGrid" : "stockNetwork");
     const ours = activeNightsByUnit(bookings);
-    const events = (await getJSON("chan:" + prop.siteId)) || {};
+    const events = events0 || {};
     const pend = {};
     for (const ev of Object.values(events)) if (ev.status === "detected" || ev.status === "clash" || ev.status === "needs-settings") for (const n of eachNight(ev.start, ev.end)) ((pend[ev.unit] = pend[ev.unit] || {})[n] = ev);
     const nights = {};
@@ -327,7 +329,8 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     }
     const nightRates = {};
     for (const u of prop.units) { const nr = (snap.nightRates || {})[u.name] || {}; const m = {}; for (const n of eachNight(from, to)) if (nr[n]) m[n] = nr[n]; nightRates[u.name] = m; }
-    return { from, to, firstBookable: firstBookable(prop), snapshotAt: snap.at, units: prop.units.map((u) => ({ name: u.name, size: u.size, rateFrom: snap.rates[u.name] || null })), nights, nightRates, minStay: prop.settings.minStay || 2 };
+    const fresh = windowFresh(snap, from < today() ? today() : from, to > today() ? to : addDays(today(), 1), WINDOW_MAX_AGE_MS);
+    return { from, to, cached: !!cached, fresh, firstBookable: firstBookable(prop), snapshotAt: snap.at, units: prop.units.map((u) => ({ name: u.name, size: u.size, rateFrom: snap.rates[u.name] || null })), nights, nightRates, minStay: prop.settings.minStay || 2 };
   }
 
   async function search(prop, checkIn, checkOut) {

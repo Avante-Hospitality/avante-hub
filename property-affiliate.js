@@ -72,18 +72,26 @@
     busy(true); render();
     return api('availability', { from: a, to: b }).then(function (d) {
       inFlight = null; S.busy = false;
-      var av = S.av || { nights: {}, nightRates: {}, loaded: {} };
-      av.units = d.units; av.minStay = d.minStay; av.snapshotAt = d.snapshotAt;
-      d.units.forEach(function (u) {
-        var n = (av.nights[u.name] = av.nights[u.name] || {}), r = (av.nightRates[u.name] = av.nightRates[u.name] || {});
-        Object.keys(d.nights[u.name] || {}).forEach(function (k) { n[k] = d.nights[u.name][k]; delete r[k]; });
-        Object.keys(d.nightRates[u.name] || {}).forEach(function (k) { r[k] = d.nightRates[u.name][k]; });
-      });
-      var ms = Date.now(); each(a, b).forEach(function (k) { av.loaded[k] = ms; });
-      S.av = av;
-      render();
-    }).catch(function (e) { inFlight = null; fail(e); });
+      if (d.timing && window.console) console.info('[hub] grid from Stock Network, ms:', d.timing);
+      mergeAv(d, a, b, Date.now());
+      render(); afterFirstGrid();
+    }).catch(function (e) { inFlight = null; fail(e); afterFirstGrid(); });
   }
+  // Put a grid answer into what the screen holds. stamp 0 = shown, but still to be refreshed from SN.
+  function mergeAv(d, a, b, stamp) {
+    var av = S.av || { nights: {}, nightRates: {}, loaded: {} };
+    av.units = d.units; av.minStay = d.minStay; av.snapshotAt = d.snapshotAt;
+    d.units.forEach(function (u) {
+      var n = (av.nights[u.name] = av.nights[u.name] || {}), r = (av.nightRates[u.name] = av.nightRates[u.name] || {});
+      Object.keys(d.nights[u.name] || {}).forEach(function (k) { n[k] = d.nights[u.name][k]; delete r[k]; });
+      Object.keys(d.nightRates[u.name] || {}).forEach(function (k) { r[k] = d.nightRates[u.name][k]; });
+    });
+    each(a, b).forEach(function (k) { av.loaded[k] = stamp; });
+    S.av = av;
+  }
+  // Communication loads only after the grid, so it doesn't slow the grid down.
+  var msgsStarted = false;
+  function afterFirstGrid() { if (msgsStarted) return; msgsStarted = true; loadMessages(); }
   function loadAvailability(from) {
     S.from = from || S.from || startDate();
     if (S.from < today()) S.from = today();
@@ -211,7 +219,7 @@
       '<button type="button" class="pa-btn small ghost" data-act="shift" data-n="' + WINDOW + '" aria-label="Next ' + WINDOW + ' days">›</button>' +
       (S.from !== startDate() ? '<button type="button" class="pa-btn small ghost" data-act="goStart">' + (startDate() === today() ? 'Today' : 'Start date') + '</button>' : '') + '</div>' +
       '<span class="pa-hint">' + (S.sel ? 'Check-in ' + nice(S.sel.start) + ' on ' + esc(S.sel.unit) + ': now tap the last night.' : 'Tap an open night for check-in, then the last night. Tap a booking to open it.') +
-      (S.av.snapshotAt ? ' · Updated ' + new Date(S.av.snapshotAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '') + '</span></div>';
+      (S.busy ? ' · <b style="color:#08776f">Updating from Stock Network…</b>' : S.av.snapshotAt ? ' · Updated ' + new Date(S.av.snapshotAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '') + '</span></div>';
     h += '<div class="pa-legend"><span><i class="lg-open"></i>Open</span><span><i class="lg-hub"></i>Hub booking</span><span><i class="lg-sn"></i>Booked on SN</span><span><i class="lg-airbnb"></i>Airbnb</span><span><i class="lg-bcom"></i>Booking.com</span><span><i class="lg-lekke"></i>LekkeSlaap</span><span><i class="lg-warn"></i>Channel booking not yet on SN</span><span><i class="lg-na"></i>Not on SN</span></div>';
     h += '<div class="pa-grid-wrap"><div class="pa-grid pa-blocks' + (phone ? ' phone' : '') + '" style="grid-template-columns:' + cols + '"><div class="pa-label" style="align-self:end">Unit</div>';
     h += days.map(function (d) { var we = dow(d) === 'Fri' || dow(d) === 'Sat'; return '<div class="hd' + (we ? ' we' : '') + (d === today() ? ' today' : '') + '">' + (phone ? dow(d).slice(0, 2) : dow(d)) + '<b>' + dObj(d).getUTCDate() + '</b>' + (dObj(d).getUTCDate() === 1 || d === days[0] ? MON[dObj(d).getUTCMonth()] : '') + '</div>'; }).join('');
@@ -1446,6 +1454,14 @@
   }
   if (S.token) {
     openOwnTab();
-    api('status').then(function (d) { S.prop = d.property; render(); loadAvailability(); loadMessages(); }).catch(function (e) { if (S.token) fail(e); else checkAffiliate(); });
+    // One call: the property and its last saved grid, shown at once; then a refresh from Stock Network.
+    api('open').then(function (d) {
+      S.prop = d.property;
+      if (d.timing && window.console) console.info('[hub] property + saved grid, ms:', d.timing);
+      var av = d.availability;
+      if (av && av.units && av.units.length) { S.from = av.from; mergeAv(av, av.from, av.to, av.fresh ? Date.now() : 0); }
+      render();
+      if (av && av.fresh) afterFirstGrid(); else loadAvailability(S.from || startDate());
+    }).catch(function (e) { if (S.token) fail(e); else checkAffiliate(); });
   } else checkAffiliate();
 })();

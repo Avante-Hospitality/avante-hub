@@ -57,7 +57,9 @@ export default async (request) => {
     // Approval page (approve-cancel.html): no property session, the one-time link is the key.
     if (a === "approvalInfo") return json(Object.assign({ ok: true }, await core.approvalInfo(body.t)));
     if (a === "approveCancel") return json(Object.assign({ ok: true }, await core.approveCancel(body.t, body.password)));
-    const prop = await core.auth(body.token);
+    const t0 = Date.now();
+    const prop = await core.auth(body.token, { repairLink: a === "status" || a === "open" });
+    const authMs = Date.now() - t0;
     // Activities the property sells to guests, with the supplier's reference numbers.
     if (a.startsWith("act")) {
       const acts = createActivities({
@@ -82,8 +84,20 @@ export default async (request) => {
     }
     switch (a) {
       case "status": return json({ ok: true, property: core.publicProperty(prop) });
+      // Opening the property: who it is plus the last saved grid in one call (no Stock Network call).
+      case "open": {
+        const timing = { _t0: t0 };
+        const av = await core.availability(prop, body.from || core.firstBookable(prop), body.to, { cached: true, timing });
+        delete timing._t0; timing.login = authMs; timing.total = Date.now() - t0;
+        return json({ ok: true, property: core.publicProperty(prop), availability: av, timing });
+      }
       case "disconnect": return json(await core.disconnect(body.token));
-      case "availability": return json(Object.assign({ ok: true }, await core.availability(prop, body.from, body.to)));
+      case "availability": {
+        const timing = { _t0: t0 };
+        const av = await core.availability(prop, body.from, body.to, { timing });
+        delete timing._t0; timing.login = authMs; timing.total = Date.now() - t0;
+        return json(Object.assign({ ok: true, timing }, av));
+      }
       case "search": return json(Object.assign({ ok: true }, await core.search(prop, body.checkIn, body.checkOut)));
       case "book": return json(Object.assign({ ok: true }, await core.book(prop, body)));
       case "cancel": return json(Object.assign({ ok: true }, await core.cancel(prop, body.ref)));
