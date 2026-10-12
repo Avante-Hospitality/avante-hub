@@ -145,7 +145,7 @@ export class SNClient {
     };
   }
 
-  async createReservation({ items, guest, reference, notes }) {
+  async createReservation({ items, guest, reference, notes, requestAndPay = false }) {
     const t = await this.token();
     if (!guest || !String(guest.cellphone || "").trim()) throw new SNError("A cellphone number is required by Stock Network.", 400);
     const total = items.reduce((s, it) => s + (Number(it.amountIncl) || 0), 0);
@@ -155,7 +155,7 @@ export class SNClient {
       emailAddress: String(guest.email || "").trim(), cellphone: String(guest.cellphone).trim(),
       currency: "ZAR", currencySymbol: "R", deleteCustomerInfoAfterCheckout: false,
       customerReferenceNo: String(reference || "").slice(0, 50), notes: String(notes || "").slice(0, 1000),
-      membershipNo: null, preferredContactMethod: 0, discount: 0, isRequestAndPay: false, siteID: t.siteId, items,
+      membershipNo: null, preferredContactMethod: 0, discount: 0, isRequestAndPay: !!requestAndPay, siteID: t.siteId, items,
     };
     const r = await this.call("/api/1/request?CallerDetails.SiteID=" + encodeURIComponent(t.siteId), { body });
     if (r.status !== 200 && r.status !== 201) throw new SNError("Stock Network did not create the booking (" + r.status + ").", r.status, r.data);
