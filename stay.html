@@ -61,6 +61,10 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
 .muted{ color:var(--muted); font-size:13.5px; }
 .err{ background:#fff4e5; border:1px solid #f5c98a; color:var(--warn); border-radius:10px; padding:10px 12px; font-weight:600; font-size:14px; margin-top:12px; }
 .ok{ background:#e3f8f6; color:#065e58; border-radius:12px; padding:14px; margin-top:12px; }
+#calsec, #cal, #book, #nearby, #units{ scroll-margin-top:84px; }
+.calpick{ margin-top:12px; padding:16px; }
+.calpick .cp-t{ font:700 15px 'Montserrat',sans-serif; color:var(--ink); }
+.calpick .cp-sum{ margin:12px 0 10px; font-size:14.5px; line-height:1.5; }
 .cal-h{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px; flex-wrap:wrap; }
 .cal-h b{ font:800 18px 'Montserrat',sans-serif; color:var(--ink); }
 .cal{ display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:5px; }
@@ -278,7 +282,7 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
       return '<article class="ucard"><div class="im" style="' + (img ? 'background-image:url(\'' + esc(img) + '\')' : '') + '">' + (u.price ? '<span class="pr">From ' + money(u.price) + ' a night</span>' : '') + '</div>' +
         '<div class="bd"><b>' + esc(u.name) + '</b>' + ((u.size || u.beds) ? '<span class="meta">' + esc([u.size, u.beds].filter(Boolean).join(' · ')) + '</span>' : '') +
         (u.blurb ? '<span style="font-size:14.5px">' + esc(u.blurb) + '</span>' : '') + '<button type="button" class="btn t sm" data-act="toBook">Check dates</button></div></article>'; }).join('') + '</div></section>';
-    if (d.showCalendar) h += '<section class="sec" id="calsec"><h2>Availability</h2><p class="lead">Tap your arrival day, then your last night.</p><div class="card" id="cal"></div></section>';
+    if (d.showCalendar) h += '<section class="sec" id="calsec"><h2>Availability</h2><p class="lead">Tap your arrival day, then your last night. Or type your dates under the calendar.</p><div class="card" id="cal"></div><div class="card calpick" id="calpick"></div></section>';
     if (d.showOffers) h += offersHtml();
     if (d.showActivities) h += nearbyHtml();
     h += '<section class="sec"><h2>Contact ' + esc(d.name) + '</h2><div class="contact">' +
@@ -339,7 +343,7 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
     }
     return h;
   }
-  function drawBook() { var el = document.getElementById('book'); if (el) el.innerHTML = bookHtml(); }
+  function drawBook() { var el = document.getElementById('book'); if (el) el.innerHTML = bookHtml(); drawCalPick(); }
   function drawCal() {
     var el = document.getElementById('cal'); if (!el) return;
     var d = S.d, m = S.month, y = +m.slice(0, 4), mo = +m.slice(5, 7) - 1, data = S.monthData[m];
@@ -362,6 +366,19 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
     h += '</div><div class="legend"><span><i style="background:#e3f8f6;border:1.5px solid #bfece7"></i>Open</span><span><i style="background:#f1eee8"></i>Not available</span><span><i style="background:#0e2f44"></i>Your dates</span></div>';
     if (data === 'loading' || !data && data !== null) h += '<p class="muted" style="margin:8px 0 0">Loading availability…</p>';
     el.innerHTML = h;
+    drawCalPick();
+  }
+  // Under the calendar (Jean, 2026-10-13): your dates, typed or tapped; "Show on calendar"
+  // jumps the calendar there; "Check availability" checks them and shows the free units.
+  function drawCalPick() {
+    var bt = document.querySelector('.bar div.t'); if (bt && S.ci && S.co) bt.innerHTML = '<b>' + (S.quote ? 'Pick a unit' : 'Book direct') + '</b>' + esc(nice(S.ci) + ' – ' + nice(S.co));
+    var el = document.getElementById('calpick'); if (!el) return;
+    var d = S.d, n = nights(S.ci, S.co);
+    el.innerHTML = '<b class="cp-t">Know your dates?</b><div class="f2"><div class="fld"><label for="cpi">Arrival</label><input id="cpi" type="date" value="' + S.ci + '" min="' + d.firstBookable + '"></div>' +
+      '<div class="fld"><label for="cpo">Departure</label><input id="cpo" type="date" value="' + S.co + '" min="' + add(d.firstBookable, 1) + '"></div></div>' +
+      '<button type="button" class="btn g" style="width:100%;margin-top:10px" data-act="calGo">Show on calendar</button>' +
+      '<p class="cp-sum"><b>Your dates:</b> ' + esc(nice(S.ci)) + ' → ' + esc(nice(S.co)) + ' · ' + n + (n === 1 ? ' night' : ' nights') + (S.picking ? '<br><span class="muted">Now tap your last night on the calendar.</span>' : '') + '</p>' +
+      '<button type="button" class="btn t" style="width:100%" data-act="calCheck"' + (S.busy ? ' disabled' : '') + '>' + (S.busy === 'quote' ? 'Checking…' : 'Check availability for these dates') + '</button>';
   }
   function offersHtml() {
     if (!S.offers || !S.offers.length) return '<div id="offers"></div>';
@@ -439,6 +456,7 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
   app.addEventListener('change', function (e) {
     if (e.target.id === 'ci') { syncForm(); if (S.co <= S.ci) { S.co = add(S.ci, Math.max(1, S.d.minStay || 1)); var co = document.getElementById('co'); if (co) co.value = S.co; } S.quote = null; S.pick = null; drawCal(); }
     if (e.target.id === 'co') { syncForm(); S.quote = null; S.pick = null; drawCal(); }
+    if (e.target.id === 'cpi') { var o = document.getElementById('cpo'); if (o && (!o.value || o.value <= e.target.value)) o.value = add(e.target.value, Math.max(1, S.d.minStay || 1)); }
   });
   document.addEventListener('keydown', function (e) {
     if (S.lb < 0) return;
@@ -458,7 +476,13 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
     var a = t.getAttribute('data-act');
     if (a === 'lb') return showLb(+t.getAttribute('data-i'));
     if (a === 'sl') { var n = (S.d.photos || []).length; S.sl = ((S.sl || 0) + +t.getAttribute('data-d') + n) % n; var sw = document.getElementById('photos-ph'); if (sw) { var pic = sw.querySelector('.pic'); pic.style.backgroundImage = 'url(\'' + S.d.photos[S.sl].replace(/'/g, '%27') + '\')'; pic.setAttribute('data-i', S.sl); pic.setAttribute('aria-label', 'Open photo ' + (S.sl + 1) + ' of ' + n); sw.querySelector('.cnt').textContent = (S.sl + 1) + ' / ' + n; } return; }
-    if (a === 'toBook') { var b = document.getElementById('book'); if (b) { b.scrollIntoView({ behavior: 'smooth', block: 'start' }); } return; }
+    if (a === 'toBook') { var b = document.getElementById(S.d.showCalendar ? 'calsec' : 'book') || document.getElementById('book'); if (b) { b.scrollIntoView({ behavior: 'smooth', block: 'start' }); } return; }
+    if (a === 'calGo') {
+      var ci2 = val('cpi'), co2 = val('cpo');
+      if (!ci2 || !co2 || co2 <= ci2) { S.err = 'Choose a departure after the arrival.'; drawBook(); var cp = document.getElementById('cpo'); if (cp) cp.focus(); return; }
+      S.ci = ci2; S.co = co2; S.picking = false; S.quote = null; S.pick = null; S.err = ''; S.month = ci2.slice(0, 7);
+      drawCal(); drawBook(); loadMonth(); var cs = document.getElementById('cal'); if (cs) cs.scrollIntoView({ behavior: 'smooth', block: 'start' }); return;
+    }
     if (a === 'mon') { var y = +S.month.slice(0, 4), mo = +S.month.slice(5, 7) - 1 + (+t.getAttribute('data-n')); S.month = new Date(Date.UTC(y, mo, 1)).toISOString().slice(0, 7); drawCal(); loadMonth(); return; }
     if (a === 'calUnit') { S.calUnit = t.getAttribute('data-u'); return drawCal(); }
     if (a === 'day') {
@@ -467,7 +491,13 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
       else { S.co = add(dsel, 1); S.picking = false; }
       S.quote = null; S.pick = null; drawCal(); drawBook(); return;
     }
-    if (CFG.preview && (a === 'quote' || a === 'book' || a === 'km')) { S.err = a === 'km' ? '' : 'This is a preview: booking works on the real page.'; return a === 'km' ? null : drawBook(); }
+    if (CFG.preview && (a === 'quote' || a === 'calCheck' || a === 'book' || a === 'km')) { S.err = a === 'km' ? '' : 'This is a preview: booking works on the real page.'; return a === 'km' ? null : drawBook(); }
+    if (a === 'calCheck') {
+      var ci3 = val('cpi'), co3 = val('cpo'); if (ci3 && co3 && co3 > ci3) { S.ci = ci3; S.co = co3; }
+      S.err = ''; S.pick = null; S.picking = false; drawBook(); drawCal();
+      var bk = document.getElementById('book'); if (bk) bk.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      var qb = bk && bk.querySelector('[data-act="quote"]'); if (qb) qb.click(); return;
+    }
     if (a === 'quote') {
       syncForm(); S.err = ''; S.pick = null;
       if (!S.ci || !S.co || S.co <= S.ci) { S.err = 'Choose a check-out after the check-in.'; return drawBook(); }
