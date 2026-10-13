@@ -9,14 +9,11 @@
 // Settings live in the Property Affiliate tab (pa-api.js → saveFrontStore).
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
 import { createCore, PAError } from "./lib/pa-core.js";
-import { fetchResortInfo } from "./lib/hook-source.js";
-import { propertyTreeOpts } from "./lib/tree-place.js";
-import { nearestByDistance } from "./lib/geo-distance.js";
+import { stayPayload } from "./lib/stay-payload.js";
 
 // Reading is open to any site; booking only from our own pages (checked below).
 const cors = { "access-control-allow-origin": "*", "access-control-allow-methods": "GET", "access-control-allow-headers": "content-type" };
 const json = (obj, status = 200, extra = {}) => new Response(JSON.stringify(obj), { status, headers: { "content-type": "application/json", "cache-control": "no-store", ...cors, ...extra } });
-const INFO_TTL_MS = 24 * 3600 * 1000;
 const BOOKINGS_PER_HOUR = 5; // per visitor (IP), to stop abuse of real Stock Network bookings
 
 async function sha(s) { const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)); return [...new Uint8Array(d)].slice(0, 12).map((b) => b.toString(16).padStart(2, "0")).join(""); }
@@ -50,42 +47,11 @@ export default async (request, context) => {
       const from = url.searchParams.get("from"), to = url.searchParams.get("to");
       if (from && to) return json(Object.assign({ ok: true }, await core.publicAvailability(prop, from, to)));
 
-      const page = core.publicFrontStore(prop);
       const guest = url.searchParams.get("guest") === "1", card = url.searchParams.get("card") === "1";
       // Wi-Fi and house info only with the guest page's secret key (on the room card QR).
       const keyOk = (guest || card) && core.guestKeyOk(prop, url.searchParams.get("key") || "");
       if (!card) context.waitUntil(core.fsStat(prop, guest ? "guestVisits" : "visits").catch(() => {}));
-      // Photos and description from Stock Network's resort info page (cached a day).
-      let info = await store.get("fsinfo:" + prop.siteId, { type: "json" }).catch(() => null);
-      if (!info || Date.now() - (info.at || 0) > INFO_TTL_MS) {
-        const fresh = await fetchResortInfo(prop.resortId, prop.site).catch(() => null);
-        if (fresh) { info = { at: Date.now(), description: fresh.description || "", attractions: fresh.attractions || "", moreInfo: fresh.moreInfo || "", images: fresh.images || [] }; context.waitUntil(store.setJSON("fsinfo:" + prop.siteId, info).catch(() => {})); }
-      }
-      info = info || { description: "", attractions: "", moreInfo: "", images: [] };
-      const uploaded = (await store.list({ prefix: "fsphoto:" + prop.siteId + ":" })).blobs.map((b) => "/api/stay?photo=" + encodeURIComponent(b.key.slice(8)));
-      const photos = Array.isArray(page.photos) && page.photos.length ? page.photos : uploaded.concat(info.images || []).slice(0, 24);
-      // Where it is: the hub's location tree, and the pin from the resort list.
-      const place = await propertyTreeOpts(prop.resortId, url.origin, prop.resortName).catch(() => ({}));
-      const rl = await getStore({ name: "resort-list", consistency: "strong" }).get("current", { type: "json" }).catch(() => null);
-      const pin = ((rl && rl.resorts) || []).find((r) => r && r.resortId === prop.resortId) || {};
-      const lat = parseFloat(pin.latitude), lng = parseFloat(pin.longitude);
-      let nearby = [], out_km = page.nearbyKm || 30;
-      if (page.showActivities && isFinite(lat) && isFinite(lng) && !(lat === 0 && lng === 0)) {
-        const acts = ((await getStore({ name: "map-activities", consistency: "strong" }).get("all", { type: "json" }).catch(() => null)) || []).filter((a) => a && a.visible !== false);
-        // The property sets its default distance; the guest can change it on the page (?km=).
-        const km = Math.max(1, Math.min(150, Number(url.searchParams.get("km")) || page.nearbyKm || 30));
-        out_km = km;
-        nearby = nearestByDistance(lat, lng, acts, { limit: 24, maxKm: km }).map((a) => {
-          const keys = Array.isArray(a.photoKeys) ? a.photoKeys : a.photoKey ? [a.photoKey] : [];
-          return { name: a.name || "", area: a.area || "", price: a.price || "", description: String(a.description || "").slice(0, 300), link: a.contactLink || "",
-            photo: keys[0] ? "/api/property-file?key=" + encodeURIComponent(keys[0]) : "", latitude: parseFloat(a.latitude), longitude: parseFloat(a.longitude), distance: a.distanceLabel };
-        });
-      }
-      const out = Object.assign({ ok: true }, page, {
-        photos, description: page.description || info.description || "", attractions: info.attractions || "", moreInfo: info.moreInfo || "",
-        place: { country: place.country || "", province: place.province || "", region: place.region || "", city: place.city || "", suburb: place.suburb || "" },
-        latitude: isFinite(lat) && lat !== 0 ? lat : null, longitude: isFinite(lng) && lng !== 0 ? lng : null, nearby, nearbyKm: out_km,
-      });
+      const out = await stayPayload(core, prop, { store, origin: url.origin, km: url.searchParams.get("km"), later: (p) => context.waitUntil(p) });
       if (keyOk) out.guest = core.publicGuestInfo(prop);
       out.guestKeyOk = !!keyOk;
       if (!guest && !card) out.offers = await core.publicOffers(prop, getStore({ name: "promo-hooks", consistency: "strong" })).catch(() => []);

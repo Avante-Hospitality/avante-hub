@@ -94,6 +94,47 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
 .lb button{ position:absolute; background:rgba(255,255,255,.14); color:#fff; border:none; width:52px; height:52px; border-radius:50%; font-size:24px; cursor:pointer; }
 .lb .x{ top:16px; right:16px; } .lb .pv{ left:12px; } .lb .nx{ right:12px; }
 .lb .n{ position:absolute; bottom:18px; color:#fff; font-size:14px; }
+/* ---- front store look (Jean, 2026-10-13): photo-first, price and rating up front ---- */
+.hero2{ position:relative; min-height:min(78vh,680px); background:#0e2f44 center/cover no-repeat; display:flex; align-items:flex-end; color:#fff; }
+.hero2::after{ content:''; position:absolute; inset:0; background:linear-gradient(180deg,rgba(7,28,41,.55) 0%,rgba(7,28,41,0) 30%,rgba(7,28,41,.1) 50%,rgba(7,28,41,.9) 100%); }
+.hero2 .wrap{ position:relative; z-index:1; width:100%; padding-top:120px; padding-bottom:40px; }
+.hero2 .kick{ display:inline-block; font:700 12.5px 'Montserrat',sans-serif; letter-spacing:.18em; text-transform:uppercase; color:#fff; background:rgba(7,28,41,.55); border-radius:999px; padding:7px 14px; }
+.hero2 h1{ color:#fff; font:800 clamp(34px,6.2vw,68px)/1.02 'Montserrat',sans-serif; margin:10px 0 0; max-width:900px; text-shadow:0 3px 18px rgba(0,0,0,.35); letter-spacing:-.01em; }
+.hero2 .sub{ font-size:clamp(16px,2vw,20px); margin-top:12px; max-width:680px; text-shadow:0 2px 10px rgba(0,0,0,.5); }
+.hero2 .badges{ display:flex; flex-wrap:wrap; gap:10px; margin-top:18px; }
+.badge{ display:inline-flex; align-items:center; gap:8px; border-radius:999px; padding:10px 18px; font:800 16px 'Montserrat',sans-serif; text-decoration:none; }
+.badge.price{ background:#ffde59; color:var(--ink); box-shadow:0 10px 26px rgba(0,0,0,.25); }
+.badge.rate{ background:rgba(255,255,255,.95); color:var(--ink); }
+.badge.rate .st{ color:#e6a700; }
+.hero2 .ctas{ display:flex; flex-wrap:wrap; gap:10px; margin-top:22px; }
+.hero2 .btn.t{ min-height:54px; padding:0 28px; font-size:16px; border-radius:999px; }
+.hero2 .btn.w{ min-height:54px; padding:0 24px; border-radius:999px; background:rgba(255,255,255,.14); color:#fff; border:1.5px solid rgba(255,255,255,.6); }
+.mosaic{ display:grid; grid-template-columns:2fr 1fr 1fr; grid-template-rows:170px 170px; gap:8px; margin-top:18px; position:relative; }
+.mosaic button{ border:none; padding:0; border-radius:14px; background:#ddd center/cover; cursor:pointer; }
+.mosaic button:first-child{ grid-row:span 2; }
+.mosaic .all{ position:absolute; right:12px; bottom:12px; }
+.hl{ display:flex; flex-wrap:wrap; gap:10px; margin:22px 0 0; padding:0; list-style:none; }
+.hl li{ display:flex; align-items:center; gap:8px; background:#fff; border:1.5px solid var(--line); border-radius:999px; padding:9px 16px; font:700 14px 'Montserrat',sans-serif; color:var(--ink); }
+.hl li span{ font-size:18px; }
+.units{ display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:16px; }
+.ucard{ background:#fff; border:1px solid var(--line); border-radius:18px; overflow:hidden; display:flex; flex-direction:column; box-shadow:0 8px 24px rgba(14,47,68,.06); }
+.ucard .im{ aspect-ratio:4/3; background:#e9e4da center/cover; position:relative; }
+.ucard .im .pr{ position:absolute; left:12px; bottom:12px; background:#ffde59; color:var(--ink); border-radius:999px; padding:6px 12px; font:800 14px 'Montserrat',sans-serif; }
+.ucard .bd{ padding:14px 16px 16px; display:flex; flex-direction:column; gap:6px; flex:1; }
+.ucard b{ font:800 17px 'Montserrat',sans-serif; color:var(--ink); }
+.ucard .meta{ font-size:14px; color:var(--teal-d); font-weight:700; }
+.ucard .btn{ margin-top:auto; align-self:flex-start; }
+.tiles{ display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:14px; }
+.tile{ position:relative; min-height:230px; border-radius:18px; overflow:hidden; background:#1d4257 center/cover; color:#fff; display:flex; flex-direction:column; justify-content:flex-end; text-decoration:none; }
+.tile::after{ content:''; position:absolute; inset:0; background:linear-gradient(180deg,rgba(7,28,41,0) 30%,rgba(7,28,41,.9) 100%); }
+.tile > *{ position:relative; z-index:1; }
+.tile .km{ position:absolute; top:12px; left:12px; z-index:2; background:#ffde59; color:var(--ink); border-radius:999px; padding:5px 11px; font:800 13px 'Montserrat',sans-serif; }
+.tile .bd{ padding:14px 16px; }
+.tile b{ display:block; font:800 18px/1.15 'Montserrat',sans-serif; color:#fff; }
+.tile span{ display:block; font-size:13.5px; opacity:.9; margin-top:4px; }
+.tile.noimg{ background:linear-gradient(135deg,#0e2f44,#14506a); }
+.pv-note{ position:relative; z-index:70; background:#ffde59; color:var(--ink); text-align:center; font:700 13px 'Montserrat',sans-serif; padding:6px 10px; }
+@media (max-width:900px){ .mosaic{ grid-template-columns:repeat(4,70vw); grid-template-rows:200px; overflow-x:auto; scroll-snap-type:x mandatory; } .mosaic button{ scroll-snap-align:start; } .mosaic button:first-child{ grid-row:auto; } .mosaic .all{ display:none; } .hero2{ min-height:72vh; } }
 .hp{ position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden; }
 .center{ text-align:center; padding:80px 16px; }
 /* guest page */
@@ -131,8 +172,8 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
   .grid{ grid-template-columns:1fr; gap:22px; }
   .book{ position:static; order:-1; }
   .bar{ display:flex; position:fixed; left:0; right:0; bottom:0; z-index:60; background:#fff; border-top:1px solid var(--line); padding:10px 16px calc(10px + env(safe-area-inset-bottom)); gap:10px; align-items:center; box-shadow:0 -8px 24px rgba(14,47,68,.10); }
-  .bar .t{ flex:1; min-width:0; font-size:13px; color:var(--muted); }
-  .bar .t b{ display:block; color:var(--ink); font:700 15px 'Montserrat',sans-serif; }
+  .bar div.t{ flex:1; min-width:0; font-size:13px; color:var(--muted); }
+  .bar div.t b{ display:block; color:var(--ink); font:700 15px 'Montserrat',sans-serif; }
   .hero{ height:52vh; }
   .hero .allph{ display:none; }
 }
@@ -167,6 +208,13 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
   function waLink(d, text) { return d.contact.whatsapp ? 'https://wa.me/' + d.contact.whatsapp + (text ? '?text=' + encodeURIComponent(text) : '') : ''; }
   function telLink(d) { return d.contact.phone ? 'tel:' + String(d.contact.phone).replace(/[^\d+]/g, '') : ''; }
   function mapsLink(d) { return d.latitude != null ? 'https://www.google.com/maps/dir/?api=1&destination=' + d.latitude + ',' + d.longitude : 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(d.name + ' ' + placeLine(d.place)); }
+  // A small picture for each highlight, from its words.
+  function hlIcon(t) {
+    var m = [[/pool|swim/i, '🏊'], [/beach|sand|sea\b|ocean/i, '🏖️'], [/view/i, '🌅'], [/wi-?fi|internet/i, '📶'], [/braai|bbq|barbecue/i, '🔥'], [/fire ?place/i, '🪵'], [/sleep|bed/i, '🛏️'],
+      [/park/i, '🚗'], [/pet|dog/i, '🐾'], [/garden|green|forest|nature/i, '🌿'], [/golf/i, '⛳'], [/kid|child|play/i, '🧸'], [/air ?con|aircon/i, '❄️'], [/kitchen|self.?cater/i, '🍳'], [/river|lagoon|lake/i, '🛶'], [/secur/i, '🔒'], [/dstv|tv/i, '📺']];
+    for (var i = 0; i < m.length; i++) if (m[i][0].test(t)) return m[i][1];
+    return '✓';
+  }
   function storeUrl() { return location.origin + '/stay/' + CFG.slug; }
   function guestUrl() { return location.origin + '/stay/' + CFG.slug + '/guest' + (CFG.key ? '/' + CFG.key : ''); }
   function qrSvg(text) { try { var q = qrcode(0, 'M'); q.addData(text); q.make(); return q.createSvgTag({ cellSize: 6, margin: 2, scalable: true }); } catch (e) { return ''; } }
@@ -196,20 +244,33 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
     if (CFG.mode === 'guest') return renderGuest();
     if (CFG.mode === 'card') return renderCard();
     var d = S.d, ph = (d.photos || []).map(safeUrl).filter(Boolean); d.photos = ph;
-    var h = '<header class="top"><div class="wrap"><div class="nm"><small>Book direct</small>' + esc(d.name) + '</div>' +
+    var h = (CFG.preview ? '<div class="pv-note">Preview — this is how guests see your front store. Booking is switched off here.</div>' : '') +
+      '<header class="top"><div class="wrap"><div class="nm"><small>Book direct</small>' + esc(d.name) + '</div>' +
       (waLink(d) ? '<a class="ic wa" href="' + esc(waLink(d, 'Hi, I have a question about ' + d.name + '.')) + '" target="_blank" rel="noopener" aria-label="WhatsApp ' + esc(d.name) + '">💬 <span>WhatsApp</span></a>' : '') +
       (telLink(d) ? '<a class="ic" href="' + esc(telLink(d)) + '" aria-label="Call ' + esc(d.name) + '">📞 <span>Call</span></a>' : '') + '</div></header>';
-    h += '<section class="hero" style="background-image:url(\'' + esc(ph[0] || '/home-hero.jpg') + '\')"><div class="wrap"><h1>' + esc(d.name) + '</h1>' +
-      (placeLine(d.place) ? '<div class="pl">📍 ' + esc(placeLine(d.place)) + '</div>' : '') + (d.welcome ? '<div class="wl">' + esc(d.welcome) + '</div>' : '') + '</div>' +
-      (ph.length > 1 ? '<button type="button" class="btn g sm allph" data-act="lb" data-i="0">See all ' + ph.length + ' photos</button>' : '') + '</section>';
+    // Hero: the cover photo, the place, the headline, price and rating, Book.
+    var place = placeLine(d.place), head = d.headline || d.name;
+    h += '<section class="hero2" id="hero" style="background-image:url(\'' + esc(ph[0] || '/home-hero.jpg') + '\')"><div class="wrap">' +
+      (place ? '<div class="kick">📍 ' + esc(place) + '</div>' : '') + '<h1>' + esc(head) + '</h1>' +
+      '<div class="sub">' + esc([d.headline ? d.name : '', d.welcome].filter(Boolean).join(' — ')) + '</div>' +
+      ((d.priceFrom || d.rating) ? '<div class="badges">' + (d.priceFrom ? '<span class="badge price">' + esc(d.priceFrom) + '</span>' : '') +
+        (d.rating ? (safeLink(d.rating.link) ? '<a class="badge rate" href="' + esc(safeLink(d.rating.link)) + '" target="_blank" rel="noopener">' : '<span class="badge rate">') + '<span class="st">★</span> ' + esc(d.rating.value) + (d.rating.count ? ' <small style="font-weight:600">· ' + esc(d.rating.count) + ' reviews on Google</small>' : ' on Google') + (safeLink(d.rating.link) ? '</a>' : '</span>') : '') + '</div>' : '') +
+      '<div class="ctas"><button type="button" class="btn t" data-act="toBook">Check availability</button>' + (waLink(d) ? '<a class="btn w" href="' + esc(waLink(d, 'Hi, I have a question about ' + d.name + '.')) + '" target="_blank" rel="noopener">💬 Ask on WhatsApp</a>' : '') + '</div></div></section>';
     h += '<div class="wrap">';
-    if (ph.length > 1) h += '<div class="thumbs" aria-label="Photos">' + ph.map(function (u, i) { return '<button type="button" data-act="lb" data-i="' + i + '" style="background-image:url(\'' + esc(u) + '\')" aria-label="Photo ' + (i + 1) + ' of ' + ph.length + '"></button>'; }).join('') + '</div>';
+    // Photos: one big and four small; tap for all of them.
+    if (ph.length > 1) h += '<div class="mosaic" id="photos" aria-label="Photos">' + ph.slice(1, 6).map(function (u, i) { return '<button type="button" data-act="lb" data-i="' + (i + 1) + '" style="background-image:url(\'' + esc(u) + '\')" aria-label="Photo ' + (i + 2) + ' of ' + ph.length + '"></button>'; }).join('') +
+      '<button type="button" class="btn g sm all" data-act="lb" data-i="0">See all ' + ph.length + ' photos</button></div>';
+    if ((d.highlights || []).length) h += '<ul class="hl" id="hl" aria-label="Highlights">' + d.highlights.map(function (x) { return '<li><span aria-hidden="true">' + hlIcon(x) + '</span>' + esc(x) + '</li>'; }).join('') + '</ul>';
     h += '<div class="grid"><main>';
-    if (d.showCalendar) h += '<section class="sec" id="calsec"><h2>Availability</h2><p class="lead">Tap your arrival day, then your last night. Green days are open.</p><div class="card" id="cal"></div></section>';
-    if (d.description || d.attractions || d.moreInfo) h += '<section class="sec"><h2>About ' + esc(d.name) + '</h2>' + (d.description ? '<div class="text">' + esc(d.description) + '</div>' : '') +
+    if (d.description || d.attractions || d.moreInfo) h += '<section class="sec" id="about"><h2>About ' + esc(d.name) + '</h2>' + (d.description ? '<div class="text">' + esc(d.description) + '</div>' : '') +
       (d.attractions ? '<h3 style="margin:18px 0 6px;font-size:17px">In the area</h3><div class="text">' + esc(d.attractions) + '</div>' : '') +
       (d.moreInfo ? '<h3 style="margin:18px 0 6px;font-size:17px">Good to know</h3><div class="text">' + esc(d.moreInfo) + '</div>' : '') + '</section>';
-    if (d.units.length) h += '<section class="sec"><h2>Places to stay</h2><div class="acts">' + d.units.map(function (u) { return '<div class="act"><div class="bd"><b>' + esc(u.name) + '</b>' + (u.size ? '<span class="muted">' + esc(u.size) + '</span>' : '') + '</div></div>'; }).join('') + '</div></section>';
+    if (d.units.length) h += '<section class="sec" id="units"><h2>Where you\'ll stay</h2><div class="units">' + d.units.map(function (u, i) {
+      var img = safeUrl(u.photo) || ph[(i + 1) % Math.max(1, ph.length)] || '';
+      return '<article class="ucard"><div class="im" style="' + (img ? 'background-image:url(\'' + esc(img) + '\')' : '') + '">' + (u.price ? '<span class="pr">From ' + money(u.price) + ' a night</span>' : '') + '</div>' +
+        '<div class="bd"><b>' + esc(u.name) + '</b>' + ((u.size || u.beds) ? '<span class="meta">' + esc([u.size, u.beds].filter(Boolean).join(' · ')) + '</span>' : '') +
+        (u.blurb ? '<span style="font-size:14.5px">' + esc(u.blurb) + '</span>' : '') + '<button type="button" class="btn t sm" data-act="toBook">Check dates</button></div></article>'; }).join('') + '</div></section>';
+    if (d.showCalendar) h += '<section class="sec" id="calsec"><h2>Availability</h2><p class="lead">Tap your arrival day, then your last night.</p><div class="card" id="cal"></div></section>';
     if (d.showOffers) h += offersHtml();
     if (d.showActivities) h += nearbyHtml();
     h += '<section class="sec"><h2>Contact ' + esc(d.name) + '</h2><div class="contact">' +
@@ -308,9 +369,11 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
     if (kms.indexOf(S.km) < 0) { kms.push(S.km); kms.sort(function (a, b) { return a - b; }); }
     var h = '<section class="sec" id="nearby"><h2>Things to do nearby</h2><div class="chips" role="group" aria-label="Distance">' +
       kms.map(function (k) { return '<button type="button" class="chip" data-act="km" data-k="' + k + '" aria-pressed="' + (k === S.km) + '">Within ' + k + ' km</button>'; }).join('') + '</div>';
-    h += list.length ? '<div class="acts">' + list.map(function (a) {
-      return '<article class="act">' + (safeUrl(a.photo) ? '<div class="im" style="background-image:url(\'' + esc(safeUrl(a.photo)) + '\')"></div>' : '') + '<div class="bd"><b>' + esc(a.name) + '</b><span class="muted">' + esc([a.distance, a.area, a.price].filter(Boolean).join(' · ')) + '</span>' +
-        (a.description ? '<span style="font-size:14px">' + esc(a.description) + '</span>' : '') + (safeLink(a.link) ? '<a href="' + esc(safeLink(a.link)) + '" target="_blank" rel="noopener" style="font-weight:700;margin-top:auto">Book / contact →</a>' : '') + '</div></article>';
+    h += list.length ? '<div class="tiles">' + list.map(function (a) {
+      var img = safeUrl(a.photo), lk = safeLink(a.link);
+      return (lk ? '<a class="tile' + (img ? '' : ' noimg') + '" href="' + esc(lk) + '" target="_blank" rel="noopener"' : '<article class="tile' + (img ? '' : ' noimg') + '"') + (img ? ' style="background-image:url(\'' + esc(img) + '\')"' : '') + '>' +
+        (a.distance ? '<span class="km">' + esc(a.distance) + '</span>' : '') + '<div class="bd"><b>' + esc(a.name) + '</b>' +
+        ((a.description || a.area) ? '<span>' + esc((a.description || a.area).slice(0, 110)) + '</span>' : '') + (a.price ? '<span>' + esc(a.price) + '</span>' : '') + '</div>' + (lk ? '</a>' : '</article>');
     }).join('') + '</div>' : '<p class="muted">Nothing listed within ' + S.km + ' km yet. Try a bigger distance.</p>';
     if (d.latitude != null) h += '<div id="map" role="img" aria-label="Map of ' + esc(d.name) + ' and things to do nearby"></div>';
     return h + '</section>';
@@ -395,6 +458,7 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
       else { S.co = add(dsel, 1); S.picking = false; }
       S.quote = null; S.pick = null; drawCal(); drawBook(); return;
     }
+    if (CFG.preview && (a === 'quote' || a === 'book' || a === 'km')) { S.err = a === 'km' ? '' : 'This is a preview: booking works on the real page.'; return a === 'km' ? null : drawBook(); }
     if (a === 'quote') {
       syncForm(); S.err = ''; S.pick = null;
       if (!S.ci || !S.co || S.co <= S.ci) { S.err = 'Choose a check-out after the check-in.'; return drawBook(); }
@@ -422,6 +486,23 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
     if (a === 'copyWifi') { var pw = (S.d.guest || {}).wifiPassword || ''; (navigator.clipboard ? navigator.clipboard.writeText(pw) : Promise.reject()).then(function () { t.textContent = 'Copied ✓'; }, function () { prompt('Wi-Fi password:', pw); }); return; }
     if (a === 'print') { window.print(); return; }
   });
+  // Preview for the front store builder in the hub (Jean, 2026-10-13): the
+  // page data comes from the builder (postMessage), nothing is loaded or booked.
+  CFG.preview = new URLSearchParams(location.search).get('preview') === '1';
+  if (CFG.preview) {
+    CFG.mode = 'store';
+    window.addEventListener('message', function (e) {
+      if (e.origin !== location.origin || !e.data || e.data.type !== 'fs-preview' || !e.data.data) return;
+      var d = e.data.data, y = window.scrollY; CFG.slug = d.slug || CFG.slug;
+      S.d = d; S.km = d.nearbyKm; S.offers = (d.offers || []).filter(function (o) { return o.booking || o.landing; });
+      if (!S.ci) { S.ci = d.firstBookable; S.co = add(d.firstBookable, Math.max(1, d.minStay || 1)); }
+      if (!S.month) S.month = d.firstBookable.slice(0, 7);
+      render(); window.scrollTo(0, y); loadMonth();
+      if (e.data.scrollTo) { var el = document.getElementById(e.data.scrollTo); if (el) el.scrollIntoView({ block: 'start' }); }
+    });
+    if (window.parent !== window) window.parent.postMessage({ type: 'fs-preview-ready' }, location.origin);
+    return;
+  }
   if (!CFG.slug) { app.innerHTML = '<div class="center"><h1>This link is incomplete</h1></div>'; return; }
   load();
 })();

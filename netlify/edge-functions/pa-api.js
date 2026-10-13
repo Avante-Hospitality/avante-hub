@@ -5,6 +5,8 @@ import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
 import { createCore, PAError } from "./lib/pa-core.js";
 import { fetchResortInfo } from "./lib/hook-source.js";
 import { createActivities } from "./lib/pa-activities.js";
+import { stayPayload } from "./lib/stay-payload.js";
+import { searchPlacePhotos } from "./lib/places-images.js";
 
 const cors = { "access-control-allow-origin": "*", "access-control-allow-methods": "POST, OPTIONS", "access-control-allow-headers": "content-type, x-pa-sync-secret" };
 const json = (obj, status = 200) => new Response(JSON.stringify(obj), { status, headers: { "content-type": "application/json", "cache-control": "no-store", ...cors } });
@@ -137,7 +139,23 @@ export default async (request) => {
         return json(Object.assign({ ok: true, snPhotos: (info && info.images) || [], snDescription: (info && info.description) || "" }, await core.frontStoreView(prop)));
       }
       case "saveFrontStore": return json(Object.assign({ ok: true }, await core.saveFrontStore(prop, body.frontStore || {})));
-      case "uploadFrontPhoto": return json(Object.assign({ ok: true }, await core.uploadFrontPhoto(prop, body.dataUrl)));
+      // Front store builder (Jean, 2026-10-13): the page exactly as guests see
+      // it (also while it's switched off, and with the hidden activities), for
+      // the live preview; and Google photos of a place, to use on the page.
+      case "frontPreview": {
+        const st = getStore({ name: "property-affiliate", consistency: "strong" });
+        const pv = await stayPayload(core, prop, { store: st, origin: new URL(request.url).origin, km: body.km, all: true });
+        pv.offers = await core.publicOffers(prop, getStore({ name: "promo-hooks", consistency: "strong" })).catch(() => []);
+        return json(Object.assign(pv, { ok: true }));
+      }
+      case "frontGoogle": {
+        const q = String(body.query || "").trim().slice(0, 200);
+        if (!q) return json({ ok: false, error: "Type what to search for." }, 400);
+        const r = await searchPlacePhotos(q, Deno.env.get("GOOGLE_PLACES_API_KEY") || "", Math.min(9, Number(body.limit) || 6));
+        if (!r.ok) return json({ ok: false, error: r.reason === "ZERO_RESULTS" ? "Google has no photos for that. Try other words." : "Google photos didn't work this time (" + (r.message || r.reason) + ")." }, 200);
+        return json({ ok: true, place: r.place, images: r.images.map((x) => ({ dataUri: x.dataUri, credit: x.attribution })) });
+      }
+      case "uploadFrontPhoto": return json(Object.assign({ ok: true }, await core.uploadFrontPhoto(prop, body.dataUrl, body.kind)));
       case "removeFrontPhoto": return json(Object.assign({ ok: true }, await core.removeFrontPhoto(prop, body.url)));
       case "emailNow": return json(Object.assign({ ok: true }, await core.emailNow(prop, body.ref, body.kind, body.text, body.subject)));
       case "inHouse": return json(Object.assign({ ok: true }, await core.inHouse(prop)));

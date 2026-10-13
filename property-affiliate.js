@@ -110,6 +110,8 @@
   var TABS = [['avail', 'Calendar'], ['book', 'Bookings'], ['guests', 'Guests'], ['acts', 'Activities'], ['msgs', 'Communication'], ['front', 'Front store'], ['chan', 'Channels'], ['rev', 'Reviews']];
   function render() {
     if (S.view === 'msgs') collectMsgEdit(); // keep what was typed in the scheduled messages
+    if (S.view === 'front' && S.front && !S.front._fresh) keepFront(); // keep what was typed in the front store builder
+    if (S.front) delete S.front._fresh;
     var connected = !!(S.token && S.prop);
     var h = '<div class="pa">';
     // "How to" opens this screen's part of the property affiliate guide (how-to-property.html).
@@ -142,6 +144,7 @@
     if (S.modal) h += '<div class="pa">' + viewModal() + '</div>';
     root.innerHTML = h;
     if (onboarding) onboarding.style.display = S.view === 'onb' ? '' : 'none';
+    pvAfterRender();
   }
 
   // Kept for the views that used it: the slim header already shows the property.
@@ -706,16 +709,132 @@
     return '<div class="pa-field" style="margin-top:10px"><span class="pa-label">' + label + '</span><div class="pa-copy"><input type="text" readonly value="' + esc(url) + '" aria-label="' + esc(label) + '">' +
       '<button type="button" class="pa-btn small" data-act="copy" data-text="' + esc(url) + '">Copy</button><a class="pa-btn small ghost pa-linkbtn" href="' + esc(url) + '" target="_blank" rel="noopener">Open</a></div></div>';
   }
+  // Front store builder (Jean, 2026-10-13): numbered steps on the left, a live
+  // preview of the real page (stay.html?preview=1) on the right. Everything
+  // typed shows in the preview straight away; nothing is live until Save.
+  var FS_STEPS = [['link', 'Switch on and link', 'hero'], ['top', 'Top of the page', 'hero'], ['photos', 'Photos', 'photos'], ['hl', 'Highlights', 'hl'],
+    ['units', 'Your units', 'units'], ['acts', 'Things to do nearby', 'nearby'], ['shows', 'What shows on the page', 'calsec'], ['words', 'Words and contact details', 'about'],
+    ['guest', 'Guest page and room card', '']];
+  function fsStep(id, n, title, status, body) {
+    var open = (S.fsOpen || {})[id];
+    return '<details class="fs-step" data-fsstep="' + id + '"' + (open ? ' open' : '') + '><summary><span class="fs-n" aria-hidden="true">' + n + '</span><span class="fs-st"><b>' + esc(title) + '</b>' +
+      (status ? '<span class="fs-stat">' + status + '</span>' : '') + '</span><span class="fs-chev" aria-hidden="true">▾</span></summary><div class="fs-body">' + body + '</div></details>';
+  }
+  function fsAutoPrice(st) {
+    if (!st.showPrices) return '';
+    var hid = st.hiddenUnits || [], list = S.front.units.filter(function (u) { return hid.indexOf(u.name) < 0 && u.price > 0; }).map(function (u) { return u.price; });
+    return list.length ? 'From ' + money(Math.min.apply(null, list)) + ' a night' : '';
+  }
+  function fsPlace() { var p = (S.fpv && S.fpv.place) || {}; return p.suburb || p.city || p.region || ''; }
+  function fsThumbs(sel, data, list) {
+    return '<div class="fs-thumbs" role="group">' + list.map(function (u, i) {
+      var on = u === sel;
+      return '<button type="button" class="fs-thumb' + (on ? ' on' : '') + '" ' + data + ' data-u="' + esc(u) + '" aria-pressed="' + on + '" aria-label="Photo ' + (i + 1) + (on ? ' (chosen)' : '') + '"><img src="' + esc(u) + '" alt="" loading="lazy">' + (on ? '<span class="fs-tick" aria-hidden="true">✓</span>' : '') + '</button>';
+    }).join('') + '</div>';
+  }
+  function fsGoogleBox(target, q) {
+    var g = S.fsG && S.fsG.target === target ? S.fsG : null;
+    var h = '<div class="fs-g"><div class="pa-copy"><input type="search" data-fsgq="' + esc(target) + '" value="' + esc(g ? g.q : q) + '" aria-label="Search Google photos for"><button type="button" class="pa-btn small" data-act="fsG" data-target="' + esc(target) + '">Search Google</button></div>';
+    if (g && g.busy) h += '<p class="pa-hint" role="status">Looking on Google…</p>';
+    if (g && g.err) h += '<p class="pa-err">' + esc(g.err) + '</p>';
+    if (g && g.images) h += '<p class="pa-hint" style="margin:6px 0 0">' + (g.place ? 'Photos of <b>' + esc(g.place) + '</b>. ' : '') + 'Tap <b>Use</b> on the one you like.</p><div class="fs-gres">' + g.images.map(function (im, i) {
+      return '<div class="fs-gimg"><img src="' + esc(im.dataUri) + '" alt=""><button type="button" class="pa-btn small teal" data-act="fsGUse" data-i="' + i + '">Use</button>' + (im.credit ? '<span>' + esc(im.credit) + '</span>' : '') + '</div>';
+    }).join('') + '</div>';
+    return h + '</div>';
+  }
   function viewFront() {
     var F = S.front;
     if (!F) return '<div class="pa-card pa-hint">Loading…</div>';
-    var st = F.settings, on = st.on, ph = frontPhotos();
-    var h = '<section class="pa-card" aria-label="Front store"><div class="pa-row" style="justify-content:space-between;align-items:center"><div><p class="pa-h2" style="margin:0">Your front store</p>' +
-      '<p class="pa-hint" style="margin:0">Your own page that sells only ' + esc(S.prop.resortName || 'your property') + ': photos, live availability, and guests book and pay on the page. Bookings come in as normal bookings (source "Front store").</p></div>' +
-      '<span class="pa-pill" style="background:' + (on ? '#d4f5f2;color:#065e58' : '#eef2f2;color:#333') + '">' + (on ? 'On' : 'Off') + '</span></div>' +
-      '<div class="pa-row" style="margin-top:12px;align-items:flex-end"><div class="pa-field" style="flex:2 1 260px"><label class="pa-label" for="fs-slug">Link name</label><div class="pa-copy"><span style="align-self:center;font-size:13px;color:#5f6b6e;white-space:nowrap">go.avantetravel.co.za/stay/</span><input id="fs-slug" type="text" value="' + esc(st.slug) + '" maxlength="60" autocapitalize="off" spellcheck="false"></div></div>' +
-      '<label class="pa-check" style="min-height:44px"><input type="checkbox" id="fs-on"' + (on ? ' checked' : '') + '> Front store switched on</label></div>' +
-      '<div class="pa-row" style="margin-top:10px"><button type="button" class="pa-btn" data-act="saveFront">Save</button></div></section>';
+    var st = F.settings, on = st.on, ph = frontPhotos(), shown = ph.chosen || ph.all, n = 0;
+    if (!S.fsOpen) S.fsOpen = on ? { top: true } : { link: true };
+    var h = '<section class="pa-card fs-head" aria-label="Front store"><div class="fs-headrow"><div><p class="pa-h2" style="margin:0">Your front store <span class="pa-pill" style="vertical-align:2px;margin-left:6px;background:' + (on ? '#d4f5f2;color:#065e58' : '#eef2f2;color:#333') + '">' + (on ? '● On' : '○ Off') + '</span></p>' +
+      '<p class="pa-hint" style="margin:2px 0 0">Your own page that sells only ' + esc(S.prop.resortName || 'your property') + '. Work through the steps; the preview shows what guests see as you type. Nothing changes for guests until you tap <b>Save front store</b>.</p></div>' +
+      '<div class="pa-actions"><button type="button" class="pa-btn teal" data-act="fsFill">✨ Fill in my store</button><button type="button" class="pa-btn" data-act="saveFront">Save front store</button>' +
+      (on ? '<a class="pa-btn ghost pa-linkbtn" href="' + esc(F.url) + '" target="_blank" rel="noopener">View my front store</a>' : '') + '</div></div>' +
+      '<p class="fs-dirty" id="fs-dirty" role="status"' + (S.fsDirty ? '' : ' hidden') + '>⚠ Changes not saved yet</p>' + (S.fsFillMsg ? '<p class="pa-hint" role="status" style="margin:6px 0 0">' + esc(S.fsFillMsg) + '</p>' : '') + '</section>';
+    h += '<div class="fs-wrap"><div class="fs-steps">';
+    // 1 link
+    h += fsStep('link', ++n, 'Switch on and link', on ? '✓ On · /stay/' + esc(st.slug) : 'Off',
+      '<div class="pa-field"><label class="pa-label" for="fs-slug">Link name</label><div class="pa-copy"><span style="align-self:center;font-size:13px;color:#5f6b6e;white-space:nowrap">go.avantetravel.co.za/stay/</span><input id="fs-slug" type="text" value="' + esc(st.slug) + '" maxlength="60" autocapitalize="off" spellcheck="false"></div></div>' +
+      '<label class="pa-check" style="min-height:44px;margin-top:8px"><input type="checkbox" id="fs-on"' + (on ? ' checked' : '') + '> Front store switched on</label><p class="pa-hint">Switched off = nobody can open the page. You can build it first and switch it on when it looks right.</p>');
+    // 2 top
+    var auto = fsAutoPrice(st);
+    h += fsStep('top', ++n, 'Top of the page', st.headline ? '✓ ' + esc(st.headline) : 'Headline, price and rating',
+      '<div class="pa-field"><label class="pa-label" for="fs-headline">Headline (the big words on the photo)</label><input id="fs-headline" type="text" maxlength="80" value="' + esc(st.headline) + '" placeholder="e.g. Your getaway in ' + esc(fsPlace() || 'the bush') + '"></div>' +
+      '<p class="pa-hint">Empty = your property name. Short and specific works best: what guests get, where.</p>' +
+      '<div class="pa-field" style="margin-top:10px"><label class="pa-label" for="fs-welcome">Line under the headline</label><input id="fs-welcome" type="text" maxlength="160" value="' + esc(st.welcome) + '" placeholder="e.g. Self-catering cottages 10 minutes from the dam"></div>' +
+      '<div class="pa-field" style="margin-top:10px"><label class="pa-label" for="fs-pricefrom">Price badge</label><input id="fs-pricefrom" type="text" maxlength="40" value="' + esc(st.priceFrom) + '" placeholder="' + esc(auto || 'Switch on prices in step 7') + '"></div>' +
+      '<p class="pa-hint">Empty = your lowest price a night from Reservation settings' + (auto ? ' (' + esc(auto) + ')' : '') + '. Only shows when prices are switched on.</p>' +
+      '<fieldset class="pa-fieldset" style="margin-top:10px"><legend class="pa-label">Google rating badge (optional)</legend><div class="pa-form">' +
+      '<div class="pa-field"><label class="pa-label" for="fs-rv">Stars (0 to 5)</label><input id="fs-rv" type="text" inputmode="decimal" maxlength="3" value="' + esc(st.ratingValue) + '" placeholder="e.g. 4.6"></div>' +
+      '<div class="pa-field"><label class="pa-label" for="fs-rc">Number of reviews</label><input id="fs-rc" type="text" inputmode="numeric" maxlength="12" value="' + esc(st.ratingCount) + '" placeholder="e.g. 212"></div></div>' +
+      '<div class="pa-field" style="margin-top:8px"><label class="pa-label" for="fs-rl">Link to your Google reviews</label><input id="fs-rl" type="url" maxlength="400" value="' + esc(st.ratingLink) + '" placeholder="https://…"></div>' +
+      '<p class="pa-hint">Copy the stars and number from your Google listing. Empty stars = no badge.</p></fieldset>');
+    // 3 photos
+    var ph3 = ph.all.length ? '<div class="pa-photos">' + ph.all.slice().sort(function (a, b) { var ia = shown.indexOf(a), ib = shown.indexOf(b); return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib); }).map(function (u) {
+      var i = shown.indexOf(u), mine = (F.uploadedPhotos || []).indexOf(u) >= 0;
+      return '<div class="pa-photo' + (i < 0 ? ' off' : '') + (i === 0 ? ' cover' : '') + '"><img src="' + esc(u) + '" alt="" loading="lazy"><div class="pa-actions" style="gap:4px;padding:6px">' +
+        '<label class="pa-check" style="font-size:12.5px"><input type="checkbox" data-fsphoto="' + esc(u) + '"' + (i >= 0 ? ' checked' : '') + '> ' + (i === 0 ? '★ Cover' : 'Show') + '</label>' +
+        (i > 0 ? '<button type="button" class="pa-btn small ghost" data-act="fsUp" data-u="' + esc(u) + '" aria-label="Move earlier">↑</button>' : '') +
+        (mine ? '<button type="button" class="pa-btn small danger" data-act="fsDel" data-u="' + esc(u) + '" aria-label="Delete photo">✕</button>' : '') + '</div></div>';
+    }).join('') + '</div>' : '<p class="pa-hint">No photos yet. Upload some, or find some on Google below.</p>';
+    h += fsStep('photos', ++n, 'Photos', shown.length + ' photo' + (shown.length === 1 ? '' : 's') + ' showing',
+      '<p class="pa-hint" style="margin:0">' + (ph.chosen ? 'Your own choice and order.' : 'Automatic: your uploaded photos, then Stock Network\'s.') + ' The first photo is the big one at the top (★ Cover). The next five make the photo block under it.</p>' +
+      '<div class="pa-actions" style="margin-top:8px"><button type="button" class="pa-btn small" data-act="fsUpload">Upload photo</button><input type="file" id="fs-file" accept="image/jpeg,image/png,image/webp" style="display:none">' + (ph.chosen ? '<button type="button" class="pa-btn small ghost" data-act="fsAuto">Back to automatic</button>' : '') + '</div>' + ph3 +
+      '<p class="pa-label" style="margin:14px 0 4px">Find photos on Google</p>' + fsGoogleBox('gallery', (S.prop.resortName || '') + ' ' + fsPlace()));
+    // 4 highlights
+    var hl = (st.highlights || []).slice(); while (hl.length < 6) hl.push('');
+    h += fsStep('hl', ++n, 'Highlights', hl.filter(Boolean).length + ' of 6',
+      '<p class="pa-hint" style="margin:0">Short things guests look for, e.g. <i>Swimming pool</i>, <i>Sleeps 6</i>, <i>Pet friendly</i>. Up to 6, 40 letters each.</p><div class="fs-hlgrid">' +
+      hl.map(function (x, i) { return '<input type="text" maxlength="40" data-fshl="' + i + '" value="' + esc(x) + '" aria-label="Highlight ' + (i + 1) + '" placeholder="Highlight ' + (i + 1) + '">'; }).join('') + '</div>');
+    // 5 units
+    var ui = st.unitInfo || {}, hidU = st.hiddenUnits || [];
+    h += fsStep('units', ++n, 'Your units', (F.units.length - hidU.length) + ' of ' + F.units.length + ' showing',
+      '<p class="pa-hint" style="margin:0">Each unit gets a card with a photo, sleeps, beds and its price a night (from Reservation settings).</p>' + F.units.map(function (u, ix) {
+        var x = ui[u.name] || {}, off = hidU.indexOf(u.name) >= 0;
+        return '<div class="fs-unit' + (off ? ' off' : '') + '"><label class="pa-check"><input type="checkbox" data-fsunit="' + esc(u.name) + '"' + (off ? '' : ' checked') + '> <b>' + esc(u.name) + '</b>' + (u.size ? ' <span class="pa-hint">· ' + esc(u.size) + '</span>' : '') + '</label>' +
+          '<p class="pa-hint" style="margin:2px 0 6px">' + (u.price > 0 ? 'Price: ' + money(u.price) + ' a night' + (st.showPrices ? '' : ' (prices are switched off in step 7)') : 'No price yet: add it in Channels → Reservation settings.') + '</p>' +
+          '<div class="pa-form"><div class="pa-field"><label class="pa-label" for="fs-ub-' + ix + '">Beds</label><input id="fs-ub-' + ix + '" type="text" maxlength="80" data-fsui="' + esc(u.name) + '|beds" value="' + esc(x.beds) + '" placeholder="e.g. 1 queen, 2 singles"></div>' +
+          '<div class="pa-field"><label class="pa-label" for="fs-ux-' + ix + '">One line about it</label><input id="fs-ux-' + ix + '" type="text" maxlength="300" data-fsui="' + esc(u.name) + '|blurb" value="' + esc(x.blurb) + '" placeholder="e.g. Private braai and dam views"></div></div>' +
+          '<p class="pa-label" style="margin:8px 0 4px">Photo for this unit' + (x.photo ? '' : ' <span class="pa-hint" style="text-transform:none;letter-spacing:0">(none chosen: a gallery photo is used)</span>') + '</p>' +
+          (shown.length ? fsThumbs(x.photo, 'data-act="fsUnitPhoto" data-unit="' + esc(u.name) + '"', shown.slice(0, 24)) : '<p class="pa-hint">Add photos in step 3 first.</p>') + '</div>';
+      }).join(''));
+    // 6 things to do
+    var acts = (S.fpv && S.fpv.nearby) || [], hidA = st.actHidden || [], ap = st.actPhotos || {};
+    var actsBody = '<div class="pa-row"><label class="pa-check"><input type="checkbox" id="fs-acts"' + (st.showActivities ? ' checked' : '') + '> Show things to do on the page</label>' +
+      '<div class="pa-field" style="flex:0 1 200px"><label class="pa-label" for="fs-km">Within</label><select id="fs-km">' + [5, 10, 20, 30, 50, 75, 100, 150].map(function (k) { return '<option value="' + k + '"' + (+st.nearbyKm === k ? ' selected' : '') + '>' + k + ' km</option>'; }).join('') + '</select></div></div>' +
+      '<p class="pa-hint">Guests can pick another distance on the page. Untick one to hide it. Give each a good photo: tap <b>Google photo</b>.</p>';
+    if (!S.fpv || S.fsActsBusy) actsBody += '<p class="pa-hint" role="status">Loading things to do…</p>';
+    else if (!acts.length) actsBody += '<p class="pa-hint">Nothing on the Avante map within ' + esc(st.nearbyKm) + ' km yet. Try a bigger distance.</p>';
+    else actsBody += acts.map(function (a, i) {
+      var photo = ap[a.name] || a.basePhoto, off = hidA.indexOf(a.name) >= 0, gt = 'act:' + i;
+      return '<div class="fs-act' + (off ? ' off' : '') + '"><div class="fs-actimg"' + (photo ? ' style="background-image:url(\'' + esc(photo) + '\')"' : '') + '>' + (photo ? '' : '<span>No photo</span>') + '</div>' +
+        '<div class="grow"><label class="pa-check"><input type="checkbox" data-fsact="' + esc(a.name) + '"' + (off ? '' : ' checked') + '> <b>' + esc(a.name) + '</b></label><span class="pa-hint">' + esc(a.distance || '') + (a.area ? ' · ' + esc(a.area) : '') + '</span>' +
+        '<div class="pa-actions" style="margin-top:6px"><button type="button" class="pa-btn small ghost" data-act="fsGOpen" data-target="' + gt + '" data-q="' + esc(a.name + ' ' + (a.area || '')) + '">Google photo</button>' +
+        (ap[a.name] ? '<button type="button" class="pa-btn small ghost" data-act="fsActReset" data-name="' + esc(a.name) + '">' + (a.basePhoto ? 'Back to the map photo' : 'Remove my photo') + '</button>' : '') + '</div>' +
+        (S.fsG && S.fsG.target === gt ? fsGoogleBox(gt, a.name + ' ' + (a.area || '')) : '') + '</div></div>';
+    }).join('');
+    h += fsStep('acts', ++n, 'Things to do nearby', st.showActivities ? (S.fpv ? acts.filter(function (a) { return hidA.indexOf(a.name) < 0; }).length + ' showing · ' + esc(st.nearbyKm) + ' km' : esc(st.nearbyKm) + ' km') : 'Switched off', actsBody);
+    // 7 what shows
+    h += fsStep('shows', ++n, 'What shows on the page', '', '<div class="pa-form">' +
+      [['fs-prices', 'showPrices', 'Prices'], ['fs-cal', 'showCalendar', 'Availability calendar'], ['fs-offers', 'showOffers', 'Your special offers (hooks you manage yourself)']].map(function (x) {
+        return '<label class="pa-check"><input type="checkbox" id="' + x[0] + '"' + (st[x[1]] ? ' checked' : '') + '> ' + x[2] + '</label>'; }).join('') + '</div>' +
+      '<div class="pa-field" style="margin-top:10px;max-width:240px"><label class="pa-label" for="fs-notice">Book at least … days ahead</label><input id="fs-notice" type="number" min="0" max="30" value="' + esc(st.minNoticeDays || 0) + '"></div>' +
+      '<p class="pa-hint">0 days ahead means guests can book for tonight. Your minimum stay and calendar start date (Channels) also apply.</p>');
+    // 8 words + contact
+    h += fsStep('words', ++n, 'Words and contact details', '',
+      '<div class="pa-field"><label class="pa-label" for="fs-desc">About the property</label><textarea id="fs-desc" rows="6" placeholder="' + esc(F.snDescription ? 'Empty = your Stock Network description is used' : 'Tell guests about your property') + '">' + esc(st.description) + '</textarea></div>' +
+      '<div class="pa-form" style="margin-top:10px"><div class="pa-field"><label class="pa-label" for="fs-phone">Phone</label><input id="fs-phone" type="tel" value="' + esc(st.phone) + '" placeholder="' + esc(F.propertyPhone || '') + '"></div>' +
+      '<div class="pa-field"><label class="pa-label" for="fs-wa">WhatsApp number</label><input id="fs-wa" type="tel" value="' + esc(st.whatsapp) + '" placeholder="Empty = the phone number"></div>' +
+      '<div class="pa-field"><label class="pa-label" for="fs-email">Email</label><input id="fs-email" type="email" value="' + esc(st.email) + '" placeholder="' + esc(F.propertyEmail || '') + '"></div></div>' +
+      '<p class="pa-hint">Empty boxes use your Reservation settings (Channels).</p>');
+    // 9 guest page
+    h += fsStep('guest', ++n, 'Guest page and room card', st.wifiName ? '✓ Wi-Fi added' : 'Not on the public page',
+      '<p class="pa-hint" style="margin:0">Only on the guest page and the printed room card, not on the public front store.</p>' +
+      '<div class="pa-form"><div class="pa-field"><label class="pa-label" for="fs-wifi">Wi-Fi network</label><input id="fs-wifi" type="text" value="' + esc(st.wifiName) + '"></div>' +
+      '<div class="pa-field"><label class="pa-label" for="fs-wifipw">Wi-Fi password</label><input id="fs-wifipw" type="text" value="' + esc(st.wifiPassword) + '"></div></div>' +
+      '<div class="pa-field" style="margin-top:10px"><label class="pa-label" for="fs-notes">Good to know (house info)</label><textarea id="fs-notes" rows="5" placeholder="e.g. Check-out by 10:00. Braai wood at reception. Gate code 1234. Quiet time after 22:00.">' + esc(st.guestNotes) + '</textarea></div>');
+    h += '<div class="pa-row" style="margin:6px 0 18px"><button type="button" class="pa-btn" data-act="saveFront">Save front store</button></div>';
     if (on) {
       h += '<section class="pa-card" aria-label="Links and QR codes"><p class="pa-h2">Links and QR codes</p><div class="pa-qrgrid">' +
         '<div class="pa-qr"><div class="pa-qrbox">' + qrSvg(F.url, 150) + '</div><b>Front store</b><span class="pa-hint">For your website, Instagram bio, WhatsApp status, flyers and guests.</span>' + linkRow('Link', F.url) +
@@ -728,53 +847,186 @@
         '<div class="pa-stat" style="background:#f4fbfa;border:1.5px solid #e3e9e8"><b style="color:#0e2f44">' + (s1.bookings || 0) + '</b><span>bookings from the front store this month (last month ' + (s0.bookings || 0) + ')</span></div>' +
         '<div class="pa-stat" style="background:#fff4e5;border:1.5px solid #f5c98a;color:#6b3a00"><b>' + (s1.guestVisits || 0) + '</b><span>guest page visits this month</span></div></div>';
     }
-    // what shows
-    h += '<section class="pa-card" aria-label="What shows"><p class="pa-h2">What shows on the page</p><div class="pa-form" style="margin-top:6px">' +
-      [['fs-prices', 'showPrices', 'Prices'], ['fs-cal', 'showCalendar', 'Availability calendar'], ['fs-acts', 'showActivities', 'Things to do nearby'], ['fs-offers', 'showOffers', 'Your special offers (hooks you manage yourself)']].map(function (x) {
-        return '<label class="pa-check"><input type="checkbox" id="' + x[0] + '"' + (st[x[1]] ? ' checked' : '') + '> ' + x[2] + '</label>'; }).join('') + '</div>' +
-      '<div class="pa-row" style="margin-top:12px"><div class="pa-field" style="flex:0 1 220px"><label class="pa-label" for="fs-km">Things to do: within</label><select id="fs-km">' + [5, 10, 20, 30, 50, 75, 100, 150].map(function (k) { return '<option value="' + k + '"' + (+st.nearbyKm === k ? ' selected' : '') + '>' + k + ' km</option>'; }).join('') + '</select></div>' +
-      '<div class="pa-field" style="flex:0 1 220px"><label class="pa-label" for="fs-notice">Book at least … days ahead</label><input id="fs-notice" type="number" min="0" max="30" value="' + esc(st.minNoticeDays || 0) + '"></div></div>' +
-      '<p class="pa-hint">Guests can also pick another distance on the page. 0 days ahead means guests can book for tonight. Your minimum stay and calendar start date (Channels) also apply.</p>' +
-      '<fieldset class="pa-fieldset"><legend class="pa-label">Units on the page</legend>' + F.units.map(function (u) { return '<label class="pa-check"><input type="checkbox" data-fsunit="' + esc(u.name) + '"' + ((st.hiddenUnits || []).indexOf(u.name) < 0 ? ' checked' : '') + '> ' + esc(u.name) + (u.size ? ' <span class="pa-hint">· ' + esc(u.size) + '</span>' : '') + '</label>'; }).join('') + '</fieldset></section>';
-    // words + contact
-    h += '<section class="pa-card" aria-label="Words and contact"><p class="pa-h2">Words and contact details</p>' +
-      '<div class="pa-field"><label class="pa-label" for="fs-welcome">Welcome line (under your name)</label><input id="fs-welcome" type="text" maxlength="160" value="' + esc(st.welcome) + '" placeholder="e.g. Beachfront cottages on Keurbooms lagoon"></div>' +
-      '<div class="pa-field" style="margin-top:10px"><label class="pa-label" for="fs-desc">About the property</label><textarea id="fs-desc" rows="6" placeholder="' + esc(F.snDescription ? 'Empty = your Stock Network description is used' : 'Tell guests about your property') + '">' + esc(st.description) + '</textarea></div>' +
-      '<div class="pa-form" style="margin-top:10px"><div class="pa-field"><label class="pa-label" for="fs-phone">Phone</label><input id="fs-phone" type="tel" value="' + esc(st.phone) + '" placeholder="' + esc(F.propertyPhone || '') + '"></div>' +
-      '<div class="pa-field"><label class="pa-label" for="fs-wa">WhatsApp number</label><input id="fs-wa" type="tel" value="' + esc(st.whatsapp) + '" placeholder="Empty = the phone number"></div>' +
-      '<div class="pa-field"><label class="pa-label" for="fs-email">Email</label><input id="fs-email" type="email" value="' + esc(st.email) + '" placeholder="' + esc(F.propertyEmail || '') + '"></div></div>' +
-      '<p class="pa-hint">Empty boxes use your Reservation settings (Channels).</p></section>';
-    // in-house guests
-    h += '<section class="pa-card" aria-label="Guest page"><p class="pa-h2">Guest page and room card</p><p class="pa-hint">Only on the guest page and the printed room card, not on the public front store.</p>' +
-      '<div class="pa-form"><div class="pa-field"><label class="pa-label" for="fs-wifi">Wi-Fi network</label><input id="fs-wifi" type="text" value="' + esc(st.wifiName) + '"></div>' +
-      '<div class="pa-field"><label class="pa-label" for="fs-wifipw">Wi-Fi password</label><input id="fs-wifipw" type="text" value="' + esc(st.wifiPassword) + '"></div></div>' +
-      '<div class="pa-field" style="margin-top:10px"><label class="pa-label" for="fs-notes">Good to know (house info)</label><textarea id="fs-notes" rows="5" placeholder="e.g. Check-out by 10:00. Braai wood at reception. Gate code 1234. Quiet time after 22:00.">' + esc(st.guestNotes) + '</textarea></div></section>';
-    // photos
-    var shown = ph.chosen || ph.all;
-    h += '<section class="pa-card" aria-label="Photos"><div class="pa-row" style="justify-content:space-between;align-items:center"><div><p class="pa-h2" style="margin:0">Photos</p><p class="pa-hint" style="margin:0">' + (ph.chosen ? 'Your own choice and order. The first photo is the big one at the top.' : 'Automatic: your uploaded photos, then Stock Network\'s. Untick or move one to make your own choice.') + '</p></div>' +
-      '<div class="pa-actions"><button type="button" class="pa-btn small" data-act="fsUpload">Upload photo</button><input type="file" id="fs-file" accept="image/jpeg,image/png,image/webp" style="display:none">' + (ph.chosen ? '<button type="button" class="pa-btn small ghost" data-act="fsAuto">Back to automatic</button>' : '') + '</div></div>';
-    h += ph.all.length ? '<div class="pa-photos">' + ph.all.slice().sort(function (a, b) { var ia = shown.indexOf(a), ib = shown.indexOf(b); return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib); }).map(function (u) {
-      var i = shown.indexOf(u), mine = (F.uploadedPhotos || []).indexOf(u) >= 0;
-      return '<div class="pa-photo' + (i < 0 ? ' off' : '') + '"><img src="' + esc(u) + '" alt="" loading="lazy"><div class="pa-actions" style="gap:4px;padding:6px">' +
-        '<label class="pa-check" style="font-size:12.5px"><input type="checkbox" data-fsphoto="' + esc(u) + '"' + (i >= 0 ? ' checked' : '') + '> ' + (i === 0 ? 'Cover' : 'Show') + '</label>' +
-        (i > 0 ? '<button type="button" class="pa-btn small ghost" data-act="fsUp" data-u="' + esc(u) + '" aria-label="Move earlier">↑</button>' : '') +
-        (mine ? '<button type="button" class="pa-btn small danger" data-act="fsDel" data-u="' + esc(u) + '" aria-label="Delete photo">✕</button>' : '') + '</div></div>';
-    }).join('') + '</div>' : '<p class="pa-hint">No photos yet. Upload some, or add photos on Stock Network.</p>';
-    h += '</section><div class="pa-row" style="margin-bottom:18px"><button type="button" class="pa-btn" data-act="saveFront">Save front store</button>' + (on ? '<a class="pa-btn ghost pa-linkbtn" href="' + esc(F.url) + '" target="_blank" rel="noopener">View my front store</a>' : '') + '</div>';
+    h += '</div><div class="fs-pvslot" id="fs-pvslot" aria-hidden="true"></div></div>';
+    h += '<button type="button" class="fs-pvbtn" data-act="fsPvOpen">👁 Preview</button>';
     return h;
   }
   function collectFront() {
     var F = S.front, b = {};
     var g = function (id) { var el = document.getElementById(id); return el ? el : null; };
     if (!g('fs-slug')) return null;
+    var all = function (sel) { return [].slice.call(root.querySelectorAll(sel)); };
     b.slug = g('fs-slug').value; b.on = g('fs-on').checked;
     b.showPrices = g('fs-prices').checked; b.showCalendar = g('fs-cal').checked; b.showActivities = g('fs-acts').checked; b.showOffers = g('fs-offers').checked;
     b.nearbyKm = +g('fs-km').value; b.minNoticeDays = g('fs-notice').value;
-    b.hiddenUnits = [].slice.call(root.querySelectorAll('[data-fsunit]')).filter(function (x) { return !x.checked; }).map(function (x) { return x.dataset.fsunit; });
+    b.hiddenUnits = all('[data-fsunit]').filter(function (x) { return !x.checked; }).map(function (x) { return x.dataset.fsunit; });
     b.welcome = g('fs-welcome').value; b.description = g('fs-desc').value; b.phone = g('fs-phone').value; b.whatsapp = g('fs-wa').value; b.email = g('fs-email').value;
     b.wifiName = g('fs-wifi').value; b.wifiPassword = g('fs-wifipw').value; b.guestNotes = g('fs-notes').value;
+    b.headline = g('fs-headline').value; b.priceFrom = g('fs-pricefrom').value; b.ratingValue = g('fs-rv').value.replace(',', '.').trim(); b.ratingCount = g('fs-rc').value; b.ratingLink = g('fs-rl').value.trim();
+    b.highlights = all('[data-fshl]').map(function (x) { return x.value.trim(); }).filter(Boolean);
+    var ui = {}, old = F.settings.unitInfo || {};
+    F.units.forEach(function (u) { ui[u.name] = { photo: (old[u.name] || {}).photo || '', beds: '', blurb: '' }; });
+    all('[data-fsui]').forEach(function (x) { var p = x.dataset.fsui.split('|'), k = p.pop(), n = p.join('|'); if (ui[n]) ui[n][k] = x.value; });
+    b.unitInfo = ui;
+    if (S.fpv) { var shownA = all('[data-fsact]'); var hid = (F.settings.actHidden || []).filter(function (n) { return !shownA.some(function (x) { return x.dataset.fsact === n; }); }); shownA.forEach(function (x) { if (!x.checked) hid.push(x.dataset.fsact); }); b.actHidden = hid; }
+    b.actPhotos = F.settings.actPhotos || {};
     b.photos = F.settings.photos; // changed by the photo controls directly
     return b;
+  }
+  // What the preview shows: the page as the server builds it (S.fpv), with the
+  // boxes as they are now (not saved yet) on top.
+  function fsDraft() {
+    var F = S.front, st = F.settings, d = Object.assign({}, S.fpv), ph = frontPhotos(), hid = st.hiddenUnits || [], ui = st.unitInfo || {};
+    d.name = S.prop.resortName || d.name; d.slug = st.slug || d.slug;
+    ['welcome', 'headline', 'showPrices', 'showCalendar', 'showActivities', 'showOffers'].forEach(function (k) { d[k] = st[k]; });
+    d.description = st.description || F.snDescription || S.fpv.description || '';
+    d.photos = (ph.chosen && ph.chosen.length ? ph.chosen : ph.all).slice(0, 24);
+    d.highlights = (st.highlights || []).filter(Boolean);
+    d.units = F.units.filter(function (u) { return hid.indexOf(u.name) < 0; }).map(function (u) { var x = ui[u.name] || {}; return { name: u.name, size: u.size || '', photo: x.photo || '', beds: x.beds || '', blurb: x.blurb || '', price: st.showPrices && u.price > 0 ? u.price : 0 }; });
+    d.priceFrom = st.showPrices ? (st.priceFrom || fsAutoPrice(st)) : '';
+    d.rating = /^[0-5](\.\d)?$/.test(st.ratingValue || '') ? { value: st.ratingValue, count: st.ratingCount || '', link: /^https:\/\//.test(st.ratingLink || '') ? st.ratingLink : '' } : null;
+    var wa = String(st.whatsapp || st.phone || F.propertyPhone || '').replace(/\D/g, ''); if (wa.indexOf('00') === 0) wa = wa.slice(2); if (wa.charAt(0) === '0') wa = '27' + wa.slice(1);
+    d.contact = { phone: st.phone || F.propertyPhone || '', whatsapp: wa.length >= 9 ? wa : '', email: st.email || F.propertyEmail || '' };
+    var hidA = st.actHidden || [], ap = st.actPhotos || {};
+    d.nearby = (S.fpv.nearby || []).filter(function (a) { return hidA.indexOf(a.name) < 0; }).slice(0, 24).map(function (a) { return Object.assign({}, a, { photo: ap[a.name] || a.basePhoto || '' }); });
+    d.offers = st.showOffers ? (S.fpv.offers || []) : [];
+    return d;
+  }
+
+  // ---- Front store builder: live preview panel ----
+  // One iframe for the whole session (kept on <body>, so a re-render of the
+  // tab doesn't reload it). It sits over the empty column next to the steps
+  // (#fs-pvslot); on phones it opens full screen from the Preview button.
+  var PV = null, pvTimer = null;
+  function pvEnsure() {
+    if (PV) return PV;
+    var box = document.createElement('div');
+    box.className = 'fs-pv'; box.style.display = 'none';
+    box.innerHTML = '<div class="fs-pvbar"><b>Live preview</b><span class="fs-pvseg" role="group" aria-label="Preview size"><button type="button" data-pvw="phone" aria-pressed="true">📱 Phone</button><button type="button" data-pvw="desk" aria-pressed="false">💻 Computer</button></span>' +
+      '<button type="button" class="fs-pvclose" data-pvclose aria-label="Close preview">✕ Close</button></div><div class="fs-pvstage"><iframe title="Front store preview" src="/stay.html?preview=1"></iframe><p class="fs-pvload" role="status">Loading preview…</p></div>';
+    document.body.appendChild(box);
+    PV = { box: box, frame: box.querySelector('iframe'), ready: false, w: 'phone', full: false };
+    box.addEventListener('click', function (e) {
+      var b = e.target.closest('button'); if (!b) return;
+      if (b.dataset.pvw) { PV.w = b.dataset.pvw; [].forEach.call(box.querySelectorAll('[data-pvw]'), function (x) { x.setAttribute('aria-pressed', String(x === b)); }); pvFollow(); }
+      if (b.hasAttribute('data-pvclose')) { PV.full = false; pvFollow(); var pb = root.querySelector('.fs-pvbtn'); if (pb) pb.focus(); }
+    });
+    window.addEventListener('message', function (e) {
+      if (e.origin !== location.origin || !e.data || e.data.type !== 'fs-preview-ready' || e.source !== PV.frame.contentWindow) return;
+      PV.ready = true; pvSend();
+    });
+    window.addEventListener('resize', pvFollowSoon);
+    document.addEventListener('scroll', pvFollowSoon, true);
+    setInterval(pvFollow, 600); // also notices the hub switching to another panel
+    return PV;
+  }
+  var pvRaf = 0;
+  function pvFollowSoon() { if (!pvRaf) pvRaf = requestAnimationFrame(function () { pvRaf = 0; pvFollow(); }); }
+  function pvFollow() {
+    if (!PV) return;
+    var box = PV.box, slot = document.getElementById('fs-pvslot');
+    var live = S.view === 'front' && slot && root.getClientRects().length > 0;
+    if (!live) { box.style.display = 'none'; PV.full = false; return; }
+    var r = slot.getBoundingClientRect(), wide = r.width > 200;
+    if (!wide && !PV.full) { box.style.display = 'none'; return; }
+    box.classList.toggle('full', !wide);
+    var top, left, width, height;
+    if (wide) {
+      var bar = root.querySelector('.pa-tabbar'), barB = bar ? Math.max(0, bar.getBoundingClientRect().bottom) : 0;
+      top = Math.max(r.top, barB + 8); var bottom = Math.min(window.innerHeight - 10, r.bottom);
+      left = r.left; width = r.width; height = bottom - top;
+      if (height < 220) { box.style.display = 'none'; return; }
+      box.style.cssText = 'display:flex;top:' + top + 'px;left:' + left + 'px;width:' + width + 'px;height:' + height + 'px';
+    } else box.style.cssText = 'display:flex';
+    // Scale a phone-wide (390px) or computer-wide (1280px) page into the box.
+    var stage = box.querySelector('.fs-pvstage'), sw = stage.clientWidth, sh = stage.clientHeight, tw = PV.w === 'desk' ? 1280 : 390;
+    var k = Math.min(1, (sw - (PV.w === 'desk' ? 0 : 16)) / tw);
+    PV.frame.style.width = tw + 'px'; PV.frame.style.height = Math.round(sh / k) + 'px'; PV.frame.style.transform = 'scale(' + k + ')';
+    PV.frame.style.left = Math.max(0, Math.round((sw - tw * k) / 2)) + 'px';
+  }
+  function pvSend(scrollTo) {
+    if (!PV || !PV.ready || !S.fpv || !S.front || S.view !== 'front') return;
+    PV.box.classList.add('ok');
+    try { PV.frame.contentWindow.postMessage({ type: 'fs-preview', data: fsDraft(), scrollTo: scrollTo || null }, location.origin); } catch (e) {}
+  }
+  function pvQueue() { clearTimeout(pvTimer); pvTimer = setTimeout(function () { keepFront(); pvSend(); }, 250); }
+  function pvAfterRender() {
+    if (S.view !== 'front' || !S.front || !S.prop) { if (PV) pvFollow(); return; }
+    pvEnsure(); pvFollow(); pvSend();
+  }
+  function fsMarkDirty() { S.fsDirty = true; var el = document.getElementById('fs-dirty'); if (el) el.hidden = false; }
+  function fsLoadPreview(km) {
+    S.fsActsBusy = true;
+    return api('frontPreview', { km: km || (S.front && S.front.settings.nearbyKm) || 30 }).then(function (d) {
+      S.fpv = d; S.fsActsBusy = false;
+      if (S.front) { S.front.snPhotos = d.snPhotos || []; S.front.snDescription = d.snDescription || ''; }
+      render();
+    }).catch(function (e) { S.fsActsBusy = false; fail(e); });
+  }
+  function fsGoogle(target, q) {
+    q = String(q || '').trim(); if (!q) return;
+    keepFront(); S.fsG = { target: target, q: q, busy: true }; render();
+    return api('frontGoogle', { query: q, limit: 6 }).then(function (d) {
+      if (!S.fsG || S.fsG.target !== target) return;
+      S.fsG.busy = false; S.fsG.images = d.images || []; S.fsG.place = d.place && d.place.name; render();
+    }).catch(function (e) { if (!S.fsG || S.fsG.target !== target) return; S.fsG.busy = false; S.fsG.err = e.message; render(); });
+  }
+  // Puts a Google photo (data: URL) in the property's own photos: the gallery,
+  // or (kind "act") as the photo of one of the things to do.
+  function fsAddPhoto(dataUrl, kind) {
+    return api('uploadFrontPhoto', { dataUrl: dataUrl, kind: kind || '' }).then(function (d) {
+      var keep = S.front.settings, sn = S.front.snPhotos, sd = S.front.snDescription; S.front = d.view; S.front.snPhotos = sn; S.front.snDescription = sd;
+      S.front.settings = Object.assign({}, S.front.settings, keep);
+      return d.url;
+    });
+  }
+  // "Fill in my store": fills only the empty boxes from what we already know
+  // (Stock Network description, units, photos, the Avante map), and finds a
+  // Google photo for things to do that have none. Nothing is saved yet.
+  var FS_WORDS = [[/pool/i, 'Swimming pool'], [/braai/i, 'Braai area'], [/wi-?fi|internet/i, 'Free Wi-Fi'], [/pet[- ]friendly|pets (are )?welcome/i, 'Pet friendly'], [/self[- ]catering|kitchen/i, 'Self-catering'],
+    [/secure parking|parking/i, 'Secure parking'], [/beach|sea view|ocean/i, 'Near the beach'], [/dam\b/i, 'Near the dam'], [/mountain/i, 'Mountain views'], [/golf/i, 'Golf nearby'],
+    [/air[- ]?con/i, 'Air-conditioning'], [/fireplace|fire place/i, 'Fireplace'], [/dstv|tv\b/i, 'TV / DStv'], [/game drive|wildlife|bush/i, 'Bush and wildlife'], [/hik(e|ing)|trail/i, 'Hiking trails'], [/spa\b|jacuzzi|hot tub/i, 'Hot tub / spa']];
+  function fsFill(btn) {
+    var F = S.front; if (!F || !S.fpv) { S.err = 'Wait a moment: the page is still loading.'; return render(); }
+    keepFront();
+    var st = F.settings, done = [], desc = st.description || F.snDescription || S.fpv.description || '', town = fsPlace();
+    if (!st.headline) { st.headline = town ? 'Your getaway in ' + town : (S.prop.resortName || ''); if (st.headline) done.push('headline'); }
+    if (!st.welcome && desc) {
+      // First sentence of the description, without "<Name> is …" at the start.
+      var s1 = ((desc.replace(/\s+/g, ' ').match(/^.{20,200}?[.!?](\s|$)/) || [])[0] || '').trim(), nm = String(S.prop.resortName || '').trim();
+      if (nm && s1.toLowerCase().indexOf(nm.toLowerCase() + ' is ') === 0) { s1 = s1.slice(nm.length + 4); s1 = s1.charAt(0).toUpperCase() + s1.slice(1); }
+      if (s1 && s1.length <= 160) { st.welcome = s1; done.push('line under the headline'); }
+    }
+    if (!(st.highlights || []).filter(Boolean).length) {
+      var hl = [], sleeps = 0;
+      F.units.forEach(function (u) { var m = String(u.size || '').match(/(\d+)/); if (m) sleeps = Math.max(sleeps, +m[1]); });
+      if (sleeps) hl.push('Sleeps up to ' + sleeps);
+      if (F.units.length > 1) hl.push(F.units.length + ' units to choose from');
+      FS_WORDS.forEach(function (w) { if (hl.length < 6 && w[0].test(desc + ' ' + (S.fpv.attractions || '') + ' ' + (S.fpv.moreInfo || '')) && hl.indexOf(w[1]) < 0) hl.push(w[1]); });
+      var na = (S.fpv.nearby || []).length; if (hl.length < 6 && na) hl.push(na + ' things to do nearby');
+      st.highlights = hl.slice(0, 6); if (hl.length) done.push(hl.length + ' highlights');
+    }
+    var ph = frontPhotos(), gal = (ph.chosen || ph.all), ui = Object.assign({}, st.unitInfo || {}), nu = 0;
+    if (gal.length) F.units.forEach(function (u, i) { var x = Object.assign({}, ui[u.name] || {}); if (!x.photo) { x.photo = gal[(i + 1) % gal.length]; ui[u.name] = x; nu++; } });
+    st.unitInfo = ui; if (nu) done.push('photos for ' + nu + ' unit' + (nu === 1 ? '' : 's'));
+    var hidA = st.actHidden || [], ap = st.actPhotos = Object.assign({}, st.actPhotos || {});
+    var need = (S.fpv.nearby || []).filter(function (a) { return hidA.indexOf(a.name) < 0 && !ap[a.name] && !a.basePhoto; }).slice(0, 6);
+    fsMarkDirty(); S.fsFillMsg = need.length ? 'Filling in… finding Google photos for ' + need.length + ' things to do.' : null;
+    S.fsOpen = { top: true }; F._fresh = true; render(); pvSend('hero');
+    var got = 0, i = 0;
+    function next() {
+      if (i >= need.length) {
+        if (got) done.push('Google photos for ' + got + ' things to do');
+        S.fsFillMsg = done.length ? 'Filled in: ' + done.join(', ') + '. Only empty boxes were filled. Check the preview, change what you like, then tap Save front store.' : 'Everything already has something in it, so nothing was changed.';
+        render(); return;
+      }
+      var a = need[i++];
+      api('frontGoogle', { query: a.name + ' ' + (a.area || town), limit: 1 }).then(function (d) {
+        var im = (d.images || [])[0]; if (!im) return null;
+        return fsAddPhoto(im.dataUri, 'act').then(function (url) { S.front.settings.actPhotos = Object.assign({}, S.front.settings.actPhotos || {}); S.front.settings.actPhotos[a.name] = url; got++; });
+      }).catch(function () { return null; }).then(function () { S.fsFillMsg = 'Filling in… Google photos: ' + i + ' of ' + need.length + '.'; render(); next(); });
+    }
+    next();
   }
 
   // ---- Reviews ----
@@ -1120,6 +1372,9 @@
   function val(id) { var el = document.getElementById(id); return el ? el.value : ''; }
   function setView(v) {
     if (v === 'cal') v = 'avail';
+    if (S.view === 'front' && v !== 'front' && S.fsDirty && !confirm('Your front store changes aren\'t saved yet. Leave without saving?')) return;
+    if (v !== 'front') { S.fsDirty = false; S.fsG = null; S.fsFillMsg = null; }
+    if (v === 'front' && S.view !== 'front') S.front = null;
     S.view = v; S.more = false; S.err = null; S.msg = null; render();
     if (!S.prop) return;
     if (v === 'avail') loadAvailability(S.from);
@@ -1128,7 +1383,7 @@
     if (v === 'acts') loadActivities();
     if (v === 'guests') api('guests').then(function (d) { S.guests = d.guests; render(); }).catch(fail);
     if (v === 'msgs') loadMessages();
-    if (v === 'front') api('frontStore').then(function (d) { S.front = d; render(); }).catch(fail);
+    if (v === 'front') api('frontStore').then(function (d) { if (S.fpv) { d.snPhotos = S.fpv.snPhotos || []; d.snDescription = S.fpv.snDescription || ''; } S.front = d; S.fsDirty = false; render(); return fsLoadPreview(d.settings.nearbyKm); }).catch(fail);
   }
   function openBooking(bk, tab) { S.edit = bk; S.bTab = tab || 'guest'; S.modalNote = null; S.modal = { type: 'edit' }; if (!S.av) loadAvailability(S.from); if (!S.messages) loadMessages(); render(); }
   function updateBooking(bk) {
@@ -1200,7 +1455,7 @@
   // Changing when a scheduled message goes out shows the matching fields (days or date).
   // Front store helpers: keep what was typed when the photo list re-renders; QR as a PNG.
   function keepFront() { var b = collectFront(); if (b) Object.assign(S.front.settings, b); }
-  function mergeFront(d) { d.snPhotos = S.front && S.front.snPhotos || d.snPhotos || []; d.snDescription = S.front && S.front.snDescription || ''; S.front = d; }
+  function mergeFront(d) { d.snPhotos = S.front && S.front.snPhotos || d.snPhotos || []; d.snDescription = S.front && S.front.snDescription || ''; d._fresh = true; S.front = d; }
   function qrPng(text) {
     var q = qrcode(0, 'M'); q.addData(text); q.make();
     var n = q.getModuleCount(), cell = 20, m = 4, c = document.createElement('canvas'); c.width = c.height = (n + m * 2) * cell;
@@ -1217,7 +1472,9 @@
     });
   }
   root.addEventListener('change', function (e) {
-    if (e.target.dataset && e.target.dataset.fsphoto) {
+    if (e.target.id === 'fs-km') { keepFront(); fsMarkDirty(); S.fsActsBusy = true; render(); return fsLoadPreview(+e.target.value); }
+    if (e.target.dataset && (e.target.dataset.fsunit || e.target.dataset.fsact)) { keepFront(); fsMarkDirty(); return render(); }
+    if (e.target.dataset && e.target.dataset.fsphoto) { fsMarkDirty();
       keepFront(); var F = S.front, ph = frontPhotos(), list = ph.chosen || ph.all.slice(), u = e.target.dataset.fsphoto;
       if (e.target.checked) { if (list.indexOf(u) < 0) list.push(u); } else list = list.filter(function (x) { return x !== u; });
       F.settings.photos = list; return render();
@@ -1241,6 +1498,17 @@
       if (tp) { bt.text = tp.text.replace(/[^\n]*\{review_link\}[^\n]*\n?/g, ''); bt.subject = tp.subject || ''; } else { bt.text = val('pa-bulk-text'); bt.subject = val('pa-bulk-subj'); }
       render(); var ts = document.getElementById('pa-bulk-tpl'); if (ts) ts.focus(); return;
     } if (e.target.dataset && e.target.dataset.msgrerender) { S.msgDirty = true; var id = e.target.id; render(); var el = document.getElementById(id); if (el) el.focus(); } else if (/^pa-m-\d+-/.test(e.target.id || '')) S.msgDirty = true; });
+  // Front store builder: every change shows in the preview; opening a step scrolls the preview to that part.
+  root.addEventListener('input', function (e) {
+    if (S.view !== 'front' || !S.front || !e.target.closest('.fs-steps') || e.target.dataset.fsgq !== undefined) return;
+    fsMarkDirty(); pvQueue();
+  });
+  root.addEventListener('toggle', function (e) {
+    var d = e.target; if (!d.dataset || !d.dataset.fsstep) return;
+    S.fsOpen = S.fsOpen || {}; if (d.open) S.fsOpen[d.dataset.fsstep] = true; else delete S.fsOpen[d.dataset.fsstep];
+    if (d.open) { var st = FS_STEPS.filter(function (x) { return x[0] === d.dataset.fsstep; })[0]; if (st && st[2]) { keepFront(); pvSend(st[2]); } }
+  }, true);
+  root.addEventListener('keydown', function (e) { if (e.key === 'Enter' && e.target.dataset && e.target.dataset.fsgq !== undefined) { e.preventDefault(); fsGoogle(e.target.dataset.fsgq, e.target.value); } });
   root.addEventListener('keydown', function (e) { if (e.key === 'Enter' && e.target.id === 'pa-rp') { var b = root.querySelector('[data-act="resume"]'); if (b) b.click(); } });
   root.addEventListener('click', function (e) {
     var t = e.target.closest('[data-act]'); if (!t) return;
@@ -1436,10 +1704,31 @@
       if (!confirm('Remove the "' + (rmM.name || 'Message') + '" message? It stops going to guests once you save.')) return;
       S.msgEdit.splice(+t.dataset.i, 1); S.msgDirty = true; return render();
     }
+    if (a === 'fsPvOpen') { pvEnsure(); PV.full = true; pvFollow(); pvSend(); var cb2 = PV.box.querySelector('[data-pvclose]'); if (cb2) cb2.focus(); return; }
+    if (a === 'fsG') { var gq = root.querySelector('[data-fsgq="' + t.dataset.target + '"]'); return fsGoogle(t.dataset.target, gq ? gq.value : ''); }
+    if (a === 'fsGOpen') { if (S.fsG && S.fsG.target === t.dataset.target) { keepFront(); S.fsG = null; return render(); } return fsGoogle(t.dataset.target, t.dataset.q); }
+    if (a === 'fsGUse') {
+      var gs = S.fsG, im = gs && gs.images && gs.images[+t.dataset.i]; if (!im) return;
+      keepFront(); t.disabled = true; t.textContent = 'Adding…';
+      var actI = /^act:(\d+)$/.exec(gs.target), actA = actI && S.fpv && (S.fpv.nearby || [])[+actI[1]];
+      var before = frontPhotos(), keepOrder = (before.chosen || before.all).slice(); // a new gallery photo goes at the end, not in front of the cover
+      return fsAddPhoto(im.dataUri, actA ? 'act' : '').then(function (url) {
+        var st2 = S.front.settings;
+        if (actA) { st2.actPhotos = Object.assign({}, st2.actPhotos || {}); st2.actPhotos[actA.name] = url; }
+        else st2.photos = (Array.isArray(st2.photos) ? st2.photos : keepOrder).concat(url).slice(0, 24);
+        S.fsG = null; fsMarkDirty(); S.front._fresh = true; render();
+      }).catch(function (err) { t.disabled = false; t.textContent = 'Use'; fail(err); });
+    }
+    if (a === 'fsUnitPhoto') {
+      keepFront(); var ui2 = S.front.settings.unitInfo = Object.assign({}, S.front.settings.unitInfo || {}), ux = ui2[t.dataset.unit] = Object.assign({}, ui2[t.dataset.unit] || {});
+      ux.photo = ux.photo === t.dataset.u ? '' : t.dataset.u; fsMarkDirty(); S.front._fresh = true; render(); pvSend('units'); return;
+    }
+    if (a === 'fsActReset') { keepFront(); var ap2 = S.front.settings.actPhotos = Object.assign({}, S.front.settings.actPhotos || {}); delete ap2[t.dataset.name]; fsMarkDirty(); S.front._fresh = true; render(); return; }
+    if (a === 'fsFill') return fsFill(t);
     if (a === 'saveFront') {
       var fb = collectFront(); if (!fb) return;
       t.textContent = 'Saving…';
-      return api('saveFrontStore', { frontStore: fb }).then(function (d) { mergeFront(d); S.msg = d.settings.on ? 'Front store saved. It\'s live at ' + d.url : 'Front store saved (switched off).'; render(); window.scrollTo(0, 0); }).catch(function (e) { fail(e); window.scrollTo(0, 0); });
+      return api('saveFrontStore', { frontStore: fb }).then(function (d) { mergeFront(d); S.fsDirty = false; S.fsFillMsg = null; S.msg = d.settings.on ? 'Front store saved. It\'s live at ' + d.url : 'Front store saved (switched off).'; render(); window.scrollTo(0, 0); }).catch(function (e) { fail(e); window.scrollTo(0, 0); });
     }
     if (a === 'fsNewKey') {
       if (!confirm('Make a new guest page link?\n\nThe old link and the QR on printed room cards stop showing your Wi-Fi and house info. Print new room cards afterwards.')) return;
@@ -1447,8 +1736,8 @@
       return api('saveFrontStore', { frontStore: fk }).then(function (d) { mergeFront(d); S.msg = 'New guest link made. Print new room cards.'; render(); window.scrollTo(0, 0); }).catch(fail);
     }
     if (a === 'fsUpload') { var fi = document.getElementById('fs-file'); if (fi) fi.click(); return; }
-    if (a === 'fsAuto') { keepFront(); S.front.settings.photos = null; return render(); }
-    if (a === 'fsUp') { keepFront(); var ph2 = frontPhotos(), l2 = ph2.chosen || ph2.all.slice(), ix = l2.indexOf(t.dataset.u); if (ix > 0) { l2.splice(ix, 1); l2.splice(ix - 1, 0, t.dataset.u); } S.front.settings.photos = l2; return render(); }
+    if (a === 'fsAuto') { keepFront(); fsMarkDirty(); S.front.settings.photos = null; return render(); }
+    if (a === 'fsUp') { keepFront(); fsMarkDirty(); var ph2 = frontPhotos(), l2 = ph2.chosen || ph2.all.slice(), ix = l2.indexOf(t.dataset.u); if (ix > 0) { l2.splice(ix, 1); l2.splice(ix - 1, 0, t.dataset.u); } S.front.settings.photos = l2; return render(); }
     if (a === 'fsDel') {
       if (!confirm('Delete this photo? It can\'t be undone.')) return;
       keepFront(); var keep2 = S.front.settings;

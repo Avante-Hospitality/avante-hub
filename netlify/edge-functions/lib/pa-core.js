@@ -1419,7 +1419,11 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
   // "fslug:<slug>" -> { siteId } finds the property from the link.
   const FS_DEFAULTS = { on: false, slug: "", showPrices: true, showCalendar: true, showActivities: true, showOffers: true,
     hiddenUnits: [], minNoticeDays: 0, nearbyKm: 30, welcome: "", description: "", phone: "", whatsapp: "", email: "",
-    wifiName: "", wifiPassword: "", guestNotes: "", photos: null, guestKey: "" };
+    wifiName: "", wifiPassword: "", guestNotes: "", photos: null, guestKey: "",
+    // Front store builder (Jean, 2026-10-13): the big headline, a price badge,
+    // short highlights, a rating badge, a photo/beds/line per unit, and a
+    // photo per nearby activity (or hidden).
+    headline: "", priceFrom: "", highlights: [], ratingValue: "", ratingCount: "", ratingLink: "", unitInfo: {}, actPhotos: {}, actHidden: [] };
   const FS_MAX_NIGHTS = 30, FS_PER_DAY = 10, FS_PER_EMAIL_DAY = 3;
   function isoDate(v) { v = String(v || ""); if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return ""; const d = new Date(v + "T00:00:00Z"); return !isNaN(d) && d.toISOString().slice(0, 10) === v ? v : ""; }
   function minStayOf(prop) { return (prop.settings && prop.settings.minStay) || 2; }
@@ -1446,6 +1450,19 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     // The guest page and room card need a secret key, so Wi-Fi and house info aren't public.
     if (!s.guestKey || body.newGuestKey) s.guestKey = randomToken(9).replace(/[^a-z0-9]/gi, "").slice(0, 10).toLowerCase() || "g" + Date.now().toString(36);
     const str = (k, n) => { if (body[k] !== undefined) s[k] = cleanStr(String(body[k] || ""), n); };
+    str("headline", 80); str("priceFrom", 40); str("ratingValue", 4); str("ratingCount", 12); str("ratingLink", 400);
+    if (s.ratingValue && !/^[0-5](\.\d)?$/.test(s.ratingValue)) throw new PAError("The rating should be a number from 0 to 5, e.g. 4.6.");
+    if (s.ratingLink && !/^https:\/\//.test(s.ratingLink)) s.ratingLink = "";
+    if (Array.isArray(body.highlights)) s.highlights = body.highlights.map((x) => cleanStr(String(x || ""), 40)).filter(Boolean).slice(0, 6);
+    const okPhoto = (u) => /^https:\/\//.test(u) || /^\/api\/stay\?photo=/.test(u) || /^\/api\/property-file\?key=/.test(u);
+    if (body.unitInfo && typeof body.unitInfo === "object") {
+      s.unitInfo = {};
+      for (const u of prop.units) { const x = body.unitInfo[u.name]; if (!x || typeof x !== "object") continue;
+        const photo = cleanStr(String(x.photo || ""), 600), o = { photo: okPhoto(photo) ? photo : "", beds: cleanStr(String(x.beds || ""), 80), blurb: cleanStr(String(x.blurb || ""), 300) };
+        if (o.photo || o.beds || o.blurb) s.unitInfo[u.name] = o; }
+    }
+    if (body.actPhotos && typeof body.actPhotos === "object") { s.actPhotos = {}; for (const [k, v] of Object.entries(body.actPhotos).slice(0, 60)) { const u = cleanStr(String(v || ""), 600); if (okPhoto(u)) s.actPhotos[cleanStr(k, 120)] = u; } }
+    if (Array.isArray(body.actHidden)) s.actHidden = body.actHidden.map((x) => cleanStr(String(x || ""), 120)).filter(Boolean).slice(0, 100);
     str("welcome", 160); str("description", 3000); str("phone", 30); str("whatsapp", 30); str("email", 120);
     str("wifiName", 60); str("wifiPassword", 60); str("guestNotes", 1500);
     if (s.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.email)) throw new PAError("That email address doesn't look right.");
@@ -1477,23 +1494,27 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     const prev = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 1, 1));
     const stats = { thisMonth: (await getJSON("fsstat:" + prop.siteId + ":" + monthKey(d))) || {}, lastMonth: (await getJSON("fsstat:" + prop.siteId + ":" + monthKey(prev))) || {} };
     const photos = [];
-    for (const b of (await store.list({ prefix: "fsphoto:" + prop.siteId + ":" })).blobs) photos.push("/api/stay?photo=" + encodeURIComponent(b.key.slice(8)));
+    for (const b of (await store.list({ prefix: "fsphoto:" + prop.siteId + ":" })).blobs) if (!fsExtraKey(prop, b.key)) photos.push("/api/stay?photo=" + encodeURIComponent(b.key.slice(8)));
     const k = s.guestKey ? "/" + s.guestKey : "";
     return { settings: Object.assign({}, s, { guestKey: undefined }), url: baseUrl + "/stay/" + s.slug, guestUrl: baseUrl + "/stay/" + s.slug + "/guest" + k, cardUrl: baseUrl + "/stay/" + s.slug + "/card" + k,
-      stats, units: prop.units.map((u) => ({ name: u.name, size: u.size })), uploadedPhotos: photos,
+      stats, units: prop.units.map((u) => ({ name: u.name, size: u.size, price: ((prop.settings || {}).prices || {})[u.name] || 0 })), uploadedPhotos: photos,
       propertyEmail: (prop.settings && prop.settings.email) || "", propertyPhone: (prop.settings && prop.settings.phone) || "" };
   }
   // Own photos (JPG/PNG/WebP, max 4 MB), served by /api/stay?photo=<siteId>:<id>.
-  async function uploadFrontPhoto(prop, dataUrl) {
+  // Photos for things to do (kind "act") are kept apart (":x-…"), so they
+  // don't show up in the property's own photo gallery.
+  function fsExtraKey(prop, key) { return String(key).slice(("fsphoto:" + prop.siteId + ":").length).startsWith("x-"); }
+  async function uploadFrontPhoto(prop, dataUrl, kind) {
     const m = /^data:(image\/(jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl || ""));
     if (!m) throw new PAError("Choose a JPG, PNG or WebP photo.");
     const bin = Uint8Array.from(atob(m[3]), (c) => c.charCodeAt(0));
     if (bin.length > 4 * 1024 * 1024) throw new PAError("That photo is bigger than 4 MB.");
     const isJpg = bin[0] === 0xff && bin[1] === 0xd8, isPng = bin[0] === 0x89 && bin[1] === 0x50, isWebp = bin[8] === 0x57 && bin[9] === 0x45 && bin[10] === 0x42 && bin[11] === 0x50;
     if (!(isJpg || isPng || isWebp)) throw new PAError("Choose a JPG, PNG or WebP photo.");
-    const count = (await store.list({ prefix: "fsphoto:" + prop.siteId + ":" })).blobs.length;
-    if (count >= 24) throw new PAError("You can upload up to 24 photos. Remove one first.");
-    const id = prop.siteId + ":" + randomToken(8).replace(/[^a-z0-9]/gi, "").slice(0, 10);
+    const extra = kind === "act", all = (await store.list({ prefix: "fsphoto:" + prop.siteId + ":" })).blobs;
+    const count = all.filter((b) => fsExtraKey(prop, b.key) === extra).length;
+    if (count >= (extra ? 60 : 24)) throw new PAError(extra ? "That's the most photos for things to do. Remove one first." : "You can upload up to 24 photos. Remove one first.");
+    const id = prop.siteId + ":" + (extra ? "x-" : "") + randomToken(8).replace(/[^a-z0-9]/gi, "").slice(0, 10);
     await store.set("fsphoto:" + id, bin, { metadata: { type: m[1] } });
     return { url: "/api/stay?photo=" + encodeURIComponent(id), view: await frontStoreView(prop) };
   }
@@ -1530,7 +1551,20 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
       welcome: s.welcome, description: s.description, photos: s.photos, showPrices: s.showPrices, showCalendar: s.showCalendar,
       showActivities: s.showActivities, showOffers: s.showOffers, nearbyKm: s.nearbyKm || 30, minStay: minStayOf(prop), firstBookable: fsFirstNight(prop),
       contact: { phone: s.phone || st.phone || "", whatsapp: waNumber(s.whatsapp || s.phone || st.phone || ""), email: s.email || st.email || "" },
-      units: fsUnits(prop).map((u) => ({ name: u.name, size: u.size || "" })), payMode: payMode(prop), approveGuests: !!(prop.settings && prop.settings.approveGuests) };
+      units: fsUnits(prop).map((u) => { const x = (s.unitInfo || {})[u.name] || {}, pr = s.showPrices && st.prices && st.prices[u.name] > 0 ? st.prices[u.name] : 0;
+        return { name: u.name, size: u.size || "", photo: x.photo || "", beds: x.beds || "", blurb: x.blurb || "", price: pr }; }),
+      payMode: payMode(prop), approveGuests: !!(prop.settings && prop.settings.approveGuests),
+      headline: s.headline || "", highlights: s.highlights || [], priceFrom: fsPriceFrom(prop, s),
+      rating: s.ratingValue ? { value: s.ratingValue, count: s.ratingCount || "", link: s.ratingLink || "" } : null,
+      actPhotos: s.actPhotos || {}, actHidden: s.actHidden || [] };
+  }
+  // The price badge: what the property typed, else its lowest price a night
+  // (Reservation settings), only when prices are switched on.
+  function fsPriceFrom(prop, s) {
+    if (!s.showPrices) return "";
+    if (s.priceFrom) return s.priceFrom;
+    const st = prop.settings || {}, list = fsUnits(prop).map((u) => (st.prices || {})[u.name]).filter((v) => v > 0);
+    return list.length ? "From R" + String(Math.min(...list)).replace(/\B(?=(\d{3})+(?!\d))/g, ",") + " a night" : "";
   }
   function guestKeyOk(prop, key) {
     const want = fsSettings(prop).guestKey || "", got = String(key || "");
