@@ -155,6 +155,10 @@
     input:not([type=checkbox]):not([type=radio]):not([type=range]), select, textarea{ font-size:16px !important; }
   }
 </style>
+<!-- Spreadsheets (Excel rate sheets in, Stock Network files out) and Word documents -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js" defer></script>
+<script src="sn-export.js"></script>
 </head>
 <body>
 
@@ -174,7 +178,7 @@
   <!-- ============ STEP 1: START & SCREENSHOTS ============ -->
   <section class="step" data-step="1" data-title="Start">
     <h2 class="step-title">1. Start</h2>
-    <p class="step-lede">Read the agreement, say who is submitting, and — if the property is already on Airbnb, Booking.com or LekkeSlaap — paste screenshots of its listing. The form fills itself in from them, and you check each step.</p>
+    <p class="step-lede">Read the agreement, say who is submitting, and — if the property is already on Airbnb, Booking.com or LekkeSlaap — paste screenshots of its listing. Add any Word, Excel (rates) or PDF documents the property has. The form fills itself in from them, and you check each step.</p>
 
     <div class="card">
       <h2 class="section-heading">Before You Start</h2>
@@ -446,6 +450,9 @@
       <p class="hint">What Avante will load into Stock Network, in Stock Network's upload format (one row per season and unit type).</p>
       <div class="scroll"><table class="sn"><thead id="snHead"></thead><tbody id="snBody"></tbody></table></div>
       <div class="btns"><button type="button" class="btn-secondary btn-sm" id="copySnBtn">Copy rows for Excel</button><span class="hint" id="copySnStatus" style="margin:0"></span></div>
+      <h3 class="section-heading" style="margin-top:16px; font-size:15px;">Download for Stock Network</h3>
+      <p class="hint">The <b>property file</b> has the property, every unit type with how many units and how many it sleeps, and the rates. The <b>rates file</b> is the calendar in Stock Network's stock upload format. Avante adds the Site Nr Stock Network allocates.</p>
+      <div class="btns"><button type="button" class="btn-navy btn-sm" data-dl="property">Property file (.xlsx)</button><button type="button" class="btn-secondary btn-sm" data-dl="stockx">Rates file (.xlsx)</button><button type="button" class="btn-secondary btn-sm" data-dl="stockc">Rates file (.csv)</button><span class="hint" id="dlStatus" style="margin:0"></span></div>
     </div>
     <div class="card">
       <h2 class="section-heading">Signature &amp; Agreement</h2>
@@ -697,6 +704,7 @@
   var channelPlaceName = '';
   var CHANNEL_PRICES = {};   // YYYY-MM-DD -> price seen on the channel
   var readResults = null;
+  var docsRead = 0;
 
   function renderChannelChips(){
     $('channelChips').innerHTML = CHANNELS.map(function(c){ return '<button type="button" class="chip' + (channel === c ? ' on' : '') + '" data-ch="' + c + '">' + c + '</button>'; }).join('');
@@ -716,7 +724,7 @@
     return '<div class="shots" tabindex="0" data-zone="' + step + '">' +
       '<p><b>Screenshots</b> — paste (Ctrl+V / ⌘V), drag them here, or choose files. Add as many as you need of ' + SHOT_HINTS[step] + '.</p>' +
       '<div class="btns" style="margin-top:0"><label class="btn-secondary btn-sm" style="margin:0;display:inline-block">Choose screenshots<input type="file" accept="image/*" multiple hidden data-pick="' + step + '"></label>' +
-      '<button type="button" class="btn-navy btn-sm" data-read="' + step + '"' + (list.length ? '' : ' disabled') + '>Read ' + (list.length || '') + ' screenshot' + (list.length === 1 ? '' : 's') + '</button>' +
+      '<button type="button" class="btn-navy btn-sm" data-read="' + step + '"' + (list.length || (step === 1 && DOCS.some(function(d){ return d.kind !== 'none'; })) ? '' : ' disabled') + '>' + (step === 1 ? 'Read screenshots &amp; documents' : 'Read ' + (list.length || '') + ' screenshot' + (list.length === 1 ? '' : 's')) + '</button>' +
       '<span class="hint" style="margin:0" data-shotstatus="' + step + '"></span></div>' +
       '<div class="thumbs">' + list.map(function(s, i){ return '<span class="thumb"><img src="' + s.url + '" alt="Screenshot ' + (i+1) + '"><button type="button" data-rm="' + step + ':' + i + '" aria-label="Remove">×</button></span>'; }).join('') + '</div></div>';
   }
@@ -725,13 +733,65 @@
     if(!holder) return;
     if(step === 1){
       if(!channel){ holder.innerHTML = '<p class="note info">Choose a channel above to begin.</p>'; return; }
-      if(channel === 'Not on any channel'){ holder.innerHTML = '<p class="note info">No listing to read — fill in each step yourself. Tap <b>Next</b> to carry on.</p>'; return; }
-      holder.innerHTML = shotZoneHtml(1) + (readResults ? readResultsHtml() : '');
+      if(channel === 'Not on any channel'){ holder.innerHTML = '<p class="note info">No listing to take screenshots of. If the property has a rate sheet or fact sheet, add it below and tap <b>Read</b>; otherwise fill in each step yourself.</p>' + docsZoneHtml(true) + (readResults ? readResultsHtml() : ''); return; }
+      holder.innerHTML = shotZoneHtml(1) + docsZoneHtml(false) + (readResults ? readResultsHtml() : '');
       return;
     }
     if(!channel || channel === 'Not on any channel'){ holder.innerHTML = ''; return; }
     holder.innerHTML = '<details class="card more" style="margin-top:0"' + ((SHOTS[step] || []).length ? ' open' : '') + '><summary>Fill this step from screenshots</summary><div style="margin-top:10px">' + shotZoneHtml(step) + '</div></details>';
   }
+  // Word / Excel / PDF documents the property already has (rate sheets,
+  // fact sheets). The original files are uploaded with the listing (Avante
+  // can download them in admin) and their contents are read with the
+  // screenshots.
+  var DOCS = [];  // { name, kind: 'pdf'|'text'|'none', dataUri, text, status }
+  function docsZoneHtml(withRead){
+    return '<div class="shots" style="margin-top:12px" data-docs="1"><p><b>Property documents</b> — Word, Excel (rates) or PDF files the property already has, e.g. a rate sheet or fact sheet. They are read with the screenshots and kept with the listing.</p>' +
+      '<div class="btns" style="margin-top:0"><label class="btn-secondary btn-sm" style="margin:0;display:inline-block">Choose documents<input type="file" multiple hidden id="docPick" accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"></label>' +
+      (withRead ? '<button type="button" class="btn-navy btn-sm" data-read="1"' + (DOCS.some(function(d){ return d.kind !== 'none'; }) ? '' : ' disabled') + '>Read documents</button><span class="hint" style="margin:0" data-shotstatus="1"></span>' : '') + '</div>' +
+      (DOCS.length ? '<ul class="readlist">' + DOCS.map(function(d, i){ return '<li><span class="pill ' + (d.kind === 'none' ? 'todo' : 'ok') + '">' + (d.kind === 'pdf' ? 'PDF' : d.kind === 'text' ? (/\.(xlsx?|csv)$/i.test(d.name) ? 'Excel' : 'Word') : 'Kept') + '</span><span>' + esc(d.name) + ' — ' + esc(d.status) + ' <button type="button" class="btn-link" data-rmdoc="' + i + '">remove</button></span></li>'; }).join('') + '</ul>' : '') + '</div>';
+  }
+  function addDocs(files){
+    Array.prototype.forEach.call(files || [], function(file){
+      var d = { name: file.name, kind: 'none', status: 'preparing…' };
+      DOCS.push(d); renderShotZone(1);
+      uploadFile(file, 'document', 'property-info', function(data){
+        if(data && data.ok){ d.key = data.key; uploadedDocs.push({ type: 'property-info', key: data.key, fileName: file.name }); }
+        else d.uploadFailed = true;
+        finish();
+      });
+      var lower = file.name.toLowerCase(), pending = 2;
+      function finish(){ if(--pending === 0){ if(d.uploadFailed) d.status += ' (upload failed — try again)'; renderShotZone(1); } }
+      var reader = new FileReader();
+      if(/\.pdf$/.test(lower) || file.type === 'application/pdf'){
+        if(file.size > 8 * 1024 * 1024){ d.status = 'kept, but too big to read (over 8MB)'; finish(); return; }
+        reader.onload = function(){ d.kind = 'pdf'; d.dataUri = reader.result; d.status = 'ready to read'; finish(); };
+        reader.onerror = function(){ d.status = 'could not open'; finish(); };
+        reader.readAsDataURL(file);
+      } else if(/\.(xlsx|xls|csv)$/.test(lower)){
+        reader.onload = function(){
+          try {
+            var wb = window.XLSX.read(new Uint8Array(reader.result), { type: 'array', cellDates: true });
+            d.text = wb.SheetNames.map(function(n){ return 'Sheet ' + n + ':\n' + window.XLSX.utils.sheet_to_csv(wb.Sheets[n], { dateNF: 'yyyy-mm-dd' }); }).join('\n\n');
+            d.kind = 'text'; d.status = 'ready to read (' + wb.SheetNames.length + ' sheet' + (wb.SheetNames.length === 1 ? '' : 's') + ')';
+          } catch(e){ d.status = 'kept, but could not be read'; }
+          finish();
+        };
+        reader.readAsArrayBuffer(file);
+      } else if(/\.docx$/.test(lower)){
+        reader.onload = function(){
+          if(!window.mammoth){ d.status = 'kept, but the Word reader did not load'; finish(); return; }
+          window.mammoth.extractRawText({ arrayBuffer: reader.result }).then(function(r){ d.text = r.value; d.kind = 'text'; d.status = 'ready to read'; finish(); }, function(){ d.status = 'kept, but could not be read'; finish(); });
+        };
+        reader.readAsArrayBuffer(file);
+      } else {
+        d.status = 'kept with the listing (old .doc files can\'t be read — save as .docx or PDF to have them read)'; finish();
+      }
+    });
+  }
+  document.addEventListener('change', function(e){ if(e.target.id === 'docPick'){ addDocs(e.target.files); } });
+  document.addEventListener('click', function(e){ var b = e.target.closest && e.target.closest('[data-rmdoc]'); if(!b) return; var d = DOCS.splice(+b.getAttribute('data-rmdoc'), 1)[0]; if(d && d.key) uploadedDocs = uploadedDocs.filter(function(x){ return x.key !== d.key; }); renderShotZone(1); });
+
   function renderImportBox(){ renderShotZone(1); [3,4,5,6].forEach(renderShotZone); }
   [3,4,5,6].forEach(renderShotZone);
 
@@ -787,15 +847,19 @@
 
   function readShots(step, btn){
     var list = SHOTS[step] || [];
-    if(!list.length) return;
+    var docs = step === 1 ? DOCS.filter(function(d){ return d.kind !== 'none'; }) : [];
+    if(!list.length && !docs.length) return;
     var statusEl = document.querySelector('[data-shotstatus="' + step + '"]');
     btn.disabled = true;
-    statusEl.textContent = 'Reading ' + list.length + ' screenshot' + (list.length === 1 ? '' : 's') + '… this takes up to a minute.';
-    api({ action: 'readScreenshots', channel: channel, today: TODAY, amenityOptions: AMENITY_OPTIONS, images: list.slice(0, 12).map(function(s){ return { dataUri: s.dataUri }; }) })
+    statusEl.textContent = 'Reading ' + [list.length ? list.length + ' screenshot' + (list.length === 1 ? '' : 's') : '', docs.length ? docs.length + ' document' + (docs.length === 1 ? '' : 's') : ''].filter(Boolean).join(' and ') + '… this takes up to a minute.';
+    api({ action: 'readScreenshots', channel: channel === 'Not on any channel' ? '' : channel, today: TODAY, amenityOptions: AMENITY_OPTIONS,
+      images: list.slice(0, 12).map(function(s){ return { dataUri: s.dataUri }; }),
+      pdfs: docs.filter(function(d){ return d.kind === 'pdf'; }).slice(0, 4).map(function(d){ return { name: d.name, dataUri: d.dataUri }; }),
+      texts: docs.filter(function(d){ return d.kind === 'text'; }).slice(0, 8).map(function(d){ return { name: d.name, text: d.text }; }) })
       .then(function(res){
         btn.disabled = false;
         if(!res || !res.ok){ statusEl.textContent = (res && res.message) || 'Couldn\'t read the screenshots. Try again, or fill in by hand.'; return; }
-        screenshotsRead += list.length;
+        screenshotsRead += list.length; docsRead += docs.length;
         var filled = applyFields(res.fields || {}, step === 1);
         if(step === 1){ readResults = { fields: res.fields || {}, filled: filled }; renderShotZone(1); }
         else statusEl.textContent = filled.length ? 'Filled ' + filled.length + ' field' + (filled.length === 1 ? '' : 's') + '. Fields you had typed were kept.' : 'Nothing new found on these screenshots.';
@@ -808,7 +872,7 @@
     var rows = filled.map(function(x){ return '<li><span class="pill ok">Filled</span><span>' + esc(x) + '</span></li>'; });
     (f.notIncluded || []).length && rows.push('<li><span class="pill no">Not incl.</span><span>' + esc(f.notIncluded.join(', ')) + '</span></li>');
     (f.missing || []).forEach(function(m){ rows.push('<li><span class="pill todo">To do</span><span>' + esc(m) + '</span></li>'); });
-    return '<p class="note ok" style="margin-top:12px">Read ' + screenshotsRead + ' screenshot' + (screenshotsRead === 1 ? '' : 's') + '. Fields filled from them are outlined in teal. Check each step and fix anything that\'s wrong.</p><ul class="readlist">' + rows.join('') + '</ul>';
+    return '<p class="note ok" style="margin-top:12px">Read ' + [screenshotsRead ? screenshotsRead + ' screenshot' + (screenshotsRead === 1 ? '' : 's') : '', docsRead ? docsRead + ' document' + (docsRead === 1 ? '' : 's') : ''].filter(Boolean).join(' and ') + '. Fields filled from them are outlined in teal. Check each step and fix anything that\'s wrong.</p><ul class="readlist">' + rows.join('') + '</ul>';
   }
 
   // Puts what the screenshots showed into the form. On the first read
@@ -858,6 +922,33 @@
       var d = [f.bedrooms ? f.bedrooms + ' bedroom' + (f.bedrooms > 1 ? 's' : '') : '', f.bedTypes, f.bathrooms ? f.bathrooms + ' bathroom' + (f.bathrooms > 1 ? 's' : '') : '', f.bathroomDetails].filter(Boolean).join(' · ');
       setU('.pu-desc', d, 'Unit description');
     }
+    // Several unit types (from a rate sheet or document): one row each.
+    var rowFor = function(name){
+      var rows = unitRows();
+      var hit = rows.filter(function(r){ return r.querySelector('.pu-name').value.trim().toLowerCase() === String(name || '').trim().toLowerCase(); })[0];
+      if(hit) return hit;
+      var empty = rows.filter(function(r){ return !r.querySelector('.pu-name').value.trim(); })[0];
+      return empty || addUnitRow();
+    };
+    (f.unitTypes || []).forEach(function(u){
+      if(!u || !u.name) return;
+      var r = rowFor(u.name);
+      var put = function(cls, v){ if(v === undefined || v === null || v === '') return; var el = r.querySelector(cls); if(!overwrite && el.value.trim() && el.value !== '1') return; el.value = String(v); el.classList.add('filled'); };
+      put('.pu-name', u.name); put('.pu-maxOcc', u.sleeps); put('.pu-maxAdults', u.sleeps); put('.pu-numUnits', u.numUnits);
+      put('.pu-desc', [u.bedrooms ? u.bedrooms + ' bedroom' + (u.bedrooms > 1 ? 's' : '') : '', u.description].filter(Boolean).join(' · '));
+    });
+    if((f.unitTypes || []).length) done.push(f.unitTypes.length + ' unit type' + (f.unitTypes.length === 1 ? '' : 's'));
+    // Rates from a rate sheet go straight onto the calendar as rack rates.
+    var nSeason = 0, notes = [];
+    (f.rateSeasons || []).forEach(function(rs){
+      if(!rs || !rs.rackRate || !/^\d{4}-\d{2}-\d{2}$/.test(rs.from || '') || !/^\d{4}-\d{2}-\d{2}$/.test(rs.to || '')) return;
+      var r = rs.unitTypeName ? rowFor(rs.unitTypeName) : unitRows()[0];
+      var uid = r.getAttribute('data-uid'); RATES[uid] = RATES[uid] || {};
+      var rack = Math.round(rs.rackRate), min = Math.max(1, Math.round(rs.minStay || 1));
+      eachDay(rs.from < TODAY ? TODAY : rs.from, rs.to, function(k){ if(overwrite || !RATES[uid][k]) RATES[uid][k] = { rack: rack, min: min }; });
+      nSeason++; if(rs.note) notes.push(rs.note);
+    });
+    if(nSeason) done.push(nSeason + ' rate season' + (nSeason === 1 ? '' : 's') + ' put on the calendar (step 6)' + (notes.length ? ' — ' + notes.slice(0, 3).join('; ') : ''));
     // Amenities: tick the matches.
     var ticked = 0;
     (f.amenities || []).forEach(function(a){
@@ -1121,6 +1212,17 @@
     if(!$('sigDate').value) $('sigDate').value = TODAY;
   }
   $('checklist').addEventListener('click', function(e){ var b = e.target.closest('[data-go]'); if(b) goStep(+b.getAttribute('data-go')); });
+  document.addEventListener('click', function(e){
+    var b = e.target.closest && e.target.closest('[data-dl]'); if(!b) return;
+    var listing = buildPayload(), kind = b.getAttribute('data-dl');
+    if(!listing.rateSeasons.length && kind !== 'property'){ $('dlStatus').textContent = 'Set rates in step 6 first.'; return; }
+    try {
+      if(kind === 'property') AvanteSNExport.downloadPropertyFile(listing, listing.siteNr);
+      if(kind === 'stockx') AvanteSNExport.downloadStockXlsx(listing, listing.siteNr);
+      if(kind === 'stockc') AvanteSNExport.downloadStockCsv(listing, listing.siteNr);
+      $('dlStatus').textContent = 'Downloaded.';
+    } catch(err){ $('dlStatus').textContent = err.message; }
+  });
   $('copySnBtn').addEventListener('click', function(){
     var txt = [SN_COLS].concat(snRows()).map(function(r){ return r.join('\t'); }).join('\n');
     var done = function(m){ $('copySnStatus').textContent = m; };
@@ -1131,23 +1233,13 @@
   // =====================================================================
   // SUBMIT
   // =====================================================================
-  var submitBtn = $('submitBtn');
-  var statusEl = $('formStatus');
-  submitBtn.addEventListener('click', function(){
-    statusEl.className = 'status';
-    statusEl.textContent = '';
-
+  // Everything the form holds, in the shape the server stores (also used
+  // to build the Stock Network files in step 8).
+  function buildPayload(){
     var submittedBy = document.querySelector('input[name="submittedBy"]:checked').value;
     var ownerName = $('ownerName').value.trim();
     var propName = $('pName').value.trim();
     var agree = $('agree').checked;
-
-    if(!propName || !ownerName || !agree){
-      statusEl.textContent = 'Please fill in the property name (step 4), owner name (step 2), and accept the Agreement before submitting.';
-      statusEl.className = 'status show err';
-      return;
-    }
-
     var amenities = [];
     Array.prototype.forEach.call(document.querySelectorAll('.amenity-check'), function(cb){
       amenities.push({ category: cb.getAttribute('data-cat'), item: cb.getAttribute('data-item'), available: cb.checked ? 'Y' : 'N', notes: '' });
@@ -1175,7 +1267,7 @@
       };
     });
 
-    var payload = {
+    return {
       action: 'submit',
       submittedBy: submittedBy,
       affId: AFF,
@@ -1247,6 +1339,26 @@
       signatureDate: $('sigDate').value,
       signaturePlace: $('sigPlace').value.trim()
     };
+  }
+
+  var submitBtn = $('submitBtn');
+  var statusEl = $('formStatus');
+  submitBtn.addEventListener('click', function(){
+    statusEl.className = 'status';
+    statusEl.textContent = '';
+
+    var submittedBy = document.querySelector('input[name="submittedBy"]:checked').value;
+    var ownerName = $('ownerName').value.trim();
+    var propName = $('pName').value.trim();
+    var agree = $('agree').checked;
+
+    if(!propName || !ownerName || !agree){
+      statusEl.textContent = 'Please fill in the property name (step 4), owner name (step 2), and accept the Agreement before submitting.';
+      statusEl.className = 'status show err';
+      return;
+    }
+
+    var payload = buildPayload();
 
     submitBtn.disabled = true;
     submitBtn.textContent = 'Submitting...';

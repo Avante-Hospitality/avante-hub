@@ -521,6 +521,8 @@
 </style>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.css">
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
+<script src="sn-export.js"></script>
 </head>
 <body>
 
@@ -762,6 +764,8 @@
       </select>
       <label for="propertySiteNrInput">StockNetwork Site Nr</label>
       <input id="propertySiteNrInput" placeholder="e.g. 12345">
+      <label style="margin-top:14px;">Files and Stock Network</label>
+      <div id="propertyFilesHost"></div>
       <div class="modal-status" id="propertyDetailsModalStatus"></div>
       <div class="modal-actions">
         <button type="button" class="btn-danger" id="propertyDetailsDeleteBtn" style="margin-right:auto;">Delete Listing</button>
@@ -6659,6 +6663,56 @@
       // Edit button, from a different <script> block/IIFE.
       window.openPropertyDetailsModal = openPropertyDetailsModal;
 
+      // Files the owner/affiliate uploaded (documents, rate sheets, photos)
+      // with download links, and the two Stock Network files (2026-10-13):
+      // the property file (property + unit types + rates) and the rates /
+      // stock upload file, using the Site Nr typed above.
+      var FILE_LABELS = { 'id-document': 'Owner ID / passport', 'proof-of-ownership': 'Proof of ownership', 'proof-of-residence': 'Proof of residence', 'mandate': 'Signed mandate', 'property-info': 'Property document (rates / info)' };
+      function renderListingFiles(host, l){
+        if(!host) return;
+        host.innerHTML = '';
+        var files = (l.documents || []).map(function(d){ return { label: FILE_LABELS[d.type] || d.type || 'Document', key: d.key, name: d.fileName }; })
+          .concat((l.images || []).map(function(im){ return { label: (im.type || 'Photo') + ' photo' + (im.unitTypeName ? ' \u2014 ' + im.unitTypeName : ''), key: im.key, name: im.fileName }; }));
+        var list = document.createElement('div');
+        list.style.cssText = 'font-size:13px; line-height:1.7;';
+        if(!files.length) list.textContent = 'No files uploaded.';
+        files.forEach(function(f){
+          var row = document.createElement('div');
+          var a = document.createElement('a');
+          a.href = '/api/property-file?key=' + encodeURIComponent(f.key);
+          a.target = '_blank'; a.rel = 'noopener'; a.setAttribute('download', f.name || '');
+          a.textContent = f.name || f.key;
+          row.appendChild(document.createTextNode(f.label + ': '));
+          row.appendChild(a);
+          list.appendChild(row);
+        });
+        host.appendChild(list);
+        var seasons = (l.rateSeasons || []).length;
+        var units = (l.unitTypes || []).filter(function(u){ return u.name; }).length;
+        var info = document.createElement('div');
+        info.className = 'hint';
+        info.style.marginTop = '8px';
+        info.textContent = units + ' unit type(s), ' + seasons + ' rate season(s). Type the StockNetwork Site Nr above first \u2014 it goes into the files.';
+        host.appendChild(info);
+        var bar = document.createElement('div');
+        bar.style.cssText = 'display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;';
+        [['property', 'Property file for SN (.xlsx)'], ['stockx', 'Rates file (.xlsx)'], ['stockc', 'Rates file (.csv)']].forEach(function(b){
+          var btn = document.createElement('button');
+          btn.type = 'button'; btn.className = 'btn-outline'; btn.textContent = b[1];
+          btn.addEventListener('click', function(){
+            var nr = siteNrInput.value.trim();
+            try {
+              if(b[0] === 'property') AvanteSNExport.downloadPropertyFile(l, nr);
+              else if(!seasons) { window.alert('This listing has no rates set yet.'); return; }
+              else if(b[0] === 'stockx') AvanteSNExport.downloadStockXlsx(l, nr);
+              else AvanteSNExport.downloadStockCsv(l, nr);
+            } catch(err){ window.alert(err.message); }
+          });
+          bar.appendChild(btn);
+        });
+        host.appendChild(bar);
+      }
+
       function treePlaceText(pl){
         if(!pl) return '';
         return [pl.c, pl.p, (pl.r || []).join(' / '), pl.t, pl.s && pl.s !== pl.t ? pl.s : ''].filter(Boolean).join(' \u203a ') +
@@ -6748,6 +6802,7 @@
 
           statusInput.value = l.status || 'Requested';
           siteNrInput.value = l.siteNr || '';
+          renderListingFiles(document.getElementById('propertyFilesHost'), l);
           var listedOption = statusInput.querySelector('option[value="Listed"]');
           listedOption.disabled = l.agreementStatus !== 'Accepted';
         }).catch(function(){

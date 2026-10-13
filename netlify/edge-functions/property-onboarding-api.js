@@ -410,8 +410,19 @@ export default async (request, context) => {
         if (total > 18 * 1024 * 1024) break;
         images.push({ mediaType: m[1], data: m[2] });
       }
+      const pdfs = [];
+      (Array.isArray(body.pdfs) ? body.pdfs.slice(0, 4) : []).forEach((d) => {
+        const m = typeof (d && d.dataUri) === "string" ? d.dataUri.match(/^data:application\/pdf;base64,(.+)$/) : null;
+        if (!m) return;
+        total += m[1].length;
+        if (total > 24 * 1024 * 1024) return;
+        pdfs.push({ name: clean(d.name, 120), data: m[1] });
+      });
+      const texts = (Array.isArray(body.texts) ? body.texts.slice(0, 8) : [])
+        .map((t) => ({ name: clean(t && t.name, 120), text: typeof (t && t.text) === "string" ? t.text.slice(0, 60000) : "" }))
+        .filter((t) => t.text);
       const amenityOptions = Array.isArray(body.amenityOptions) ? body.amenityOptions.map((a) => clean(a, 150)).filter(Boolean) : [];
-      const result = await readListingScreenshots(images, clean(body.channel, 60), amenityOptions, clean(body.today, 10));
+      const result = await readListingScreenshots(images, clean(body.channel, 60), amenityOptions, clean(body.today, 10), pdfs, texts);
       return json(result);
     }
 
