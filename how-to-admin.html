@@ -39,6 +39,7 @@
     <div class="ht-card ht-new" aria-label="What's new">
       <h2>What's new</h2>
       <ul>
+        <li><time>13 Oct 2026</time> Property Listings: the Stock Network email can include a <b>link to the photos</b> (a page with every photo and one .zip). Add or delete a listing's photos under <b>Photos</b>; the link always shows them as they are now. The photos are also saved in the hook builder's photo library. See <a href="#propertyListings">Photos of a listing</a>.</li>
         <li><time>13 Oct 2026</time> Property Listings: <b>Send the files by email</b> emails the Stock Network files straight from a listing, and an <b>Email log</b> keeps every send (to whom, when, which files, sent or failed). See <a href="#propertyListings">Send the files by email</a>.</li>
         <li><time>13 Oct 2026</time> Property Listings: the Stock Network files now need only the <b>StockNetwork Site Nr</b>. The <b>Site ID</b> (affiliate number) comes from Stock Network after the site is set up, with the API credentials — add it then, to go live on the hub. See <a href="#propertyListings">Property Listings</a>.</li>
         <li><time>13 Oct 2026</time> <b>Property Listings</b> has a new card, <b>Channel setup help</b>: the address properties invite on Airbnb, Booking.com and LekkeSlaap, and who gets emailed when they ask Avante to set up their channels (several addresses, separated by commas).</li>
@@ -263,11 +264,21 @@
         <li>Tick <span class="field">Property file (.xlsx)</span> if Stock Network must create the property.</li>
         <li>Pick the <span class="field">Rates file</span>: <b>All future rates</b> the first time, <b>Only new/changed</b> after that, or <b>Don't send</b>. Pick <span class="field">As</span>: .xlsx, .csv or both.</li>
         <li>Type a <span class="field">Message</span> if you like (e.g. "Please create this property on Site Nr 6020").</li>
+        <li>Leave <span class="field">Add a link to the photos</span> ticked. The email gets a link to a page with every photo, full size, and a <b>Download all photos (.zip)</b> button for Stock Network.</li>
         <li>Leave <span class="field">After sending, mark the rates as sent to SN</span> ticked, so next time "Only new/changed" leaves these rates out.</li>
         <li>Tap <span class="btn g">Send email</span>. It says <b>Sent ✔</b>, and the Site Nr is saved on the listing.</li>
         <li>Open <b>Email log</b> to see every send: date, address, Site Nr, the files and the message. A failed send shows in red with the reason; nothing is marked as sent.</li>
       </ol>
       <div class="tip">The email comes from bookings@go.avantetravel.co.za with the files attached. It's also written in the listing's <b>History</b>.</div>
+      <h3>Photos of a listing (add, delete, photo link, hook builder library)</h3>
+      <ol class="steps">
+        <li>Tap <span class="btn g">View</span> on the listing. Scroll to <b>Photos</b>.</li>
+        <li>To add photos: tap <span class="btn g">+ Add photos</span> and pick them. Big photos are made smaller by themselves. Wait until the list reloads.</li>
+        <li>To delete a photo: tap <b>Delete</b> under it, then <b>OK</b>.</li>
+        <li>The photo link in the Stock Network email always shows the photos as they are now. You don't need to send it again after a change; just tell Stock Network.</li>
+        <li>Under the photos it says <b>Hook builder photo library: … of … photos</b>. Sending the email or adding photos saves them there by themselves. If some are missing, tap <span class="btn g">Add photos to the hook builder library</span>.</li>
+      </ol>
+      <div class="warn">Deleting a photo here removes it from the listing and the photo link, but not from the hook builder library (a hook may already use it). Admin can delete it there under <span class="tab">Photo library</span>.</div>
       <h3>Send only new rates to Stock Network</h3>
       <ol class="steps">
         <li>When the owner adds or changes rates, you get an email. Tap <span class="btn g">View</span> on the listing.</li>

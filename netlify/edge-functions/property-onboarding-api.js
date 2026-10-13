@@ -1,5 +1,6 @@
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
 import { readListingScreenshots } from "./lib/listing-reader.js";
+import { HOOKS_URL, makeHooksTicket } from "./lib/hooks-ticket.js";
 import { forwardGeocode, reverseGeocode } from "./lib/geocode.js";
 import { searchPlacePhotos, searchPlaceCandidates } from "./lib/places-images.js";
 import { placeCoordinate, snFieldsFromPlace, placeText, PLACES_STORE, PROPERTY_KEY } from "./lib/tree.js";
@@ -485,7 +486,7 @@ export default async (request, context) => {
       return json({ ok: true, listingId: listingId, editLink: editLink });
     }
 
-    if (action === "getForEdit" || action === "update" || action === "markSentToSN" || action === "emailSNFiles") {
+    if (action === "getForEdit" || action === "update" || action === "markSentToSN" || action === "emailSNFiles" || action === "libraryAdd" || action === "addPhotos" || action === "removePhoto") {
       // Reopen a listing in the onboarding form: admin (token) or the
       // submitter with their private edit key.
       const listingId = clean(body.listingId, 20);
@@ -495,14 +496,14 @@ export default async (request, context) => {
       const isAdmin = await verifyAdminToken(body.token);
       const keyOk = !!record.editToken && clean(body.key, 200) === record.editToken;
       if (!isAdmin && !keyOk) return json({ error: "This edit link isn't valid. Ask Avante Travel for a new one." }, 401);
-      if ((action === "markSentToSN" || action === "emailSNFiles") && !isAdmin) return json({ error: "Only Avante admin can do this." }, 401);
+      if (["markSentToSN", "emailSNFiles", "libraryAdd", "addPhotos", "removePhoto"].includes(action) && !isAdmin) return json({ error: "Only Avante admin can do this." }, 401);
       withAgreementDefaults(record);
 
       if (action === "getForEdit") {
         const out = Object.assign({}, record);
         delete out.agreementToken;
         delete out.editToken;
-        if (!isAdmin) delete out.history;
+        if (!isAdmin) { delete out.history; delete out.photosToken; }
         return json({ ok: true, listing: out, asAdmin: isAdmin });
       }
 
@@ -534,12 +535,22 @@ export default async (request, context) => {
         const siteNr = clean(body.siteNr, 20) || record.siteNr || "";
         const note = clean(body.note, 2000);
         const esc = (v) => String(v == null ? "" : v).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+        // A link to the photos (Jean, 2026-10-13), so Stock Network can upload
+        // them: a private page on the hub (property-photos.js), opened with a
+        // random key kept on the listing.
+        const photoCount = (record.images || []).filter((im) => im && im.key).length;
+        let photosUrl = "";
+        if (body.photosLink && photoCount) {
+          if (!record.photosToken) record.photosToken = [...crypto.getRandomValues(new Uint8Array(18))].map((x) => x.toString(16).padStart(2, "0")).join("");
+          photosUrl = new URL(request.url).origin + "/api/property-photos?l=" + encodeURIComponent(listingId) + "&k=" + record.photosToken;
+        }
         const subject = clean(body.subject, 200) || ("New property for Stock Network: " + (record.propertyName || "property") + (siteNr ? " (Site Nr " + siteNr + ")" : ""));
         const html = "<p>Hello,</p>" +
           (note ? "<p>" + esc(note).replace(/\n/g, "<br>") + "</p>" : "<p>Please find attached the Stock Network files for <b>" + esc(record.propertyName || "the property") + "</b>.</p>") +
           "<p><b>Property:</b> " + esc(record.propertyName || "") + "<br><b>Site Nr:</b> " + esc(siteNr || "(not allocated)") +
           (record.siteId ? "<br><b>Site ID:</b> " + esc(record.siteId) : "") + "</p>" +
           "<p><b>Attached:</b><br>" + files.map((f) => esc(f.filename)).join("<br>") + "</p>" +
+          (photosUrl ? '<p><b>Photos (' + photoCount + '):</b> <a href="' + esc(photosUrl) + '">View and download the photos</a><br><span style="color:#5b6b76">(one .zip with all of them is on that page)</span></p>' : "") +
           "<p>Avante Travel</p>";
         const replyTo = clean(body.replyTo, 200);
         let ok = false, error = "", emailId = "";
@@ -555,7 +566,7 @@ export default async (request, context) => {
             if (!ok) error = (d && (d.message || d.error)) || ("The email service said " + r.status + ".");
           } catch (e) { error = "Could not reach the email service: " + String((e && e.message) || e); }
         }
-        const entry = { at: new Date().toISOString(), to: to.join(", "), subject, files: files.map((f) => f.filename), siteNr, note, ok, error: error || undefined, emailId: emailId || undefined, markedSent: false };
+        const entry = { at: new Date().toISOString(), to: to.join(", "), subject, files: files.map((f) => f.filename).concat(photosUrl ? ["Link to " + photoCount + " photos"] : []), siteNr, note, ok, error: error || undefined, emailId: emailId || undefined, markedSent: false };
         const before = { snSentSeasons: record.snSentSeasons || [] };
         if (ok && body.markSent) {
           record.snSentSeasons = (record.rateSeasons || []).map((r) => Object.assign({}, r));
@@ -573,12 +584,73 @@ export default async (request, context) => {
         return json({ ok, error: error || undefined, entry });
       }
 
+      if (action === "addPhotos" || action === "removePhoto") {
+        // Admin adds or deletes photos on a listing in Property Listings
+        // (Jean, 2026-10-13). The photo link in the Stock Network email always
+        // shows the listing's photos as they are now.
+        const filesStore = getStore({ name: "property-listing-files", consistency: "strong" });
+        const before = { images: (record.images || []).map((x) => Object.assign({}, x)) };
+        let changed = 0;
+        if (action === "addPhotos") {
+          const add = sanitizeFileRefs(body.images, 30).filter((im) => im.key);
+          for (const im of add) {
+            if ((record.images || []).some((x) => x.key === im.key)) continue;
+            const meta = await filesStore.getMetadata(im.key).catch(() => null);
+            if (!meta) continue;   // only photos that really were uploaded
+            record.images = (record.images || []).concat([Object.assign(im, { type: im.type || "Property" })]).slice(0, 80);
+            changed++;
+          }
+          if (!changed) return json({ error: "No new photos were added." }, 400);
+        } else {
+          const key = clean(body.imageKey, 300);
+          const n = (record.images || []).length;
+          record.images = (record.images || []).filter((x) => x.key !== key);
+          changed = n - record.images.length;
+          if (!changed) return json({ error: "That photo isn't on this listing." }, 400);
+          if (record.libraryPhotos) delete record.libraryPhotos[key];
+          await filesStore.delete(key).catch(() => {});
+        }
+        record.dateUpdated = new Date().toISOString();
+        addHistory(record, "admin", action === "addPhotos" ? "Added " + changed + " photo(s)" : "Deleted a photo", before);
+        await store.setJSON(listingId, record);
+        return json({ ok: true, images: record.images });
+      }
+
+      if (action === "libraryAdd") {
+        // Jean (2026-10-13): the listing's photos go into the hook builder's
+        // shared photo library (avante-hooks /api/library), the same library
+        // the hook builder fills. Admin's browser makes the flyer-size copy,
+        // thumbnail and picture hash exactly as the hook builder does; the
+        // hub passes it on with a 5-minute admin pass signed with
+        // HOOKS_SSO_SECRET. The library itself spots photos it already has.
+        const imageKey = clean(body.imageKey, 300);
+        const im = (record.images || []).find((x) => x && x.key === imageKey);
+        if (!im) return json({ error: "That photo isn't on this listing." }, 400);
+        const item = body.item && typeof body.item === "object" ? body.item : {};
+        const tags = [{ key: "listing:" + listingId, name: record.propertyName || "Property" }];
+        let ticket;
+        try { ticket = await makeHooksTicket({ sub: "admin", name: "Avante admin", role: "admin" }); }
+        catch (e) { return json({ error: e.message }, 500); }
+        let r, d;
+        try {
+          r = await fetch(new URL("/api/library", HOOKS_URL).href, { method: "POST", headers: { "content-type": "application/json", authorization: "Bearer " + ticket },
+            body: JSON.stringify({ op: "add", item: { name: clean(item.name, 120) || (record.propertyName || "Property"), tags, src: "hub-listing:" + imageKey, source: "hub",
+              w: +item.w || 0, h: +item.h || 0, hash: /^[0-9a-f]{16}$/.test(item.hash || "") ? item.hash : "" }, full: String(body.full || ""), thumb: String(body.thumb || "") }) });
+          d = await r.json().catch(() => ({}));
+        } catch (e) { return json({ error: "Could not reach the hook builder: " + String((e && e.message) || e) }, 502); }
+        if (!r.ok || !d.ok) return json({ error: (d && d.error) || ("The hook builder library said " + r.status + ".") }, 502);
+        const fresh = (await store.get(listingId, { type: "json" })) || record;
+        fresh.libraryPhotos = Object.assign({}, fresh.libraryPhotos || {}, { [imageKey]: d.id });
+        await store.setJSON(listingId, fresh);
+        return json({ ok: true, id: d.id, existing: !!d.existing, inLibrary: Object.keys(fresh.libraryPhotos).length });
+      }
+
       // update: the whole form comes back; keep what only Avante controls.
       const incoming = submittedFields(body);
       const before = JSON.parse(JSON.stringify(record));
       const KEEP = ["listingId", "status", "dateSubmitted", "submittedBy", "affId", "editToken", "history",
         "commissionRate", "listingDuration", "agreementTerms", "agreementStatus", "agreementToken", "agreementSentAt",
-        "agreementRespondedAt", "snSentSeasons", "snSentAt", "snEmailLog", "agreementSigned", "signatoryName", "signatoryCapacity",
+        "agreementRespondedAt", "snSentSeasons", "snSentAt", "snEmailLog", "photosToken", "libraryPhotos", "agreementSigned", "signatoryName", "signatoryCapacity",
         "signatoryIdPassport", "signatureDate", "signaturePlace", "coordsVerifiedAt"];
       Object.keys(incoming).forEach((k) => { if (KEEP.indexOf(k) === -1) record[k] = incoming[k]; });
       if (!isAdmin) {

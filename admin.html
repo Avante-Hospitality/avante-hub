@@ -6786,10 +6786,77 @@
           sentInfo.textContent = 'Rates last marked as sent to SN: ' + fmtPropDate(l.snSentAt) + '.';
           host.appendChild(sentInfo);
         }
+        // Photos on the listing: add or delete (Jean, 2026-10-13). The photo
+        // link in the Stock Network email always shows these, as they are now.
+        var ph = document.createElement('div');
+        ph.style.cssText = 'margin-top:14px;';
+        var phImgs = (l.images || []).filter(function(im){ return im && im.key; });
+        ph.innerHTML = '<div style="font-weight:700; margin-bottom:6px;">Photos (' + phImgs.length + ')</div>' +
+          '<div id="lpGrid" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(110px,1fr)); gap:8px;"></div>' +
+          '<div style="margin-top:8px; display:flex; flex-wrap:wrap; gap:8px; align-items:center;"><label class="btn-outline" style="cursor:pointer; display:inline-block;">+ Add photos<input type="file" id="lpAdd" accept="image/*" multiple hidden></label><span class="hint" id="lpStatus" style="margin:0"></span></div>';
+        host.appendChild(ph);
+        var lpGrid = ph.querySelector('#lpGrid'), lpStatus = ph.querySelector('#lpStatus');
+        if(!phImgs.length) lpGrid.innerHTML = '<div class="hint">No photos yet.</div>';
+        phImgs.forEach(function(im){
+          var cell = document.createElement('div');
+          cell.style.cssText = 'border:1px solid #d6e3e1; border-radius:8px; overflow:hidden; background:#fff; font-size:11.5px;';
+          cell.innerHTML = '<a href="/api/property-file?key=' + encodeURIComponent(im.key) + '" target="_blank" rel="noopener"><img loading="lazy" alt="" src="/api/property-file?key=' + encodeURIComponent(im.key) + '" style="display:block; width:100%; height:80px; object-fit:cover; background:#e8efee;"></a>' +
+            '<div style="padding:4px 6px; display:flex; justify-content:space-between; gap:4px; align-items:center;"><span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + escapeHtml(im.unitTypeName || im.type || 'Photo') + '</span><button type="button" title="Delete this photo" style="border:0; background:none; color:#b42318; font-weight:700; cursor:pointer; padding:0 2px;">Delete</button></div>';
+          cell.querySelector('button').addEventListener('click', function(){
+            if(!window.confirm('Delete this photo from the listing? It is removed from the photo link too. (A copy already in the hook builder library stays there.)')) return;
+            this.disabled = true;
+            propAdminPost('removePhoto', { listingId: l.listingId, imageKey: im.key }).then(function(res){
+              if(res.data && res.data.ok) openPropertyDetailsModal(l.listingId);
+              else { lpStatus.textContent = (res.data && res.data.error) || 'Could not delete.'; }
+            });
+          });
+          lpGrid.appendChild(cell);
+        });
+        function shrinkForUpload(file){
+          // Same as the onboarding form: big photos become a 2400px JPEG.
+          if(file.size < 2.5 * 1024 * 1024 && !/heic|heif|avif/i.test(file.type)) return Promise.resolve({ blob: file, name: file.name });
+          return createImageBitmap(file).then(function(bmp){
+            var k = Math.min(1, 2400 / Math.max(bmp.width, bmp.height)), c = document.createElement('canvas');
+            c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k); c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+            return new Promise(function(res){ c.toBlob(function(b){ res({ blob: b, name: String(file.name).replace(/\.[^.]+$/, '') + '.jpg' }); }, 'image/jpeg', 0.85); });
+          }).catch(function(){ return { blob: file, name: file.name }; });
+        }
+        ph.querySelector('#lpAdd').addEventListener('change', function(){
+          var list = [].slice.call(this.files || []); this.value = '';
+          if(!list.length) return;
+          var added = [], failed = 0, chain = Promise.resolve();
+          list.forEach(function(f, i){
+            chain = chain.then(function(){
+              lpStatus.textContent = 'Uploading ' + (i + 1) + ' of ' + list.length + '\u2026';
+              return shrinkForUpload(f).then(function(x){
+                return fetch('/api/property-file?listingId=' + encodeURIComponent(l.listingId) + '&kind=image&label=property&fileName=' + encodeURIComponent(String(x.name).slice(-120)),
+                  { method: 'POST', headers: { 'content-type': x.blob.type || 'image/jpeg' }, body: x.blob })
+                  .then(function(r){ return r.json(); }).then(function(d){ if(d && d.key) added.push({ type: 'Property', key: d.key, fileName: d.fileName || x.name }); else failed++; });
+              }).catch(function(){ failed++; });
+            });
+          });
+          chain.then(function(){
+            if(!added.length){ lpStatus.textContent = 'No photos could be uploaded.'; return; }
+            lpStatus.textContent = 'Saving\u2026';
+            return propAdminPost('addPhotos', { listingId: l.listingId, images: added }).then(function(res){
+              if(!(res.data && res.data.ok)){ lpStatus.textContent = (res.data && res.data.error) || 'Could not save.'; return; }
+              // New photos go into the hook builder library too.
+              listingImages = (res.data.images || []).filter(function(im){ return im && im.key; });
+              photoCount = listingImages.length;
+              return addPhotosToLibrary(true).then(function(){
+                if(failed) window.alert(failed + ' photo(s) could not be uploaded.');
+                openPropertyDetailsModal(l.listingId);
+              });
+            });
+          });
+        });
+
         // Send the files by email, with a log (Jean, 2026-10-13).
         var em = document.createElement('div');
         em.style.cssText = 'margin-top:14px; padding:12px; border:1px solid #d6e3e1; border-radius:10px; background:#f7fbfa;';
         var lastTo = ''; try { lastTo = localStorage.getItem('avante-sn-email') || ''; } catch(e){}
+        var listingImages = (l.images || []).filter(function(im){ return im && im.key; });
+        var photoCount = listingImages.length;
         var log = (l.snEmailLog || []);
         if(!lastTo && log.length) lastTo = log[log.length - 1].to || '';
         em.innerHTML =
@@ -6803,6 +6870,7 @@
           '</div>' +
           '<label class="hint" for="snEmailNote" style="display:block; margin:0 0 3px;">Message (optional)</label>' +
           '<textarea id="snEmailNote" rows="3" style="width:100%;" placeholder="e.g. Please create this property on Site Nr ' + escapeHtml(siteNrInput.value.trim() || '…') + ' and upload the rates."></textarea>' +
+          '<label style="display:block; font-size:13px; margin:6px 0;"><input type="checkbox" id="snEmailPhotos"' + (photoCount ? ' checked' : ' disabled') + '> Add a link to the photos (' + photoCount + ')' + (photoCount ? '' : ' \u2014 no photos on this listing') + '</label>' +
           '<label style="display:block; font-size:13px; margin:6px 0;"><input type="checkbox" id="snEmailMark" checked> After sending, mark the rates as sent to SN</label>' +
           '<button type="button" class="btn-outline" id="snEmailBtn">Send email</button> <span class="hint" id="snEmailStatus" style="margin:0"></span>';
         host.appendChild(em);
@@ -6819,20 +6887,81 @@
             files = AvanteSNExport.filesForEmail(lx, nr, { property: em.querySelector('#snEmailProp').checked, rates: em.querySelector('#snEmailRates').value, format: em.querySelector('#snEmailFmt').value });
           } catch(err){ st.textContent = err.message; return; }
           btn.disabled = true; btn.textContent = 'Sending\u2026';
-          propAdminPost('emailSNFiles', { listingId: l.listingId, to: to, siteNr: nr, files: files, note: em.querySelector('#snEmailNote').value.trim(),
+          var withPhotos = em.querySelector('#snEmailPhotos').checked;
+          propAdminPost('emailSNFiles', { listingId: l.listingId, to: to, siteNr: nr, files: files, note: em.querySelector('#snEmailNote').value.trim(), photosLink: withPhotos,
             markSent: em.querySelector('#snEmailMark').checked && !!em.querySelector('#snEmailRates').value }).then(function(res){
             btn.disabled = false; btn.textContent = 'Send email';
             var d = res.data || {};
             if(d.ok){
               try { localStorage.setItem('avante-sn-email', to); } catch(e){}
               st.textContent = 'Sent \u2714';
-              openPropertyDetailsModal(l.listingId);
+              // The photos go into the hook builder's library too.
+              if(withPhotos) addPhotosToLibrary(true).then(function(){ openPropertyDetailsModal(l.listingId); });
+              else openPropertyDetailsModal(l.listingId);
             } else {
               st.textContent = 'Not sent: ' + (d.error || 'unknown reason') + (d.entry ? ' (kept in the log)' : '');
               if(d.entry) openPropertyDetailsModal(l.listingId);
             }
           }).catch(function(){ btn.disabled = false; btn.textContent = 'Send email'; st.textContent = 'No connection. Try again.'; });
         });
+        // The hook builder's shared photo library (Jean, 2026-10-13): the
+        // listing's photos are saved there, made the same way the hook
+        // builder makes them (1600px flyer copy, 360px thumbnail, picture hash).
+        var inLib = l.libraryPhotos || {};
+        var libBox = document.createElement('div');
+        libBox.style.cssText = 'margin-top:10px; font-size:13px;';
+        var libLine = document.createElement('span');
+        var libBtn = document.createElement('button');
+        libBtn.type = 'button'; libBtn.className = 'btn-outline'; libBtn.style.marginLeft = '8px';
+        libBtn.textContent = 'Add photos to the hook builder library';
+        function libCount(){ return listingImages.filter(function(im){ return inLib[im.key]; }).length; }
+        function showLib(){ libLine.textContent = 'Hook builder photo library: ' + libCount() + ' of ' + photoCount + ' photos.'; libBtn.hidden = !photoCount || libCount() >= photoCount; }
+        showLib();
+        libBox.appendChild(libLine); libBox.appendChild(libBtn);
+        host.appendChild(libBox);
+        function loadBitmap(key){
+          return fetch('/api/property-file?key=' + encodeURIComponent(key)).then(function(r){ if(!r.ok) throw new Error('photo ' + r.status); return r.blob(); })
+            .then(function(b){ return createImageBitmap(b); });
+        }
+        function scaledJpeg(img, max, q){
+          var k = Math.min(1, max / Math.max(img.width, img.height)), w = Math.max(1, Math.round(img.width * k)), h = Math.max(1, Math.round(img.height * k));
+          var c = document.createElement('canvas'); c.width = w; c.height = h; c.getContext('2d').drawImage(img, 0, 0, w, h);
+          return { url: c.toDataURL('image/jpeg', q), w: w, h: h, canvas: c };
+        }
+        function dhashOf(src){
+          var c = document.createElement('canvas'); c.width = 9; c.height = 8;
+          var x = c.getContext('2d'); x.drawImage(src, 0, 0, 9, 8); var d = x.getImageData(0, 0, 9, 8).data, bits = '';
+          for(var y = 0; y < 8; y++) for(var k2 = 0; k2 < 8; k2++){ var a = (y * 9 + k2) * 4, b = a + 4; bits += (d[a] + d[a+1] + d[a+2]) > (d[b] + d[b+1] + d[b+2]) ? '1' : '0'; }
+          return bits.match(/.{4}/g).map(function(n){ return parseInt(n, 2).toString(16); }).join('');
+        }
+        function addPhotosToLibrary(quiet){
+          var todo = listingImages.filter(function(im){ return !inLib[im.key]; });
+          if(!todo.length) return Promise.resolve();
+          libBtn.disabled = true;
+          var failed = 0, lastErr = '';
+          var chain = Promise.resolve();
+          todo.forEach(function(im, i){
+            chain = chain.then(function(){
+              libLine.textContent = 'Saving photo ' + (i + 1) + ' of ' + todo.length + ' to the hook builder library\u2026';
+              return loadBitmap(im.key).then(function(bmp){
+                var full = scaledJpeg(bmp, 1600, 0.82), th = scaledJpeg(bmp, 360, 0.72);
+                var n = listingImages.indexOf(im) + 1;
+                return propAdminPost('libraryAdd', { listingId: l.listingId, imageKey: im.key,
+                  item: { name: (l.propertyName || 'Property') + ' ' + n + (im.unitTypeName ? ' \u2014 ' + im.unitTypeName : ''), w: full.w, h: full.h, hash: dhashOf(th.canvas) },
+                  full: full.url, thumb: th.url });
+              }).then(function(res){
+                if(res.data && res.data.ok) inLib[im.key] = res.data.id;
+                else { failed++; lastErr = (res.data && res.data.error) || 'unknown reason'; }
+              }).catch(function(err){ failed++; lastErr = err.message || String(err); });
+            });
+          });
+          return chain.then(function(){
+            libBtn.disabled = false; showLib();
+            if(failed){ libLine.textContent += ' ' + failed + ' could not be saved: ' + lastErr; if(!quiet) window.alert(failed + ' photo(s) could not be saved to the library: ' + lastErr); }
+          });
+        }
+        libBtn.addEventListener('click', function(){ addPhotosToLibrary(false); });
+
         // Email log, newest first.
         var lg = document.createElement('details'); lg.style.marginTop = '12px'; if(log.length) lg.open = true;
         var lgSum = document.createElement('summary'); lgSum.textContent = 'Email log (' + log.length + ')'; lgSum.style.cssText = 'cursor:pointer; font-weight:700;';
