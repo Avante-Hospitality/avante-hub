@@ -50,7 +50,8 @@ export async function stayPayload(core, prop, opts) {
       const base = keys[0] ? "/api/property-file?key=" + encodeURIComponent(keys[0]) : "";
       return { name: a.name || "", area: a.area || "", price: a.price || "", description: String(a.description || "").slice(0, 300), link: a.contactLink || "",
         photo: mine[a.name] || base, latitude: parseFloat(a.latitude), longitude: parseFloat(a.longitude), distance: a.distanceLabel, km: a.distanceKm,
-        hidden: hidden.has(a.name), basePhoto: opts.all ? base : undefined };
+        hidden: hidden.has(a.name), basePhoto: opts.all ? base : undefined,
+        mapPhotos: opts.all ? keys.slice(0, 8).map((k) => "/api/property-file?key=" + encodeURIComponent(k)) : undefined };
     });
     if (opts.all) list = list.slice(0, 60); // the builder: all of them, closest first
     else {

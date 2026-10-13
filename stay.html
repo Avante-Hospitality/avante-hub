@@ -134,14 +134,14 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
 .ucard .meta{ font-size:14px; color:var(--teal-d); font-weight:700; }
 .ucard .btn{ margin-top:auto; align-self:flex-start; }
 .tiles{ display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:14px; }
-.tile{ position:relative; min-height:230px; border-radius:18px; overflow:hidden; background:#1d4257 center/cover; color:#fff; display:flex; flex-direction:column; justify-content:flex-end; text-decoration:none; }
-.tile::after{ content:''; position:absolute; inset:0; background:linear-gradient(180deg,rgba(7,28,41,0) 30%,rgba(7,28,41,.9) 100%); }
-.tile > *{ position:relative; z-index:1; }
-.tile .km{ position:absolute; top:12px; left:12px; z-index:2; background:#ffde59; color:var(--ink); border-radius:999px; padding:5px 11px; font:800 13px 'Montserrat',sans-serif; }
-.tile .bd{ padding:14px 16px; }
-.tile b{ display:block; font:800 18px/1.15 'Montserrat',sans-serif; color:#fff; }
-.tile span{ display:block; font-size:13.5px; opacity:.9; margin-top:4px; }
-.tile.noimg{ background:linear-gradient(135deg,#0e2f44,#14506a); }
+.tile{ display:flex; flex-direction:column; background:#fff; border:1px solid var(--line); border-radius:18px; overflow:hidden; color:var(--ink); text-decoration:none; box-shadow:0 8px 24px rgba(14,47,68,.07); }
+.tile .im{ position:relative; aspect-ratio:16/10; background:#dfe7ea center/cover; }
+.tile .im.noimg{ background:linear-gradient(135deg,#0e2f44,#14506a); }
+.tile .km{ position:absolute; top:12px; left:12px; background:#ffde59; color:var(--ink); border-radius:999px; padding:5px 11px; font:800 13px 'Montserrat',sans-serif; }
+.tile .bd{ padding:12px 16px 16px; }
+.tile b{ display:block; font:800 17px/1.2 'Montserrat',sans-serif; color:var(--ink); }
+.tile span{ display:block; font-size:14px; color:#4a5658; margin-top:5px; line-height:1.45; }
+.tile .pz{ font-weight:700; color:var(--ink); }
 .pv-note{ position:relative; z-index:70; background:#ffde59; color:var(--ink); text-align:center; font:700 13px 'Montserrat',sans-serif; padding:6px 10px; }
 @media (max-width:900px){ .mosaic{ display:none; } .slides{ display:block; } .hero2{ min-height:72vh; } }
 .hp{ position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden; }
@@ -205,6 +205,8 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function today() { var d = new Date(); return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())).toISOString().slice(0, 10); }
   function add(iso, n) { var d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
+  // Where a photo sits in its frame, as set with "Move photo" in the builder (e.g. "50% 30%").
+  function bgPos(u) { var p = (S.d && S.d.photoPos || {})[u]; return p && /^\d{1,3}% \d{1,3}%$/.test(p) ? ';background-position:' + p : ''; }
   function nights(a, b) { return Math.round((new Date(b + 'T00:00:00Z') - new Date(a + 'T00:00:00Z')) / 86400000); }
   function nice(iso) { var d = new Date(iso + 'T00:00:00Z'); return d.getUTCDate() + ' ' + MON[d.getUTCMonth()] + ' ' + d.getUTCFullYear(); }
   function money(n) { return n == null ? '' : 'R' + String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
@@ -259,7 +261,7 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
       (telLink(d) ? '<a class="ic" href="' + esc(telLink(d)) + '" aria-label="Call ' + esc(d.name) + '">📞 <span>Call</span></a>' : '') + '</div></header>';
     // Hero: the cover photo, the place, the headline, price and rating, Book.
     var place = placeLine(d.place), head = d.headline || d.name;
-    h += '<section class="hero2" id="hero" style="background-image:url(\'' + esc(ph[0] || '/home-hero.jpg') + '\')"><div class="wrap">' +
+    h += '<section class="hero2" id="hero" style="background-image:url(\'' + esc(ph[0] || '/home-hero.jpg') + '\')' + bgPos(ph[0]) + '"><div class="wrap">' +
       (place ? '<div class="kick">📍 ' + esc(place) + '</div>' : '') + '<h1>' + esc(head) + '</h1>' +
       '<div class="sub">' + esc([d.headline ? d.name : '', d.welcome].filter(Boolean).join(' — ')) + '</div>' +
       ((d.priceFrom || d.rating) ? '<div class="badges">' + (d.priceFrom ? '<span class="badge price">' + esc(d.priceFrom) + '</span>' : '') +
@@ -267,10 +269,10 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
       '<div class="ctas">' + (waLink(d) ? '<a class="btn w" href="' + esc(waLink(d, 'Hi, I have a question about ' + d.name + '.')) + '" target="_blank" rel="noopener">💬 Ask on WhatsApp</a>' : '') + '</div></div></section>';
     h += '<div class="wrap">';
     // Photos: one big and four small; tap for all of them.
-    if (ph.length > 1) h += '<div class="mosaic" id="photos" aria-label="Photos">' + ph.slice(1, 6).map(function (u, i) { return '<button type="button" data-act="lb" data-i="' + (i + 1) + '" style="background-image:url(\'' + esc(u) + '\')" aria-label="Photo ' + (i + 2) + ' of ' + ph.length + '"></button>'; }).join('') +
+    if (ph.length > 1) h += '<div class="mosaic" id="photos" aria-label="Photos">' + ph.slice(1, 6).map(function (u, i) { return '<button type="button" data-act="lb" data-i="' + (i + 1) + '" style="background-image:url(\'' + esc(u) + '\')' + bgPos(u) + '" aria-label="Photo ' + (i + 2) + ' of ' + ph.length + '"></button>'; }).join('') +
       '<button type="button" class="btn g sm all" data-act="lb" data-i="0">See all ' + ph.length + ' photos</button></div>';
     // Phones: one photo at a time with arrows (no side-scrolling strip). Jean, 2026-10-13.
-    if (ph.length > 1) { S.sl = Math.min(S.sl || 0, ph.length - 1); h += '<div class="slides" id="photos-ph" aria-label="Photos"><button type="button" class="pic" data-act="lb" data-i="' + S.sl + '" style="background-image:url(\'' + esc(ph[S.sl]) + '\')" aria-label="Open photo ' + (S.sl + 1) + ' of ' + ph.length + '"></button>' +
+    if (ph.length > 1) { S.sl = Math.min(S.sl || 0, ph.length - 1); h += '<div class="slides" id="photos-ph" aria-label="Photos"><button type="button" class="pic" data-act="lb" data-i="' + S.sl + '" style="background-image:url(\'' + esc(ph[S.sl]) + '\')' + bgPos(ph[S.sl]) + '" aria-label="Open photo ' + (S.sl + 1) + ' of ' + ph.length + '"></button>' +
       '<button type="button" class="arr pv" data-act="sl" data-d="-1" aria-label="Previous photo">‹</button><button type="button" class="arr nx" data-act="sl" data-d="1" aria-label="Next photo">›</button><span class="cnt">' + (S.sl + 1) + ' / ' + ph.length + '</span></div>'; }
     if ((d.highlights || []).length) h += '<ul class="hl" id="hl" aria-label="Highlights">' + d.highlights.map(function (x) { return '<li><span aria-hidden="true">' + hlIcon(x) + '</span>' + esc(x) + '</li>'; }).join('') + '</ul>';
     h += '<div class="grid"><main>';
@@ -279,7 +281,7 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
       (d.moreInfo ? '<h3 style="margin:18px 0 6px;font-size:17px">Good to know</h3><div class="text">' + esc(d.moreInfo) + '</div>' : '') + '</section>';
     if (d.units.length) h += '<section class="sec" id="units"><h2>Where you\'ll stay</h2><div class="units">' + d.units.map(function (u, i) {
       var img = safeUrl(u.photo) || ph[(i + 1) % Math.max(1, ph.length)] || '';
-      return '<article class="ucard"><div class="im" style="' + (img ? 'background-image:url(\'' + esc(img) + '\')' : '') + '">' + (u.price ? '<span class="pr">From ' + money(u.price) + ' a night</span>' : '') + '</div>' +
+      return '<article class="ucard"><div class="im" style="' + (img ? 'background-image:url(\'' + esc(img) + '\')' + bgPos(img) : '') + '">' + (u.price ? '<span class="pr">From ' + money(u.price) + ' a night</span>' : '') + '</div>' +
         '<div class="bd"><b>' + esc(u.name) + '</b>' + ((u.size || u.beds) ? '<span class="meta">' + esc([u.size, u.beds].filter(Boolean).join(' · ')) + '</span>' : '') +
         (u.blurb ? '<span style="font-size:14.5px">' + esc(u.blurb) + '</span>' : '') + '<button type="button" class="btn t sm" data-act="toBook">Check dates</button></div></article>'; }).join('') + '</div></section>';
     if (d.showCalendar) h += '<section class="sec" id="calsec"><h2>Availability</h2><p class="lead">Tap your arrival day, then your last night. Or type your dates under the calendar.</p><div class="card" id="cal"></div><div class="card calpick" id="calpick"></div></section>';
@@ -396,9 +398,10 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
       kms.map(function (k) { return '<button type="button" class="chip" data-act="km" data-k="' + k + '" aria-pressed="' + (k === S.km) + '">Within ' + k + ' km</button>'; }).join('') + '</div>';
     h += list.length ? '<div class="tiles">' + list.map(function (a) {
       var img = safeUrl(a.photo), lk = safeLink(a.link);
-      return (lk ? '<a class="tile' + (img ? '' : ' noimg') + '" href="' + esc(lk) + '" target="_blank" rel="noopener"' : '<article class="tile' + (img ? '' : ' noimg') + '"') + (img ? ' style="background-image:url(\'' + esc(img) + '\')"' : '') + '>' +
-        (a.distance ? '<span class="km">' + esc(a.distance) + '</span>' : '') + '<div class="bd"><b>' + esc(a.name) + '</b>' +
-        ((a.description || a.area) ? '<span>' + esc((a.description || a.area).slice(0, 110)) + '</span>' : '') + (a.price ? '<span>' + esc(a.price) + '</span>' : '') + '</div>' + (lk ? '</a>' : '</article>');
+      return (lk ? '<a class="tile" href="' + esc(lk) + '" target="_blank" rel="noopener">' : '<article class="tile">') +
+        '<div class="im' + (img ? '' : ' noimg') + '"' + (img ? ' style="background-image:url(\'' + esc(img) + '\')' + bgPos(img) + '"' : '') + '>' + (a.distance ? '<span class="km">' + esc(a.distance) + '</span>' : '') + '</div>' +
+        '<div class="bd"><b>' + esc(a.name) + '</b>' +
+        ((a.description || a.area) ? '<span>' + esc((a.description || a.area).slice(0, 110)) + '</span>' : '') + (a.price ? '<span class="pz">' + esc(a.price) + '</span>' : '') + '</div>' + (lk ? '</a>' : '</article>');
     }).join('') + '</div>' : '<p class="muted">Nothing listed within ' + S.km + ' km yet. Try a bigger distance.</p>';
     if (d.latitude != null) h += '<div id="map" role="img" aria-label="Map of ' + esc(d.name) + ' and things to do nearby"></div>';
     return h + '</section>';
@@ -475,7 +478,7 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
     var t = e.target.closest('[data-act]'); if (!t) return;
     var a = t.getAttribute('data-act');
     if (a === 'lb') return showLb(+t.getAttribute('data-i'));
-    if (a === 'sl') { var n = (S.d.photos || []).length; S.sl = ((S.sl || 0) + +t.getAttribute('data-d') + n) % n; var sw = document.getElementById('photos-ph'); if (sw) { var pic = sw.querySelector('.pic'); pic.style.backgroundImage = 'url(\'' + S.d.photos[S.sl].replace(/'/g, '%27') + '\')'; pic.setAttribute('data-i', S.sl); pic.setAttribute('aria-label', 'Open photo ' + (S.sl + 1) + ' of ' + n); sw.querySelector('.cnt').textContent = (S.sl + 1) + ' / ' + n; } return; }
+    if (a === 'sl') { var n = (S.d.photos || []).length; S.sl = ((S.sl || 0) + +t.getAttribute('data-d') + n) % n; var sw = document.getElementById('photos-ph'); if (sw) { var pic = sw.querySelector('.pic'); pic.style.backgroundImage = 'url(\'' + S.d.photos[S.sl].replace(/'/g, '%27') + '\')'; pic.style.backgroundPosition = (bgPos(S.d.photos[S.sl]).split(':')[1] || ''); pic.setAttribute('data-i', S.sl); pic.setAttribute('aria-label', 'Open photo ' + (S.sl + 1) + ' of ' + n); sw.querySelector('.cnt').textContent = (S.sl + 1) + ' / ' + n; } return; }
     if (a === 'toBook') { var b = document.getElementById(S.d.showCalendar ? 'calsec' : 'book') || document.getElementById('book'); if (b) { b.scrollIntoView({ behavior: 'smooth', block: 'start' }); } return; }
     if (a === 'calGo') {
       var ci2 = val('cpi'), co2 = val('cpo');

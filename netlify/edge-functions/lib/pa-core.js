@@ -1506,7 +1506,9 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     // photo per nearby activity (or hidden).
     headline: "", priceFrom: "", highlights: [], ratingValue: "", ratingCount: "", ratingLink: "", unitInfo: {}, actPhotos: {}, actHidden: [],
     // Where to find things to do from, when not the property's own pin/tree place: { p, t, s }.
-    actPlace: null };
+    actPlace: null,
+    // Where each photo sits in its frame ("Move photo" in the builder): { url: "x% y%" }.
+    photoPos: {} };
   const FS_MAX_NIGHTS = 30, FS_PER_DAY = 10, FS_PER_EMAIL_DAY = 3;
   function isoDate(v) { v = String(v || ""); if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return ""; const d = new Date(v + "T00:00:00Z"); return !isNaN(d) && d.toISOString().slice(0, 10) === v ? v : ""; }
   function minStayOf(prop) { return prop && prop.channel ? 1 : (prop.settings && prop.settings.minStay) || 2; }
@@ -1545,6 +1547,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
         if (o.photo || o.beds || o.blurb) s.unitInfo[u.name] = o; }
     }
     if (body.actPhotos && typeof body.actPhotos === "object") { s.actPhotos = {}; for (const [k, v] of Object.entries(body.actPhotos).slice(0, 60)) { const u = cleanStr(String(v || ""), 600); if (okPhoto(u)) s.actPhotos[cleanStr(k, 120)] = u; } }
+    if (body.photoPos && typeof body.photoPos === "object") { s.photoPos = {}; for (const [k, v] of Object.entries(body.photoPos).slice(0, 150)) { const u = cleanStr(String(k || ""), 600), pos = String(v || ""); if (okPhoto(u) && /^\d{1,3}% \d{1,3}%$/.test(pos) && pos !== "50% 50%") s.photoPos[u] = pos; } }
     if (body.actPlace === null) s.actPlace = null;
     else if (body.actPlace && typeof body.actPlace === "object") { const t = cleanStr(String(body.actPlace.t || ""), 80); s.actPlace = t ? { p: cleanStr(String(body.actPlace.p || ""), 80), t, s: cleanStr(String(body.actPlace.s || ""), 80) } : null; }
     if (Array.isArray(body.actHidden)) s.actHidden = body.actHidden.map((x) => cleanStr(String(x || ""), 120)).filter(Boolean).slice(0, 100);
@@ -1641,7 +1644,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
       payMode: payMode(prop), approveGuests: !prop.channel && !!(prop.settings && prop.settings.approveGuests),
       headline: s.headline || "", highlights: s.highlights || [], priceFrom: fsPriceFrom(prop, s),
       rating: s.ratingValue ? { value: s.ratingValue, count: s.ratingCount || "", link: s.ratingLink || "" } : null,
-      actPhotos: s.actPhotos || {}, actHidden: s.actHidden || [], actPlace: s.actPlace || null };
+      actPhotos: s.actPhotos || {}, actHidden: s.actHidden || [], actPlace: s.actPlace || null, photoPos: s.photoPos || {} };
   }
   // The price badge: what the property typed, else its lowest price a night
   // (Reservation settings), only when prices are switched on.

@@ -743,6 +743,7 @@
     var hid = st.hiddenUnits || [], list = S.front.units.filter(function (u) { return hid.indexOf(u.name) < 0 && u.price > 0; }).map(function (u) { return u.price; });
     return list.length ? 'From ' + money(Math.min.apply(null, list)) + ' a night' : '';
   }
+  function fsPosCss(u) { var p = ((S.front && S.front.settings.photoPos) || {})[u]; return p ? ';background-position:' + p : ''; }
   function fsAreaLabel(a) { return [a.s, a.t, a.p].filter(function (x, i, l) { return x && l.indexOf(x) === i; }).join(', '); }
   function fsPlace() { var p = (S.fpv && S.fpv.place) || {}; return p.suburb || p.city || p.region || ''; }
   function fsThumbs(sel, data, list) {
@@ -795,6 +796,7 @@
       return '<div class="pa-photo' + (i < 0 ? ' off' : '') + (i === 0 ? ' cover' : '') + '"><img src="' + esc(u) + '" alt="" loading="lazy"><div class="pa-actions" style="gap:4px;padding:6px">' +
         '<label class="pa-check" style="font-size:12.5px"><input type="checkbox" data-fsphoto="' + esc(u) + '"' + (i >= 0 ? ' checked' : '') + '> ' + (i === 0 ? '★ Cover' : 'Show') + '</label>' +
         (i > 0 ? '<button type="button" class="pa-btn small ghost" data-act="fsUp" data-u="' + esc(u) + '" aria-label="Move earlier">↑</button>' : '') +
+        (i >= 0 ? '<button type="button" class="pa-btn small ghost" data-act="fsMove" data-u="' + esc(u) + '" aria-label="Move this photo in its frame">✥ Move</button>' : '') +
         (mine ? '<button type="button" class="pa-btn small danger" data-act="fsDel" data-u="' + esc(u) + '" aria-label="Delete photo">✕</button>' : '') + '</div></div>';
     }).join('') + '</div>' : '<p class="pa-hint">No photos yet. Upload some, or find some on Google below.</p>';
     h += fsStep('photos', ++n, 'Photos', shown.length + ' photo' + (shown.length === 1 ? '' : 's') + ' showing',
@@ -826,17 +828,26 @@
       '<div class="pa-field" style="flex:0 1 200px"><label class="pa-label" for="fs-km">Within</label><select id="fs-km">' + [5, 10, 20, 30, 50, 75, 100, 150].map(function (k) { return '<option value="' + k + '"' + (+st.nearbyKm === k ? ' selected' : '') + '>' + k + ' km</option>'; }).join('') + '</select></div></div>' +
       '<div class="pa-field" style="margin-top:10px"><label class="pa-label" for="fs-area">Your area (things to do are found from here)</label><input id="fs-area" type="text" list="fs-areas" autocomplete="off" value="' + esc(st.actPlace ? fsAreaLabel(st.actPlace) : '') + '" placeholder="' + esc((S.fpv && S.fpv.area ? 'Automatic: ' + fsAreaLabel(S.fpv.area) : 'Type your town or suburb')) + '"><datalist id="fs-areas">' + (S.fsAreas || []).map(function (a) { return '<option value="' + esc(fsAreaLabel(a)) + '">'; }).join('') + '</datalist></div>' +
       '<p class="pa-hint">Empty = automatic: your map pin, or your town in the location tree. Type a few letters and pick your suburb or town from the list.' + (S.fsAreaErr ? ' <b style="color:#8a3a00">' + esc(S.fsAreaErr) + '</b>' : '') + '</p>' +
-      '<p class="pa-hint">Guests see <b>10 of these, picked at random</b> on every visit, closest first. They can pick another distance on the page. Untick one to never show it. Give each a good photo: tap <b>Google photo</b>.</p>';
+      '<p class="pa-hint">Guests see <b>10 of these, picked at random</b> on every visit, closest first. They can pick another distance on the page. Untick one to never show it. Tap <b>Change photo</b> to pick a map photo, a Google photo or your own; <b>Move photo</b> to choose which part shows.</p>';
     if (!S.fpv || S.fsActsBusy) actsBody += '<p class="pa-hint" role="status">Loading things to do…</p>';
     else if (!acts.length) actsBody += '<p class="pa-hint">' + (S.fpv.area || st.actPlace ? 'Nothing on the Avante map within ' + esc(st.nearbyKm) + ' km yet. Try a bigger distance.' : 'We don\'t know where your property is yet: type your area above.') + '</p>';
     else actsBody += acts.map(function (a, i) {
-      var photo = ap[a.name] || a.basePhoto, off = hidA.indexOf(a.name) >= 0, gt = 'act:' + i;
-      return '<div class="fs-act' + (off ? ' off' : '') + '"><div class="fs-actimg"' + (photo ? ' style="background-image:url(\'' + esc(photo) + '\')"' : '') + '>' + (photo ? '' : '<span>No photo</span>') + '</div>' +
+      var photo = ap[a.name] || a.basePhoto, off = hidA.indexOf(a.name) >= 0, gt = 'act:' + i, open = S.fsActOpen === i;
+      var body = '';
+      if (open) {
+        var mp = (a.mapPhotos || []).filter(function (u, k, l) { return u && l.indexOf(u) === k; });
+        body = '<div class="fs-actpick">' + (mp.length ? '<p class="pa-label" style="margin:8px 0 4px">Photos on the Avante map</p>' + fsThumbs(photo, 'data-act="fsActUse" data-name="' + esc(a.name) + '"', mp) : '') +
+          '<p class="pa-label" style="margin:10px 0 4px">Google photos</p>' + fsGoogleBox(gt, a.name + ' ' + (a.area || '')) +
+          '<div class="pa-actions" style="margin-top:8px"><button type="button" class="pa-btn small ghost" data-act="fsActUp" data-name="' + esc(a.name) + '">Upload my own photo</button><button type="button" class="pa-btn small ghost" data-act="fsActPick" data-i="' + i + '">Close</button></div></div>';
+      }
+      return '<div class="fs-act' + (off ? ' off' : '') + '"><div class="fs-actimg"' + (photo ? ' style="background-image:url(\'' + esc(photo) + '\')' + fsPosCss(photo) + '"' : '') + '>' + (photo ? '' : '<span>No photo</span>') + '</div>' +
         '<div class="grow"><label class="pa-check"><input type="checkbox" data-fsact="' + esc(a.name) + '"' + (off ? '' : ' checked') + '> <b>' + esc(a.name) + '</b></label><span class="pa-hint">' + esc(a.distance || '') + (a.area ? ' · ' + esc(a.area) : '') + '</span>' +
-        '<div class="pa-actions" style="margin-top:6px"><button type="button" class="pa-btn small ghost" data-act="fsGOpen" data-target="' + gt + '" data-q="' + esc(a.name + ' ' + (a.area || '')) + '">Google photo</button>' +
+        '<div class="pa-actions" style="margin-top:6px"><button type="button" class="pa-btn small' + (open ? '' : ' ghost') + '" data-act="fsActPick" data-i="' + i + '" aria-expanded="' + open + '">Change photo</button>' +
+        (photo ? '<button type="button" class="pa-btn small ghost" data-act="fsMove" data-u="' + esc(photo) + '">Move photo</button>' : '') +
         (ap[a.name] ? '<button type="button" class="pa-btn small ghost" data-act="fsActReset" data-name="' + esc(a.name) + '">' + (a.basePhoto ? 'Back to the map photo' : 'Remove my photo') + '</button>' : '') + '</div>' +
-        (S.fsG && S.fsG.target === gt ? fsGoogleBox(gt, a.name + ' ' + (a.area || '')) : '') + '</div></div>';
+        body + '</div></div>';
     }).join('');
+    actsBody += '<input type="file" id="fs-actfile" accept="image/jpeg,image/png,image/webp" style="display:none">';
     h += fsStep('acts', ++n, 'Things to do nearby', st.showActivities ? (S.fpv ? acts.filter(function (a) { return hidA.indexOf(a.name) < 0; }).length + ' within ' + esc(st.nearbyKm) + ' km · 10 shown at random' : esc(st.nearbyKm) + ' km') : 'Switched off', actsBody);
     // 7 what shows
     h += fsStep('shows', ++n, 'What shows on the page', '', '<div class="pa-form">' +
@@ -872,6 +883,13 @@
     }
     h += '</div><div class="fs-pvslot" id="fs-pvslot" aria-hidden="true"></div></div>';
     h += '<button type="button" class="fs-pvbtn" data-act="fsPvOpen">👁 Preview</button>';
+    if (S.fsMove) {
+      var mv = S.fsMove;
+      h += '<div class="fs-mv" role="dialog" aria-modal="true" aria-labelledby="fs-mv-t"><div class="fs-mvbox"><b id="fs-mv-t">Move the photo</b><p class="pa-hint" style="margin:2px 0 10px">Drag the photo to choose which part shows, or use the arrows. It changes everywhere this photo is used on your front store.</p>' +
+        '<div class="fs-mvframe" id="fs-mvframe" style="background-image:url(\'' + esc(mv.u) + '\');background-position:' + mv.x + '% ' + mv.y + '%"></div>' +
+        '<div class="pa-actions" style="margin-top:10px;justify-content:center"><button type="button" class="pa-btn small ghost" data-act="fsMvStep" data-dx="-10" data-dy="0" aria-label="Show more of the left">←</button><button type="button" class="pa-btn small ghost" data-act="fsMvStep" data-dx="0" data-dy="-10" aria-label="Show more of the top">↑</button><button type="button" class="pa-btn small ghost" data-act="fsMvStep" data-dx="0" data-dy="10" aria-label="Show more of the bottom">↓</button><button type="button" class="pa-btn small ghost" data-act="fsMvStep" data-dx="10" data-dy="0" aria-label="Show more of the right">→</button><button type="button" class="pa-btn small ghost" data-act="fsMvCentre">Centre</button></div>' +
+        '<div class="pa-actions" style="margin-top:12px;justify-content:flex-end"><button type="button" class="pa-btn ghost" data-act="fsMvCancel">Cancel</button><button type="button" class="pa-btn" data-act="fsMvDone">Done</button></div></div></div>';
+    }
     return h;
   }
   function collectFront() {
@@ -894,6 +912,7 @@
     if (S.fpv) { var shownA = all('[data-fsact]'); var hid = (F.settings.actHidden || []).filter(function (n) { return !shownA.some(function (x) { return x.dataset.fsact === n; }); }); shownA.forEach(function (x) { if (!x.checked) hid.push(x.dataset.fsact); }); b.actHidden = hid; }
     b.actPhotos = F.settings.actPhotos || {};
     b.actPlace = F.settings.actPlace || null;
+    b.photoPos = F.settings.photoPos || {};
     b.photos = F.settings.photos; // changed by the photo controls directly
     return b;
   }
@@ -916,6 +935,7 @@
     d.nearby = ord.filter(function (i) { return all[i] && hidA.indexOf(all[i].name) < 0; }).slice(0, 10).sort(function (a, b) { return a - b; })
       .map(function (i) { return Object.assign({}, all[i], { photo: ap[all[i].name] || all[i].basePhoto || '' }); });
     d.offers = st.showOffers ? (S.fpv.offers || []) : [];
+    d.photoPos = st.photoPos || {};
     return d;
   }
 
@@ -984,7 +1004,7 @@
   function fsLoadPreview(km) {
     S.fsActsBusy = true;
     return api('frontPreview', { km: km || (S.front && S.front.settings.nearbyKm) || 30, actPlace: S.front ? S.front.settings.actPlace || null : undefined }).then(function (d) {
-      S.fpv = d; S.fsActsBusy = false;
+      S.fpv = d; S.fsActsBusy = false; S.fsActOpen = null;
       // The preview shows 10 picked at random, like the real page (same pick until the list reloads).
       var ord = (d.nearby || []).map(function (a, i) { return i; }); for (var k = ord.length - 1; k > 0; k--) { var j = Math.floor(Math.random() * (k + 1)), x = ord[k]; ord[k] = ord[j]; ord[j] = x; } S.fpvOrder = ord;
       if (S.front) { S.front.snPhotos = d.snPhotos || []; S.front.snDescription = d.snDescription || ''; }
@@ -1532,6 +1552,20 @@
       if (tp) { bt.text = tp.text.replace(/[^\n]*\{review_link\}[^\n]*\n?/g, ''); bt.subject = tp.subject || ''; } else { bt.text = val('pa-bulk-text'); bt.subject = val('pa-bulk-subj'); }
       render(); var ts = document.getElementById('pa-bulk-tpl'); if (ts) ts.focus(); return;
     } if (e.target.dataset && e.target.dataset.msgrerender) { S.msgDirty = true; var id = e.target.id; render(); var el = document.getElementById(id); if (el) el.focus(); } else if (/^pa-m-\d+-/.test(e.target.id || '')) S.msgDirty = true; });
+  // "Move the photo": drag inside the frame (Jean, 2026-10-13).
+  function fsMvShow() { var fr = document.getElementById('fs-mvframe'), m = S.fsMove; if (fr && m) fr.style.backgroundPosition = Math.round(m.x) + '% ' + Math.round(m.y) + '%'; }
+  var fsDrag = null;
+  root.addEventListener('pointerdown', function (e) { if (e.target.id !== 'fs-mvframe' || !S.fsMove) return; e.preventDefault(); fsDrag = { x: e.clientX, y: e.clientY, w: e.target.clientWidth, h: e.target.clientHeight, sx: S.fsMove.x, sy: S.fsMove.y }; try { e.target.setPointerCapture(e.pointerId); } catch (er) {} });
+  root.addEventListener('pointermove', function (e) { if (!fsDrag || !S.fsMove) return; S.fsMove.x = Math.max(0, Math.min(100, fsDrag.sx - (e.clientX - fsDrag.x) / fsDrag.w * 100)); S.fsMove.y = Math.max(0, Math.min(100, fsDrag.sy - (e.clientY - fsDrag.y) / fsDrag.h * 100)); fsMvShow(); });
+  root.addEventListener('pointerup', function () { fsDrag = null; });
+  root.addEventListener('change', function (e) {
+    if (e.target.id !== 'fs-actfile') return;
+    var file = e.target.files && e.target.files[0], nm = S.fsActUpName; e.target.value = ''; if (!file || !nm) return;
+    keepFront(); S.msg = 'Uploading photo…'; S.front._fresh = true; render();
+    shrinkPhoto(file).then(function (du) { return fsAddPhoto(du, 'act'); }).then(function (url) {
+      var st3 = S.front.settings; st3.actPhotos = Object.assign({}, st3.actPhotos || {}); st3.actPhotos[nm] = url; S.msg = null; fsMarkDirty(); S.front._fresh = true; render();
+    }).catch(function (err) { S.msg = null; fail(err); });
+  });
   // Front store builder: every change shows in the preview; opening a step scrolls the preview to that part.
   root.addEventListener('input', function (e) {
     if (S.view !== 'front' || !S.front || !e.target.closest('.fs-steps') || e.target.dataset.fsgq !== undefined) return;
@@ -1755,7 +1789,7 @@
         var st2 = S.front.settings;
         if (actA) { st2.actPhotos = Object.assign({}, st2.actPhotos || {}); st2.actPhotos[actA.name] = url; }
         else st2.photos = (Array.isArray(st2.photos) ? st2.photos : keepOrder).concat(url).slice(0, 24);
-        S.fsG = null; fsMarkDirty(); S.front._fresh = true; render();
+        S.fsG = null; if (actA) S.fsActOpen = null; fsMarkDirty(); S.front._fresh = true; render();
       }).catch(function (err) { t.disabled = false; t.textContent = 'Use'; fail(err); });
     }
     if (a === 'fsUnitPhoto') {
@@ -1764,6 +1798,15 @@
     }
     if (a === 'fsActReset') { keepFront(); var ap2 = S.front.settings.actPhotos = Object.assign({}, S.front.settings.actPhotos || {}); delete ap2[t.dataset.name]; fsMarkDirty(); S.front._fresh = true; render(); return; }
     if (a === 'fsFill') return fsFill(t);
+    if (a === 'fsActPick') { keepFront(); var ai = +t.dataset.i; S.fsActOpen = S.fsActOpen === ai ? null : ai; S.fsG = null; S.front._fresh = true; render();
+      if (S.fsActOpen === ai) { var aa = (S.fpv.nearby || [])[ai]; if (aa) fsGoogle('act:' + ai, aa.name + ' ' + (aa.area || '')); } return; }
+    if (a === 'fsActUse') { keepFront(); var apu = S.front.settings.actPhotos = Object.assign({}, S.front.settings.actPhotos || {}); apu[t.dataset.name] = t.dataset.u; fsMarkDirty(); S.front._fresh = true; render(); return; }
+    if (a === 'fsActUp') { S.fsActUpName = t.dataset.name; var af = document.getElementById('fs-actfile'); if (af) af.click(); return; }
+    if (a === 'fsMove') { keepFront(); var cur = ((S.front.settings.photoPos || {})[t.dataset.u] || '50% 50%').split(' '); S.fsMove = { u: t.dataset.u, x: parseInt(cur[0], 10), y: parseInt(cur[1], 10) }; S.front._fresh = true; render(); var fr = document.getElementById('fs-mvframe'); if (fr) fr.focus(); return; }
+    if (a === 'fsMvStep') { var m1 = S.fsMove; m1.x = Math.max(0, Math.min(100, m1.x + +t.dataset.dx)); m1.y = Math.max(0, Math.min(100, m1.y + +t.dataset.dy)); fsMvShow(); return; }
+    if (a === 'fsMvCentre') { S.fsMove.x = 50; S.fsMove.y = 50; fsMvShow(); return; }
+    if (a === 'fsMvCancel') { keepFront(); S.fsMove = null; S.front._fresh = true; return render(); }
+    if (a === 'fsMvDone') { keepFront(); var m2 = S.fsMove, pp = S.front.settings.photoPos = Object.assign({}, S.front.settings.photoPos || {}); if (m2.x === 50 && m2.y === 50) delete pp[m2.u]; else pp[m2.u] = Math.round(m2.x) + '% ' + Math.round(m2.y) + '%'; S.fsMove = null; fsMarkDirty(); S.front._fresh = true; return render(); }
     if (a === 'fsLink') {
       var li = document.getElementById('fs-plink'), links = String(li ? li.value : '').split(/\s+/).filter(function (x) { return /^https:\/\/\S+$/.test(x); });
       if (!links.length) { S.err = 'Paste a photo link that starts with https://'; return render(); }
