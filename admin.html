@@ -539,6 +539,24 @@
     <div class="modal-card" style="max-width:460px; max-height:92vh; overflow:auto;">
       <h2>Post to Facebook</h2>
       <p class="modal-sub">This is exactly what goes on the Avante Travel Page. It goes public straight away.</p>
+      <!-- Static or carousel (Jean, 2026-10-13). The chosen one has a ✓ and a thick border. -->
+      <style>
+        .fbfmt{display:flex;gap:8px;margin:4px 0 10px}
+        .fbfmt button{flex:1;padding:10px 8px;border:1.5px solid var(--line);border-radius:10px;background:#fff;font:600 14px inherit;font-family:inherit;cursor:pointer;color:var(--ink)}
+        .fbfmt button[aria-checked="true"]{border:3px solid var(--navy,#0e2f44);font-weight:800}
+        .fbfmt button[aria-checked="true"]::before{content:"✓ "}
+        .fbfmt button:disabled{opacity:.45;cursor:not-allowed}
+        #fbPostCards{display:flex;gap:8px;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:6px}
+        #fbPostCards .c{flex:0 0 70%;scroll-snap-align:start;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#fff}
+        #fbPostCards img{display:block;width:100%;aspect-ratio:1/1;object-fit:cover}
+        #fbPostCards .t{padding:6px 8px;font-size:12px;line-height:1.35}
+      </style>
+      <div class="fbfmt" role="radiogroup" aria-label="What to post">
+        <button type="button" role="radio" data-fbfmt="static" aria-checked="true">Static — one picture</button>
+        <button type="button" role="radio" data-fbfmt="carousel" aria-checked="false">Carousel — swipe cards</button>
+      </div>
+      <p id="fbFmtNote" class="modal-sub" style="display:none; margin:0 0 8px;"></p>
+      <div id="fbPostCards" style="display:none;"></div>
       <img id="fbPostImg" alt="The Facebook picture" style="display:block; width:auto; max-width:100%; max-height:50vh; margin:0 auto; border-radius:8px; border:1px solid var(--line);">
       <div id="fbPostText" style="white-space:pre-line; font-size:13px; line-height:1.5; margin-top:12px; color:var(--ink); max-height:18vh; overflow:auto; border-top:1px solid var(--line); padding-top:8px;"></div>
       <div class="modal-actions">
@@ -2426,19 +2444,36 @@
     // "Post to Facebook" under each Default Hook (Jean, 2026-10-09): shows
     // exactly what will be posted, asks, then posts the hook's caption and
     // landing page link to the Avante Travel Page via /api/fb-post.
-    // Shows the picture and wording; resolves true on Post now.
     function fbPreview(p){
+      // Static or carousel (Jean, 2026-10-13); resolves "static", "carousel" or null.
       return new Promise(function(done){
-        var ov = document.getElementById('fbPostOverlay');
-        document.getElementById('fbPostImg').src = p.image || '';
-        document.getElementById('fbPostImg').style.display = p.image ? 'block' : 'none';
-        document.getElementById('fbPostText').textContent = p.message || '';
-        ov.classList.add('show');
+        var ov = document.getElementById('fbPostOverlay'), img = document.getElementById('fbPostImg'), txt = document.getElementById('fbPostText');
+        var cardsEl = document.getElementById('fbPostCards'), note = document.getElementById('fbFmtNote');
         var go = document.getElementById('fbPostGo'), cancel = document.getElementById('fbPostCancel');
-        function close(v){ ov.classList.remove('show'); go.onclick = cancel.onclick = ov.onclick = null; done(v); }
-        go.onclick = function(){ close(true); };
-        cancel.onclick = function(){ close(false); };
-        ov.onclick = function(e){ if(e.target === ov) close(false); };
+        var btns = ov.querySelectorAll('[data-fbfmt]'), car = p.carousel, fmt = p.image ? 'static' : car ? 'carousel' : '';
+        function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+        function show(f){
+          fmt = f;
+          btns.forEach(function(b){ var k = b.getAttribute('data-fbfmt'); b.setAttribute('aria-checked', k === f ? 'true' : 'false'); b.disabled = k === 'static' ? !p.image : !car; });
+          img.src = f === 'static' ? (p.image || '') : ''; img.style.display = f === 'static' && p.image ? 'block' : 'none';
+          cardsEl.innerHTML = f === 'carousel' && car ? car.cards.map(function(c){ return '<div class="c"><img src="' + esc(c.image) + '" alt=""><div class="t"><b>' + esc(c.title) + '</b><br>' + esc(c.desc) + '</div></div>'; }).join('') : '';
+          cardsEl.style.display = f === 'carousel' && car ? 'flex' : 'none';
+          txt.textContent = f === 'carousel' && car ? (car.message || p.message || '') : (p.message || '');
+          var n = [];
+          if (!p.image) n.push('Static: ' + (p.staticMissing || 'no Facebook picture yet.'));
+          if (!car) n.push('Carousel: no carousel yet. In the hook builder, check the Carousel ad step, then publish the landing page again.');
+          if (f === 'carousel' && car) n.push(car.cards.length + ' cards — swipe sideways. Every card links to the landing page.' + (car.more ? ' Facebook takes 5 cards in a Page post, so ' + car.more + ' of your cards are left out.' : ''));
+          if (!f) n = ['This hook has nothing to post yet. In the hook builder, publish its landing page again.'];
+          note.textContent = n.join(' '); note.style.display = n.length ? 'block' : 'none';
+          go.disabled = !f;
+        }
+        btns.forEach(function(b){ b.onclick = function(){ show(b.getAttribute('data-fbfmt')); }; });
+        show(fmt);
+        ov.classList.add('show');
+        function close(v){ ov.classList.remove('show'); go.onclick = cancel.onclick = ov.onclick = null; go.disabled = false; done(v); }
+        go.onclick = function(){ close(fmt || null); };
+        cancel.onclick = function(){ close(null); };
+        ov.onclick = function(e){ if(e.target === ov) close(null); };
       });
     }
     document.addEventListener('click', function(ev){
@@ -2455,15 +2490,15 @@
       btn.disabled = true; say('Getting the post ready…');
       call({ op: 'preview', hook: n }).then(function(p){
         if(!p.ok){ if(p.relogin) return goToLogin(); throw new Error(p.error || 'Could not prepare this hook.'); }
-        return fbPreview(p).then(function(yes){
-          if(!yes){ say('Not posted.'); return null; }
+        return fbPreview(p).then(function(fmt){
+          if(!fmt){ say('Not posted.'); return null; }
           say('Posting to Facebook…');
-          return call({ op: 'post', hook: n });
+          return call({ op: 'post', hook: n, format: fmt });
         });
       }).then(function(r){
         if(!r) return;
         if(!r.ok) throw new Error(r.error || 'Facebook did not accept the post.');
-        st.innerHTML = 'Posted ✓ <a href="' + r.url + '" target="_blank" rel="noopener">See it on Facebook</a>';
+        st.innerHTML = 'Posted ✓ <a href="' + r.url + '" target="_blank" rel="noopener">See it on Facebook</a>' + (r.note ? '<br>' + r.note.replace(/[<>&]/g, '') : '');
         st.className = 'status show success';
       }).catch(function(e){ say(e.message || 'Something went wrong.'); })
         .then(function(){ btn.disabled = false; });

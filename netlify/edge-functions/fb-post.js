@@ -97,13 +97,23 @@ function buildPost(h) {
 // taller than 4:5, so Facebook's phone feed cut off its top and bottom.
 // { image, missing: true when the landing page has no Facebook picture yet }
 async function flyerImage(link) {
-  if (!/^https:\/\/go\.avantetravel\.co\.za\/l\//i.test(link || "")) return { image: "", missing: false };
+  if (!/^https:\/\/go\.avantetravel\.co\.za\/l\//i.test(link || "")) return { image: "", missing: false, carousel: null };
   try {
     const html = await (await fetch(link)).text();
     const m = html.match(/<meta name="avante:fb-image" content="([^"]+)"/i);
-    return m ? { image: m[1].replace(/&amp;/g, "&"), missing: false } : { image: "", missing: true };
-  } catch (e) { return { image: "", missing: true }; }
+    // The carousel ad's cards (Jean, 2026-10-13), if the hook has one.
+    let carousel = null;
+    const cm = html.match(/<meta name="avante:carousel" content="([^"]+)"/i);
+    if (cm) { try { const c = JSON.parse(unesc(cm[1])); if (c && Array.isArray(c.cards) && c.cards.length >= 2) carousel = c; } catch (e) {} }
+    return m ? { image: unesc(m[1]), missing: false, carousel } : { image: "", missing: true, carousel };
+  } catch (e) { return { image: "", missing: true, carousel: null }; }
 }
+const unesc = (s) => String(s).replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+// Facebook takes 2 to 5 cards in a Page post: the first 4 and the last
+// (the Book now card) when the hook has more.
+const FB_CARDS = 5;
+function postCards(c) { const all = c.cards || []; return all.length <= FB_CARDS ? all : all.slice(0, FB_CARDS - 1).concat(all[all.length - 1]); }
+const NO_CAROUSEL = "This hook has no carousel yet. In the hook builder, open this hook, check the Carousel ad step, then publish its landing page again.";
 
 const NO_FB_PICTURE = "This hook's Facebook-size picture isn't ready yet. In the hook builder, open this hook and publish its landing page again, then try again.";
 
@@ -136,11 +146,19 @@ export default async (request) => {
   const post = buildPost(h);
   if (!post.message && !post.link) return json({ ok: false, error: "This hook has no caption or link yet." }, 400);
   const pic = await flyerImage(post.link);
-  if (pic.missing) return json({ ok: false, error: NO_FB_PICTURE }, 409);
-  post.image = pic.image;
+  const format = body.format === "carousel" ? "carousel" : "static";
+  // The preview shows both choices, so a missing one is only refused when posting.
+  if (format === "static" && pic.missing && op !== "preview") return json({ ok: false, error: NO_FB_PICTURE }, 409);
+  post.image = pic.image; post.staticMissing = pic.missing ? NO_FB_PICTURE : "";
+  post.carousel = pic.carousel ? { text: pic.carousel.text || "", cards: postCards(pic.carousel), more: Math.max(0, pic.carousel.cards.length - FB_CARDS),
+    // The carousel's own text (from the hook builder), with the landing page link under it.
+    message: pic.carousel.text ? [pic.carousel.text.trim(), post.link ? "👉 " + post.link : ""].filter(Boolean).join("\n\n") : post.message } : null;
   if (op === "preview") return json({ ok: true, configured, ...post });
+  if (format === "carousel" && !post.carousel) return json({ ok: false, error: NO_CAROUSEL }, 409);
   if (op !== "post") return json({ ok: false, error: "Unknown op." }, 400);
   if (!configured) return json({ ok: false, error: "Facebook isn't connected yet (FB_PAGE_ID / FB_USER_TOKEN missing in Netlify)." }, 503);
+
+  if (format === "carousel") return postCarousel(pageId, post);
 
   // A photo post with the full flyer (Jean, 2026-10-09: the link card showed
   // only a thin slice of it). No flyer → a plain link post.
@@ -174,5 +192,45 @@ export default async (request) => {
   const [pid, sid] = postId.split("_");
   return json({ ok: true, postId, url: sid ? "https://www.facebook.com/" + pid + "/posts/" + sid : "https://www.facebook.com/" + postId });
 };
+
+// Carousel (Jean, 2026-10-13): swipe cards, each with its picture, headline,
+// description and the landing page link. If Facebook won't take the cards
+// (e.g. before the domain is verified), the same pictures go up as one photo
+// post (a gallery), with the link in the caption.
+async function postCarousel(pageId, post) {
+  const cards = post.carousel.cards, link = post.link;
+  const graph = async (edge, form) => { const r = await fetch(GRAPH + edge, { method: "POST", body: form }); return { r, d: await r.json().catch(() => ({})) }; };
+  const withToken = async (fn) => {
+    try { let out = await fn(await pageToken(pageId, false)); if (out.d.error && out.d.error.code === 190 && !Deno.env.get("FB_PAGE_TOKEN")) out = await fn(await pageToken(pageId, true)); return out; }
+    catch (e) { return { r: { ok: false, status: 502 }, d: { error: { message: e.message || "Couldn't reach Facebook." } } }; }
+  };
+  const done = (d, format, note) => {
+    const postId = String(d.post_id || d.id), [pid, sid] = postId.split("_");
+    return json({ ok: true, format, note: note || "", postId, url: sid ? "https://www.facebook.com/" + pid + "/posts/" + sid : "https://www.facebook.com/" + postId });
+  };
+  // 1. Swipe cards.
+  let { r, d } = await withToken((token) => {
+    const form = new URLSearchParams({ access_token: token, message: post.carousel.message || "", link, multi_share_optimized: "false", multi_share_end_card: "false",
+      child_attachments: JSON.stringify(cards.map((c) => ({ link, name: c.title || "", description: c.desc || "", picture: c.image }))) });
+    return graph("/" + encodeURIComponent(pageId) + "/feed", form);
+  });
+  if (r.ok && d.id) return done(d, "carousel");
+  const why = (d.error && d.error.message) || "";
+  if (d.error && d.error.code === 190) return json({ ok: false, error: why, expiredToken: true }, 502);
+  // 2. One photo post with every card picture.
+  const ids = [];
+  for (const c of cards) {
+    const up = await withToken((token) => graph("/" + encodeURIComponent(pageId) + "/photos", new URLSearchParams({ access_token: token, url: c.image, published: "false" })));
+    if (up.d && up.d.id) ids.push(up.d.id);
+  }
+  if (ids.length < 2) return json({ ok: false, error: "Facebook didn't take the carousel" + (why ? ": " + why : ".") }, 502);
+  ({ r, d } = await withToken((token) => {
+    const form = new URLSearchParams({ access_token: token, message: post.carousel.message || "" });
+    ids.forEach((id, i) => form.set(`attached_media[${i}]`, JSON.stringify({ media_fbid: id })));
+    return graph("/" + encodeURIComponent(pageId) + "/feed", form);
+  }));
+  if (!r.ok || !d.id) return json({ ok: false, error: (d.error && d.error.message) || "Facebook said no (" + r.status + ")." }, 502);
+  return done(d, "photos", "Facebook didn't take the swipe cards" + (why ? " (" + why + ")" : "") + ", so the card pictures went up as one photo post with the link in the caption.");
+}
 
 export const config = { path: "/api/fb-post" };

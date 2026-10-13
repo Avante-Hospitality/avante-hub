@@ -72,6 +72,11 @@ function cleanContent(c) {
     // The hook builder's own Booking link (Jean, 2026-10-08) — what Book now opens.
     booking: /^https:\/\/[^\s"<>]+$/i.test(String(c.booking || "")) ? str(c.booking, 600) : "",
     whatsapp: str(String(c.whatsapp || "").replace(/[^\d]/g, ""), 16), waText: str(c.waText, 300),
+    // The hook builder's carousel ad (Jean, 2026-10-13): card pictures with the
+    // headline and description under each, for Post to Facebook → Carousel.
+    carousel: c.carousel && Array.isArray(c.carousel.cards) && c.carousel.cards.filter((x) => x && isKey(x.img)).length >= 2
+      ? { text: str(c.carousel.text, 2000), cards: c.carousel.cards.filter((x) => x && isKey(x.img)).slice(0, 10).map((x) => ({ img: x.img, title: str(x.title, 100), desc: str(x.desc, 150) })) }
+      : null,
     pages,
   };
 }
