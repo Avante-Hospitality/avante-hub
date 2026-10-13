@@ -13,13 +13,16 @@
 //      { action:"placeBacklog" }                 place properties that are new or whose
 //                                                pin moved, within a time budget
 //      { action:"placeListing", listingId, lat, lng }  place an onboarded listing
-//                                                (stored as "listing:<listingId>")
+//                                                (stored as "listing:<listingId>", or under
+//                                                its ResortID when it is already on
+//                                                Stock Network) and put the tree's place
+//                                                names on the listing (the tree is the master)
 //
 // Only this endpoint, the nightly SN sync and map-api.js's activity save write
 // the "tree-places" store. No property, activity, zone or affiliate record is
 // changed here.
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
-import { googleLookup, placeCoordinate, placeResortBacklog, keyOf, PLACES_STORE, ACTIVITY_KEY, PROPERTY_KEY, TREE_RULES } from "./lib/tree.js";
+import { googleLookup, placeCoordinate, placeResortBacklog, keyOf, PLACES_STORE, ACTIVITY_KEY, PROPERTY_KEY, TREE_RULES, snFieldsFromPlace, placeText } from "./lib/tree.js";
 
 const MAX_POINTS = 25;
 const CONCURRENCY = 5;
@@ -182,9 +185,20 @@ export default async (request) => {
     if (!id || !isFinite(lat) || !isFinite(lng) || (lat === 0 && lng === 0)) return json({ error: "This listing has no usable latitude and longitude." }, 400);
     const r = await placeCoordinate(lat, lng, apiKey);
     if (!r.ok) return json({ error: "Google could not place this pin (" + r.reason + ")." }, 502);
+    const listings = getStore({ name: "property-listings", consistency: "strong" });
+    const rec = await listings.get(id, { type: "json" }).catch(() => null);
     const map = (await places.get(PROPERTY_KEY, { type: "json" })) || {};
-    map["listing:" + id] = r.place;
+    map[rec && rec.resortId ? rec.resortId : "listing:" + id] = r.place;
     await places.setJSON(PROPERTY_KEY, map);
+    if (rec) {
+      const sn = snFieldsFromPlace(r.place);
+      Object.assign(rec, { country: sn.country, stateProvince: sn.state, region: (r.place.r || []).filter((x) => x && !/^\(/.test(x)).join(" / "),
+        city: sn.city, suburb: sn.suburb, district: sn.district, area: sn.area, treePlace: r.place, treePlaceText: placeText(r.place),
+        coordsVerified: "Y", coordsVerifiedPlace: placeText(r.place), coordsVerifiedAt: new Date().toISOString(), dateUpdated: new Date().toISOString() });
+      delete rec.needsTreePlace;
+      rec.history = (Array.isArray(rec.history) ? rec.history : []).concat([{ at: new Date().toISOString(), by: "admin", action: "Placed in the location tree: " + placeText(r.place) }]).slice(-200);
+      await listings.setJSON(id, rec);
+    }
     return json({ ok: true, place: r.place });
   }
 

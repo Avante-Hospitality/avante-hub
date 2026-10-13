@@ -7075,9 +7075,10 @@
         line.textContent = 'Loading\u2026';
         fetch('/api/tree-lookup?kind=properties', { cache: 'no-store' }).then(function(r){ return r.json(); }).then(function(d){
           if(currentListingId !== listingId) return;
-          var pl = d && d.properties && d.properties['listing:' + listingId];
+          var pl = d && d.properties && (d.properties[l.resortId ? l.resortId : 'listing:' + listingId] || (l.resortId && d.properties[String(l.resortId).toLowerCase()]));
           var here = lat.toFixed(6) + ',' + lng.toFixed(6);
           if(pl && pl.k === here) line.textContent = treePlaceText(pl);
+          else if(l.needsTreePlace === 'Y') line.textContent = 'Not placed in the location tree yet: its place names are empty until you press Look up again.';
           else { line.textContent = pl ? 'The pin has moved since it was placed \u2014 press Look up again.' : 'Not looked up yet \u2014 press Look up again.'; }
         }).catch(function(){ line.textContent = 'Could not read the location tree.'; });
         btn.addEventListener('click', function(){
@@ -7089,6 +7090,7 @@
               btn.disabled = false;
               if(currentListingId !== listingId) return;
               line.textContent = res.body && res.body.ok ? treePlaceText(res.body.place) : ((res.body && res.body.error) || 'Could not look it up.');
+              if(res.body && res.body.ok && l.needsTreePlace === 'Y') openPropertyDetailsModal(listingId);   // shows the place names it now has
             }).catch(function(){ btn.disabled = false; line.textContent = 'Lost the connection \u2014 try again.'; });
         });
       }

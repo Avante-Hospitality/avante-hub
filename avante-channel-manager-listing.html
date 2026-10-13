@@ -9,10 +9,11 @@
   ============================================================================
   BEFORE THIS GOES LIVE — Jean:
 
-  1. FORMSPREE ENDPOINT (search "FORMSPREE_ENDPOINT" below):
-     Create a Formspree form registered to admin@avantehospitality.co.za, add
-     info@avantehospitality.co.za as a verified CC recipient, then paste the
-     real endpoint URL over the placeholder.
+  1. (Done 2026-10-13) The form now sends to the hub (/api/property-onboarding,
+     action "listingRequest") instead of Formspree. A NightsBridge property's
+     BBID is looked up in the hub's Stock Network list (External Resort Code);
+     when found, its listing is built from Stock Network. Every request shows
+     in Admin > Property Listings and is emailed to the address set there.
 
   2. TERMS & CONDITIONS TEXT (search "PLACEHOLDER T&C TEXT" below):
      Replace the draft placeholder in the modal with the final wording.
@@ -143,6 +144,7 @@
         <div class="p-6 rounded-xl text-center space-y-2" style="background:#eef7f0; border:1px solid #b7ddc0; color:#1e4b2b">
             <h3 class="font-bold text-xl font-display">Thank you!</h3>
             <p class="text-sm">Your details have been sent to our office. We'll upload your property to Avante shortly.</p>
+            <p id="found-note" class="text-sm hidden" style="margin-top:8px; font-weight:600"></p>
         </div>
         <div class="p-6 rounded-xl text-center space-y-3" style="background:#EEF0FC; border:1px solid #c9cff5">
             <h4 class="font-bold text-lg font-display" style="color:var(--navy)">Want to be a Featured Resort?</h4>
@@ -179,7 +181,6 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    const FORMSPREE_ENDPOINT = 'https://formspree.io/f/FORMSPREE_ENDPOINT';
 
     const form = document.getElementById('listing-form');
     const submitBtn = document.getElementById('submit-btn');
@@ -231,45 +232,47 @@ document.addEventListener('DOMContentLoaded', function () {
         event.preventDefault();
         errorMessage.classList.add('hidden');
 
-        if (FORMSPREE_ENDPOINT.indexOf('FORMSPREE_ENDPOINT') !== -1) {
-            errorMessage.textContent = 'Form is not fully set up yet — the Formspree endpoint still needs to be added by Avante Hospitality.';
-            errorMessage.classList.remove('hidden');
-            return;
-        }
-
         const propertyName = document.getElementById('property-name').value;
         const channelManager = document.querySelector('.channel-manager-radio:checked')?.value || '';
-        const reference = channelManager === 'NightsBridge' ? bbidInput.value : (channelManager === 'eRes/NebulaCRS' ? eresInput.value : 'N/A');
-
         const payload = {
-            property_name: propertyName,
-            contact_person: document.getElementById('contact-person').value,
+            action: 'listingRequest',
+            propertyName: propertyName,
+            contactPerson: document.getElementById('contact-person').value,
             phone: document.getElementById('phone').value,
             email: document.getElementById('email').value,
-            channel_manager: channelManager,
+            channelManager: channelManager,
             bbid: channelManager === 'NightsBridge' ? bbidInput.value : '',
-            eres_reference: channelManager === 'eRes/NebulaCRS' ? eresInput.value : '',
-            accept_terms: document.getElementById('accept-terms').checked,
-            _subject: `New Listing Request — ${propertyName} (${channelManager} — ${reference})`,
-            _cc: 'info@avantehospitality.co.za',
-            _replyto: document.getElementById('email').value
+            eresRef: channelManager === 'eRes/NebulaCRS' ? eresInput.value : '',
+            acceptTerms: document.getElementById('accept-terms').checked
         };
 
         submitBtn.disabled = true;
         submitBtn.textContent = 'Submitting…';
 
         try {
-            const response = await fetch(FORMSPREE_ENDPOINT, {
+            const response = await fetch('/api/property-onboarding', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
-            if (response.ok) {
+            const data = await response.json().catch(() => ({}));
+            if (response.ok && data.ok) {
+                const found = document.getElementById('found-note');
+                if (data.found && found) {
+                    found.textContent = data.already
+                        ? 'We found ' + data.name + ' on Stock Network, and Avante already has its listing.'
+                        : 'We found ' + data.name + ' on Stock Network and filled in your listing from it. Avante will check it and email you a link to complete the last few details.';
+                    found.classList.remove('hidden');
+                }
                 form.style.display = 'none';
                 successMessage.classList.remove('hidden');
                 setTimeout(() => successMessage.classList.remove('opacity-0'), 10);
             } else {
-                throw new Error('Submission failed');
+                errorMessage.textContent = data.error || 'Something went wrong sending your submission. Please try again or email info@avantehospitality.co.za directly.';
+                errorMessage.classList.remove('hidden');
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Submit';
+                return;
             }
         } catch (err) {
             errorMessage.textContent = 'Something went wrong sending your submission. Please try again or email info@avantehospitality.co.za directly.';

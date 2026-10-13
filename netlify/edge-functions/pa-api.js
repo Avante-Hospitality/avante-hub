@@ -66,6 +66,11 @@ export default async (request) => {
     const pre = preSite ? core.prefetch(preSite) : null;
     const prop = await core.auth(body.token, { repairLink: a === "status" });
     const authMs = Date.now() - t0;
+    // A Channel Property Affiliate never gets what its channel manager
+    // (NightsBridge etc.) already does (Jean, 2026-10-13; see pa-core.js syncChannelFlag).
+    const CHANNEL_BLOCKED = ["book", "markPaid", "channels", "channelHelp", "channelEvents", "addChannelEvent", "unitNotice", "syncNow",
+      "guests", "messages", "saveMessages", "prepareMessage", "markMessage", "emailNow", "inHouse", "emailInHouse", "checkIn", "saveContact"];
+    if (prop.channel && CHANNEL_BLOCKED.indexOf(a) > -1) return json({ ok: false, error: "Your channel manager (e.g. NightsBridge) already does this, so it isn't part of the hub for channel properties." }, 403);
     // Activities the property sells to guests, with the supplier's reference numbers.
     if (a.startsWith("act")) {
       const acts = createActivities({

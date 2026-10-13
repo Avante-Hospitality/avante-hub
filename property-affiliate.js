@@ -107,6 +107,13 @@
   // ---------- render ----------
   // Slim header + one sticky tab bar. Calendar is the home view (the date
   // search with the unit calendar right under it).
+  // Channel Property Affiliate (Jean, 2026-10-13): on NightsBridge or another
+  // channel manager, so it gets only what NightsBridge doesn't give it:
+  // Bookings (from the hub only), Activities, Front store and Reviews.
+  function isCh() { return !!(S.prop && S.prop.channel); }
+  var CH_TABS = ['book', 'acts', 'front', 'rev'];
+  function tabsFor() { return isCh() ? TABS.filter(function (v) { return CH_TABS.indexOf(v[0]) > -1; }) : TABS; }
+  function homeView() { return isCh() ? 'book' : 'avail'; }
   var TABS = [['avail', 'Calendar'], ['book', 'Bookings'], ['guests', 'Guests'], ['acts', 'Activities'], ['msgs', 'Communication'], ['front', 'Front store'], ['chan', 'Channels'], ['rev', 'Reviews']];
   function render() {
     if (S.view === 'msgs') collectMsgEdit(); // keep what was typed in the scheduled messages
@@ -115,11 +122,13 @@
     var connected = !!(S.token && S.prop);
     var h = '<div class="pa">';
     // "How to" opens this screen's part of the property affiliate guide (how-to-property.html).
-    var howTo = !connected ? 'how-to-property.html#connect' : S.view === 'onb' ? 'how-to.html#property' : 'how-to-property.html#' + ({ avail: 'avail', book: 'book', guests: 'guests', acts: 'acts', msgs: 'msgs', front: 'frontstore', chan: 'chan', rev: 'rev' }[S.view] || 'tabs');
-    h += '<header class="pa-top"><span class="pa-kicker">Property Affiliate</span>' + (connected ? '<b class="pa-propname">' + esc(S.prop.resortName || 'Your property') + '</b><span class="pa-hint pa-top-meta">' + S.prop.units.length + ' units · SN site ' + esc(S.prop.site) + '</span>' : '') +
+    var howTo = !connected ? 'how-to-property.html#connect' : S.view === 'onb' ? 'how-to.html#property' : isCh() ? 'how-to-property.html#channel' : 'how-to-property.html#' + ({ avail: 'avail', book: 'book', guests: 'guests', acts: 'acts', msgs: 'msgs', front: 'frontstore', chan: 'chan', rev: 'rev' }[S.view] || 'tabs');
+    if (connected && isCh() && CH_TABS.indexOf(S.view) === -1 && S.view !== 'onb') S.view = 'book';
+    h += '<header class="pa-top"><span class="pa-kicker">' + (connected && isCh() ? 'Channel Property' : 'Property Affiliate') + '</span>' + (connected ? '<b class="pa-propname">' + esc(S.prop.resortName || 'Your property') + '</b><span class="pa-hint pa-top-meta">' + S.prop.units.length + ' units · SN site ' + esc(S.prop.site) +
+      (isCh() ? ' · Avante commission ' + esc(S.prop.commissionPct) + '% + VAT' : '') + '</span>' : '') +
       '<a class="pa-howto" href="' + howTo + '" target="_blank" rel="noopener" aria-label="How to use this screen (opens the guide in a new tab)">❓ How to</a></header>';
     var inMore = S.view === 'onb';
-    h += '<nav class="pa-tabbar" aria-label="Property Affiliate sections"><div class="pa-tabscroll">' + TABS.map(function (v) {
+    h += '<nav class="pa-tabbar" aria-label="Property Affiliate sections"><div class="pa-tabscroll">' + tabsFor().map(function (v) {
       var badge = v[0] === 'msgs' && S.msgsDue ? '<span class="pa-badge" aria-label="' + S.msgsDue + ' to send">' + S.msgsDue + '</span>' : '';
       return '<button type="button" data-act="view" data-v="' + v[0] + '"' + (S.view === v[0] ? ' aria-current="page"' : '') + '>' + v[1] + badge + '</button>';
     }).join('') + '</div>' +
@@ -478,7 +487,15 @@
   }
   function viewBookings() {
     var h = propHeader();
-    h += '<section class="pa-card"><div class="pa-row" style="justify-content:space-between;align-items:center"><p class="pa-h2">Bookings made or synced by the hub</p><div class="pa-field" style="flex:0 1 280px"><label class="pa-label" for="pa-bq">Search</label><input id="pa-bq" type="search" value="' + esc(S.findQ) + '" placeholder="Reference, guest, unit or channel"></div></div>';
+    if (isCh()) {
+      var cs = S.prop.settings || {};
+      h += '<section class="pa-card" aria-label="How it works"><p class="pa-h2">Bookings from the hub</p>' +
+        '<p class="pa-hint">This list shows only bookings that came through Avante: your front store, and your hook and booking links. They reach your NightsBridge (or other channel manager) through Stock Network, marked <b>Avante Hub booking</b>. Guests pay on the Stock Network payment page. Your rates, availability, other bookings and guest messages stay in your channel manager.</p>' +
+        '<div class="pa-form" style="margin-top:10px"><div class="pa-field"><label class="pa-label" for="ch-email">Email for new booking notices</label><input id="ch-email" type="email" value="' + esc(cs.email || '') + '"></div>' +
+        '<div class="pa-field"><label class="pa-label" for="ch-phone">Phone</label><input id="ch-phone" type="tel" value="' + esc(cs.phone || '') + '"></div></div>' +
+        '<div class="pa-row" style="margin-top:8px"><button type="button" class="pa-btn small" data-act="chSaveContact">Save</button></div></section>';
+    }
+    h += '<section class="pa-card"><div class="pa-row" style="justify-content:space-between;align-items:center"><p class="pa-h2">' + (isCh() ? 'Your hub bookings' : 'Bookings made or synced by the hub') + '</p><div class="pa-field" style="flex:0 1 280px"><label class="pa-label" for="pa-bq">Search</label><input id="pa-bq" type="search" value="' + esc(S.findQ) + '" placeholder="Reference, guest, unit or channel"></div></div>';
     if (!S.bookings) return h + '<p class="pa-hint">Loading…</p></section>';
     var units = function (b) { return b.items.map(function (i) { return (i.cancelled ? '<s>' : '') + esc(i.unit) + ' · ' + short(i.start) + ' – ' + short(i.end) + (i.cancelled ? '</s>' : ''); }).join('<br>'); };
     if (!S.bookings.length) h += '<p class="pa-hint" style="margin-top:12px">No bookings yet.</p>';
@@ -766,7 +783,7 @@
       '<p class="pa-hint">Empty = your property name. Short and specific works best: what guests get, where.</p>' +
       '<div class="pa-field" style="margin-top:10px"><label class="pa-label" for="fs-welcome">Line under the headline</label><input id="fs-welcome" type="text" maxlength="160" value="' + esc(st.welcome) + '" placeholder="e.g. Self-catering cottages 10 minutes from the dam"></div>' +
       '<div class="pa-field" style="margin-top:10px"><label class="pa-label" for="fs-pricefrom">Price badge</label><input id="fs-pricefrom" type="text" maxlength="40" value="' + esc(st.priceFrom) + '" placeholder="' + esc(auto || 'Switch on prices in step 7') + '"></div>' +
-      '<p class="pa-hint">Empty = your lowest price a night from Reservation settings' + (auto ? ' (' + esc(auto) + ')' : '') + '. Only shows when prices are switched on.</p>' +
+      '<p class="pa-hint">Empty = your lowest price a night from ' + (isCh() ? 'Stock Network' : 'Reservation settings') + (auto ? ' (' + esc(auto) + ')' : '') + '. Only shows when prices are switched on.</p>' +
       '<fieldset class="pa-fieldset" style="margin-top:10px"><legend class="pa-label">Google rating badge (optional)</legend><div class="pa-form">' +
       '<div class="pa-field"><label class="pa-label" for="fs-rv">Stars (0 to 5)</label><input id="fs-rv" type="text" inputmode="decimal" maxlength="3" value="' + esc(st.ratingValue) + '" placeholder="e.g. 4.6"></div>' +
       '<div class="pa-field"><label class="pa-label" for="fs-rc">Number of reviews</label><input id="fs-rc" type="text" inputmode="numeric" maxlength="12" value="' + esc(st.ratingCount) + '" placeholder="e.g. 212"></div></div>' +
@@ -794,10 +811,10 @@
     // 5 units
     var ui = st.unitInfo || {}, hidU = st.hiddenUnits || [];
     h += fsStep('units', ++n, 'Your units', (F.units.length - hidU.length) + ' of ' + F.units.length + ' showing',
-      '<p class="pa-hint" style="margin:0">Each unit gets a card with a photo, sleeps, beds and its price a night (from Reservation settings).</p>' + F.units.map(function (u, ix) {
+      '<p class="pa-hint" style="margin:0">' + (isCh() ? 'Each unit gets a card with a photo, sleeps and beds. Guests see the Stock Network price when they choose their dates.' : 'Each unit gets a card with a photo, sleeps, beds and its price a night (from Reservation settings).') + '</p>' + F.units.map(function (u, ix) {
         var x = ui[u.name] || {}, off = hidU.indexOf(u.name) >= 0;
         return '<div class="fs-unit' + (off ? ' off' : '') + '"><label class="pa-check"><input type="checkbox" data-fsunit="' + esc(u.name) + '"' + (off ? '' : ' checked') + '> <b>' + esc(u.name) + '</b>' + (u.size ? ' <span class="pa-hint">· ' + esc(u.size) + '</span>' : '') + '</label>' +
-          '<p class="pa-hint" style="margin:2px 0 6px">' + (u.price > 0 ? 'Price: ' + money(u.price) + ' a night' + (st.showPrices ? '' : ' (prices are switched off in step 7)') : 'No price yet: add it in Channels → Reservation settings.') + '</p>' +
+          '<p class="pa-hint" style="margin:2px 0 6px">' + (u.price > 0 ? 'Price: ' + money(u.price) + ' a night' + (st.showPrices ? '' : ' (prices are switched off in step 7)') : (isCh() ? 'Price: shown from Stock Network when guests choose dates.' : 'No price yet: add it in Channels → Reservation settings.')) + '</p>' +
           '<div class="pa-form"><div class="pa-field"><label class="pa-label" for="fs-ub-' + ix + '">Beds</label><input id="fs-ub-' + ix + '" type="text" maxlength="80" data-fsui="' + esc(u.name) + '|beds" value="' + esc(x.beds) + '" placeholder="e.g. 1 queen, 2 singles"></div>' +
           '<div class="pa-field"><label class="pa-label" for="fs-ux-' + ix + '">One line about it</label><input id="fs-ux-' + ix + '" type="text" maxlength="300" data-fsui="' + esc(u.name) + '|blurb" value="' + esc(x.blurb) + '" placeholder="e.g. Private braai and dam views"></div></div>' +
           '<p class="pa-label" style="margin:8px 0 4px">Photo for this unit' + (x.photo ? '' : ' <span class="pa-hint" style="text-transform:none;letter-spacing:0">(none chosen: a gallery photo is used)</span>') + '</p>' +
@@ -826,14 +843,14 @@
       [['fs-prices', 'showPrices', 'Prices'], ['fs-cal', 'showCalendar', 'Availability calendar'], ['fs-offers', 'showOffers', 'Your special offers (hooks you manage yourself)']].map(function (x) {
         return '<label class="pa-check"><input type="checkbox" id="' + x[0] + '"' + (st[x[1]] ? ' checked' : '') + '> ' + x[2] + '</label>'; }).join('') + '</div>' +
       '<div class="pa-field" style="margin-top:10px;max-width:240px"><label class="pa-label" for="fs-notice">Book at least … days ahead</label><input id="fs-notice" type="number" min="0" max="30" value="' + esc(st.minNoticeDays || 0) + '"></div>' +
-      '<p class="pa-hint">0 days ahead means guests can book for tonight. Your minimum stay and calendar start date (Channels) also apply.</p>');
+      '<p class="pa-hint">0 days ahead means guests can book for tonight. ' + (isCh() ? 'Your minimum stay and other rules come from your channel manager through Stock Network.' : 'Your minimum stay and calendar start date (Channels) also apply.') + '</p>');
     // 8 words + contact
     h += fsStep('words', ++n, 'Words and contact details', '',
       '<div class="pa-field"><label class="pa-label" for="fs-desc">About the property</label><textarea id="fs-desc" rows="6" placeholder="' + esc(F.snDescription ? 'Empty = your Stock Network description is used' : 'Tell guests about your property') + '">' + esc(st.description) + '</textarea></div>' +
       '<div class="pa-form" style="margin-top:10px"><div class="pa-field"><label class="pa-label" for="fs-phone">Phone</label><input id="fs-phone" type="tel" value="' + esc(st.phone) + '" placeholder="' + esc(F.propertyPhone || '') + '"></div>' +
       '<div class="pa-field"><label class="pa-label" for="fs-wa">WhatsApp number</label><input id="fs-wa" type="tel" value="' + esc(st.whatsapp) + '" placeholder="Empty = the phone number"></div>' +
       '<div class="pa-field"><label class="pa-label" for="fs-email">Email</label><input id="fs-email" type="email" value="' + esc(st.email) + '" placeholder="' + esc(F.propertyEmail || '') + '"></div></div>' +
-      '<p class="pa-hint">Empty boxes use your Reservation settings (Channels).</p>');
+      '<p class="pa-hint">' + (isCh() ? 'Empty boxes use the email and phone on your Bookings tab.' : 'Empty boxes use your Reservation settings (Channels).') + '</p>');
     // 9 guest page
     h += fsStep('guest', ++n, 'Guest page and room card', st.wifiName ? '✓ Wi-Fi added' : 'Not on the public page',
       '<p class="pa-hint" style="margin:0">Only on the guest page and the printed room card, not on the public front store.</p>' +
@@ -1053,7 +1070,7 @@
     if (!pay) return '';
     S.payMsg = pay.message;
     var h = '<div class="pa-pay"><p class="pa-label" style="margin:0">Payment</p>';
-    if (pay.noMethod) return h + '<p class="pa-err">No payment method is set up. Add your bank details or allow the payment gateway in Channels → Guest payments.</p></div>';
+    if (pay.noMethod) return h + '<p class="pa-err">' + (isCh() ? 'Stock Network didn\'t send a payment link for this booking. Ask Avante Travel to check it.' : 'No payment method is set up. Add your bank details or allow the payment gateway in Channels → Guest payments.') + '</p></div>';
     if (pay.gatewayUrl) h += '<div class="pa-actions"><button type="button" class="pa-btn teal" data-act="openPay" data-ref="' + esc(pay.ref || '') + '" data-url="' + esc(pay.gatewayUrl) + '">Pay now</button><button type="button" class="pa-btn small ghost" data-act="copy" data-text="' + esc(pay.gatewayUrl) + '">Copy payment link</button></div>';
     if (pay.bank) h += '<div class="pa-bankbox"><b>EFT</b><br>' + esc(pay.bank.bankName) + ' · ' + esc(pay.bank.accountHolder) + '<br>Account ' + esc(pay.bank.accountNumber) + ' · Branch ' + esc(pay.bank.branchCode || '') + (pay.bank.accountType ? ' · ' + esc(pay.bank.accountType) : '') + '</div>';
     h += '<p class="pa-label" style="margin:6px 0 0">Send to the guest</p><div class="pa-actions">' +
@@ -1128,7 +1145,7 @@
     var editing = m.type === 'edit', b = S.edit, live = editing ? b.items.filter(function (i) { return !i.cancelled; }) : null, segHtml = '';
     if (editing) {
       var tab = S.bTab || 'guest';
-      segHtml = '<div class="pa-seg pa-tabs" role="tablist" aria-label="Booking sections">' + [['guest', 'Guest'], ['msgs', 'Messages'], ['stay', 'Booking']].map(function (x) { return '<button type="button" role="tab" data-act="bTab" data-t="' + x[0] + '" aria-pressed="' + (tab === x[0]) + '">' + x[1] + '</button>'; }).join('') + '</div>' +
+      segHtml = '<div class="pa-seg pa-tabs" role="tablist" aria-label="Booking sections">' + (isCh() ? [['stay', 'Booking']] : [['guest', 'Guest'], ['msgs', 'Messages'], ['stay', 'Booking']]).map(function (x) { return '<button type="button" role="tab" data-act="bTab" data-t="' + x[0] + '" aria-pressed="' + (tab === x[0]) + '">' + x[1] + '</button>'; }).join('') + '</div>' +
         (S.modalNote ? '<div class="pa-ok" role="status">' + esc(S.modalNote) + '</div>' : '');
       var sub = whoOf(b) + ' · ' + live.map(function (i) { return i.unit + ' ' + short(i.start) + ' – ' + short(i.end); }).join(', ');
       if (tab !== 'stay' || b.demo || b.status === 'Cancelled') {
@@ -1396,7 +1413,7 @@
     if (v === 'msgs') loadMessages();
     if (v === 'front') api('frontStore').then(function (d) { if (S.fpv) { d.snPhotos = S.fpv.snPhotos || []; d.snDescription = S.fpv.snDescription || ''; } S.front = d; S.fsDirty = false; render(); if (!S.fsAreas) api('frontAreas').then(function (r) { S.fsAreas = r.areas || []; render(); }).catch(function () {}); return fsLoadPreview(d.settings.nearbyKm); }).catch(fail);
   }
-  function openBooking(bk, tab) { S.edit = bk; S.bTab = tab || 'guest'; S.modalNote = null; S.modal = { type: 'edit' }; if (!S.av) loadAvailability(S.from); if (!S.messages) loadMessages(); render(); }
+  function openBooking(bk, tab) { S.edit = bk; S.bTab = isCh() ? 'stay' : (tab || 'guest'); S.modalNote = null; S.modal = { type: 'edit' }; if (!S.av) loadAvailability(S.from); if (!S.messages && !isCh()) loadMessages(); render(); }
   function updateBooking(bk) {
     if (S.edit && S.edit.ref === bk.ref) S.edit = bk;
     [S.bookings, S.found].forEach(function (list) { if (!list) return; for (var i = 0; i < list.length; i++) if (list[i].ref === bk.ref) list[i] = bk; });
@@ -1456,7 +1473,7 @@
     api('connect', { username: c.username, clientID: c.clientID, clientSecret: c.clientSecret, resortId: resortId || '', aff: aff }).then(function (d) {
       S.busy = false;
       if (d.needResort) { S.connect.needResort = true; S.connect.candidates = d.candidates; render(); return; }
-      setToken(d.token); S.prop = d.property; S.connect = null; S.view = 'avail'; render(); loadAvailability();
+      setToken(d.token); S.prop = d.property; S.connect = null; if (isCh()) { S.view = 'avail'; setView('book'); } else { S.view = 'avail'; render(); loadAvailability(); }
     }).catch(fail);
   }
 
@@ -1543,7 +1560,7 @@
     if (a === 'resume') {
       var pw = val('pa-rp'); if (!pw) { var rp = document.getElementById('pa-rp'); if (rp) rp.focus(); return; }
       S.err = null; busy(true); render();
-      return api('resume', { aff: aff, password: pw }).then(function (d) { S.busy = false; S.resume = null; setToken(d.token); S.prop = d.property; S.view = 'avail'; render(); loadAvailability(); }).catch(fail);
+      return api('resume', { aff: aff, password: pw }).then(function (d) { S.busy = false; S.resume = null; setToken(d.token); S.prop = d.property; if (isCh()) { S.view = 'avail'; setView('book'); } else { S.view = 'avail'; render(); loadAvailability(); } }).catch(fail);
     }
     if (a === 'pickResort') return doConnect(t.dataset.id);
     if (a === 'disconnect') { if (!confirm('Disconnect this property from the hub? Channel sync stops until you connect again.')) return; return api('disconnect').then(function () { setToken(null); S.prop = null; S.av = null; render(); }).catch(fail); }
@@ -1562,6 +1579,11 @@
       return api('payInfo', { ref: t.dataset.ref }).then(function (d) {
         if (d.booking.locked) { S.modal = { done: { title: d.booking.ref + ' is paid', text: 'Stock Network shows this booking as paid, so no payment link is needed.' } }; S.bookings = null; setView(S.view); return; }
         S.modal = { done: { title: 'Payment for ' + d.booking.ref, text: d.booking.items.filter(function (i) { return !i.cancelled; }).map(function (i) { return i.unit + ' ' + short(i.start) + ' – ' + short(i.end); }).join(', ') + ' · ' + money(d.booking.total), pay: Object.assign({ ref: d.booking.ref }, d.pay) } }; render();
+      }).catch(fail);
+    }
+    if (a === 'chSaveContact') {
+      return api('saveSettings', { email: val('ch-email').trim(), phone: val('ch-phone').trim() }).then(function (d) {
+        S.prop.settings = Object.assign({}, S.prop.settings || {}, d.settings || {}); S.msg = 'Saved.'; render();
       }).catch(fail);
     }
     if (a === 'markPaid') {
@@ -1858,6 +1880,7 @@
       if (d.timing && window.console) console.info('[hub] property + saved grid, ms:', d.timing);
       var av = d.availability;
       if (av && av.units && av.units.length) { S.from = av.from; mergeAv(av, av.from, av.to, av.fresh ? Date.now() : 0); }
+      if (isCh()) { S.view = 'avail'; setView('book'); return; }
       render();
       if (av && av.fresh) afterFirstGrid(); else loadAvailability(S.from || startDate());
     }).catch(function (e) { S.opening = false; if (S.token) fail(e); else { render(); checkAffiliate(); } });

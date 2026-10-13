@@ -93,6 +93,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     });
     await setJSON("site:" + prop.siteId, prop);
     await setJSON("feed:" + prop.feedToken, { siteId: prop.siteId });
+    await syncChannelFlag(prop);
     const token = await newSession(prop);
     if (prop.aff) await setJSON("aff:" + prop.aff, { siteId: prop.siteId });
     // Connecting reads the full year once, to find every unit and its open nights.
@@ -127,8 +128,29 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     const prop = guess && s.siteId === guess ? guessed : await getJSON("site:" + s.siteId);
     if (!prop) throw new PAError("This property is no longer connected.", 401);
     if (repairLink && prop.aff) { const link = await getJSON("aff:" + prop.aff); if (!link) await setJSON("aff:" + prop.aff, { siteId: prop.siteId }); }
+    await syncChannelFlag(prop);
     return prop;
   }
+
+  // Channel Property Affiliate (Jean, 2026-10-13): a property on NightsBridge
+  // (or another channel manager) that feeds Stock Network. It uses this module
+  // like any property affiliate — same Stock Network login, Site Nr and Site
+  // ID, front store, activities, reviews — but never what its channel manager
+  // already gives it: no calendar, channel (iCal) sync, guest records or guest
+  // messages, no manual bookings or EFT, no hub minimum stay or calendar
+  // start, no "approve each guest". Guests always pay on the Stock Network
+  // payment page. The flag comes from the affiliate's types (admin ticks
+  // "Channel Property Affiliate") and is kept on the property so the public
+  // front store (stay-api.js, no affiliate lookup) follows the same rules.
+  async function syncChannelFlag(prop) {
+    if (!affiliates || !prop || !prop.aff) return;
+    let pr = null;
+    try { pr = await affiliates.getProfile(prop.aff); } catch (_) { return; }
+    const types = pr && Array.isArray(pr.types) ? pr.types : [];
+    const ch = types.indexOf("channel") > -1 && types.indexOf("property") === -1;
+    if (!!prop.channel !== ch) { prop.channel = ch; await setJSON("site:" + prop.siteId, prop); }
+  }
+  const CHANNEL_COMMISSION = 4.95;
 
   async function disconnect(token) {
     const prop = await auth(token);
@@ -172,16 +194,20 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     const rec = affiliates ? await affiliates.getAuth(aff) : null;
     const stored = rec && rec.passwordHash ? rec.passwordHash : await sha256Hex(DEFAULT_AFFILIATE_PASSWORD);
     if ((await sha256Hex(String(password || ""))) !== stored) { await setJSON(fk, fails + 1); throw new PAError("Incorrect hub password.", 403); }
+    await syncChannelFlag(p);
     return { token: await newSession(p), property: publicProperty(p) };
   }
 
   function publicProperty(p) {
-    return { siteId: p.siteId, site: p.site, resortId: p.resortId, resortName: p.resortName, units: p.units, settings: p.settings, connectedAt: p.createdAt, demoAllowed: ["3"].includes(String(p.site)), firstBookable: firstBookable(p) };
+    const settings = p.channel ? Object.assign({}, p.settings || {}, { payMode: "gateway", approveGuests: false, minStay: 1, calendarStart: { mode: "today", date: "" } }) : p.settings;
+    return { siteId: p.siteId, site: p.site, resortId: p.resortId, resortName: p.resortName, units: p.units, settings, connectedAt: p.createdAt, demoAllowed: ["3"].includes(String(p.site)), firstBookable: firstBookable(p),
+      channel: !!p.channel, commissionPct: p.channel ? (+p.commissionPct > 0 ? +p.commissionPct : CHANNEL_COMMISSION) : undefined };
   }
 
   // Calendar start (property setup): "today", or a set date that is also the
   // first date guests can book from, until it has passed.
   function firstBookable(prop) {
+    if (prop && prop.channel) return today();   // its channel manager's rules apply, through Stock Network
     const cs = prop && prop.settings && prop.settings.calendarStart;
     const t = today();
     return cs && cs.mode === "date" && /^\d{4}-\d{2}-\d{2}$/.test(cs.date || "") && cs.date > t ? cs.date : t;
@@ -357,7 +383,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
       const total = want.every((n) => nr[n]) ? want.reduce((t, n) => t + nr[n], 0) : null;
       results.push({ unit: u.name, size: u.size, nights: want.length, rate: total ? Math.round(total / want.length) : null, total });
     }
-    return { checkIn, checkOut, nights: want.length, results, minStay: prop.settings.minStay || 2 };
+    return { checkIn, checkOut, nights: want.length, results, minStay: minStayOf(prop) };
   }
 
   // ---------- bookings ----------
@@ -400,7 +426,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
   }
 
   // ---------- payments ----------
-  function payMode(prop) { const m = prop.settings && prop.settings.payMode; return PAY_MODES.includes(m) ? m : "both"; }
+  function payMode(prop) { if (prop && prop.channel) return "gateway"; const m = prop.settings && prop.settings.payMode; return PAY_MODES.includes(m) ? m : "both"; }
   async function bankOf(prop) { if (!prop.bankEnc) return null; try { return await decryptJSON(prop.bankEnc, encKey); } catch (_) { return null; } }
   function isPaid(b) { return !!(b && (b.paidEft || (Number(b.amountPaid) || 0) > 0 || /paid/i.test(String(b.snStatus || "")))); }
   function payState(b) {
@@ -528,9 +554,18 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     if (!changed.length) return { changed: 0 };
     const list = await bookingsOf(prop);
     const byId = new Map(list.filter((b) => b.reservationId).map((b) => [b.reservationId, b]));
-    let n = 0;
+    let n = 0, added = 0;
     for (const r of changed) {
-      const b = byId.get(r.reservationId);
+      let b = byId.get(r.reservationId);
+      if (!b && prop.channel) {
+        // Channel property: a booking from one of its hook / booking links is
+        // made by the holiday builder under the property's own Site ID, so it
+        // is a hub booking too and shows in its Bookings (Jean, 2026-10-13).
+        const rec = linkBookingFrom(prop, r, t);
+        if (rec) { list.push(rec); byId.set(rec.reservationId, rec); added++; }
+        else await noteUnmatched(prop, r);
+        continue;
+      }
       if (!b) continue; // made directly in Stock Network: shows as taken nights in the calendar
       const st = String(r.reservationStatus || "");
       b.snStatus = st || b.snStatus;
@@ -541,8 +576,41 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
       b.checkedAt = t.toISOString();
       n++;
     }
-    if (n) await saveBookings(prop, list);
-    return { changed: n };
+    if (n || added) await saveBookings(prop, list);
+    return { changed: n, added };
+  }
+
+  // Which Stock Network site made a booking. Stock Network's booking list
+  // isn't documented for this, so the likely field names are all tried; the
+  // first bookings that don't match are kept (field names only, no guest
+  // details) so the real field can be confirmed on the first live booking.
+  const SITE_FIELDS = ["siteID", "siteId", "agentSiteID", "agentSiteId", "callerSiteID", "callerSiteId", "bookingSiteID", "bookingSiteId", "createdBySiteID", "createdBySiteId"];
+  function madeBySite(r) {
+    for (const f of SITE_FIELDS) if (r && r[f]) return String(r[f]).toLowerCase();
+    if (r && r.callerDetails && r.callerDetails.siteID) return String(r.callerDetails.siteID).toLowerCase();
+    return "";
+  }
+  function linkBookingFrom(prop, r, t) {
+    const by = madeBySite(r);
+    const tagged = /avante hub booking/i.test(String(r.notes || "") + " " + String(r.customerReferenceNo || ""));
+    if (!(by && by === String(prop.siteId).toLowerCase()) && !tagged) return null;
+    const day = (v) => (v ? String(v).slice(0, 10) : "");
+    const its = Array.isArray(r.items) ? r.items : Array.isArray(r.details) ? r.details : [];
+    const items = its.length ? its.map((x) => ({ unit: x.unitName || x.unit || "", start: day(x.checkInDate || x.start), end: day(x.checkOutDate || x.end), detailId: x.id || null }))
+      : [{ unit: r.unitName || "", start: day(r.checkInDate || r.fromDate), end: day(r.checkOutDate || r.toDate), detailId: null }];
+    const name = String(r.fullName || r.customerName || "").trim(), sp = name.indexOf(" ");
+    const st = String(r.reservationStatus || "Booked");
+    return { ref: "J" + (r.reservationRefNo || r.refNo || String(r.reservationId).slice(0, 8)), reservationId: r.reservationId, status: /cancel/i.test(st) ? "Cancelled" : st,
+      origin: "link", source: "Hook / booking link", payBy: "gateway",
+      guest: { first: sp > 0 ? name.slice(0, sp) : name, last: sp > 0 ? name.slice(sp + 1) : "", email: r.emailAddress || "", cellphone: r.cellphone || "" },
+      items, total: Number(r.totalAmountIncl || r.amountIncl) || 0, amountPaid: Number(r.amountPaid) || 0, snStatus: st,
+      paidAt: /paid/i.test(st) ? t.toISOString() : undefined, createdAt: t.toISOString(), checkedAt: t.toISOString() };
+  }
+  async function noteUnmatched(prop, r) {
+    const k = "snkeys:" + prop.siteId, have = (await getJSON(k)) || [];
+    if (have.length >= 5) return;
+    have.push({ at: now().toISOString(), keys: Object.keys(r || {}).slice(0, 60), madeBy: madeBySite(r) || null });
+    await setJSON(k, have);
   }
 
   const PAID_LOCK_MSG = "This booking has been paid, so it can't be changed in the hub. The guest must contact the property; changes are made in Stock Network. To cancel it, use Request cancellation: the linked affiliate must approve.";
@@ -559,7 +627,9 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     const payBy = mode === "gateway" ? "gateway" : mode === "eft" ? "eft" : (body.payBy === "gateway" ? "gateway" : "eft");
     const waitForApproval = !!approval;
     const res = await createOnSN(prop, client, items, guest, { reference: channelRef, requestAndPay: !waitForApproval && payBy === "gateway",
-      notes: [source !== "Direct" ? "Booked through " + source : "", cleanStr(body.notes, 800), "Made in the Avante hub"].filter(Boolean).join(" · ") });
+      // "Avante Hub booking" first, so the property sees in its channel
+      // manager (e.g. NightsBridge) that this booking came from the hub (Jean, 2026-10-13).
+      notes: ["Avante Hub booking", source !== "Direct" ? "Booked through " + source : "", cleanStr(body.notes, 800)].filter(Boolean).join(" · ") });
     let status = res.status || "Request", statusError = null;
     if (!waitForApproval && payBy === "gateway") status = "Booked";
     if (!waitForApproval && payBy === "eft") { const st = await holdBooked(client, res, "Booked by the Avante hub (pays by EFT or on arrival)"); if (st) status = st; else statusError = "Stock Network didn't accept Booked: it is still a Request, so its X-day rule can cancel it. Set it to Booked in Stock Network."; }
@@ -741,13 +811,22 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     const s = cleanStr(q, 80).toLowerCase();
     const list = await bookingsOf(prop);
     if (refresh) {
-      try { const r = await refreshStatuses(prop); if (r.changed) return find(prop, q, { refresh: false }); } catch (_) {}
+      try { const r = await refreshStatuses(prop); if (r.changed || r.added) return find(prop, q, { refresh: false }); } catch (_) {}
     }
     return { payMode: payMode(prop), bookings: list.map(decorate).filter((b) => !s || [b.ref, b.guest && b.guest.first, b.guest && b.guest.last, b.source, b.channel, b.channelRef].concat(b.items.map((i) => i.unit)).join(" ").toLowerCase().includes(s)).slice(-100).reverse() };
   }
 
   // ---------- settings & channels ----------
   async function saveSettings(prop, body) {
+    if (prop.channel) {
+      // Only the contact details: everything else comes from its channel manager.
+      const s0 = prop.settings || {};
+      if (body.email !== undefined) s0.email = cleanStr(body.email, 120);
+      if (body.phone !== undefined) s0.phone = cleanStr(body.phone, 30);
+      prop.settings = s0;
+      await setJSON("site:" + prop.siteId, prop);
+      return { ok: true, settings: { email: s0.email || "", phone: s0.phone || "" } };
+    }
     const s = prop.settings || {};
     if (body.email !== undefined) s.email = cleanStr(body.email, 120);
     if (body.phone !== undefined) s.phone = cleanStr(body.phone, 30);
@@ -1002,14 +1081,16 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
       if (Date.now() - started > deadlineMs) { out[k] = "skipped (time)"; continue; }
       const prop = await getJSON(k);
       if (!prop) continue;
-      try { const n = await remindMessages(prop); if (n) out[prop.site + " messages"] = n + " reminder(s) emailed"; } catch (_) {}
+      if (!prop.channel) { try { const n = await remindMessages(prop); if (n) out[prop.site + " messages"] = n + " reminder(s) emailed"; } catch (_) {} }
       // One light "changed since" call per property with open hub bookings (Paid, cancellations).
       try {
         const open = (await bookingsOf(prop)).some((b) => !b.demo && b.reservationId && b.status !== "Cancelled" && !b.paidAt && b.items.some((i) => i.end >= today()));
-        if (open) { const r = await refreshStatuses(prop, { minGapMs: 10 * 60000 }); if (r.changed) out[prop.site + " statuses"] = r.changed + " changed"; }
+        // A channel property is always checked: bookings from its hook links are found this way.
+        if (open || prop.channel) { const r = await refreshStatuses(prop, { minGapMs: 10 * 60000 }); if (r.changed || r.added) out[prop.site + " statuses"] = (r.changed || 0) + " changed, " + (r.added || 0) + " new from links"; }
       } catch (e) { out[prop.site + " statuses"] = { error: e.message }; }
-      // Properties without channels make no background calls to Stock Network.
-      if (!(await isLinked(prop))) { out[prop.site] = "not linked to a channel: skipped"; continue; }
+      // Properties without channels make no background calls to Stock Network
+      // (a channel property never syncs channels: NightsBridge does that).
+      if (prop.channel || !(await isLinked(prop))) { out[prop.site] = "not linked to a channel: skipped"; continue; }
       try { out[prop.site] = await syncProperty(prop); } catch (e) { out[prop.site] = { error: e.message }; }
     }
     return out;
@@ -1428,7 +1509,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     actPlace: null };
   const FS_MAX_NIGHTS = 30, FS_PER_DAY = 10, FS_PER_EMAIL_DAY = 3;
   function isoDate(v) { v = String(v || ""); if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return ""; const d = new Date(v + "T00:00:00Z"); return !isNaN(d) && d.toISOString().slice(0, 10) === v ? v : ""; }
-  function minStayOf(prop) { return (prop.settings && prop.settings.minStay) || 2; }
+  function minStayOf(prop) { return prop && prop.channel ? 1 : (prop.settings && prop.settings.minStay) || 2; }
   const FS_RESERVED = ["guest", "card", "api", "admin", "hub", "new", "edit"];
   function fsSettings(prop) {
     const s = Object.assign({}, FS_DEFAULTS, prop.frontStore || {});
@@ -1557,7 +1638,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
       contact: { phone: s.phone || st.phone || "", whatsapp: waNumber(s.whatsapp || s.phone || st.phone || ""), email: s.email || st.email || "" },
       units: fsUnits(prop).map((u) => { const x = (s.unitInfo || {})[u.name] || {}, pr = s.showPrices && st.prices && st.prices[u.name] > 0 ? st.prices[u.name] : 0;
         return { name: u.name, size: u.size || "", photo: x.photo || "", beds: x.beds || "", blurb: x.blurb || "", price: pr }; }),
-      payMode: payMode(prop), approveGuests: !!(prop.settings && prop.settings.approveGuests),
+      payMode: payMode(prop), approveGuests: !prop.channel && !!(prop.settings && prop.settings.approveGuests),
       headline: s.headline || "", highlights: s.highlights || [], priceFrom: fsPriceFrom(prop, s),
       rating: s.ratingValue ? { value: s.ratingValue, count: s.ratingCount || "", link: s.ratingLink || "" } : null,
       actPhotos: s.actPhotos || {}, actHidden: s.actHidden || [], actPlace: s.actPlace || null };
@@ -1651,7 +1732,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     const av = await availability(prop, ci, co);
     for (const u of units) for (const night of eachNight(ci, co)) { const st = av.nights[u] && av.nights[u][night]; if (!st || st.s !== "open") throw new PAError(u + " isn't free for all of those nights any more. Check availability again.", 409); }
     await setJSON(kp, cp + 1); await setJSON(ke, ce + 1);
-    const approval = !!(prop.settings && prop.settings.approveGuests);
+    const approval = !prop.channel && !!(prop.settings && prop.settings.approveGuests);
     const res = await book(prop, { items: units.map((u) => ({ unit: u, start: ci, end: co })), guest: { first: String(g.first).trim(), last: String(g.last).trim(), email, cellphone: g.cellphone },
       adults: body.adults, children: body.children, source: "Front store", notes: cleanStr(body.notes, 600), payBy: body.payBy }, { approval });
     if (approval) {
