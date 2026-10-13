@@ -485,7 +485,7 @@ export default async (request, context) => {
       return json({ ok: true, listingId: listingId, editLink: editLink });
     }
 
-    if (action === "getForEdit" || action === "update" || action === "markSentToSN") {
+    if (action === "getForEdit" || action === "update" || action === "markSentToSN" || action === "emailSNFiles") {
       // Reopen a listing in the onboarding form: admin (token) or the
       // submitter with their private edit key.
       const listingId = clean(body.listingId, 20);
@@ -495,7 +495,7 @@ export default async (request, context) => {
       const isAdmin = await verifyAdminToken(body.token);
       const keyOk = !!record.editToken && clean(body.key, 200) === record.editToken;
       if (!isAdmin && !keyOk) return json({ error: "This edit link isn't valid. Ask Avante Travel for a new one." }, 401);
-      if (action === "markSentToSN" && !isAdmin) return json({ error: "Only Avante admin can do this." }, 401);
+      if ((action === "markSentToSN" || action === "emailSNFiles") && !isAdmin) return json({ error: "Only Avante admin can do this." }, 401);
       withAgreementDefaults(record);
 
       if (action === "getForEdit") {
@@ -516,12 +516,69 @@ export default async (request, context) => {
         return json({ ok: true, snSentAt: record.snSentAt });
       }
 
+      if (action === "emailSNFiles") {
+        // Jean (2026-10-13): email the Stock Network files (built in the
+        // admin's browser, see sn-export.js filesForEmail) to any address,
+        // and keep a log on the listing of every send, failed ones too.
+        const to = String(body.to || "").split(/[,;\s]+/).map((e) => e.trim()).filter(Boolean);
+        if (!to.length) return json({ error: "Type the email address to send to." }, 400);
+        if (to.length > 5) return json({ error: "Send to 5 addresses at most." }, 400);
+        const bad = to.filter((e) => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e) || e.length > 200);
+        if (bad.length) return json({ error: "This email address doesn't look right: " + bad.join(", ") }, 400);
+        const files = (Array.isArray(body.files) ? body.files : []).slice(0, 6)
+          .map((f) => ({ filename: clean(f && f.filename, 150).replace(/[\\/:*?"<>|\r\n]/g, "_"), content: typeof (f && f.content) === "string" ? f.content.replace(/\s+/g, "") : "" }))
+          .filter((f) => f.filename && f.content && /^[A-Za-z0-9+/=]+$/.test(f.content));
+        if (!files.length) return json({ error: "No files to send." }, 400);
+        const bytes = files.reduce((n, f) => n + Math.floor(f.content.length * 3 / 4), 0);
+        if (bytes > 15 * 1024 * 1024) return json({ error: "The files are too big to email (over 15 MB)." }, 400);
+        const siteNr = clean(body.siteNr, 20) || record.siteNr || "";
+        const note = clean(body.note, 2000);
+        const esc = (v) => String(v == null ? "" : v).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+        const subject = clean(body.subject, 200) || ("New property for Stock Network: " + (record.propertyName || "property") + (siteNr ? " (Site Nr " + siteNr + ")" : ""));
+        const html = "<p>Hello,</p>" +
+          (note ? "<p>" + esc(note).replace(/\n/g, "<br>") + "</p>" : "<p>Please find attached the Stock Network files for <b>" + esc(record.propertyName || "the property") + "</b>.</p>") +
+          "<p><b>Property:</b> " + esc(record.propertyName || "") + "<br><b>Site Nr:</b> " + esc(siteNr || "(not allocated)") +
+          (record.siteId ? "<br><b>Site ID:</b> " + esc(record.siteId) : "") + "</p>" +
+          "<p><b>Attached:</b><br>" + files.map((f) => esc(f.filename)).join("<br>") + "</p>" +
+          "<p>Avante Travel</p>";
+        const replyTo = clean(body.replyTo, 200);
+        let ok = false, error = "", emailId = "";
+        const apiKey = Netlify.env.get("RESEND_API_KEY");
+        if (!apiKey) error = "Email isn't switched on (RESEND_API_KEY missing).";
+        else {
+          try {
+            const msg = { from: "Avante Travel <bookings@go.avantetravel.co.za>", to, subject, html, attachments: files };
+            if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(replyTo)) msg.reply_to = [replyTo];
+            const r = await fetch("https://api.resend.com/emails", { method: "POST", headers: { authorization: "Bearer " + apiKey, "content-type": "application/json" }, body: JSON.stringify(msg) });
+            const d = await r.json().catch(() => ({}));
+            ok = r.ok; emailId = (d && d.id) || "";
+            if (!ok) error = (d && (d.message || d.error)) || ("The email service said " + r.status + ".");
+          } catch (e) { error = "Could not reach the email service: " + String((e && e.message) || e); }
+        }
+        const entry = { at: new Date().toISOString(), to: to.join(", "), subject, files: files.map((f) => f.filename), siteNr, note, ok, error: error || undefined, emailId: emailId || undefined, markedSent: false };
+        const before = { snSentSeasons: record.snSentSeasons || [] };
+        if (ok && body.markSent) {
+          record.snSentSeasons = (record.rateSeasons || []).map((r) => Object.assign({}, r));
+          record.snSentAt = entry.at;
+          entry.markedSent = true;
+        }
+        // The Site Nr the files were sent with is the allocated one: keep it.
+        if (ok && siteNr && !record.siteNr) { before.siteNr = ""; record.siteNr = siteNr; }
+        record.snEmailLog = (Array.isArray(record.snEmailLog) ? record.snEmailLog : []).concat([entry]).slice(-200);
+        record.history = (Array.isArray(record.history) ? record.history : []).concat([{ at: entry.at, by: "admin",
+          action: (ok ? "Stock Network files emailed to " : "Email of Stock Network files FAILED to ") + entry.to + " (" + entry.files.join(", ") + ")" + (entry.markedSent ? "; rates marked as sent" : ""),
+          changed: (entry.markedSent || before.siteNr === "") ? before : undefined }]).slice(-HISTORY_MAX);
+        record.dateUpdated = entry.at;
+        await store.setJSON(listingId, record);
+        return json({ ok, error: error || undefined, entry });
+      }
+
       // update: the whole form comes back; keep what only Avante controls.
       const incoming = submittedFields(body);
       const before = JSON.parse(JSON.stringify(record));
       const KEEP = ["listingId", "status", "dateSubmitted", "submittedBy", "affId", "editToken", "history",
         "commissionRate", "listingDuration", "agreementTerms", "agreementStatus", "agreementToken", "agreementSentAt",
-        "agreementRespondedAt", "snSentSeasons", "snSentAt", "agreementSigned", "signatoryName", "signatoryCapacity",
+        "agreementRespondedAt", "snSentSeasons", "snSentAt", "snEmailLog", "agreementSigned", "signatoryName", "signatoryCapacity",
         "signatoryIdPassport", "signatureDate", "signaturePlace", "coordsVerifiedAt"];
       Object.keys(incoming).forEach((k) => { if (KEEP.indexOf(k) === -1) record[k] = incoming[k]; });
       if (!isAdmin) {

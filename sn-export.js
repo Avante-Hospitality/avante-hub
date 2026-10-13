@@ -127,7 +127,37 @@
     setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 2000);
   }
 
+  function b64Utf8(text){
+    var bytes = new TextEncoder().encode(text), bin = '';
+    for(var i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return btoa(bin);
+  }
+  function names(listing, nr){
+    var site = nr ? 'site' + nr + '_' : '', p = fileSafe(listing.propertyName);
+    return {
+      property: 'SN_new_property_' + site + p + '.xlsx',
+      stock: function(only, ext){ return 'SN_stock_rates_' + (only ? 'new_' : '') + site + p + '.' + ext; }
+    };
+  }
+  // Jean (2026-10-13): the same files, ready to attach to an email from
+  // Admin (base64). opts: { property: bool, rates: 'all'|'new'|'', format: 'xlsx'|'csv'|'both' }
+  function filesForEmail(listing, siteNr, opts){
+    needSite(listing, siteNr);
+    var nr = s(siteNr || listing.siteNr), n = names(listing, nr), out = [];
+    var fmt = opts.format || 'xlsx';
+    if(opts.property){ needXlsx(); out.push({ filename: n.property, content: window.XLSX.write(propertyWorkbook(listing, nr), { type: 'base64', bookType: 'xlsx' }) }); }
+    if(opts.rates){
+      var only = opts.rates === 'new';
+      if(!seasonsToSend(listing, only).length) throw new Error(only ? 'No new or changed future rates since they were last marked as sent.' : 'This listing has no future rates set.');
+      if(fmt === 'xlsx' || fmt === 'both'){ needXlsx(); out.push({ filename: n.stock(only, 'xlsx'), content: window.XLSX.write(stockWorkbook(listing, only), { type: 'base64', bookType: 'xlsx' }) }); }
+      if(fmt === 'csv' || fmt === 'both') out.push({ filename: n.stock(only, 'csv'), content: b64Utf8('\ufeff' + stockCsv(listing, only)) });
+    }
+    if(!out.length) throw new Error('Tick at least one file to send.');
+    return out;
+  }
+
   window.AvanteSNExport = {
+    filesForEmail: filesForEmail,
     STOCK_COLS: STOCK_COLS,
     stockRows: stockRows,
     needSite: needSite,

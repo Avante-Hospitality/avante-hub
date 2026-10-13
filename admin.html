@@ -6786,6 +6786,70 @@
           sentInfo.textContent = 'Rates last marked as sent to SN: ' + fmtPropDate(l.snSentAt) + '.';
           host.appendChild(sentInfo);
         }
+        // Send the files by email, with a log (Jean, 2026-10-13).
+        var em = document.createElement('div');
+        em.style.cssText = 'margin-top:14px; padding:12px; border:1px solid #d6e3e1; border-radius:10px; background:#f7fbfa;';
+        var lastTo = ''; try { lastTo = localStorage.getItem('avante-sn-email') || ''; } catch(e){}
+        var log = (l.snEmailLog || []);
+        if(!lastTo && log.length) lastTo = log[log.length - 1].to || '';
+        em.innerHTML =
+          '<div style="font-weight:700; margin-bottom:6px;">Send the files by email</div>' +
+          '<label class="hint" for="snEmailTo" style="display:block; margin:0 0 3px;">Send to (several addresses: separate with commas)</label>' +
+          '<input id="snEmailTo" type="text" placeholder="e.g. support@stocknetwork.co.za" value="' + escapeHtml(lastTo) + '" style="width:100%;">' +
+          '<div style="display:flex; flex-wrap:wrap; gap:6px 16px; margin:8px 0; font-size:13px;">' +
+            '<label><input type="checkbox" id="snEmailProp" checked> Property file (.xlsx)</label>' +
+            '<label>Rates file: <select id="snEmailRates"><option value="all">All future rates</option><option value="new">Only new/changed</option><option value="">Don\'t send</option></select></label>' +
+            '<label>As: <select id="snEmailFmt"><option value="xlsx">.xlsx</option><option value="csv">.csv</option><option value="both">.xlsx and .csv</option></select></label>' +
+          '</div>' +
+          '<label class="hint" for="snEmailNote" style="display:block; margin:0 0 3px;">Message (optional)</label>' +
+          '<textarea id="snEmailNote" rows="3" style="width:100%;" placeholder="e.g. Please create this property on Site Nr ' + escapeHtml(siteNrInput.value.trim() || '…') + ' and upload the rates."></textarea>' +
+          '<label style="display:block; font-size:13px; margin:6px 0;"><input type="checkbox" id="snEmailMark" checked> After sending, mark the rates as sent to SN</label>' +
+          '<button type="button" class="btn-outline" id="snEmailBtn">Send email</button> <span class="hint" id="snEmailStatus" style="margin:0"></span>';
+        host.appendChild(em);
+        em.querySelector('#snEmailBtn').addEventListener('click', function(){
+          var btn = this, st = em.querySelector('#snEmailStatus');
+          var to = em.querySelector('#snEmailTo').value.trim();
+          var nr = siteNrInput.value.trim();
+          var sidEl = document.getElementById('propField_siteId');
+          var lx = Object.assign({}, lSaved, { siteId: (sidEl && sidEl.value.trim()) || lSaved.siteId || '' });
+          var files;
+          st.textContent = '';
+          if(!to){ st.textContent = 'Type the email address first.'; return; }
+          try {
+            files = AvanteSNExport.filesForEmail(lx, nr, { property: em.querySelector('#snEmailProp').checked, rates: em.querySelector('#snEmailRates').value, format: em.querySelector('#snEmailFmt').value });
+          } catch(err){ st.textContent = err.message; return; }
+          btn.disabled = true; btn.textContent = 'Sending\u2026';
+          propAdminPost('emailSNFiles', { listingId: l.listingId, to: to, siteNr: nr, files: files, note: em.querySelector('#snEmailNote').value.trim(),
+            markSent: em.querySelector('#snEmailMark').checked && !!em.querySelector('#snEmailRates').value }).then(function(res){
+            btn.disabled = false; btn.textContent = 'Send email';
+            var d = res.data || {};
+            if(d.ok){
+              try { localStorage.setItem('avante-sn-email', to); } catch(e){}
+              st.textContent = 'Sent \u2714';
+              openPropertyDetailsModal(l.listingId);
+            } else {
+              st.textContent = 'Not sent: ' + (d.error || 'unknown reason') + (d.entry ? ' (kept in the log)' : '');
+              if(d.entry) openPropertyDetailsModal(l.listingId);
+            }
+          }).catch(function(){ btn.disabled = false; btn.textContent = 'Send email'; st.textContent = 'No connection. Try again.'; });
+        });
+        // Email log, newest first.
+        var lg = document.createElement('details'); lg.style.marginTop = '12px'; if(log.length) lg.open = true;
+        var lgSum = document.createElement('summary'); lgSum.textContent = 'Email log (' + log.length + ')'; lgSum.style.cssText = 'cursor:pointer; font-weight:700;';
+        lg.appendChild(lgSum);
+        if(!log.length){ var none = document.createElement('div'); none.className = 'hint'; none.textContent = 'No files emailed yet.'; lg.appendChild(none); }
+        log.slice().reverse().forEach(function(e){
+          var row = document.createElement('div');
+          row.style.cssText = 'font-size:12px; padding:6px 0; border-bottom:1px solid #e3e9e8;';
+          row.innerHTML = '<b>' + escapeHtml(fmtPropDate(e.at)) + '</b> \u2014 ' + (e.ok ? '<span style="color:#1f7a4d">Sent</span>' : '<span style="color:#b42318">Failed</span>') +
+            ' to ' + escapeHtml(e.to || '') + (e.siteNr ? ' \u00b7 Site Nr ' + escapeHtml(e.siteNr) : '') + (e.markedSent ? ' \u00b7 rates marked as sent' : '') +
+            '<div style="color:#5b6b76">' + escapeHtml((e.files || []).join(', ')) + '</div>' +
+            (e.error ? '<div style="color:#b42318">' + escapeHtml(e.error) + '</div>' : '') +
+            (e.note ? '<div style="color:#5b6b76; white-space:pre-wrap;">Message: ' + escapeHtml(e.note) + '</div>' : '');
+          lg.appendChild(row);
+        });
+        host.appendChild(lg);
+
         // History: every change, newest first, with the old values.
         var hist = (l.history || []).slice().reverse();
         var hh = document.createElement('details'); hh.style.marginTop = '12px';

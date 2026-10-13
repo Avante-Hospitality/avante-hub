@@ -39,6 +39,7 @@
     <div class="ht-card ht-new" aria-label="What's new">
       <h2>What's new</h2>
       <ul>
+        <li><time>13 Oct 2026</time> Property Listings: <b>Send the files by email</b> emails the Stock Network files straight from a listing, and an <b>Email log</b> keeps every send (to whom, when, which files, sent or failed). See <a href="#propertyListings">Send the files by email</a>.</li>
         <li><time>13 Oct 2026</time> Property Listings: the Stock Network files now need only the <b>StockNetwork Site Nr</b>. The <b>Site ID</b> (affiliate number) comes from Stock Network after the site is set up, with the API credentials — add it then, to go live on the hub. See <a href="#propertyListings">Property Listings</a>.</li>
         <li><time>13 Oct 2026</time> <b>Property Listings</b> has a new card, <b>Channel setup help</b>: the address properties invite on Airbnb, Booking.com and LekkeSlaap, and who gets emailed when they ask Avante to set up their channels (several addresses, separated by commas).</li>
         <li><time>13 Oct 2026</time> Affiliates: new type <b>Channel Property Affiliate</b> (on NightsBridge etc.: hook builder and guest payments only). Types now decide which menus an affiliate sees in their hub.</li>
@@ -255,6 +256,18 @@
         <li>Email the files to Stock Network. Tap <span class="btn">Save Changes</span> so the Site Nr is kept.</li>
         <li>Tap <span class="btn g">Mark rates as sent to SN</span>.</li>
       </ol>
+      <h3>Send the files by email</h3>
+      <ol class="steps">
+        <li>Tap <span class="btn g">View</span> on the listing. Type the <span class="field">StockNetwork Site Nr</span> (below the status) if it's not there yet.</li>
+        <li>Under <b>Send the files by email</b>, type the address in <span class="field">Send to</span>. Several addresses? Separate them with commas. The last address you used is filled in for you.</li>
+        <li>Tick <span class="field">Property file (.xlsx)</span> if Stock Network must create the property.</li>
+        <li>Pick the <span class="field">Rates file</span>: <b>All future rates</b> the first time, <b>Only new/changed</b> after that, or <b>Don't send</b>. Pick <span class="field">As</span>: .xlsx, .csv or both.</li>
+        <li>Type a <span class="field">Message</span> if you like (e.g. "Please create this property on Site Nr 6020").</li>
+        <li>Leave <span class="field">After sending, mark the rates as sent to SN</span> ticked, so next time "Only new/changed" leaves these rates out.</li>
+        <li>Tap <span class="btn g">Send email</span>. It says <b>Sent ✔</b>, and the Site Nr is saved on the listing.</li>
+        <li>Open <b>Email log</b> to see every send: date, address, Site Nr, the files and the message. A failed send shows in red with the reason; nothing is marked as sent.</li>
+      </ol>
+      <div class="tip">The email comes from bookings@go.avantetravel.co.za with the files attached. It's also written in the listing's <b>History</b>.</div>
       <h3>Send only new rates to Stock Network</h3>
       <ol class="steps">
         <li>When the owner adds or changes rates, you get an email. Tap <span class="btn g">View</span> on the listing.</li>
