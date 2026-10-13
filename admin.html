@@ -6626,7 +6626,16 @@
         { key: 'infoLink', label: 'Info link', el: 'input' },
         { key: 'bookingLink', label: 'Booking link', el: 'input' },
         { key: 'description', label: 'Description', el: 'textarea' },
-        { key: 'houseRules', label: 'House rules', el: 'textarea' }
+        { key: 'houseRules', label: 'House rules', el: 'textarea' },
+        // Added 2026-10-13 with the step-by-step onboarding form.
+        { key: 'siteId', label: 'Site ID (affiliate number)', el: 'input' },
+        { key: 'streetAddress', label: 'Street address', el: 'input' },
+        { key: 'latitude', label: 'Latitude', el: 'input' },
+        { key: 'longitude', label: 'Longitude', el: 'input' },
+        { key: 'sourceChannel', label: 'Details taken from (channel)', el: 'input' },
+        { key: 'channelListingLink', label: 'Listing link on that channel', el: 'input' },
+        { key: 'channelReviews', label: 'Reviews on other channels', el: 'input' },
+        { key: 'icalLink', label: 'Calendar link (iCal)', el: 'input' }
       ];
 
       function defaultAgreementTerms(l){
@@ -6709,7 +6718,11 @@
             detailRow('Listing ID', l.listingId) +
             detailRow('Submitted by', l.submittedBy + (l.submittedBy === 'Affiliate' ? ' \u2014 ' + (l.affiliateAgentName || '') + ' (' + (l.affId || '') + ')' : '')) +
             detailRow('Submitted', fmtPropDate(l.dateSubmitted)) +
-            detailRow('Last updated', fmtPropDate(l.dateUpdated));
+            detailRow('Last updated', fmtPropDate(l.dateUpdated)) +
+            detailRow('Coordinates checked with Google', l.coordsVerified === 'Y' ? ('Yes \u2014 ' + (l.coordsVerifiedPlace || '')) : 'No') +
+            (l.screenshotsRead ? detailRow('Filled from screenshots', l.screenshotsRead + ' screenshot(s)') : '') +
+            ((l.rateSeasons || []).length ? detailRow('Rates (rack \u2192 SN)', l.rateSeasons.map(function(r){ return r.unitTypeName + ': ' + r.from + ' to ' + r.to + ', R' + r.rackRate + ' \u2192 R' + r.snRate + ', min ' + r.minStay; }).join(' | ')) : '') +
+            ((l.blockedNights || []).length ? detailRow('Blocked nights', l.blockedNights.length + ' night(s)') : '');
           EDIT_FIELDS.forEach(function(f){
             var val = escapeHtml(l[f.key] || '');
             if(f.el === 'textarea'){

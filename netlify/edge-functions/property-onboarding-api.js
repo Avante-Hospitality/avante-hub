@@ -1,4 +1,7 @@
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
+import { readListingScreenshots } from "./lib/listing-reader.js";
+import { forwardGeocode, reverseGeocode } from "./lib/geocode.js";
+import { searchPlacePhotos, searchPlaceCandidates } from "./lib/places-images.js";
 
 // Backs the "Property Affiliate" onboarding tab in hub.html, the
 // "Property Listings" tab in admin.html, and the public property-agreement.html
@@ -57,6 +60,8 @@ const EDITABLE_FIELDS = [
   "checkInTime", "checkOutTime", "description", "houseRules", "moreInfo",
   "areaInfo", "depositPolicyText", "depositPct", "depositDays", "childPolicy",
   "commissionRate", "listingDuration", "agreementTerms",
+  "streetAddress", "siteId", "region", "sourceChannel", "channelListingLink",
+  "channelReviews", "hostName", "accessibility", "icalLink",
 ];
 
 const EDITABLE_FIELD_MAX = {
@@ -107,6 +112,55 @@ function sanitizeFileRefs(input, max) {
     caption: clean(f && f.caption, 300),
     cover: (f && f.cover) === "Y" ? "Y" : "N",
   }));
+}
+
+// Straight-line distance in km between two coordinates (haversine).
+function kmBetween(aLat, aLng, bLat, bLng) {
+  const R = 6371, toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(bLat - aLat), dLng = toRad(bLng - aLng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+function validCoord(lat, lng) {
+  return Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180 && !(lat === 0 && lng === 0);
+}
+
+// The onboarding form is public (owners and affiliates use it without an
+// admin login), and the screenshot / Google helpers below cost money per
+// call — so each visitor gets a daily allowance per helper. Admin sessions
+// (token) are not limited.
+const DAILY_LIMITS = { readScreenshots: 40, lookupLocation: 120, verifyCoordinates: 120, findPhotos: 40 };
+async function overDailyLimit(kind, request, context) {
+  try {
+    const ip = (context && context.ip) || request.headers.get("x-nf-client-connection-ip") || "unknown";
+    const key = kind + ":" + new Date().toISOString().slice(0, 10) + ":" + ip;
+    const store = getStore({ name: "onboarding-helper-usage", consistency: "strong" });
+    const n = Number(await store.get(key)) || 0;
+    if (n >= (DAILY_LIMITS[kind] || 50)) return true;
+    await store.set(key, String(n + 1));
+  } catch (e) {
+    // Never block a real person because the counter itself failed.
+  }
+  return false;
+}
+
+function sanitizeRateSeasons(input) {
+  if (!Array.isArray(input)) return [];
+  return input.slice(0, 200).map((r) => ({
+    unitTypeName: clean(r && r.unitTypeName, 200),
+    from: clean(r && r.from, 10),
+    to: clean(r && r.to, 10),
+    nights: clean(String((r && r.nights) || ""), 6),
+    minStay: clean(String((r && r.minStay) || ""), 4),
+    rackRate: clean(String((r && r.rackRate) || ""), 12),
+    snRate: clean(String((r && r.snRate) || ""), 12),
+  }));
+}
+
+function sanitizeDateList(input) {
+  if (!Array.isArray(input)) return [];
+  return input.filter((d) => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d)).slice(0, 800);
 }
 
 async function verifyAdminToken(token) {
@@ -231,7 +285,7 @@ export default async (request, context) => {
         complexName: clean(body.complexName, 200),
         infoLink: clean(body.infoLink, 300),
         bookingLink: clean(body.bookingLink, 300),
-        siteNr: "",
+        siteNr: clean(body.siteNr, 30),
         telephone: clean(body.telephone, 60),
         email: clean(body.email, 200),
         latitude: clean(body.latitude, 30),
@@ -239,6 +293,28 @@ export default async (request, context) => {
         selfSupplierRating: clean(body.selfSupplierRating, 50),
         tourismBoardGrading: clean(body.tourismBoardGrading, 50),
         ratingLink: clean(body.ratingLink, 300),
+
+        // Added 2026-10-13 with the step-by-step form: street address, the
+        // Stock Network Site ID (= the affiliate number the form was opened
+        // with), whether the coordinates were checked against Google, and
+        // the channel the details were imported from.
+        streetAddress: clean(body.streetAddress, 300),
+        siteId: clean(body.siteId || body.affId, 100),
+        region: clean(body.region, 100),
+        coordsVerified: body.coordsVerified === "Y" ? "Y" : "N",
+        coordsVerifiedPlace: clean(body.coordsVerifiedPlace, 300),
+        coordsVerifiedAt: body.coordsVerified === "Y" ? new Date().toISOString() : "",
+        sourceChannel: clean(body.sourceChannel, 60),
+        channelListingLink: clean(body.channelListingLink, 500),
+        channelReviews: clean(body.channelReviews, 500),
+        hostName: clean(body.hostName, 200),
+        accessibility: clean(body.accessibility, 1000),
+        notIncluded: clean(body.notIncluded, 1000),
+        screenshotsRead: clean(String(body.screenshotsRead || ""), 4),
+        icalLink: clean(body.icalLink, 600),
+        rateSeasons: sanitizeRateSeasons(body.rateSeasons),
+        blockedNights: sanitizeDateList(body.blockedNights),
+        commissionPct: clean(String(body.commissionPct || ""), 8),
 
         ownerFullName: clean(body.ownerFullName, 200),
         ownerIdPassport: clean(body.ownerIdPassport, 60),
@@ -319,6 +395,98 @@ export default async (request, context) => {
       return json({ ok: true, listingId: listingId });
     }
 
+    if (action === "readScreenshots") {
+      const isAdmin = await verifyAdminToken(body.token);
+      if (!isAdmin && (await overDailyLimit("readScreenshots", request, context))) {
+        return json({ ok: false, reason: "limit", message: "Daily limit for reading screenshots reached. Fill in the rest by hand or try tomorrow." });
+      }
+      const imgs = Array.isArray(body.images) ? body.images.slice(0, 12) : [];
+      let total = 0;
+      const images = [];
+      for (const i of imgs) {
+        const m = typeof (i && i.dataUri) === "string" ? i.dataUri.match(/^data:([^;,]+);base64,(.+)$/) : null;
+        if (!m) continue;
+        total += m[2].length;
+        if (total > 18 * 1024 * 1024) break;
+        images.push({ mediaType: m[1], data: m[2] });
+      }
+      const amenityOptions = Array.isArray(body.amenityOptions) ? body.amenityOptions.map((a) => clean(a, 150)).filter(Boolean) : [];
+      const result = await readListingScreenshots(images, clean(body.channel, 60), amenityOptions, clean(body.today, 10));
+      return json(result);
+    }
+
+    if (action === "lookupLocation") {
+      // Address / property name -> Google coordinate + place names. Returns
+      // up to 5 candidates so the person picks the right one (a resort
+      // name can match more than one place).
+      const isAdmin = await verifyAdminToken(body.token);
+      if (!isAdmin && (await overDailyLimit("lookupLocation", request, context))) {
+        return json({ ok: false, reason: "limit", message: "Daily limit for Google lookups reached." });
+      }
+      const address = clean(body.address, 300);
+      const name = clean(body.name, 200);
+      const geoKey = Deno.env.get("GOOGLE_GEOCODING_API_KEY") || "";
+      const placesKey = Deno.env.get("GOOGLE_PLACES_API_KEY") || "";
+      const out = [];
+      if (name) {
+        const p = await searchPlaceCandidates([name, address].filter(Boolean).join(", "), placesKey, 4);
+        if (p && p.ok) p.candidates.forEach((c) => out.push({ source: "Google Places", name: c.name, address: c.formattedAddress, lat: c.lat, lng: c.lng }));
+      }
+      if (address) {
+        const g = await forwardGeocode(address, geoKey);
+        if (g && g.ok && g.lat != null) out.push({ source: "Google address", name: "", address: g.formattedAddress, lat: g.lat, lng: g.lng, precision: g.locationType });
+      }
+      if (!out.length) return json({ ok: false, reason: "not_found", message: "Google couldn't find that place. Check the address, or type the coordinates." });
+      // Fill place names for each candidate from the coordinate itself, so
+      // the tree fields come from the pin, not from the channel's text.
+      const top = out.slice(0, 5);
+      await Promise.all(top.map(async (c) => {
+        const r = await reverseGeocode(c.lat, c.lng, geoKey);
+        if (r && r.ok) Object.assign(c, { country: r.country, province: r.province, town: r.town, townType: r.townType, suburb: r.suburb });
+      }));
+      return json({ ok: true, candidates: top });
+    }
+
+    if (action === "verifyCoordinates") {
+      const isAdmin = await verifyAdminToken(body.token);
+      if (!isAdmin && (await overDailyLimit("verifyCoordinates", request, context))) {
+        return json({ ok: false, reason: "limit", message: "Daily limit for Google lookups reached." });
+      }
+      const lat = Number(body.latitude), lng = Number(body.longitude);
+      if (!validCoord(lat, lng)) {
+        return json({ ok: false, reason: "invalid", message: "Those aren't valid coordinates. Latitude is -90 to 90 and longitude -180 to 180 (South Africa is about -22 to -35 and 16 to 33)." });
+      }
+      const geoKey = Deno.env.get("GOOGLE_GEOCODING_API_KEY") || "";
+      const r = await reverseGeocode(lat, lng, geoKey);
+      if (!r || !r.ok) return json({ ok: false, reason: (r && r.reason) || "failed", message: "Google couldn't check these coordinates just now." });
+      const result = { ok: true, country: r.country, province: r.province, town: r.town, townType: r.townType, suburb: r.suburb, warnings: [] };
+      // Compare with what the form says, and with the address if given.
+      const said = { country: clean(body.country, 100), province: clean(body.province, 100), town: clean(body.city, 100) };
+      const low = (s) => String(s || "").toLowerCase();
+      if (said.country && r.country && low(said.country) !== low(r.country)) result.warnings.push("The pin is in " + r.country + ", but the form says " + said.country + ".");
+      if (said.province && r.province && low(said.province) !== low(r.province)) result.warnings.push("The pin is in " + r.province + ", but the form says " + said.province + ".");
+      const address = clean(body.address, 300);
+      if (address) {
+        const g = await forwardGeocode(address, geoKey);
+        if (g && g.ok && g.lat != null) {
+          const km = kmBetween(lat, lng, g.lat, g.lng);
+          result.addressDistanceKm = Math.round(km * 10) / 10;
+          if (km > 2) result.warnings.push("The pin is " + result.addressDistanceKm + " km from where Google puts the address. Check which one is right.");
+        }
+      }
+      return json(result);
+    }
+
+    if (action === "findPhotos") {
+      const isAdmin = await verifyAdminToken(body.token);
+      if (!isAdmin && (await overDailyLimit("findPhotos", request, context))) {
+        return json({ ok: false, reason: "limit", message: "Daily limit for Google photo searches reached." });
+      }
+      const query = clean(body.query, 200);
+      const result = await searchPlacePhotos(query, Deno.env.get("GOOGLE_PLACES_API_KEY") || "", 9);
+      return json(result);
+    }
+
     if (action === "get") {
       const denied = await requireAdmin();
       if (denied) return denied;
@@ -350,6 +518,8 @@ export default async (request, context) => {
           city: r.city,
           status: r.status || "Requested",
           siteNr: r.siteNr || "",
+          siteId: r.siteId || "",
+          coordsVerified: r.coordsVerified || "N",
           agreementStatus: r.agreementStatus,
           dateSubmitted: r.dateSubmitted,
           dateUpdated: r.dateUpdated,
