@@ -1261,6 +1261,17 @@
         <div class="status" id="propertySettingsStatus"></div>
       </div>
 
+      <div class="card">
+        <h3 style="margin-top:0">Channel setup help (Airbnb, Booking.com, LekkeSlaap)</h3>
+        <p>Properties can tap <b>Let Avante set it up</b> in Property Affiliate → Channels. They invite the address below on each channel, then the hub emails the people below.</p>
+        <label for="chHelpInvite">Address properties invite (Airbnb co-host, Booking.com user, LekkeSlaap user)</label>
+        <input id="chHelpInvite" type="email" placeholder="admin@avantehospitality.co.za">
+        <label for="chHelpNotify" style="margin-top:10px;display:block">Email these people when a property asks (separate several with a comma)</label>
+        <input id="chHelpNotify" type="text" placeholder="admin@avantehospitality.co.za, someone@avantetravel.co.za">
+        <button class="primary" id="chHelpSave" style="margin-top:10px;">Save</button>
+        <div class="status" id="chHelpStatus"></div>
+      </div>
+
       <div class="card" style="margin-top:20px;">
         <div class="btn-row" style="margin-top:0;">
           <button class="btn-outline" id="refreshPropertyListingsBtn">Refresh</button>
@@ -6014,6 +6025,23 @@
           statusEl.className = 'status show';
         });
       }
+
+      // ---------- Channel setup help (Property Affiliate → Channels) ----------
+      (function(){
+        var inv = document.getElementById('chHelpInvite'), nt = document.getElementById('chHelpNotify'), st = document.getElementById('chHelpStatus');
+        if(!inv) return;
+        var loaded = false;
+        function load(){ if(loaded) return; adminGet('channelHelp').then(function(res){ if(res && res.ok){ inv.value = res.inviteEmail || ''; nt.value = res.notifyEmails || ''; loaded = true; } }); }
+        var tab = document.querySelector('[data-panel="propertyListings"]'); if(tab) tab.addEventListener('click', load);
+        document.getElementById('chHelpSave').addEventListener('click', function(){
+          st.textContent = 'Saving…'; st.className = 'status show';
+          adminPost('setChannelHelp', { inviteEmail: inv.value.trim(), notifyEmails: nt.value.trim() }).then(function(res){
+            var d = res.data || {};
+            if(d.ok){ inv.value = d.inviteEmail; nt.value = d.notifyEmails; st.textContent = 'Saved.'; } else st.textContent = d.error || 'Could not save.';
+            st.className = 'status show';
+          }).catch(function(){ st.textContent = 'Could not reach the server — please try again.'; st.className = 'status show'; });
+        });
+      })();
 
       // ---------- Flyer contact info (shared across every generated flyer) ----------
       (function(){

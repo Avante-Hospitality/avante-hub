@@ -110,6 +110,7 @@ export default async (request) => {
       case "edit": return json(Object.assign({ ok: true }, await core.edit(prop, body.ref, body.change || {})));
       case "find": return json(Object.assign({ ok: true }, await core.find(prop, body.q)));
       case "channels": return json(Object.assign({ ok: true }, await core.channelsView(prop)));
+      case "channelHelp": return json(Object.assign({ ok: true }, await core.requestChannelHelp(prop, body)));
       case "payInfo": return json(Object.assign({ ok: true }, await core.payInfo(prop, body.ref)));
       case "markPaid": return json(Object.assign({ ok: true }, await core.markPaidEft(prop, body.ref, body.type)));
       case "decide": return json(Object.assign({ ok: true }, await core.decide(prop, body.ref, !!body.accept, body.reason)));

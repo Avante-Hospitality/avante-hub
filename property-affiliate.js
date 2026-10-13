@@ -320,6 +320,7 @@
         '<button type="button" class="pa-btn" data-act="unitMove" data-u="' + esc(n.name) + '">Move links to ' + esc(n.name) + '</button>' : '') +
         '<button type="button" class="pa-btn ghost" data-act="unitNew" data-u="' + esc(n.name) + '">It\'s a new unit</button></div></section>';
     });
+    h += viewConnectChannels();
     h += '<section class="pa-card" aria-label="Reservation settings"><p class="pa-h2">Reservation settings</p><p class="pa-hint">Used when the hub books another channel\'s reservation onto Stock Network (client name = the channel).</p><div class="pa-form" style="margin-top:10px">' +
       '<div class="pa-field"><label class="pa-label" for="pa-se">Email on SN reservations</label><input id="pa-se" type="email" value="' + esc(st.email || '') + '" placeholder="Your reservations inbox"></div>' +
       '<div class="pa-field"><label class="pa-label" for="pa-sp">Phone on SN reservations (required)</label><input id="pa-sp" type="tel" value="' + esc(st.phone || '') + '"></div>' +
@@ -353,7 +354,7 @@
       '<div class="pa-field"><label class="pa-label" for="pa-bx" style="color:#0e2f44">Note for guests (optional)</label><input id="pa-bx" type="text" value="' + esc(bk.note || '') + '" placeholder="e.g. Send proof of payment to …"></div></div>' +
       '<p class="pa-hint">Kept encrypted. Guests see these only in the payment message you send them, with the booking reference to use.</p>' +
       '<div class="pa-row" style="margin-top:12px"><button type="button" class="pa-btn" data-act="saveChannels">Save payment settings</button></div></section>';
-    h += '<section class="pa-card" aria-label="Channel links"><div class="pa-row" style="justify-content:space-between;align-items:center"><div><p class="pa-h2">Channel links per unit</p><p class="pa-hint">Step 1: copy the Avante link into that unit\'s listing on the channel. Step 2: paste the channel\'s own calendar link back here.</p></div><button type="button" class="pa-btn ghost small" data-act="syncNow">Check channels now</button></div>';
+    h += '<section class="pa-card" id="pa-chlinks" aria-label="Channel links"><div class="pa-row" style="justify-content:space-between;align-items:center"><div><p class="pa-h2">Channel links per unit</p><p class="pa-hint">Step 1: copy the Avante link into that unit\'s listing on the channel. Step 2: paste the channel\'s own calendar link back here.</p></div><button type="button" class="pa-btn ghost small" data-act="syncNow">Check channels now</button></div>';
     S.channels.units.forEach(function (u) {
       h += '<h3 style="font:700 15px Montserrat,sans-serif;color:#0e2f44;margin:18px 0 0">' + esc(u.name) + ' <span class="pa-hint" style="font-weight:600">· ' + esc(u.size) + '</span></h3><div class="pa-chan">';
       u.channels.forEach(function (c) {
@@ -375,6 +376,79 @@
     return h;
   }
 
+
+  // ---- Connect Airbnb, Booking.com and LekkeSlaap (2026-10-13): easiest way first. ----
+  function viewConnectChannels() {
+    var C = S.channels, inv = esc(C.inviteEmail || 'admin@avantehospitality.co.za'), req = C.channelHelp;
+    var units = C.units.map(function (u) { return esc(u.name); }).join(', ');
+    var allOk = C.units.length && C.units.every(function (u) { return u.channels.some(function (c) { return c.status === 'ok'; }); });
+    var step = function (items) { return '<ol class="pa-steps">' + items.map(function (x) { return '<li>' + x + '</li>'; }).join('') + '</ol>'; };
+    var b = function (t) { return '<b>' + t + '</b>'; };
+    var h = '<section class="pa-card" aria-label="Connect your channels"><p class="pa-h2">Connect Airbnb, Booking.com and LekkeSlaap</p>' +
+      '<p class="pa-hint">This stops double bookings: a booking on one channel blocks the same nights everywhere. Do it once for every unit (' + units + ') on every channel you use. Choose one of the two ways.</p>';
+    if (allOk) h += '<div class="pa-ok" style="margin-top:8px">Every unit has at least one channel connected. Check the list under Channel links per unit.</div>';
+    // Option 1
+    h += '<details class="pa-opt"' + (allOk ? '' : ' open') + '><summary><span class="pa-opt-badge">Easiest</span> <b>Way 1: Let Avante set it up for you</b><br><span class="pa-hint">About 2 minutes for you. You invite Avante on each channel, Avante does the rest.</span></summary>' +
+      '<p style="margin:10px 0 4px">On every channel you use, invite this email address:</p>' +
+      '<div class="pa-copy" style="max-width:420px"><input type="text" readonly value="' + inv + '" aria-label="Email address to invite"><button type="button" class="pa-btn small" data-act="copy" data-text="' + inv + '">Copy</button></div>' +
+      '<p class="pa-label" style="margin:16px 0 4px;color:#0e2f44">Airbnb</p>' + step([
+        'Open ' + b('airbnb.co.za') + ' on a computer and log in.',
+        'Tap ' + b('Listings') + ' (top of the page, or in the menu at the top right).',
+        'Tap the listing of your first unit.',
+        'Find ' + b('Co-hosts') + ' in the list on the left (or scroll down to it).',
+        'Tap ' + b('Invite a co-host') + ' (or ' + b('Add co-host') + ').',
+        'Paste the email address above.',
+        'Choose the permission that includes the ' + b('calendar') + ' (for example "Calendar and messaging" or "Full access").',
+        'Tap ' + b('Send invite') + '.',
+        'Do the same for every other unit that has its own listing.']) +
+      '<p class="pa-label" style="margin:12px 0 4px;color:#0e2f44">Booking.com</p>' + step([
+        'Open ' + b('admin.booking.com') + ' (the extranet) on a computer and log in.',
+        'Tap your account name or ' + b('Account') + ' at the top right.',
+        'Tap ' + b('User management') + ' (sometimes just ' + b('Users') + ').',
+        'Tap ' + b('Create new user') + ' (or ' + b('Add user') + ').',
+        'Paste the email address above.',
+        'Give access to ' + b('Rates & availability') + ' (the calendar).',
+        'Tap ' + b('Send') + ' / ' + b('Save') + '.']) +
+      '<p class="pa-label" style="margin:12px 0 4px;color:#0e2f44">LekkeSlaap</p>' + step([
+        'Log in to your ' + b('LekkeSlaap host profile') + '.',
+        'Look for ' + b('Users') + ', ' + b('Team') + ' or ' + b('Access') + ' in your account settings and add the email address above.',
+        'Can\'t find it? Skip LekkeSlaap here and use Way 2 for LekkeSlaap only, or tick it below and write "please help with LekkeSlaap" in the note.']) +
+      '<p class="pa-label" style="margin:14px 0 6px;color:#0e2f44">Done? Tell Avante:</p>' +
+      '<div class="pa-row" style="gap:4px 16px">' + [['airbnb', 'Airbnb'], ['bcom', 'Booking.com'], ['lekke', 'LekkeSlaap']].map(function (c) { return '<label class="pa-check" style="min-height:44px"><input type="checkbox" data-chhelp="' + c[0] + '"' + (req && req.channels.indexOf(c[0]) >= 0 ? ' checked' : '') + '> I invited Avante on ' + c[1] + '</label>'; }).join('') + '</div>' +
+      '<div class="pa-field" style="margin-top:6px"><label class="pa-label" for="pa-chnote">Note for Avante (optional)</label><textarea id="pa-chnote" rows="2" placeholder="e.g. FV10 and FV11 are one listing on Airbnb">' + esc((req && req.note) || '') + '</textarea></div>' +
+      '<div class="pa-row" style="margin-top:10px;align-items:center"><button type="button" class="pa-btn" data-act="chHelp"' + (S.busy ? ' disabled' : '') + '>Tell Avante I\'ve sent the invites</button>' +
+      (req ? '<span class="pa-hint">Sent ' + new Date(req.at).toLocaleDateString([], { day: 'numeric', month: 'short' }) + ' ' + new Date(req.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + '. Avante will connect your channels and they\'ll show "Connected" below.</span>' : '') + '</div></details>';
+    // Option 2
+    h += '<details class="pa-opt"><summary><b>Way 2: Do it yourself</b><br><span class="pa-hint">About 5 minutes per unit and channel. Two links per unit: copy ours into the channel, and the channel\'s into the hub.</span></summary>' +
+      '<p style="margin:10px 0 4px">For each unit, the two links are under ' + b('Channel links per unit') + ' further down this page. <button type="button" class="pa-btn small ghost" data-act="toLinks">Show me the links</button></p>' +
+      '<p class="pa-label" style="margin:14px 0 4px;color:#0e2f44">Airbnb</p>' + step([
+        'Open ' + b('airbnb.co.za') + ' and log in.',
+        'Tap ' + b('Calendar') + ', then choose the listing of your first unit.',
+        'Tap ' + b('Availability') + '.',
+        'Scroll to ' + b('Connect calendars') + ' and tap ' + b('Connect to another website') + '.',
+        'Copy the link Airbnb shows. In the hub, paste it in that unit\'s box ' + b('Airbnb\'s calendar link') + '.',
+        'In the hub, tap ' + b('Copy') + ' next to that unit\'s ' + b('Avante link for Airbnb') + '.',
+        'Back on Airbnb, paste it in the calendar address box, type the name ' + b('Avante') + ' and tap ' + b('Add calendar') + '.',
+        'Repeat for every unit, then tap ' + b('Save settings and links') + ' in the hub.']) +
+      '<p class="pa-label" style="margin:12px 0 4px;color:#0e2f44">Booking.com</p>' + step([
+        'Open ' + b('admin.booking.com') + ' and log in.',
+        'Tap ' + b('Calendar & Pricing') + ', then ' + b('Sync calendars') + '.',
+        'Tap ' + b('Add calendar connection') + '.',
+        'In the hub, tap ' + b('Copy') + ' next to that unit\'s ' + b('Avante link for Booking.com') + ', and paste it in Booking.com\'s box. Tap ' + b('Next') + '.',
+        'Type the name ' + b('Avante') + ' and tap ' + b('Export calendar') + '.',
+        'Copy the link Booking.com shows. In the hub, paste it in that unit\'s box ' + b('Booking.com\'s calendar link') + '. Tap ' + b('Done') + ' on Booking.com.',
+        'Repeat for every unit, then tap ' + b('Save settings and links') + ' in the hub.']) +
+      '<div class="pa-note" style="margin:6px 0">No ' + b('Sync calendars') + ' on Booking.com? Your property already uses a channel manager there. Use Way 1 and Avante will help.</div>' +
+      '<p class="pa-label" style="margin:12px 0 4px;color:#0e2f44">LekkeSlaap</p>' + step([
+        'Log in to your ' + b('LekkeSlaap host profile') + '.',
+        'Tap ' + b('Calendar Settings') + ', then under ' + b('Calendar Integration') + ' choose ' + b('iCal') + '.',
+        'Tap ' + b('Enable iCal for this Property') + ' at the bottom, choose a platform and tap ' + b('Next') + '.',
+        'Tap ' + b('Copy Link') + '. In the hub, paste it in that unit\'s box ' + b('LekkeSlaap\'s calendar link') + '.',
+        'In the hub, tap ' + b('Copy') + ' next to ' + b('Avante link for LekkeSlaap') + ', paste it in LekkeSlaap\'s import box and tap ' + b('Import') + '.',
+        'Then tap ' + b('Save settings and links') + ' in the hub.']) +
+      '<p class="pa-hint">A link shows "Connected" in the hub within 15 minutes. Button names on the channels sometimes change: if you get stuck, use Way 1.</p></details></section>';
+    return h;
+  }
   // ---- Bookings ----
   var PAY_PILL = { paid: ['#d4f5f2', '#065e58', 'Paid'], 'paid-eft': ['#d4f5f2', '#065e58', 'Paid (EFT)'], 'part-paid': ['#fff4e5', '#6b3a00', 'Part paid'], unpaid: ['#fff4e5', '#6b3a00', 'Unpaid'], channel: ['#eef2f2', '#333', 'Paid on channel'] };
   function payPill(b) {
@@ -1278,6 +1352,13 @@
         if (d.needsApproval) { S.busy = false; S.bookings = null; S.modal = { done: { title: 'Approval requested for ' + S.edit.ref, text: 'This booking is paid, so it is NOT cancelled yet. It will be cancelled on Stock Network as soon as the affiliate approves.', approval: d.approval } }; S.edit = null; render(); return; }
         afterChange({ title: 'Booking ' + S.edit.ref + ' cancelled', text: d.alreadyCancelled ? 'It had already been cancelled in Stock Network.' : 'Cancelled on Stock Network. The nights are open again and your other channels are unblocked within 15 minutes.' });
       }).catch(function (err) { S.busy = false; S.err = err.message; S.modal = null; render(); });
+    }
+    if (a === 'toLinks') { var lk = document.getElementById('pa-chlinks'); if (lk) lk.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
+    if (a === 'chHelp') {
+      var chs = Array.prototype.slice.call(root.querySelectorAll('[data-chhelp]:checked')).map(function (x) { return x.dataset.chhelp; });
+      if (!chs.length) { S.err = 'Tick the channels where you invited Avante.'; render(); window.scrollTo(0, 0); return; }
+      t.textContent = 'Sending…'; t.disabled = true;
+      return api('channelHelp', { channels: chs, note: val('pa-chnote') }).then(function (d) { S.channels = d; S.msg = 'Thank you. Avante has your request and will connect your channels. They show "Connected" here when done.'; render(); window.scrollTo(0, 0); }).catch(function (e) { fail(e); window.scrollTo(0, 0); });
     }
     if (a === 'saveChannels') {
       var prices = {}; root.querySelectorAll('[data-price]').forEach(function (el) { prices[el.dataset.price] = el.value; });

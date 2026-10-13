@@ -228,3 +228,14 @@ button.pa-block:hover, button.pa-block:focus-visible{ outline:2px solid var(--te
 
 /* Date box inside a radio choice (Channels → Calendar opens on): not the 20px tick-box size. */
 .pa label.pa-check input[type="date"]{ width:100%; height:auto; min-height:44px; padding:8px 10px; }
+
+/* Channels → Connect your channels: two ways, easiest first. */
+.pa-opt{ border:1.5px solid var(--line,#e3e9e8); border-radius:12px; padding:12px 14px; margin-top:12px; background:#fff; }
+.pa-opt[open]{ border-color:#0DCDC2; background:#f6fdfc; }
+.pa-opt summary{ cursor:pointer; list-style:none; line-height:1.5; }
+.pa-opt summary::-webkit-details-marker{ display:none; }
+.pa-opt summary::before{ content:'▸'; display:inline-block; width:16px; color:#08776f; }
+.pa-opt[open] summary::before{ content:'▾'; }
+.pa-opt-badge{ display:inline-block; background:#0DCDC2; color:#0e2f44; font:700 11px Montserrat,sans-serif; text-transform:uppercase; letter-spacing:.06em; border-radius:999px; padding:2px 8px; }
+.pa-steps{ margin:4px 0 0; padding-left:22px; font-size:14px; line-height:1.6; }
+.pa-steps li{ margin:2px 0; }

@@ -419,6 +419,13 @@ export default async (request, context) => {
         return json({ ok: true, hooks: hooks }, 200, cors);
       }
 
+      // Property Affiliate → "Let Avante set up my channels": the address properties invite,
+      // and who gets the request emails (comma-separated).
+      if (resource === "channelHelp") {
+        const c = (await getStore({ name: "property-affiliate", consistency: "strong" }).get("admincfg:channelHelp", { type: "json" })) || {};
+        return json({ ok: true, inviteEmail: c.inviteEmail || "admin@avantehospitality.co.za", notifyEmails: c.notifyEmails || "admin@avantehospitality.co.za" }, 200, cors);
+      }
+
       if (resource === "flyerSettings") {
         const settings = (await flyerSettingsStore.get("config", { type: "json" })) || {};
         return json({ ok: true, contactPhone: settings.contactPhone || "", contactEmail: settings.contactEmail || "" }, 200, cors);
@@ -1297,6 +1304,19 @@ export default async (request, context) => {
 
       const result = await saveHookPhotoUrls(hookStore, imageStore, "__admin__:" + n, urls, body.source);
       return json(result, result.ok ? 200 : 502, cors);
+    }
+
+    if (action === "setChannelHelp") {
+      const ok = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+      const list = (v) => String(v || "").split(/[,;\s]+/).map((e) => e.trim().toLowerCase()).filter(Boolean);
+      const invite = list(body.inviteEmail)[0] || "";
+      const notify = list(body.notifyEmails);
+      if (!ok(invite)) return json({ ok: false, error: "The invite address doesn't look like an email address." }, 400, cors);
+      const bad = notify.filter((e) => !ok(e));
+      if (!notify.length || bad.length) return json({ ok: false, error: bad.length ? "Not an email address: " + bad.join(", ") : "Add at least one email address to notify." }, 400, cors);
+      const rec = { inviteEmail: invite, notifyEmails: notify.slice(0, 10).join(", "), updatedAt: new Date().toISOString() };
+      await getStore({ name: "property-affiliate", consistency: "strong" }).setJSON("admincfg:channelHelp", rec);
+      return json(Object.assign({ ok: true }, rec), 200, cors);
     }
 
     if (action === "setFlyerSettings") {

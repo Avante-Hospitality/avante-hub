@@ -795,7 +795,43 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     }));
     const settings = Object.assign({ payMode: "both" }, prop.settings || {});
     const linked = Object.keys(prop.channels || {}).filter((n) => Object.values(prop.channels[n] || {}).some((c) => c && c.importUrl));
-    return { settings, firstBookable: firstBookable(prop), bank: await bankOf(prop), units, affiliateLinked: !!prop.aff, unitNotices: prop.unitNotices || [], linkedUnits: linked };
+    const help = await channelHelpConfig();
+    return { settings, firstBookable: firstBookable(prop), bank: await bankOf(prop), units, affiliateLinked: !!prop.aff, unitNotices: prop.unitNotices || [], linkedUnits: linked,
+      inviteEmail: help.inviteEmail, channelHelp: prop.channelHelp || null };
+  }
+
+  // ---------- "Let Avante set up my channels" (2026-10-13, Jean) ----------
+  // The property invites Avante on each channel (Airbnb co-host, Booking.com extranet user,
+  // LekkeSlaap user), then taps one button; the hub emails the people set in admin.
+  const CHANNEL_HELP_DEFAULT = "admin@avantehospitality.co.za";
+  function emailList(v) { return String(v || "").split(/[,;\s]+/).map((e) => e.trim().toLowerCase()).filter((e) => validEmail(e)).slice(0, 10); }
+  async function channelHelpConfig() {
+    const c = (await getJSON("admincfg:channelHelp").catch(() => null)) || {};
+    const invite = emailList(c.inviteEmail)[0] || CHANNEL_HELP_DEFAULT;
+    const notify = emailList(c.notifyEmails);
+    return { inviteEmail: invite, notifyEmails: notify.length ? notify : [CHANNEL_HELP_DEFAULT] };
+  }
+  async function requestChannelHelp(prop, body) {
+    body = body || {};
+    const chans = (Array.isArray(body.channels) ? body.channels : []).filter((k) => CHANNELS[k]);
+    if (!chans.length) throw new PAError("Tick the channels where you invited Avante.");
+    const last = prop.channelHelp && Date.parse(prop.channelHelp.at);
+    if (last && now().getTime() - last < 5 * 60000) throw new PAError("Avante already has your request. Give us a moment before sending it again.", 429);
+    const cfg = await channelHelpConfig();
+    const st = prop.settings || {}, fs = prop.frontStore || {};
+    const note = cleanStr(body.note, 600);
+    const contact = [st.email || fs.email, st.phone || fs.phone || fs.whatsapp].filter(Boolean).join(" · ");
+    const html = "<p><b>" + esc(prop.resortName || "A property") + "</b> (Stock Network site " + esc(prop.site) + ") invited Avante to set up its channel calendars.</p>" +
+      "<p><b>Invited on:</b> " + esc(chans.map((k) => CHANNELS[k]).join(", ")) + "<br><b>Invite sent to:</b> " + esc(cfg.inviteEmail) +
+      "<br><b>Units:</b> " + esc(prop.units.map((u) => u.name).join(", ")) + (contact ? "<br><b>Property contact:</b> " + esc(contact) : "") + (prop.aff ? "<br><b>Hub affiliate:</b> " + esc(prop.aff) : "") + "</p>" +
+      (note ? "<p><b>Note from the property:</b><br>" + esc(note) + "</p>" : "") +
+      "<p>To do: accept the invites, then for every unit and channel copy the channel's calendar link into the hub (Property Affiliate → Channels → Channel links per unit) and paste the hub's Avante link into the channel's calendar import.</p>";
+    let sent = 0;
+    for (const to of cfg.notifyEmails) if (await sendEmail(to, "Set up channels: " + (prop.resortName || "property") + " (" + chans.map((k) => CHANNELS[k]).join(", ") + ")", html, { replyTo: validEmail(st.email || fs.email) ? (st.email || fs.email) : undefined }).catch(() => false)) sent++;
+    if (!sent) throw new PAError("The request couldn't be emailed to Avante. Please try again in a minute.", 502);
+    prop.channelHelp = { at: now().toISOString(), channels: chans, note };
+    await setJSON("site:" + prop.siteId, prop);
+    return channelsView(prop);
   }
 
   // A unit name appeared on SN. from = the old unit it replaces (renamed on SN),
@@ -1646,5 +1682,5 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
   }
   function notDemo(b) { if (b && b.demo) throw new PAError("This is a demo booking: it isn't on Stock Network, so it can't be changed, paid or cancelled.", 409); }
 
-  return { prefetch, siteOfToken, newSession, decide, refreshStatuses, clientFor, connect, auth, disconnect, publicProperty, availability, search, book, cancel, cancelUnit, edit, find, saveSettings, channelsView, payInfo, markPaidEft, approvalInfo, approveCancel, affStatus, resume, seedDemo, clearDemo, isDemoSite, saveContact, checkIn, guests, messagesView, saveMessages, prepareMessage, markMessage, emailNow, inHouse, emailInHouse, firstBookable, fsSettings, saveFrontStore, frontStoreView, uploadFrontPhoto, removeFrontPhoto, frontPhoto, propertyBySlug, publicFrontStore, publicGuestInfo, guestKeyOk, publicOffers, publicAvailability, publicQuote, publicBook, fsStat, propertyReviewLink, remindMessages, icalFeed, runSync, syncProperty, channelEvents, addChannelEvent, snapshot, ensureWindow, resolveUnitNotice, findResortsForSite };
+  return { requestChannelHelp, prefetch, siteOfToken, newSession, decide, refreshStatuses, clientFor, connect, auth, disconnect, publicProperty, availability, search, book, cancel, cancelUnit, edit, find, saveSettings, channelsView, payInfo, markPaidEft, approvalInfo, approveCancel, affStatus, resume, seedDemo, clearDemo, isDemoSite, saveContact, checkIn, guests, messagesView, saveMessages, prepareMessage, markMessage, emailNow, inHouse, emailInHouse, firstBookable, fsSettings, saveFrontStore, frontStoreView, uploadFrontPhoto, removeFrontPhoto, frontPhoto, propertyBySlug, publicFrontStore, publicGuestInfo, guestKeyOk, publicOffers, publicAvailability, publicQuote, publicBook, fsStat, propertyReviewLink, remindMessages, icalFeed, runSync, syncProperty, channelEvents, addChannelEvent, snapshot, ensureWindow, resolveUnitNotice, findResortsForSite };
 }
