@@ -1243,6 +1243,18 @@
       </div>
 
       <div class="card">
+        <h2 class="section-heading" style="margin-top:0;">Onboard a new property</h2>
+        <p class="hint">For a property that has no affiliate yet. Opens the step-by-step onboarding form as admin (no daily limit on reading screenshots). Leave the Site ID empty until the affiliate is created; add it and the Site Nr here later.</p>
+        <button class="primary" id="onboardNewPropertyBtn" type="button">+ Onboard a new property</button>
+        <script>
+          document.getElementById('onboardNewPropertyBtn').addEventListener('click', function(){
+            var t = ''; try { t = sessionStorage.getItem('avante-admin-token') || ''; } catch(e){}
+            window.open('property-form.html?by=admin#t=' + encodeURIComponent(t), '_blank');
+          });
+        </script>
+      </div>
+
+      <div class="card" style="margin-top:20px;">
         <label for="notificationEmailInput">Notify this email address when a new listing is submitted</label>
         <input id="notificationEmailInput" type="email" placeholder="e.g. bookings@avantetravel.co.za">
         <button class="primary" id="saveNotificationEmailBtn" style="margin-top:10px;">Save</button>
