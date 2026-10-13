@@ -88,14 +88,13 @@
     return ws;
   }
   function fileSafe(name){ return s(name).replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'property'; }
-  // Jean (2026-10-13): the Site Nr and Site ID (= affiliate number) are
-  // allocated first; only then can the files be downloaded for Stock
-  // Network (manual upload or SN's import).
+  // Jean (2026-10-13): Avante allocates the SN Site Nr once the basic info
+  // is in; only then can the files be downloaded for Stock Network (manual
+  // upload or SN's import). The Site ID (= affiliate number) and the SN API
+  // credentials only come from Stock Network AFTER the site is set up, so
+  // the files don't need them (the Site ID column stays empty until then).
   function needSite(listing, siteNr){
-    var missing = [];
-    if(!s(siteNr || listing.siteNr)) missing.push('StockNetwork Site Nr');
-    if(!s(listing.siteId)) missing.push('Site ID (affiliate number)');
-    if(missing.length) throw new Error('Allocate the ' + missing.join(' and ') + ' first — the Stock Network files need ' + (missing.length > 1 ? 'them' : 'it') + '.');
+    if(!s(siteNr || listing.siteNr)) throw new Error('Allocate the StockNetwork Site Nr first — the Stock Network files need it.');
   }
   function needXlsx(){ if(!window.XLSX) throw new Error('The spreadsheet tool did not load. Check your internet and reload the page.'); }
 

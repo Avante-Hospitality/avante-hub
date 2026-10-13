@@ -286,7 +286,7 @@
       <h2 class="section-heading">Stock Network</h2>
       <div class="row">
         <div><label for="pSiteNr">StockNetwork Site Nr</label><input id="pSiteNr" placeholder="e.g. 5980"><small class="hint" style="display:block;margin:4px 0 0">Leave blank if the property isn't on Stock Network yet — Avante fills it in.</small></div>
-        <div><label for="pSiteId">Site ID (same as the affiliate number)</label><input id="pSiteId" placeholder="e.g. 6de763dc-ea92-45a9-9842-054a51711071"><small class="hint" style="display:block;margin:4px 0 0" id="siteIdHint">Filled in from the hub link you opened this form with.</small></div>
+        <div><label for="pSiteId">Site ID (affiliate number) — comes later</label><input id="pSiteId" placeholder="e.g. 6de763dc-ea92-45a9-9842-054a51711071"><small class="hint" style="display:block;margin:4px 0 0" id="siteIdHint">Filled in from the hub link you opened this form with.</small></div>
       </div>
     </div>
   </section>
@@ -459,7 +459,7 @@
       <div class="scroll"><table class="sn"><thead id="snHead"></thead><tbody id="snBody"></tbody></table></div>
       <div class="btns"><button type="button" class="btn-secondary btn-sm" id="copySnBtn">Copy rows for Excel</button><span class="hint" id="copySnStatus" style="margin:0"></span></div>
       <h3 class="section-heading" style="margin-top:16px; font-size:15px;">Download for Stock Network</h3>
-      <p class="hint">The <b>property file</b> has the property, every unit type with how many units and how many it sleeps, and the rates. The <b>rates file</b> is the calendar in Stock Network's stock upload format. They can only be downloaded once the <b>StockNetwork Site Nr</b> and <b>Site ID</b> (step 3) have been allocated.</p>
+      <p class="hint">The <b>property file</b> has the property, every unit type with how many units and how many it sleeps, and the rates. The <b>rates file</b> is the calendar in Stock Network's stock upload format. They can be downloaded once the <b>StockNetwork Site Nr</b> (step 3) has been allocated. The Site ID isn't needed for them.</p>
       <div class="btns"><button type="button" class="btn-navy btn-sm" data-dl="property">Property file (.xlsx)</button><button type="button" class="btn-secondary btn-sm" data-dl="stockx">Rates file (.xlsx)</button><button type="button" class="btn-secondary btn-sm" data-dl="stockc">Rates file (.csv)</button><span class="hint" id="dlStatus" style="margin:0"></span></div>
     </div>
     <div class="card" id="editSaveCard" style="display:none">
@@ -591,7 +591,7 @@
 
   // ---------- Site ID (= affiliate number) ----------
   if(AFF){ $('pSiteId').value = AFF; $('pSiteId').readOnly = true; }
-  else { $('siteIdHint').textContent = 'Type the affiliate number (Site ID) this property belongs to, if you have one.'; }
+  else { $('siteIdHint').textContent = 'Leave empty for a new property. Stock Network gives the Site ID only after the Site Nr is allocated; Avante adds it when the property goes live on the hub.'; }
 
   // ---------- Amenities ----------
   var AMENITY_DATA = {
@@ -1309,7 +1309,6 @@
       [!!($('pLat').value.trim() && $('pLng').value.trim()), 'Coordinates filled in', 3],
       [coordsVerified, 'Coordinates checked with Google', 3],
       [treePlaced || (!!$('pSuburb').value.trim() && !!$('pCity').value.trim() && editing), 'Placed in the hub location tree', 3],
-      [!!$('pSiteId').value.trim(), 'Site ID (affiliate number)', 3],
       [unitRows().some(function(r){ return r.querySelector('.pu-name').value.trim() && r.querySelector('.pu-maxOcc').value.trim(); }), 'Unit type name and sleeps', 5],
       [amenCount > 0, 'Amenities ticked (' + amenCount + ')', 5],
       [s.length > 0, 'Rates set on the calendar (' + s.length + ' season' + (s.length === 1 ? '' : 's') + ')', 6],

@@ -1245,7 +1245,7 @@
 
       <div class="card">
         <h2 class="section-heading" style="margin-top:0;">Onboard a new property</h2>
-        <p class="hint">For a property that has no affiliate yet. Opens the step-by-step onboarding form as admin (no daily limit on reading screenshots). Leave the Site ID empty until the affiliate is created; add it and the Site Nr here later.</p>
+        <p class="hint">For a property that has no affiliate yet. Opens the step-by-step onboarding form as admin (no daily limit on reading screenshots). Leave the Site ID empty. Allocate the Site Nr first (it unlocks the Stock Network files); add the Site ID when Stock Network gives it.</p>
         <button class="primary" id="onboardNewPropertyBtn" type="button">+ Onboard a new property</button>
         <script>
           document.getElementById('onboardNewPropertyBtn').addEventListener('click', function(){
@@ -6675,7 +6675,7 @@
         { key: 'description', label: 'Description', el: 'textarea' },
         { key: 'houseRules', label: 'House rules', el: 'textarea' },
         // Added 2026-10-13 with the step-by-step onboarding form.
-        { key: 'siteId', label: 'Site ID (affiliate number)', el: 'input' },
+        { key: 'siteId', label: 'Site ID (affiliate number) — from SN after the Site Nr, for going live', el: 'input' },
         { key: 'streetAddress', label: 'Street address', el: 'input' },
         { key: 'latitude', label: 'Latitude', el: 'input' },
         { key: 'longitude', label: 'Longitude', el: 'input' },
@@ -6744,7 +6744,7 @@
         var info = document.createElement('div');
         info.className = 'hint';
         info.style.marginTop = '8px';
-        info.textContent = units + ' unit type(s), ' + seasons + ' rate season(s). The files download only once the StockNetwork Site Nr (below the status) and the Site ID (affiliate number, in the fields above) are filled in.';
+        info.textContent = units + ' unit type(s), ' + seasons + ' rate season(s). The files download once the StockNetwork Site Nr (below the status) is filled in. The Site ID isn't needed for them; add it when Stock Network gives it, to go live on the hub.';
         host.appendChild(info);
         var bar = document.createElement('div');
         bar.style.cssText = 'display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;';

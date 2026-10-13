@@ -39,6 +39,7 @@
     <div class="ht-card ht-new" aria-label="What's new">
       <h2>What's new</h2>
       <ul>
+        <li><time>13 Oct 2026</time> Property Listings: the Stock Network files now need only the <b>StockNetwork Site Nr</b>. The <b>Site ID</b> (affiliate number) comes from Stock Network after the site is set up, with the API credentials — add it then, to go live on the hub. See <a href="#propertyListings">Property Listings</a>.</li>
         <li><time>13 Oct 2026</time> <b>Property Listings</b> has a new card, <b>Channel setup help</b>: the address properties invite on Airbnb, Booking.com and LekkeSlaap, and who gets emailed when they ask Avante to set up their channels (several addresses, separated by commas).</li>
         <li><time>13 Oct 2026</time> Affiliates: new type <b>Channel Property Affiliate</b> (on NightsBridge etc.: hook builder and guest payments only). Types now decide which menus an affiliate sees in their hub.</li>
         <li><time>13 Oct 2026</time> Onboarding: place names and Stock Network Area/District come from the hub location tree when the coordinates are checked, and again when the listing is saved. Owners and affiliates can't change the location; admin can.</li>
@@ -215,10 +216,18 @@
       <h3>Onboard a new property yourself (no affiliate yet)</h3>
       <ol class="steps">
         <li>Tap <span class="tab">Property Listings</span>, then <span class="btn t">+ Onboard a new property</span>. The form opens in a new tab.</li>
-        <li>Go through the 8 steps (see the <a href="how-to.html#property">onboarding form guide</a>). Leave <span class="field">Site ID</span> empty if there's no affiliate yet.</li>
+        <li>Go through the 8 steps (see the <a href="how-to.html#property">onboarding form guide</a>). Leave <span class="field">Site ID (affiliate number) — comes later</span> empty.</li>
         <li>Tap <span class="btn">Submit Listing for Review</span>. It shows up in the list below.</li>
-        <li>When the affiliate is created and Stock Network allocates the site, tap <span class="btn g">View</span>, type the <span class="field">Site ID (affiliate number)</span> and <span class="field">StockNetwork Site Nr</span>, and tap <span class="btn">Save Changes</span>.</li>
+        <li>Allocate the Site Nr: tap <span class="btn g">View</span>, type the <span class="field">StockNetwork Site Nr</span> and tap <span class="btn">Save Changes</span>. Now the Stock Network files download (see <b>Send a new property to Stock Network</b> below).</li>
       </ol>
+      <h3>Go live on the hub (after Stock Network sets up the site)</h3>
+      <ol class="steps">
+        <li>Wait for Stock Network to give you the <b>Site ID</b> and the API credentials for the site.</li>
+        <li>Create the affiliate in <span class="tab">Affiliates</span> with the Site ID as its affiliate number. Tick its type.</li>
+        <li>Tap <span class="tab">Property Listings</span>, then <span class="btn g">View</span> on the listing.</li>
+        <li>Type the Site ID in <span class="field">Site ID (affiliate number) — from SN after the Site Nr, for going live</span>. Tap <span class="btn">Save Changes</span>.</li>
+      </ol>
+      <div class="tip">The Stock Network files don't need the Site ID, so you can send them before you have it.</div>
       <h3>Review a listing</h3>
       <ol class="steps">
         <li>Once: set <span class="field">Notify this email address when a new listing is submitted</span> and tap <b>Save</b>. New listings and agreement answers are emailed there.</li>
@@ -240,7 +249,7 @@
       </ol>
       <h3>Send a new property to Stock Network</h3>
       <ol class="steps">
-        <li>Tap <span class="btn g">View</span> on the listing. Type the <span class="field">StockNetwork Site Nr</span> Stock Network allocated, and check the <span class="field">Site ID (affiliate number)</span> is filled in. The files won't download without both.</li>
+        <li>Tap <span class="btn g">View</span> on the listing. Type the <span class="field">StockNetwork Site Nr</span> you allocated and tap <span class="btn">Save Changes</span>. The files won't download without it. The Site ID isn't needed.</li>
         <li>Under <b>Files and Stock Network</b>, tap <span class="btn g">Property file for SN (.xlsx)</span>. It has the property, each unit type with how many units and how many it sleeps, and the rates, with the Site Nr in it.</li>
         <li>First time: tap <span class="btn g">Rates file — all future (.xlsx)</span> (or <b>.csv</b>). It has every rate from today onwards in Stock Network's stock upload format.</li>
         <li>Email the files to Stock Network. Tap <span class="btn">Save Changes</span> so the Site Nr is kept.</li>
