@@ -260,7 +260,7 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
       '<div class="sub">' + esc([d.headline ? d.name : '', d.welcome].filter(Boolean).join(' — ')) + '</div>' +
       ((d.priceFrom || d.rating) ? '<div class="badges">' + (d.priceFrom ? '<span class="badge price">' + esc(d.priceFrom) + '</span>' : '') +
         (d.rating ? (safeLink(d.rating.link) ? '<a class="badge rate" href="' + esc(safeLink(d.rating.link)) + '" target="_blank" rel="noopener">' : '<span class="badge rate">') + '<span class="st">★</span> ' + esc(d.rating.value) + (d.rating.count ? ' <small style="font-weight:600">· ' + esc(d.rating.count) + ' reviews on Google</small>' : ' on Google') + (safeLink(d.rating.link) ? '</a>' : '</span>') : '') + '</div>' : '') +
-      '<div class="ctas"><button type="button" class="btn t" data-act="toBook">Check availability</button>' + (waLink(d) ? '<a class="btn w" href="' + esc(waLink(d, 'Hi, I have a question about ' + d.name + '.')) + '" target="_blank" rel="noopener">💬 Ask on WhatsApp</a>' : '') + '</div></div></section>';
+      '<div class="ctas">' + (waLink(d) ? '<a class="btn w" href="' + esc(waLink(d, 'Hi, I have a question about ' + d.name + '.')) + '" target="_blank" rel="noopener">💬 Ask on WhatsApp</a>' : '') + '</div></div></section>';
     h += '<div class="wrap">';
     // Photos: one big and four small; tap for all of them.
     if (ph.length > 1) h += '<div class="mosaic" id="photos" aria-label="Photos">' + ph.slice(1, 6).map(function (u, i) { return '<button type="button" data-act="lb" data-i="' + (i + 1) + '" style="background-image:url(\'' + esc(u) + '\')" aria-label="Photo ' + (i + 2) + ' of ' + ph.length + '"></button>'; }).join('') +
