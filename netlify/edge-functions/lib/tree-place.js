@@ -91,3 +91,50 @@ export async function withTreePath(rawUrl, origin) {
     return rawUrl;
   }
 }
+
+// ---- Places in the tree with a map position (front store "things to do") ----
+// Each town and suburb of the tree gets a centre: the middle (median) of the
+// pins of the properties in it (resort list latitude/longitude), the same way
+// the hook builder works out a town's centre. Kept with the tree cache.
+let centres = null; // { at, list: [{ p, t, s, lat, lng, n }] }
+const med = (xs) => { const a = xs.slice().sort((x, y) => x - y), m = a.length >> 1; return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2; };
+async function loadCentres(origin) {
+  const c = await load(origin);
+  if (centres && centres.at === c.at) return centres;
+  const pins = {};
+  try {
+    const rec = await getStore({ name: "resort-list", consistency: "strong" }).get("current", { type: "json" });
+    for (const r of (rec && rec.resorts) || []) {
+      const lat = parseFloat(r && r.latitude), lng = parseFloat(r && r.longitude);
+      if (r && r.resortId && isFinite(lat) && isFinite(lng) && !(lat === 0 && lng === 0)) pins[r.resortId] = [lat, lng];
+    }
+  } catch (e) { /* no pins */ }
+  const groups = {};
+  for (const [id, pl] of Object.entries(c.places)) {
+    const pin = pins[id]; if (!pin || !pl || !pl.t) continue;
+    const add = (s) => { const k = (pl.p || "") + "|" + pl.t + "|" + s; (groups[k] = groups[k] || { p: pl.p || "", t: pl.t, s, pts: [] }).pts.push(pin); };
+    add("");
+    if (pl.s && pl.s !== pl.t) add(pl.s);
+  }
+  const list = Object.values(groups).map((g) => ({ p: g.p, t: g.t, s: g.s, lat: med(g.pts.map((x) => x[0])), lng: med(g.pts.map((x) => x[1])), n: g.pts.length }));
+  list.sort((a, b) => (a.p + a.t + a.s).localeCompare(b.p + b.t + b.s));
+  centres = { at: c.at, list };
+  return centres;
+}
+// All towns and suburbs that have a centre, for the builder's place picker.
+export async function treeAreaList(origin) {
+  return (await loadCentres(origin)).list.map((x) => ({ p: x.p, t: x.t, s: x.s }));
+}
+// The centre of one place ({ p, t, s }): the suburb, else its town.
+export async function treePlaceCentre(origin, place) {
+  if (!place || !place.t) return null;
+  const { list } = await loadCentres(origin), lc = (x) => String(x || "").toLowerCase();
+  const town = list.filter((x) => lc(x.t) === lc(place.t) && (!place.p || lc(x.p) === lc(place.p)));
+  return (place.s && town.find((x) => lc(x.s) === lc(place.s))) || town.find((x) => !x.s) || null;
+}
+// A property's own tree place as { p, t, s } (or null).
+export async function propertyTreePlace(resortId, origin) {
+  if (!resortId) return null;
+  const pl = (await load(origin)).places[resortId];
+  return pl && pl.t ? { p: pl.p || "", t: pl.t, s: pl.s && pl.s !== pl.t ? pl.s : "" } : null;
+}

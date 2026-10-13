@@ -726,6 +726,7 @@
     var hid = st.hiddenUnits || [], list = S.front.units.filter(function (u) { return hid.indexOf(u.name) < 0 && u.price > 0; }).map(function (u) { return u.price; });
     return list.length ? 'From ' + money(Math.min.apply(null, list)) + ' a night' : '';
   }
+  function fsAreaLabel(a) { return [a.s, a.t, a.p].filter(function (x, i, l) { return x && l.indexOf(x) === i; }).join(', '); }
   function fsPlace() { var p = (S.fpv && S.fpv.place) || {}; return p.suburb || p.city || p.region || ''; }
   function fsThumbs(sel, data, list) {
     return '<div class="fs-thumbs" role="group">' + list.map(function (u, i) {
@@ -806,9 +807,11 @@
     var acts = (S.fpv && S.fpv.nearby) || [], hidA = st.actHidden || [], ap = st.actPhotos || {};
     var actsBody = '<div class="pa-row"><label class="pa-check"><input type="checkbox" id="fs-acts"' + (st.showActivities ? ' checked' : '') + '> Show things to do on the page</label>' +
       '<div class="pa-field" style="flex:0 1 200px"><label class="pa-label" for="fs-km">Within</label><select id="fs-km">' + [5, 10, 20, 30, 50, 75, 100, 150].map(function (k) { return '<option value="' + k + '"' + (+st.nearbyKm === k ? ' selected' : '') + '>' + k + ' km</option>'; }).join('') + '</select></div></div>' +
-      '<p class="pa-hint">Guests can pick another distance on the page. Untick one to hide it. Give each a good photo: tap <b>Google photo</b>.</p>';
+      '<div class="pa-field" style="margin-top:10px"><label class="pa-label" for="fs-area">Your area (things to do are found from here)</label><input id="fs-area" type="text" list="fs-areas" autocomplete="off" value="' + esc(st.actPlace ? fsAreaLabel(st.actPlace) : '') + '" placeholder="' + esc((S.fpv && S.fpv.area ? 'Automatic: ' + fsAreaLabel(S.fpv.area) : 'Type your town or suburb')) + '"><datalist id="fs-areas">' + (S.fsAreas || []).map(function (a) { return '<option value="' + esc(fsAreaLabel(a)) + '">'; }).join('') + '</datalist></div>' +
+      '<p class="pa-hint">Empty = automatic: your map pin, or your town in the location tree. Type a few letters and pick your suburb or town from the list.' + (S.fsAreaErr ? ' <b style="color:#8a3a00">' + esc(S.fsAreaErr) + '</b>' : '') + '</p>' +
+      '<p class="pa-hint">Guests see <b>10 of these, picked at random</b> on every visit, closest first. They can pick another distance on the page. Untick one to never show it. Give each a good photo: tap <b>Google photo</b>.</p>';
     if (!S.fpv || S.fsActsBusy) actsBody += '<p class="pa-hint" role="status">Loading things to do…</p>';
-    else if (!acts.length) actsBody += '<p class="pa-hint">Nothing on the Avante map within ' + esc(st.nearbyKm) + ' km yet. Try a bigger distance.</p>';
+    else if (!acts.length) actsBody += '<p class="pa-hint">' + (S.fpv.area || st.actPlace ? 'Nothing on the Avante map within ' + esc(st.nearbyKm) + ' km yet. Try a bigger distance.' : 'We don\'t know where your property is yet: type your area above.') + '</p>';
     else actsBody += acts.map(function (a, i) {
       var photo = ap[a.name] || a.basePhoto, off = hidA.indexOf(a.name) >= 0, gt = 'act:' + i;
       return '<div class="fs-act' + (off ? ' off' : '') + '"><div class="fs-actimg"' + (photo ? ' style="background-image:url(\'' + esc(photo) + '\')"' : '') + '>' + (photo ? '' : '<span>No photo</span>') + '</div>' +
@@ -817,7 +820,7 @@
         (ap[a.name] ? '<button type="button" class="pa-btn small ghost" data-act="fsActReset" data-name="' + esc(a.name) + '">' + (a.basePhoto ? 'Back to the map photo' : 'Remove my photo') + '</button>' : '') + '</div>' +
         (S.fsG && S.fsG.target === gt ? fsGoogleBox(gt, a.name + ' ' + (a.area || '')) : '') + '</div></div>';
     }).join('');
-    h += fsStep('acts', ++n, 'Things to do nearby', st.showActivities ? (S.fpv ? acts.filter(function (a) { return hidA.indexOf(a.name) < 0; }).length + ' showing · ' + esc(st.nearbyKm) + ' km' : esc(st.nearbyKm) + ' km') : 'Switched off', actsBody);
+    h += fsStep('acts', ++n, 'Things to do nearby', st.showActivities ? (S.fpv ? acts.filter(function (a) { return hidA.indexOf(a.name) < 0; }).length + ' within ' + esc(st.nearbyKm) + ' km · 10 shown at random' : esc(st.nearbyKm) + ' km') : 'Switched off', actsBody);
     // 7 what shows
     h += fsStep('shows', ++n, 'What shows on the page', '', '<div class="pa-form">' +
       [['fs-prices', 'showPrices', 'Prices'], ['fs-cal', 'showCalendar', 'Availability calendar'], ['fs-offers', 'showOffers', 'Your special offers (hooks you manage yourself)']].map(function (x) {
@@ -873,6 +876,7 @@
     b.unitInfo = ui;
     if (S.fpv) { var shownA = all('[data-fsact]'); var hid = (F.settings.actHidden || []).filter(function (n) { return !shownA.some(function (x) { return x.dataset.fsact === n; }); }); shownA.forEach(function (x) { if (!x.checked) hid.push(x.dataset.fsact); }); b.actHidden = hid; }
     b.actPhotos = F.settings.actPhotos || {};
+    b.actPlace = F.settings.actPlace || null;
     b.photos = F.settings.photos; // changed by the photo controls directly
     return b;
   }
@@ -891,7 +895,9 @@
     var wa = String(st.whatsapp || st.phone || F.propertyPhone || '').replace(/\D/g, ''); if (wa.indexOf('00') === 0) wa = wa.slice(2); if (wa.charAt(0) === '0') wa = '27' + wa.slice(1);
     d.contact = { phone: st.phone || F.propertyPhone || '', whatsapp: wa.length >= 9 ? wa : '', email: st.email || F.propertyEmail || '' };
     var hidA = st.actHidden || [], ap = st.actPhotos || {};
-    d.nearby = (S.fpv.nearby || []).filter(function (a) { return hidA.indexOf(a.name) < 0; }).slice(0, 24).map(function (a) { return Object.assign({}, a, { photo: ap[a.name] || a.basePhoto || '' }); });
+    var all = S.fpv.nearby || [], ord = S.fpvOrder || all.map(function (a, i) { return i; });
+    d.nearby = ord.filter(function (i) { return all[i] && hidA.indexOf(all[i].name) < 0; }).slice(0, 10).sort(function (a, b) { return a - b; })
+      .map(function (i) { return Object.assign({}, all[i], { photo: ap[all[i].name] || all[i].basePhoto || '' }); });
     d.offers = st.showOffers ? (S.fpv.offers || []) : [];
     return d;
   }
@@ -960,8 +966,10 @@
   function fsMarkDirty() { S.fsDirty = true; var el = document.getElementById('fs-dirty'); if (el) el.hidden = false; }
   function fsLoadPreview(km) {
     S.fsActsBusy = true;
-    return api('frontPreview', { km: km || (S.front && S.front.settings.nearbyKm) || 30 }).then(function (d) {
+    return api('frontPreview', { km: km || (S.front && S.front.settings.nearbyKm) || 30, actPlace: S.front ? S.front.settings.actPlace || null : undefined }).then(function (d) {
       S.fpv = d; S.fsActsBusy = false;
+      // The preview shows 10 picked at random, like the real page (same pick until the list reloads).
+      var ord = (d.nearby || []).map(function (a, i) { return i; }); for (var k = ord.length - 1; k > 0; k--) { var j = Math.floor(Math.random() * (k + 1)), x = ord[k]; ord[k] = ord[j]; ord[j] = x; } S.fpvOrder = ord;
       if (S.front) { S.front.snPhotos = d.snPhotos || []; S.front.snDescription = d.snDescription || ''; }
       render();
     }).catch(function (e) { S.fsActsBusy = false; fail(e); });
@@ -1386,7 +1394,7 @@
     if (v === 'acts') loadActivities();
     if (v === 'guests') api('guests').then(function (d) { S.guests = d.guests; render(); }).catch(fail);
     if (v === 'msgs') loadMessages();
-    if (v === 'front') api('frontStore').then(function (d) { if (S.fpv) { d.snPhotos = S.fpv.snPhotos || []; d.snDescription = S.fpv.snDescription || ''; } S.front = d; S.fsDirty = false; render(); return fsLoadPreview(d.settings.nearbyKm); }).catch(fail);
+    if (v === 'front') api('frontStore').then(function (d) { if (S.fpv) { d.snPhotos = S.fpv.snPhotos || []; d.snDescription = S.fpv.snDescription || ''; } S.front = d; S.fsDirty = false; render(); if (!S.fsAreas) api('frontAreas').then(function (r) { S.fsAreas = r.areas || []; render(); }).catch(function () {}); return fsLoadPreview(d.settings.nearbyKm); }).catch(fail);
   }
   function openBooking(bk, tab) { S.edit = bk; S.bTab = tab || 'guest'; S.modalNote = null; S.modal = { type: 'edit' }; if (!S.av) loadAvailability(S.from); if (!S.messages) loadMessages(); render(); }
   function updateBooking(bk) {
@@ -1475,6 +1483,12 @@
     });
   }
   root.addEventListener('change', function (e) {
+    if (e.target.id === 'fs-area') {
+      var v = e.target.value.trim().toLowerCase(), hit = (S.fsAreas || []).filter(function (a) { return fsAreaLabel(a).toLowerCase() === v; })[0];
+      var cur = S.front.settings.actPlace; if ((hit && cur && fsAreaLabel(hit) === fsAreaLabel(cur)) || (!v && !cur)) return; // nothing changed (also stops a second change event while the box is redrawn)
+      if (v && !hit) { S.fsAreaErr = 'Pick a place from the list.'; keepFront(); return render(); }
+      S.fsAreaErr = null; keepFront(); S.front.settings.actPlace = hit || null; fsMarkDirty(); S.fsActsBusy = true; S.front._fresh = true; render(); return fsLoadPreview();
+    }
     if (e.target.id === 'fs-km') { keepFront(); fsMarkDirty(); S.fsActsBusy = true; render(); return fsLoadPreview(+e.target.value); }
     if (e.target.dataset && (e.target.dataset.fsunit || e.target.dataset.fsact)) { keepFront(); fsMarkDirty(); return render(); }
     if (e.target.dataset && e.target.dataset.fsphoto) { fsMarkDirty();

@@ -6,6 +6,7 @@ import { createCore, PAError } from "./lib/pa-core.js";
 import { fetchResortInfo } from "./lib/hook-source.js";
 import { createActivities } from "./lib/pa-activities.js";
 import { stayPayload } from "./lib/stay-payload.js";
+import { treeAreaList } from "./lib/tree-place.js";
 import { searchPlacePhotos } from "./lib/places-images.js";
 
 const cors = { "access-control-allow-origin": "*", "access-control-allow-methods": "POST, OPTIONS", "access-control-allow-headers": "content-type, x-pa-sync-secret" };
@@ -144,10 +145,11 @@ export default async (request) => {
       // the live preview; and Google photos of a place, to use on the page.
       case "frontPreview": {
         const st = getStore({ name: "property-affiliate", consistency: "strong" });
-        const pv = await stayPayload(core, prop, { store: st, origin: new URL(request.url).origin, km: body.km, all: true });
+        const pv = await stayPayload(core, prop, { store: st, origin: new URL(request.url).origin, km: body.km, all: true, actPlace: body.actPlace });
         pv.offers = await core.publicOffers(prop, getStore({ name: "promo-hooks", consistency: "strong" })).catch(() => []);
         return json(Object.assign(pv, { ok: true }));
       }
+      case "frontAreas": return json({ ok: true, areas: await treeAreaList(new URL(request.url).origin) });
       case "frontGoogle": {
         const q = String(body.query || "").trim().slice(0, 200);
         if (!q) return json({ ok: false, error: "Type what to search for." }, 400);
