@@ -35,9 +35,21 @@
   // browser's time zone can't push a date to the day before or add hours.
   function toSerial(iso){ var p = s(iso).split('-'); return p.length === 3 ? (Date.UTC(+p[0], +p[1] - 1, +p[2]) - Date.UTC(1899, 11, 30)) / 864e5 : ''; }
 
+  function todayIso(){ var d = new Date(), p = function(n){ return (n < 10 ? '0' : '') + n; }; return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()); }
+  function seasonKey(r){ return [s(r.unitTypeName), s(r.from), s(r.to), s(r.rackRate), s(r.minStay)].join('|'); }
+  // Seasons Stock Network needs: today onwards only (past rates stay on
+  // record in the hub but are never re-sent). With onlyChanged, seasons
+  // already sent to SN unchanged (listing.snSentSeasons, set by admin's
+  // "Mark rates as sent to SN") are left out.
+  function seasonsToSend(listing, onlyChanged){
+    var today = todayIso();
+    var sent = {}; (listing.snSentSeasons || []).forEach(function(r){ sent[seasonKey(r)] = true; });
+    return (listing.rateSeasons || []).filter(function(r){ return s(r.to) >= today && !(onlyChanged && sent[seasonKey(r)]); })
+      .map(function(r){ return s(r.from) < today ? Object.assign({}, r, { from: today }) : r; });
+  }
   // One row per rate season (and unit type), in SN's stock upload layout.
-  function stockRows(listing){
-    return (listing.rateSeasons || []).map(function(r){
+  function stockRows(listing, onlyChanged){
+    return seasonsToSend(listing, onlyChanged).map(function(r){
       var u = unitFor(listing, r.unitTypeName);
       var row = []; for(var i = 0; i < 28; i++) row.push('');
       row[0] = s(listing.country); row[1] = s(listing.area); row[2] = s(listing.district) || s(listing.suburb);
@@ -84,17 +96,21 @@
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([PROPERTY_COLS, propertyRow(listing, siteNr)]), 'Property');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([UNIT_COLS].concat(unitRowsFor(listing, siteNr))), 'Unit Types');
     XLSX.utils.book_append_sheet(wb, sheetWithDates(STOCK_COLS, stockRows(listing), [7, 8]), 'Stock');
+    // Every rate season on record, past ones included, for reference.
+    var today = todayIso(), sent = {}; (listing.snSentSeasons || []).forEach(function(r){ sent[seasonKey(r)] = true; });
+    var hist = (listing.rateSeasons || []).map(function(r){ return [s(r.unitTypeName), r.from, r.to, +r.nights || '', +r.minStay || '', +r.rackRate || '', +r.snRate || '', s(r.to) < today ? 'Past' : (sent[seasonKey(r)] ? 'Sent to SN' : 'Not sent yet')]; });
+    XLSX.utils.book_append_sheet(wb, sheetWithDates(['Unit Type','From','To','Nights','Min Stay','Rack Rate','SN Rate','Status'], hist, [1, 2]), 'All rates on record');
     return wb;
   }
-  function stockWorkbook(listing){
+  function stockWorkbook(listing, onlyChanged){
     needXlsx();
     var XLSX = window.XLSX, wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, sheetWithDates(STOCK_COLS, stockRows(listing), [7, 8]), 'Sheet1');
+    XLSX.utils.book_append_sheet(wb, sheetWithDates(STOCK_COLS, stockRows(listing, onlyChanged), [7, 8]), 'Sheet1');
     return wb;
   }
   function csvCell(v){ v = s(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
-  function stockCsv(listing){
-    return [STOCK_COLS].concat(stockRows(listing)).map(function(r){ return r.map(csvCell).join(','); }).join('\r\n');
+  function stockCsv(listing, onlyChanged){
+    return [STOCK_COLS].concat(stockRows(listing, onlyChanged)).map(function(r){ return r.map(csvCell).join(','); }).join('\r\n');
   }
   function download(name, blob){
     var a = document.createElement('a');
@@ -111,14 +127,15 @@
       window.XLSX && window.XLSX.writeFile(propertyWorkbook(listing, nr), 'SN_new_property_' + (nr ? 'site' + nr + '_' : '') + fileSafe(listing.propertyName) + '.xlsx');
       if(!window.XLSX) needXlsx();
     },
-    downloadStockXlsx: function(listing, siteNr){
+    countToSend: function(listing, onlyChanged){ return seasonsToSend(listing, onlyChanged).length; },
+    downloadStockXlsx: function(listing, siteNr, onlyChanged){
       var nr = s(siteNr || listing.siteNr);
-      window.XLSX && window.XLSX.writeFile(stockWorkbook(listing), 'SN_stock_rates_' + (nr ? 'site' + nr + '_' : '') + fileSafe(listing.propertyName) + '.xlsx');
+      window.XLSX && window.XLSX.writeFile(stockWorkbook(listing, onlyChanged), 'SN_stock_rates_' + (onlyChanged ? 'new_' : '') + (nr ? 'site' + nr + '_' : '') + fileSafe(listing.propertyName) + '.xlsx');
       if(!window.XLSX) needXlsx();
     },
-    downloadStockCsv: function(listing, siteNr){
+    downloadStockCsv: function(listing, siteNr, onlyChanged){
       var nr = s(siteNr || listing.siteNr);
-      download('SN_stock_rates_' + (nr ? 'site' + nr + '_' : '') + fileSafe(listing.propertyName) + '.csv', new Blob(['﻿' + stockCsv(listing)], { type: 'text/csv;charset=utf-8' }));
+      download('SN_stock_rates_' + (onlyChanged ? 'new_' : '') + (nr ? 'site' + nr + '_' : '') + fileSafe(listing.propertyName) + '.csv', new Blob(['\ufeff' + stockCsv(listing, onlyChanged)], { type: 'text/csv;charset=utf-8' }));
     }
   };
 })();

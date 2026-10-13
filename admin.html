@@ -6688,6 +6688,14 @@
         });
         host.appendChild(list);
         var seasons = (l.rateSeasons || []).length;
+        var editBtn = document.createElement('button');
+        editBtn.type = 'button'; editBtn.className = 'btn-outline'; editBtn.style.marginTop = '10px';
+        editBtn.textContent = 'Open full form to edit (units, amenities, rates)';
+        editBtn.addEventListener('click', function(){
+          var t = ''; try { t = sessionStorage.getItem('avante-admin-token') || ''; } catch(e){}
+          window.open('property-form.html?edit=' + encodeURIComponent(l.listingId) + '#t=' + encodeURIComponent(t), '_blank');
+        });
+        host.appendChild(editBtn);
         var units = (l.unitTypes || []).filter(function(u){ return u.name; }).length;
         var info = document.createElement('div');
         info.className = 'hint';
@@ -6696,21 +6704,64 @@
         host.appendChild(info);
         var bar = document.createElement('div');
         bar.style.cssText = 'display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;';
-        [['property', 'Property file for SN (.xlsx)'], ['stockx', 'Rates file (.xlsx)'], ['stockc', 'Rates file (.csv)']].forEach(function(b){
+        var newCount = window.AvanteSNExport ? AvanteSNExport.countToSend(l, true) : 0;
+        [['property', 'Property file for SN (.xlsx)'], ['stockx', 'Rates file \u2014 all future (.xlsx)'], ['stockc', 'Rates file \u2014 all future (.csv)'],
+         ['newx', 'Rates file \u2014 only new/changed (' + newCount + ') (.xlsx)'], ['newc', 'Only new/changed (.csv)']].forEach(function(b){
           var btn = document.createElement('button');
           btn.type = 'button'; btn.className = 'btn-outline'; btn.textContent = b[1];
           btn.addEventListener('click', function(){
             var nr = siteNrInput.value.trim();
             try {
-              if(b[0] === 'property') AvanteSNExport.downloadPropertyFile(l, nr);
-              else if(!seasons) { window.alert('This listing has no rates set yet.'); return; }
-              else if(b[0] === 'stockx') AvanteSNExport.downloadStockXlsx(l, nr);
-              else AvanteSNExport.downloadStockCsv(l, nr);
+              if(b[0] === 'property') { AvanteSNExport.downloadPropertyFile(l, nr); return; }
+              var only = b[0] === 'newx' || b[0] === 'newc';
+              if(!AvanteSNExport.countToSend(l, only)) { window.alert(only ? 'No new or changed future rates since they were last marked as sent.' : 'This listing has no future rates set.'); return; }
+              if(b[0] === 'stockx' || b[0] === 'newx') AvanteSNExport.downloadStockXlsx(l, nr, only);
+              else AvanteSNExport.downloadStockCsv(l, nr, only);
             } catch(err){ window.alert(err.message); }
           });
           bar.appendChild(btn);
         });
+        var sentBtn = document.createElement('button');
+        sentBtn.type = 'button'; sentBtn.className = 'btn-outline';
+        sentBtn.textContent = 'Mark rates as sent to SN';
+        sentBtn.title = 'After you email the rates file to Stock Network: next time "only new/changed" leaves these out.';
+        sentBtn.addEventListener('click', function(){
+          sentBtn.disabled = true;
+          propAdminPost('markSentToSN', { listingId: l.listingId }).then(function(res){
+            sentBtn.disabled = false;
+            if(res.data && res.data.ok){ sentBtn.textContent = 'Marked as sent \u2714'; openPropertyDetailsModal(l.listingId); }
+            else window.alert((res.data && res.data.error) || 'Could not save.');
+          });
+        });
+        bar.appendChild(sentBtn);
         host.appendChild(bar);
+        if(l.snSentAt){
+          var sentInfo = document.createElement('div'); sentInfo.className = 'hint'; sentInfo.style.marginTop = '6px';
+          sentInfo.textContent = 'Rates last marked as sent to SN: ' + fmtPropDate(l.snSentAt) + '.';
+          host.appendChild(sentInfo);
+        }
+        // History: every change, newest first, with the old values.
+        var hist = (l.history || []).slice().reverse();
+        var hh = document.createElement('details'); hh.style.marginTop = '12px';
+        var sum = document.createElement('summary'); sum.textContent = 'History (' + hist.length + ' change' + (hist.length === 1 ? '' : 's') + ')'; sum.style.cssText = 'cursor:pointer; font-weight:700;';
+        hh.appendChild(sum);
+        hist.forEach(function(h){
+          var div = document.createElement('div');
+          div.style.cssText = 'font-size:12px; padding:6px 0; border-bottom:1px solid #e3e9e8;';
+          var head = document.createElement('div');
+          head.innerHTML = '<b>' + escapeHtml(fmtPropDate(h.at)) + '</b> \u2014 ' + escapeHtml(h.action || '') + ' by ' + escapeHtml(h.by || '');
+          div.appendChild(head);
+          Object.keys(h.changed || {}).forEach(function(k){
+            var v = h.changed[k];
+            if(typeof v !== 'string') v = k === 'rateSeasons' || k === 'snSentSeasons' ? (v || []).map(function(r){ return (r.unitTypeName || '') + ' ' + r.from + '\u2192' + r.to + ' R' + r.rackRate; }).join('; ') || '(none)' : JSON.stringify(v).slice(0, 300);
+            var line = document.createElement('div');
+            line.style.color = '#5b6b76';
+            line.textContent = k + ' was: ' + (v === '' ? '(empty)' : v);
+            div.appendChild(line);
+          });
+          hh.appendChild(div);
+        });
+        host.appendChild(hh);
       }
 
       function treePlaceText(pl){

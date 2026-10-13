@@ -125,7 +125,8 @@
   .selbar input{ width:110px; padding:5px 8px; }
   .legend{ display:flex; flex-wrap:wrap; gap:14px; font-size:12px; color:var(--muted); margin-top:8px; }
   .legend span::before{ content:""; display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:5px; vertical-align:-1px; background:#e8ebf6; }
-  .legend span.u::before{ background:#fff; border:1px dashed #9aa; } .legend span.b::before{ background:var(--red-soft); } .legend span.s::before{ background:var(--orange-soft); border:1.5px solid var(--orange); } .legend span.c::before{ background:none; content:"R"; color:var(--red); font-weight:700; width:auto; height:auto; }
+  .legend span.u::before{ background:#fff; border:1px dashed #9aa; } .legend span.b::before{ background:var(--red-soft); } .legend span.s::before{ background:var(--orange-soft); border:1.5px solid var(--orange); } .legend span.p::before{ background:#eef1f3; } .cal .d.past{ background:#eef1f3; color:#9aa6ad; cursor:default; } .cal .d.past small.rk{ color:#8a97a0; } tr.past td{ color:#9aa6ad; }
+  .legend span.c::before{ background:none; content:"R"; color:var(--red); font-weight:700; width:auto; height:auto; }
   .scroll{ overflow-x:auto; border:1px solid var(--line); border-radius:10px; margin-top:10px; }
   table{ border-collapse:collapse; width:100%; font-size:13px; }
   th, td{ padding:7px 9px; border-bottom:1px solid var(--line); text-align:left; white-space:nowrap; }
@@ -368,8 +369,9 @@
       </div>
       <p class="note info" id="commNote"></p>
       <div class="selbar" id="selBar"></div>
+      <div class="btns" style="justify-content:space-between"><button type="button" class="btn-secondary btn-sm" id="calPrev">◀ Earlier</button><b id="calRange" style="font-size:14px"></b><button type="button" class="btn-secondary btn-sm" id="calNext">Later ▶</button></div>
       <div class="months" id="months"></div>
-      <div class="legend"><span>Rate set</span><span class="u">Open, no rate</span><span class="b">Booked / blocked</span><span class="s">Selected</span><span class="c">= price seen on the other channel</span></div>
+      <div class="legend"><span>Rate set</span><span class="u">Open, no rate</span><span class="b">Booked / blocked</span><span class="s">Selected</span><span class="c">= price seen on the other channel</span><span class="p">Past (kept on record)</span></div>
       <h3 class="section-heading" style="margin-top:18px; font-size:15px;">Seasons</h3>
       <div class="scroll"><table><thead><tr><th>Unit</th><th>From</th><th>To</th><th class="num">Nights</th><th class="num">Min stay</th><th class="num">Rack (R)</th><th class="num">SN rate (R)</th></tr></thead><tbody id="seasonRows"></tbody></table></div>
       <div id="seasonNote"></div>
@@ -385,6 +387,11 @@
       <p class="hint">Upload as many as you like — front exterior, living areas, each unit type, views.</p>
       <input type="file" id="imageInput" accept="image/*" multiple>
       <div class="img-list" id="imageList"></div>
+    </div>
+    <div class="card" id="existingFilesCard" style="display:none">
+      <h2 class="section-heading">Already with this listing</h2>
+      <p class="hint">Files uploaded before. Tap one to open or download it. New files you add below are kept as well.</p>
+      <div class="img-list" id="existingFiles"></div>
     </div>
     <div class="card">
       <h2 class="section-heading">Photos from Google</h2>
@@ -454,7 +461,13 @@
       <p class="hint">The <b>property file</b> has the property, every unit type with how many units and how many it sleeps, and the rates. The <b>rates file</b> is the calendar in Stock Network's stock upload format. Avante adds the Site Nr Stock Network allocates.</p>
       <div class="btns"><button type="button" class="btn-navy btn-sm" data-dl="property">Property file (.xlsx)</button><button type="button" class="btn-secondary btn-sm" data-dl="stockx">Rates file (.xlsx)</button><button type="button" class="btn-secondary btn-sm" data-dl="stockc">Rates file (.csv)</button><span class="hint" id="dlStatus" style="margin:0"></span></div>
     </div>
-    <div class="card">
+    <div class="card" id="editSaveCard" style="display:none">
+      <h2 class="section-heading">Save changes</h2>
+      <p class="hint">Saving keeps a dated record of what changed and the old values, so nothing is lost. Rates for dates that have passed stay on record.</p>
+      <button class="btn-primary" id="saveEditBtn">Save changes</button>
+      <div class="status" id="editStatus"></div>
+    </div>
+    <div class="card" id="sigCard">
       <h2 class="section-heading">Signature &amp; Agreement</h2>
       <p class="hint">By signing, you confirm you're either the registered Owner or a duly authorised Affiliate acting under a valid Mandate, and that you agree to the Terms &amp; Mandate Agreement.</p>
       <label for="sigName">Full name *</label>
@@ -504,13 +517,20 @@
   var $ = function(id){ return document.getElementById(id); };
   var esc = function(v){ return String(v == null ? '' : v).replace(/[&<>"]/g, function(c){ return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]; }); };
   var API = '/api/property-onboarding';
+  // Edit mode: ?edit=<listing id>&key=<private edit key> for the owner /
+  // affiliate, or ?edit=<id>#t=<admin token> when Admin opens it.
+  var ADMIN_T = '';
+  (function(){ var m = window.location.hash.match(/(?:^#|&)t=([^&]+)/); if(m){ ADMIN_T = decodeURIComponent(m[1]); try { history.replaceState(null, '', window.location.pathname + window.location.search); } catch(e){} } })();
   function api(payload){
+    if(ADMIN_T && !payload.token) payload.token = ADMIN_T;
     return fetch(API, { method:'POST', headers:{ 'content-type':'application/json' }, body: JSON.stringify(payload) })
       .then(function(r){ return r.json(); })
       .catch(function(){ return { ok:false, message:'No connection. Check your internet and try again.' }; });
   }
   var params = new URLSearchParams(window.location.search);
   var AFF = params.get('aff') || '';
+  var EDIT_ID = params.get('edit') || '', EDIT_KEY = params.get('key') || '';
+  var editing = !!EDIT_ID, editAsAdmin = false;
   var pad = function(n){ return (n < 10 ? '0' : '') + n; };
   var isoLocal = function(d){ return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()); };
   var TODAY = isoLocal(new Date());
@@ -726,11 +746,29 @@
       '<div class="btns" style="margin-top:0"><label class="btn-secondary btn-sm" style="margin:0;display:inline-block">Choose screenshots<input type="file" accept="image/*" multiple hidden data-pick="' + step + '"></label>' +
       '<button type="button" class="btn-navy btn-sm" data-read="' + step + '"' + (list.length || (step === 1 && DOCS.some(function(d){ return d.kind !== 'none'; })) ? '' : ' disabled') + '>' + (step === 1 ? 'Read screenshots &amp; documents' : 'Read ' + (list.length || '') + ' screenshot' + (list.length === 1 ? '' : 's')) + '</button>' +
       '<span class="hint" style="margin:0" data-shotstatus="' + step + '"></span></div>' +
-      '<div class="thumbs">' + list.map(function(s, i){ return '<span class="thumb"><img src="' + s.url + '" alt="Screenshot ' + (i+1) + '"><button type="button" data-rm="' + step + ':' + i + '" aria-label="Remove">×</button></span>'; }).join('') + '</div></div>';
+      '<div class="thumbs" data-thumbs="' + step + '">' + thumbsHtml(step) + '</div></div>';
+  }
+  function thumbsHtml(step){ return (SHOTS[step] || []).map(function(s, i){ return '<span class="thumb"><img src="' + s.url + '" alt="Screenshot ' + (i+1) + '"><button type="button" data-rm="' + step + ':' + i + '" aria-label="Remove">×</button></span>'; }).join(''); }
+  function readBtnState(step, btn){
+    var list = SHOTS[step] || [], docsReady = step === 1 && DOCS.some(function(d){ return d.kind !== 'none'; });
+    btn.disabled = !(list.length || docsReady);
+    if(btn.hasAttribute('data-docsonly')) return;
+    btn.innerHTML = step === 1 ? 'Read screenshots &amp; documents' : 'Read ' + (list.length || '') + ' screenshot' + (list.length === 1 ? '' : 's');
+  }
+  // Only the lists and buttons are redrawn while files are being added —
+  // never the file pickers themselves, so a pick made while other files are
+  // still being prepared isn't lost.
+  function refreshZoneParts(step, holder){
+    var t = holder.querySelector('[data-thumbs="' + step + '"]'); if(t) t.innerHTML = thumbsHtml(step);
+    Array.prototype.forEach.call(holder.querySelectorAll('[data-read="' + step + '"]'), function(b){ readBtnState(step, b); });
+    var dl = holder.querySelector('[data-doclist]'); if(dl) dl.innerHTML = docListHtml();
   }
   function renderShotZone(step){
     var holder = step === 1 ? $('importBox') : document.querySelector('[data-shots="' + step + '"]');
     if(!holder) return;
+    var mode = channel + '|' + (readResults ? readResults.n : 0);
+    if(holder.getAttribute('data-mode') === mode && holder.querySelector('[data-zone],[data-docs]')){ refreshZoneParts(step, holder); return; }
+    holder.setAttribute('data-mode', mode);
     if(step === 1){
       if(!channel){ holder.innerHTML = '<p class="note info">Choose a channel above to begin.</p>'; return; }
       if(channel === 'Not on any channel'){ holder.innerHTML = '<p class="note info">No listing to take screenshots of. If the property has a rate sheet or fact sheet, add it below and tap <b>Read</b>; otherwise fill in each step yourself.</p>' + docsZoneHtml(true) + (readResults ? readResultsHtml() : ''); return; }
@@ -748,8 +786,11 @@
   function docsZoneHtml(withRead){
     return '<div class="shots" style="margin-top:12px" data-docs="1"><p><b>Property documents</b> — Word, Excel (rates) or PDF files the property already has, e.g. a rate sheet or fact sheet. They are read with the screenshots and kept with the listing.</p>' +
       '<div class="btns" style="margin-top:0"><label class="btn-secondary btn-sm" style="margin:0;display:inline-block">Choose documents<input type="file" multiple hidden id="docPick" accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"></label>' +
-      (withRead ? '<button type="button" class="btn-navy btn-sm" data-read="1"' + (DOCS.some(function(d){ return d.kind !== 'none'; }) ? '' : ' disabled') + '>Read documents</button><span class="hint" style="margin:0" data-shotstatus="1"></span>' : '') + '</div>' +
-      (DOCS.length ? '<ul class="readlist">' + DOCS.map(function(d, i){ return '<li><span class="pill ' + (d.kind === 'none' ? 'todo' : 'ok') + '">' + (d.kind === 'pdf' ? 'PDF' : d.kind === 'text' ? (/\.(xlsx?|csv)$/i.test(d.name) ? 'Excel' : 'Word') : 'Kept') + '</span><span>' + esc(d.name) + ' — ' + esc(d.status) + ' <button type="button" class="btn-link" data-rmdoc="' + i + '">remove</button></span></li>'; }).join('') + '</ul>' : '') + '</div>';
+      (withRead ? '<button type="button" class="btn-navy btn-sm" data-read="1" data-docsonly' + (DOCS.some(function(d){ return d.kind !== 'none'; }) ? '' : ' disabled') + '>Read documents</button><span class="hint" style="margin:0" data-shotstatus="1"></span>' : '') + '</div>' +
+      '<div data-doclist>' + docListHtml() + '</div></div>';
+  }
+  function docListHtml(){
+    return DOCS.length ? '<ul class="readlist">' + DOCS.map(function(d, i){ return '<li><span class="pill ' + (d.kind === 'none' ? 'todo' : 'ok') + '">' + (d.kind === 'pdf' ? 'PDF' : d.kind === 'text' ? (/\.(xlsx?|csv)$/i.test(d.name) ? 'Excel' : 'Word') : 'Kept') + '</span><span>' + esc(d.name) + ' — ' + esc(d.status) + ' <button type="button" class="btn-link" data-rmdoc="' + i + '">remove</button></span></li>'; }).join('') + '</ul>' : '';
   }
   function addDocs(files){
     Array.prototype.forEach.call(files || [], function(file){
@@ -861,7 +902,7 @@
         if(!res || !res.ok){ statusEl.textContent = (res && res.message) || 'Couldn\'t read the screenshots. Try again, or fill in by hand.'; return; }
         screenshotsRead += list.length; docsRead += docs.length;
         var filled = applyFields(res.fields || {}, step === 1);
-        if(step === 1){ readResults = { fields: res.fields || {}, filled: filled }; renderShotZone(1); }
+        if(step === 1){ readResults = { fields: res.fields || {}, filled: filled, n: (readResults ? readResults.n : 0) + 1 }; renderShotZone(1); }
         else statusEl.textContent = filled.length ? 'Filled ' + filled.length + ' field' + (filled.length === 1 ? '' : 's') + '. Fields you had typed were kept.' : 'Nothing new found on these screenshots.';
         if(current === 6) renderCalendar();
       });
@@ -1049,7 +1090,7 @@
   var RATES = {};     // unit uid -> { 'YYYY-MM-DD': { rack, min } }
   var BLOCKED = {};   // 'YYYY-MM-DD' -> true (booked on another channel / blocked)
   var selA = null, selB = null, lastRack = '', lastMin = 2;
-  var MONTHS_SHOWN = 6;
+  var MONTHS_SHOWN = 6, monthOffset = 0, MIN_OFFSET = -12, MAX_OFFSET = 24 - MONTHS_SHOWN; // 12 months back (record) to 24 months ahead
   $('commNote').innerHTML = '<b>Rack rate in, Stock Network rate out.</b> Avante\'s commission is ' + COMMISSION + '% plus VAT on it (' + COMM_TOTAL + '% in total), so the SN rate is the rack rate less ' + COMM_TOTAL + '%, rounded to the rand.';
   function calUnit(){ return $('calUnit').value; }
   function eachDay(a, b, fn){ var d = new Date(a + 'T00:00:00'), e = new Date(b + 'T00:00:00'); while(d <= e){ fn(isoLocal(d)); d.setDate(d.getDate() + 1); } }
@@ -1072,7 +1113,10 @@
         (chIn ? '<button type="button" class="btn-orange btn-sm" data-cal="usech">Use ' + esc(channel || 'channel') + ' price (' + chIn + ' nights)</button>' : '') +
         '<button type="button" class="btn-secondary btn-sm" data-cal="clear">Clear rate</button><button type="button" class="btn-secondary btn-sm" data-cal="block">Block</button><button type="button" class="btn-secondary btn-sm" data-cal="open">Open</button><button type="button" class="btn-secondary btn-sm" data-cal="cancel">Cancel</button></span>'
       : '<span>' + (selA ? '<b>Start ' + fmtL(selA) + '.</b> Now tap the last night.' : 'Tap the first night of a season, or of nights to block.') + '</span>';
-    var html = '', start = new Date(); start.setDate(1);
+    var html = '', start = new Date(); start.setDate(1); start.setMonth(start.getMonth() + monthOffset);
+    var last = new Date(start.getFullYear(), start.getMonth() + MONTHS_SHOWN - 1, 1);
+    $('calRange').textContent = start.toLocaleDateString('en-ZA', { month:'short', year:'numeric' }) + ' – ' + last.toLocaleDateString('en-ZA', { month:'short', year:'numeric' });
+    $('calPrev').disabled = monthOffset <= MIN_OFFSET; $('calNext').disabled = monthOffset >= MAX_OFFSET;
     for(var m = 0; m < MONTHS_SHOWN; m++){
       var first = new Date(start.getFullYear(), start.getMonth() + m, 1), days = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate(), off = (first.getDay() + 6) % 7;
       html += '<div class="month"><h4>' + first.toLocaleDateString('en-ZA', { month:'long', year:'numeric' }) + '</h4><div class="cal">' + ['M','T','W','T','F','S','S'].map(function(d){ return '<div class="h">' + d + '</div>'; }).join('');
@@ -1080,7 +1124,7 @@
       for(var d = 1; d <= days; d++){
         var k = isoLocal(new Date(first.getFullYear(), first.getMonth(), d)), r = RATES[uid][k], b = BLOCKED[k], past = k < TODAY;
         var insel = sel ? (k >= sel[0] && k <= sel[1]) : k === selA;
-        html += '<button type="button" class="d ' + (past ? 'x' : b ? 'b' : r ? 'r' : 'u') + (insel ? ' sel' : '') + '"' + (past ? ' disabled' : ' data-day="' + k + '"') + '><span>' + d + '</span><small class="rk">' + (b ? '—' : r ? r.rack : '') + '</small>' + (CHANNEL_PRICES[k] && !b ? '<small class="ch">' + CHANNEL_PRICES[k] + '</small>' : '') + '</button>';
+        html += '<button type="button" class="d ' + (past ? (r ? 'past' : 'x') : b ? 'b' : r ? 'r' : 'u') + (insel ? ' sel' : '') + '"' + (past ? ' disabled' : ' data-day="' + k + '"') + ' title="' + (past && r ? 'Past: R' + r.rack + ' (kept on record)' : '') + '"><span>' + d + '</span><small class="rk">' + (b && !past ? '—' : r ? r.rack : '') + '</small>' + (CHANNEL_PRICES[k] && !b && !past ? '<small class="ch">' + CHANNEL_PRICES[k] + '</small>' : '') + '</button>';
       }
       html += '</div></div>';
     }
@@ -1088,6 +1132,8 @@
     renderSeasons();
   }
   $('calUnit').addEventListener('change', function(){ selA = selB = null; renderCalendar(); });
+  $('calPrev').addEventListener('click', function(){ monthOffset = Math.max(MIN_OFFSET, monthOffset - 3); renderCalendar(); });
+  $('calNext').addEventListener('click', function(){ monthOffset = Math.min(MAX_OFFSET, monthOffset + 3); renderCalendar(); });
   $('months').addEventListener('click', function(e){
     var b = e.target.closest('[data-day]'); if(!b) return;
     var k = b.getAttribute('data-day');
@@ -1120,11 +1166,11 @@
     var out = [];
     unitRows().forEach(function(row, idx){
       var uid = row.getAttribute('data-uid'), R = RATES[uid] || {};
-      var keys = Object.keys(R).filter(function(k){ return k >= TODAY; }).sort();
+      var keys = Object.keys(R).sort();   // past rates included: they stay on record
       if(!keys.length) return;
       var cur = null;
       eachDay(keys[0], keys[keys.length - 1], function(k){
-        var r = R[k], ok = r && !BLOCKED[k];
+        var r = R[k], ok = r && (!BLOCKED[k] || k < TODAY);
         if(ok && cur && cur.rack === r.rack && cur.min === r.min){ cur.to = k; cur.nights++; }
         else { if(cur) out.push(cur); cur = ok ? { row: row, unitTypeName: unitName(row, idx), from: k, to: k, nights: 1, rack: r.rack, min: r.min } : null; }
       });
@@ -1134,7 +1180,7 @@
   }
   function renderSeasons(){
     var s = seasons();
-    $('seasonRows').innerHTML = s.length ? s.map(function(x){ return '<tr><td>' + esc(x.unitTypeName) + '</td><td>' + fmtL(x.from) + '</td><td>' + fmtL(x.to) + '</td><td class="num">' + x.nights + '</td><td class="num">' + x.min + '</td><td class="num">' + x.rack.toLocaleString('en-ZA') + '</td><td class="num"><b>' + netRate(x.rack).toLocaleString('en-ZA') + '</b></td></tr>'; }).join('')
+    $('seasonRows').innerHTML = s.length ? s.map(function(x){ return '<tr' + (x.to < TODAY ? ' class="past" title="Past — kept on record"' : '') + '><td>' + esc(x.unitTypeName) + (x.to < TODAY ? ' (past)' : '') + '</td><td>' + fmtL(x.from) + '</td><td>' + fmtL(x.to) + '</td><td class="num">' + x.nights + '</td><td class="num">' + x.min + '</td><td class="num">' + x.rack.toLocaleString('en-ZA') + '</td><td class="num"><b>' + netRate(x.rack).toLocaleString('en-ZA') + '</b></td></tr>'; }).join('')
       : '<tr><td colspan="7" class="hint">No rates set yet.</td></tr>';
     var nCh = Object.keys(CHANNEL_PRICES).length;
     $('seasonNote').innerHTML = nCh ? '<p class="note warn">' + nCh + ' night' + (nCh === 1 ? '' : 's') + ' show the price seen on ' + esc(channel || 'the other channel') + ' in red. That price may include the channel\'s own fees — set the rack rate the property actually wants.</p>' : '';
@@ -1176,7 +1222,8 @@
   // =====================================================================
   var SN_COLS = ['Country','Area','District','Resort','Complex','Nr of Units Available','Unit Number','From Date','To Date','Unit Size','Start day of weekend','Weekend Nights','Min Span Weekend','Weekend Rate','Weekend Rack Rate','Start day of midweek','Midweek nights','Min Span Midweek','Midweek Rate','Midweek Rack Rate','Start day of full week','Full week Nights','Min Span Full Week','Full week Rate','Full week Rack Rate','Min Span All nights','All Nights Rate','All Nights Rack Rate'];
   function snRows(){
-    return seasons().map(function(s){
+    return seasons().filter(function(s){ return s.to >= TODAY; }).map(function(s){
+      if(s.from < TODAY) s = Object.assign({}, s, { from: TODAY });
       var r = []; for(var i = 0; i < 28; i++) r.push('');
       r[0] = $('pCountry').value.trim(); r[1] = $('pArea').value.trim(); r[2] = $('pDistrict').value.trim() || $('pSuburb').value.trim();
       r[3] = $('pName').value.trim(); r[4] = s.unitTypeName; r[5] = s.row.querySelector('.pu-numUnits').value.trim() || '1'; r[6] = s.unitTypeName;
@@ -1327,7 +1374,7 @@
       icalLink: $('icalLink').value.trim(),
       commissionPct: String(COMM_TOTAL),
       rateSeasons: seasons().map(function(s){ return { unitTypeName: s.unitTypeName, from: s.from, to: s.to, nights: s.nights, minStay: s.min, rackRate: s.rack, snRate: netRate(s.rack) }; }),
-      blockedNights: Object.keys(BLOCKED).filter(function(k){ return k >= TODAY; }).sort(),
+      blockedNights: Object.keys(BLOCKED).sort().slice(-800),
       unitTypes: unitTypes,
       amenities: amenities,
       documents: uploadedDocs,
@@ -1367,7 +1414,8 @@
       submitBtn.textContent = 'Submit Listing for Review';
       if(data && data.ok){
         submitBtn.disabled = true;
-        statusEl.textContent = 'Thank you! Your listing (' + data.listingId + ') has been submitted for review. Avante Travel will be in touch once it is verified.';
+        statusEl.innerHTML = 'Thank you! Your listing (' + esc(data.listingId) + ') has been submitted for review. Avante Travel will be in touch once it is verified.' +
+          (data.editLink ? '<br><br><b>Keep this link</b> to update the listing later, for example to add next season\'s rates (it was also emailed to you):<br><a href="' + esc(data.editLink) + '">' + esc(data.editLink) + '</a>' : '');
         statusEl.className = 'status show ok';
       } else {
         submitBtn.disabled = false;
@@ -1377,8 +1425,89 @@
     });
   });
 
+  // =====================================================================
+  // EDIT MODE — reopen a submitted listing with everything filled in
+  // =====================================================================
+  var KEY_MAP = { ownerName:'ownerFullName', ownerId:'ownerIdPassport', ownerEmail:'ownerEmail', ownerPhone:'ownerPhone', affName:'affiliateAgentName', affCompany:'affiliateCompany', affEmail:'affiliateEmail', affPhone:'affiliatePhone',
+    pName:'propertyName', pName2:'propertyName2', pCountry:'country', pProvince:'stateProvince', pRegion:'region', pCity:'city', pSuburb:'suburb', pComplex:'complexName', pArea:'area', pDistrict:'district', pCity2:'city2', pAddress:'streetAddress',
+    pSiteNr:'siteNr', pSiteId:'siteId', pType:'propertyType', pHost:'hostName', pPhone:'telephone', pEmail:'email', pInfoLink:'infoLink', pBookingLink:'bookingLink', pCheckIn:'checkInTime', pCheckOut:'checkOutTime', pDesc:'description',
+    pRules:'houseRules', pAccess:'accessibility', pRating:'selfSupplierRating', pGrading:'tourismBoardGrading', pRatingLink:'ratingLink', pReviews:'channelReviews', pMoreInfo:'moreInfo', pAreaInfo:'areaInfo', pNotIncluded:'notIncluded',
+    depositText:'depositPolicyText', depositPct:'depositPct', depositDays:'depositDays', childPolicy:'childPolicy', icalLink:'icalLink', channelLink:'channelListingLink', pLat:'latitude', pLng:'longitude' };
+  function fillFromListing(L){
+    Object.keys(KEY_MAP).forEach(function(id){ if($(id)) $(id).value = L[KEY_MAP[id]] == null ? '' : L[KEY_MAP[id]]; });
+    Array.prototype.forEach.call(document.getElementsByName('submittedBy'), function(r){ r.checked = r.value === (L.submittedBy === 'Affiliate' ? 'Affiliate' : 'Owner'); r.dispatchEvent(new Event('change')); });
+    $('paymentGateway').checked = L.paymentGatewayInUse === 'Y'; $('sameDay').checked = L.allowSameDayBooking === 'Y';
+    AFF = L.affId || AFF;
+    channel = L.sourceChannel || '';
+    screenshotsRead = +L.screenshotsRead || 0;
+    $('pSiteId').readOnly = !editAsAdmin && !!$('pSiteId').value;
+    $('pSiteNr').readOnly = !editAsAdmin;
+    if(!editAsAdmin) $('pSiteNr').placeholder = 'Allocated by Avante';
+    setCoordsVerified(L.coordsVerified === 'Y', L.coordsVerifiedPlace);
+    if(L.coordsVerified === 'Y') $('verifyResult').innerHTML = '<p class="note ok">Checked with Google: <b>' + esc(L.coordsVerifiedPlace || '') + '</b>. Change the coordinates and it must be checked again.</p>';
+    // Units
+    unitRows().forEach(function(r){ r.remove(); });
+    (L.unitTypes && L.unitTypes.length ? L.unitTypes : [{}]).forEach(function(u){
+      var r = addUnitRow();
+      var put = function(cls, v){ if(v !== undefined && v !== null && v !== '') r.querySelector(cls).value = v; };
+      put('.pu-name', u.name); put('.pu-maxOcc', u.maxOccupancy); put('.pu-maxAdults', u.maxAdults); put('.pu-childOk', u.childrenAllowed); put('.pu-numUnits', u.numUnits);
+      put('.pu-rateScheme', u.rateScheme); put('.pu-rateBasis', u.rateBasis); put('.pu-seasonStart', u.seasonStart); put('.pu-seasonEnd', u.seasonEnd);
+      put('.pu-rate1', u.ratePax1); put('.pu-rate2', u.ratePax2); put('.pu-rate3', u.ratePax3); put('.pu-rate4', u.ratePax4); put('.pu-rate5', u.ratePax5);
+      put('.pu-childRate06', u.childRate06); put('.pu-childRate712', u.childRate712); put('.pu-desc', u.description);
+    });
+    // Amenities
+    var on = {}; (L.amenities || []).forEach(function(a){ if(a.available === 'Y') on[a.category + '|' + a.item] = true; });
+    Array.prototype.forEach.call(document.querySelectorAll('.amenity-check'), function(cb){ cb.checked = !!on[cb.getAttribute('data-cat') + '|' + cb.getAttribute('data-item')]; });
+    // Rates (past ones included) and blocked nights
+    RATES = {};
+    (L.rateSeasons || []).forEach(function(rs){
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(rs.from || '') || !/^\d{4}-\d{2}-\d{2}$/.test(rs.to || '')) return;
+      var row = unitRows().filter(function(r, i){ return unitName(r, i) === rs.unitTypeName; })[0] || unitRows()[0];
+      var uid = row.getAttribute('data-uid'); RATES[uid] = RATES[uid] || {};
+      eachDay(rs.from, rs.to, function(k){ RATES[uid][k] = { rack: +rs.rackRate, min: +rs.minStay || 1 }; });
+    });
+    BLOCKED = {}; (L.blockedNights || []).forEach(function(k){ BLOCKED[k] = true; });
+    // Files already uploaded stay with the listing
+    uploadedDocs = (L.documents || []).map(function(d){ return { type: d.type, key: d.key, fileName: d.fileName }; });
+    uploadedImages = (L.images || []).map(function(im){ return { type: im.type, unitTypeName: im.unitTypeName, key: im.key, fileName: im.fileName, caption: im.caption, cover: im.cover }; });
+    var files = uploadedDocs.map(function(d){ return [d.type, d]; }).concat(uploadedImages.map(function(im){ return [(im.type || 'Photo') + ' photo', im]; }));
+    if(files.length){
+      $('existingFilesCard').style.display = '';
+      $('existingFiles').innerHTML = files.map(function(f){ return '<div>' + esc(f[0]) + ': <a href="/api/property-file?key=' + encodeURIComponent(f[1].key) + '" target="_blank" rel="noopener">' + esc(f[1].fileName || f[1].key) + '</a></div>'; }).join('');
+    }
+  }
+  function startEditMode(){
+    document.querySelector('header h1').textContent = 'Edit listing';
+    document.querySelector('header .step-badge').textContent = 'Editing ' + EDIT_ID;
+    document.querySelector('header p').textContent = 'Loading the listing…';
+    LISTING_TMP = EDIT_ID;
+    api({ action: 'getForEdit', listingId: EDIT_ID, key: EDIT_KEY }).then(function(res){
+      if(!res || !res.ok){ document.querySelector('header p').innerHTML = '<span style="color:#a3271d">' + esc((res && (res.error || res.message)) || 'Could not open the listing.') + '</span>'; return; }
+      editAsAdmin = !!res.asAdmin;
+      fillFromListing(res.listing);
+      document.querySelector('header p').textContent = (res.listing.propertyName || '') + ' — status: ' + (res.listing.status || 'Requested') + '. Change anything in any step, then tap Save changes in step 8. A dated record of every change is kept.' + (editAsAdmin ? ' (Opened from Admin.)' : '');
+      $('sigCard').style.display = 'none';
+      $('editSaveCard').style.display = '';
+      renderChannelChips();
+      goStep(editAsAdmin ? 1 : 6);
+    });
+  }
+  $('saveEditBtn').addEventListener('click', function(){
+    var btn = this, st = $('editStatus');
+    var payload = buildPayload();
+    payload.action = 'update'; payload.listingId = EDIT_ID; payload.key = EDIT_KEY;
+    if(!payload.propertyName || !payload.ownerFullName){ st.textContent = 'The property name (step 4) and owner name (step 2) can\'t be empty.'; st.className = 'status show err'; return; }
+    btn.disabled = true; btn.textContent = 'Saving…';
+    api(payload).then(function(res){
+      btn.disabled = false; btn.textContent = 'Save changes';
+      if(res && res.ok){ st.textContent = res.unchanged ? 'Nothing had changed.' : 'Saved. The change is on record with today\'s date.'; st.className = 'status show ok'; }
+      else { st.textContent = (res && (res.error || res.message)) || 'Could not save. Try again.'; st.className = 'status show err'; }
+    });
+  });
+
   renderChannelChips();
   goStep(1);
+  if(editing) startEditMode();
 })();
 </script>
 

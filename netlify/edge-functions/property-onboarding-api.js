@@ -163,6 +163,117 @@ function sanitizeDateList(input) {
   return input.filter((d) => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d)).slice(0, 800);
 }
 
+// Every field the onboarding form sends, cleaned — shared by "submit"
+// (a new listing) and "update" (the same form reopened to edit it).
+function submittedFields(body) {
+  return {
+    propertyName: clean(body.propertyName, 200),
+    propertyName2: clean(body.propertyName2, 200),
+    country: clean(body.country, 100),
+    suburb: clean(body.suburb, 100),
+    city: clean(body.city, 100),
+    city2: clean(body.city2, 100),
+    stateProvince: clean(body.stateProvince, 100),
+    area: clean(body.area, 100),
+    district: clean(body.district, 100),
+    propertyType: clean(body.propertyType, 100),
+    complexName: clean(body.complexName, 200),
+    infoLink: clean(body.infoLink, 300),
+    bookingLink: clean(body.bookingLink, 300),
+    siteNr: clean(body.siteNr, 30),
+    telephone: clean(body.telephone, 60),
+    email: clean(body.email, 200),
+    latitude: clean(body.latitude, 30),
+    longitude: clean(body.longitude, 30),
+    selfSupplierRating: clean(body.selfSupplierRating, 50),
+    tourismBoardGrading: clean(body.tourismBoardGrading, 50),
+    ratingLink: clean(body.ratingLink, 300),
+
+    // Added 2026-10-13 with the step-by-step form: street address, the
+    // Stock Network Site ID (= the affiliate number the form was opened
+    // with), whether the coordinates were checked against Google, and
+    // the channel the details were imported from.
+    streetAddress: clean(body.streetAddress, 300),
+    siteId: clean(body.siteId || body.affId, 100),
+    region: clean(body.region, 100),
+    coordsVerified: body.coordsVerified === "Y" ? "Y" : "N",
+    coordsVerifiedPlace: clean(body.coordsVerifiedPlace, 300),
+    coordsVerifiedAt: body.coordsVerified === "Y" ? new Date().toISOString() : "",
+    sourceChannel: clean(body.sourceChannel, 60),
+    channelListingLink: clean(body.channelListingLink, 500),
+    channelReviews: clean(body.channelReviews, 500),
+    hostName: clean(body.hostName, 200),
+    accessibility: clean(body.accessibility, 1000),
+    notIncluded: clean(body.notIncluded, 1000),
+    screenshotsRead: clean(String(body.screenshotsRead || ""), 4),
+    icalLink: clean(body.icalLink, 600),
+    rateSeasons: sanitizeRateSeasons(body.rateSeasons),
+    blockedNights: sanitizeDateList(body.blockedNights),
+    commissionPct: clean(String(body.commissionPct || ""), 8),
+
+    ownerFullName: clean(body.ownerFullName, 200),
+    ownerIdPassport: clean(body.ownerIdPassport, 60),
+    ownerEmail: clean(body.ownerEmail, 200),
+    ownerPhone: clean(body.ownerPhone, 60),
+
+    submittedBy: body.submittedBy === "Affiliate" ? "Affiliate" : "Owner",
+    affId: clean(body.affId, 100),
+    affiliateAgentName: clean(body.affiliateAgentName, 200),
+    affiliateCompany: clean(body.affiliateCompany, 200),
+    affiliateEmail: clean(body.affiliateEmail, 200),
+    affiliatePhone: clean(body.affiliatePhone, 60),
+
+    checkInTime: clean(body.checkInTime, 20),
+    checkOutTime: clean(body.checkOutTime, 20),
+    description: clean(body.description, 4000),
+    houseRules: clean(body.houseRules, 4000),
+    moreInfo: clean(body.moreInfo, 4000),
+    areaInfo: clean(body.areaInfo, 4000),
+
+    depositPolicyText: clean(body.depositPolicyText, 2000),
+    depositPct: clean(body.depositPct, 10),
+    depositDays: clean(body.depositDays, 10),
+    childPolicy: clean(body.childPolicy, 1000),
+    paymentGatewayInUse: body.paymentGatewayInUse === "Y" ? "Y" : "N",
+    allowSameDayBooking: body.allowSameDayBooking === "Y" ? "Y" : "N",
+
+    unitTypes: sanitizeUnitTypes(body.unitTypes),
+    amenities: sanitizeAmenities(body.amenities),
+    documents: sanitizeFileRefs(body.documents, 20),
+    images: sanitizeFileRefs(body.images, 60),
+
+    agreementSigned: body.agreementSigned === true ? "Y" : "N",
+    signatoryName: clean(body.signatoryName, 200),
+    signatoryCapacity: clean(body.signatoryCapacity, 100),
+    signatoryIdPassport: clean(body.signatoryIdPassport, 60),
+    signatureDate: clean(body.signatureDate, 20),
+    signaturePlace: clean(body.signaturePlace, 200),
+  };
+}
+
+// Change history (2026-10-13): every save keeps a dated entry of what
+// changed, who changed it, and the old values, so nothing is lost when a
+// listing or its rates are edited. Kept on the record, newest last, capped.
+const HISTORY_MAX = 200;
+const NO_HISTORY_KEYS = ["dateUpdated", "history", "editToken", "agreementToken"];
+function addHistory(record, by, action, before) {
+  const entry = { at: new Date().toISOString(), by: by, action: action };
+  if (before) {
+    const changed = {};
+    Object.keys(before).forEach((k) => {
+      if (NO_HISTORY_KEYS.indexOf(k) > -1) return;
+      if (JSON.stringify(before[k]) === JSON.stringify(record[k])) return;
+      let old = before[k];
+      if (typeof old === "string" && old.length > 1500) old = old.slice(0, 1500) + "…";
+      changed[k] = old === undefined ? "" : old;
+    });
+    if (!Object.keys(changed).length) return false;
+    entry.changed = changed;
+  }
+  record.history = (Array.isArray(record.history) ? record.history : []).concat([entry]).slice(-HISTORY_MAX);
+  return true;
+}
+
 async function verifyAdminToken(token) {
   if (!token) return false;
   const sessionStore = getStore({ name: "admin-sessions", consistency: "strong" });
@@ -272,87 +383,8 @@ export default async (request, context) => {
         dateSubmitted: now,
         dateUpdated: now,
 
-        propertyName: clean(body.propertyName, 200),
-        propertyName2: clean(body.propertyName2, 200),
-        country: clean(body.country, 100),
-        suburb: clean(body.suburb, 100),
-        city: clean(body.city, 100),
-        city2: clean(body.city2, 100),
-        stateProvince: clean(body.stateProvince, 100),
-        area: clean(body.area, 100),
-        district: clean(body.district, 100),
-        propertyType: clean(body.propertyType, 100),
-        complexName: clean(body.complexName, 200),
-        infoLink: clean(body.infoLink, 300),
-        bookingLink: clean(body.bookingLink, 300),
-        siteNr: clean(body.siteNr, 30),
-        telephone: clean(body.telephone, 60),
-        email: clean(body.email, 200),
-        latitude: clean(body.latitude, 30),
-        longitude: clean(body.longitude, 30),
-        selfSupplierRating: clean(body.selfSupplierRating, 50),
-        tourismBoardGrading: clean(body.tourismBoardGrading, 50),
-        ratingLink: clean(body.ratingLink, 300),
-
-        // Added 2026-10-13 with the step-by-step form: street address, the
-        // Stock Network Site ID (= the affiliate number the form was opened
-        // with), whether the coordinates were checked against Google, and
-        // the channel the details were imported from.
-        streetAddress: clean(body.streetAddress, 300),
-        siteId: clean(body.siteId || body.affId, 100),
-        region: clean(body.region, 100),
-        coordsVerified: body.coordsVerified === "Y" ? "Y" : "N",
-        coordsVerifiedPlace: clean(body.coordsVerifiedPlace, 300),
-        coordsVerifiedAt: body.coordsVerified === "Y" ? new Date().toISOString() : "",
-        sourceChannel: clean(body.sourceChannel, 60),
-        channelListingLink: clean(body.channelListingLink, 500),
-        channelReviews: clean(body.channelReviews, 500),
-        hostName: clean(body.hostName, 200),
-        accessibility: clean(body.accessibility, 1000),
-        notIncluded: clean(body.notIncluded, 1000),
-        screenshotsRead: clean(String(body.screenshotsRead || ""), 4),
-        icalLink: clean(body.icalLink, 600),
-        rateSeasons: sanitizeRateSeasons(body.rateSeasons),
-        blockedNights: sanitizeDateList(body.blockedNights),
-        commissionPct: clean(String(body.commissionPct || ""), 8),
-
-        ownerFullName: clean(body.ownerFullName, 200),
-        ownerIdPassport: clean(body.ownerIdPassport, 60),
-        ownerEmail: clean(body.ownerEmail, 200),
-        ownerPhone: clean(body.ownerPhone, 60),
-
-        submittedBy: body.submittedBy === "Affiliate" ? "Affiliate" : "Owner",
-        affId: clean(body.affId, 100),
-        affiliateAgentName: clean(body.affiliateAgentName, 200),
-        affiliateCompany: clean(body.affiliateCompany, 200),
-        affiliateEmail: clean(body.affiliateEmail, 200),
-        affiliatePhone: clean(body.affiliatePhone, 60),
-
-        checkInTime: clean(body.checkInTime, 20),
-        checkOutTime: clean(body.checkOutTime, 20),
-        description: clean(body.description, 4000),
-        houseRules: clean(body.houseRules, 4000),
-        moreInfo: clean(body.moreInfo, 4000),
-        areaInfo: clean(body.areaInfo, 4000),
-
-        depositPolicyText: clean(body.depositPolicyText, 2000),
-        depositPct: clean(body.depositPct, 10),
-        depositDays: clean(body.depositDays, 10),
-        childPolicy: clean(body.childPolicy, 1000),
-        paymentGatewayInUse: body.paymentGatewayInUse === "Y" ? "Y" : "N",
-        allowSameDayBooking: body.allowSameDayBooking === "Y" ? "Y" : "N",
-
-        unitTypes: sanitizeUnitTypes(body.unitTypes),
-        amenities: sanitizeAmenities(body.amenities),
-        documents: sanitizeFileRefs(body.documents, 20),
-        images: sanitizeFileRefs(body.images, 60),
-
-        agreementSigned: body.agreementSigned === true ? "Y" : "N",
-        signatoryName: clean(body.signatoryName, 200),
-        signatoryCapacity: clean(body.signatoryCapacity, 100),
-        signatoryIdPassport: clean(body.signatoryIdPassport, 60),
-        signatureDate: clean(body.signatureDate, 20),
-        signaturePlace: clean(body.signaturePlace, 200),
+        ...submittedFields(body),
+        editToken: genToken(),
 
         // Commission / listing agreement (set by admin later, before a
         // listing can go live) — distinct from the onboarding "agreementSigned"
@@ -373,8 +405,25 @@ export default async (request, context) => {
           400
         );
       }
+      addHistory(record, record.submittedBy, "Submitted");
 
       await store.setJSON(listingId, record);
+
+      // The person who submitted gets a private link to come back and edit
+      // the listing (add next season's rates, fix details) at any time.
+      const editLink = new URL(request.url).origin + "/property-form.html?edit=" + encodeURIComponent(listingId) + "&key=" + encodeURIComponent(record.editToken);
+      const submitterTo = submitterEmailFor(record);
+      if (submitterTo) {
+        context.waitUntil(
+          sendNotificationEmail(
+            submitterTo,
+            "Your Avante listing " + record.propertyName + " — your edit link",
+            "<p>Thank you for listing <strong>" + escapeHtml(record.propertyName) + "</strong> (" + escapeHtml(listingId) + ") with Avante Travel. We'll be in touch once it's reviewed.</p>" +
+              "<p>Keep this link to update the listing later — for example to add next season's rates:<br><a href=\"" + editLink + "\">Edit my listing</a></p>" +
+              "<p>Anyone with this link can edit the listing, so don't share it.</p>"
+          )
+        );
+      }
 
       const notifyTo = await getNotificationEmail();
       if (notifyTo) {
@@ -392,7 +441,68 @@ export default async (request, context) => {
         );
       }
 
-      return json({ ok: true, listingId: listingId });
+      return json({ ok: true, listingId: listingId, editLink: editLink });
+    }
+
+    if (action === "getForEdit" || action === "update" || action === "markSentToSN") {
+      // Reopen a listing in the onboarding form: admin (token) or the
+      // submitter with their private edit key.
+      const listingId = clean(body.listingId, 20);
+      if (!listingId) return json({ error: "missing listingId" }, 400);
+      const record = await store.get(listingId, { type: "json" });
+      if (!record) return json({ error: "This listing wasn't found." }, 404);
+      const isAdmin = await verifyAdminToken(body.token);
+      const keyOk = !!record.editToken && clean(body.key, 200) === record.editToken;
+      if (!isAdmin && !keyOk) return json({ error: "This edit link isn't valid. Ask Avante Travel for a new one." }, 401);
+      if (action === "markSentToSN" && !isAdmin) return json({ error: "Only Avante admin can do this." }, 401);
+      withAgreementDefaults(record);
+
+      if (action === "getForEdit") {
+        const out = Object.assign({}, record);
+        delete out.agreementToken;
+        delete out.editToken;
+        if (!isAdmin) delete out.history;
+        return json({ ok: true, listing: out, asAdmin: isAdmin });
+      }
+
+      if (action === "markSentToSN") {
+        const before = { snSentSeasons: record.snSentSeasons || [] };
+        record.snSentSeasons = (record.rateSeasons || []).map((r) => Object.assign({}, r));
+        record.snSentAt = new Date().toISOString();
+        record.dateUpdated = record.snSentAt;
+        addHistory(record, "admin", "Rates marked as sent to Stock Network", before);
+        await store.setJSON(listingId, record);
+        return json({ ok: true, snSentAt: record.snSentAt });
+      }
+
+      // update: the whole form comes back; keep what only Avante controls.
+      const incoming = submittedFields(body);
+      const before = JSON.parse(JSON.stringify(record));
+      const KEEP = ["listingId", "status", "dateSubmitted", "submittedBy", "affId", "editToken", "history",
+        "commissionRate", "listingDuration", "agreementTerms", "agreementStatus", "agreementToken", "agreementSentAt",
+        "agreementRespondedAt", "snSentSeasons", "snSentAt", "agreementSigned", "signatoryName", "signatoryCapacity",
+        "signatoryIdPassport", "signatureDate", "signaturePlace", "coordsVerifiedAt"];
+      Object.keys(incoming).forEach((k) => { if (KEEP.indexOf(k) === -1) record[k] = incoming[k]; });
+      if (!isAdmin) record.siteNr = before.siteNr || "";   // the Site Nr is allocated by Avante
+      if (incoming.coordsVerified === "Y" && (before.latitude !== record.latitude || before.longitude !== record.longitude || before.coordsVerified !== "Y")) {
+        record.coordsVerifiedAt = new Date().toISOString();
+      }
+      if (!record.propertyName || !record.ownerFullName) return json({ error: "Property name and owner name can't be empty." }, 400);
+      record.dateUpdated = new Date().toISOString();
+      const changed = addHistory(record, isAdmin ? "admin" : (record.submittedBy || "owner"), "Edited", before);
+      if (!changed) return json({ ok: true, listing: { listingId: listingId }, unchanged: true });
+      await store.setJSON(listingId, record);
+
+      if (!isAdmin) {
+        const notifyTo = await getNotificationEmail();
+        if (notifyTo) {
+          const what = Object.keys(record.history[record.history.length - 1].changed || {}).join(", ");
+          context.waitUntil(sendNotificationEmail(notifyTo, "Listing updated by owner — " + record.propertyName,
+            "<p>" + escapeHtml(record.ownerFullName || "The owner") + " updated <strong>" + escapeHtml(record.propertyName) + "</strong> (" + escapeHtml(listingId) + ").</p>" +
+            "<p><strong>Changed:</strong> " + escapeHtml(what) + "</p><p>See Admin &gt; Property Listings &gt; View &gt; History.</p>"));
+        }
+      }
+      return json({ ok: true, listing: { listingId: listingId } });
     }
 
     if (action === "readScreenshots") {
@@ -549,6 +659,7 @@ export default async (request, context) => {
 
       const record = await store.get(listingId, { type: "json" });
       if (!record) return json({ error: "not found" }, 404);
+      const beforeEdit = JSON.parse(JSON.stringify(record));
 
       EDITABLE_FIELDS.forEach((field) => {
         if (typeof body[field] === "string") {
@@ -563,6 +674,7 @@ export default async (request, context) => {
       }
 
       record.dateUpdated = new Date().toISOString();
+      addHistory(record, "admin", "Edited in admin", beforeEdit);
       await store.setJSON(listingId, record);
 
       return json({ ok: true, listing: withAgreementDefaults(record) });
@@ -710,9 +822,11 @@ export default async (request, context) => {
       }
 
       const prevStatus = record.status;
+      const beforeStatus = { status: record.status, siteNr: record.siteNr };
       record.status = status;
       record.dateUpdated = new Date().toISOString();
       if (siteNr !== undefined) record.siteNr = siteNr;
+      addHistory(record, "admin", "Status / Site Nr", beforeStatus);
 
       await store.setJSON(listingId, record);
 
