@@ -1258,6 +1258,12 @@
       <div class="card">
         <h2 class="section-heading" style="margin-top:0;">Properties already on Stock Network</h2>
         <p class="hint">Properties connected in Property Affiliate before the onboarding form existed (e.g. The Dunes). Give each one a listing, filled in from what the hub already has, so the property and you can complete the missing fields and send the updates to Stock Network.</p>
+        <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; margin:6px 0 12px;">
+          <div><label for="exSiteNr">Site Nr</label><input id="exSiteNr" placeholder="e.g. 5980" style="width:130px;"></div>
+          <div style="flex:1; min-width:220px;"><label for="exSiteId">Site ID (affiliate number)</label><input id="exSiteId" placeholder="e.g. 6de763dc-ea92-…" style="width:100%;"></div>
+          <button class="primary" id="exGetBtn" type="button">Get the property</button>
+        </div>
+        <div class="hint" id="exGetStatus" style="margin:0 0 10px;"></div>
         <button class="btn-outline" id="existingPropsBtn" type="button">Show properties</button>
         <div id="existingPropsHost" style="margin-top:10px;"></div>
       </div>
@@ -6801,12 +6807,20 @@
           var link = location.origin + '/property-form.html?edit=' + encodeURIComponent(l.listingId) + '&key=' + encodeURIComponent(l.editToken);
           var sentTo = (l.editLinkLog || []).filter(function(x){ return x.ok; });
           el.innerHTML = '<div style="font-weight:700; margin-bottom:6px;">Let the property complete its listing</div>' +
-            (l.existingOnSN === 'Y' ? '<div class="hint" style="margin:0 0 6px;">Already on Stock Network (Site Nr ' + escapeHtml(l.siteNr || '?') + '). Made from what the hub had; the missing fields still need filling in.</div>' : '') +
+            (l.existingOnSN === 'Y' ? '<div class="hint" style="margin:0 0 6px;">Already on Stock Network (Site Nr ' + escapeHtml(l.siteNr || '?') + '). Made from what the hub and Stock Network had; the missing fields still need filling in.</div>' : '') +
+            (l.channelProperty === 'Y' ? '<div class="hint" style="margin:0 0 6px;"><b>Channel Property Affiliate.</b> Commission on bookings from its hooks: ' + escapeHtml(l.commissionPct || '4.95') + '% + VAT (' + (Math.round((+l.commissionPct || 4.95) * 115) / 100).toFixed(2) + '%). Guests pay through Avante\'s payment gateway.</div>' : '') +
+            '<label style="display:block; font-size:13px; margin:0 0 8px;"><input type="checkbox" id="elRatesCh"' + (l.ratesFromChannel === 'Y' ? ' checked' : '') + '> Rates and availability come from a channel manager (e.g. NightsBridge): no calendar or rates in the form</label>' +
             '<label class="hint" for="elTo" style="display:block; margin:0 0 3px;">Email the edit link to</label>' +
             '<input id="elTo" type="text" style="width:100%;" value="' + escapeHtml(l.ownerEmail || l.email || l.affiliateEmail || '') + '">' +
             '<div style="margin-top:8px; display:flex; flex-wrap:wrap; gap:8px; align-items:center;"><button type="button" class="btn-outline" id="elSend">Email the edit link</button><button type="button" class="btn-outline" id="elCopy">Copy the link</button><span class="hint" id="elStatus" style="margin:0"></span></div>' +
             (sentTo.length ? '<div class="hint" style="margin-top:6px;">Last emailed to ' + escapeHtml(sentTo[sentTo.length - 1].to) + ' on ' + escapeHtml(fmtPropDate(sentTo[sentTo.length - 1].at)) + '.</div>' : '');
           host.appendChild(el);
+          el.querySelector('#elRatesCh').addEventListener('change', function(){
+            var on = this.checked, st = el.querySelector('#elStatus');
+            propAdminPost('setRatesFromChannel', { listingId: l.listingId, on: on }).then(function(res){
+              if(res.data && res.data.ok) openPropertyDetailsModal(l.listingId); else st.textContent = (res.data && res.data.error) || 'Could not save.';
+            });
+          });
           el.querySelector('#elCopy').addEventListener('click', function(){
             var st = el.querySelector('#elStatus');
             (navigator.clipboard ? navigator.clipboard.writeText(link) : Promise.reject()).then(function(){ st.textContent = 'Copied \u2714'; }, function(){ window.prompt('Copy this link:', link); });
@@ -6901,7 +6915,7 @@
           '<input id="snEmailTo" type="text" placeholder="e.g. support@stocknetwork.co.za" value="' + escapeHtml(lastTo) + '" style="width:100%;">' +
           '<div style="display:flex; flex-wrap:wrap; gap:6px 16px; margin:8px 0; font-size:13px;">' +
             '<label><input type="checkbox" id="snEmailProp" checked> Property file (.xlsx)</label>' +
-            '<label>Rates file: <select id="snEmailRates"><option value="all">All future rates</option><option value="new">Only new/changed</option><option value="">Don\'t send</option></select></label>' +
+            '<label>Rates file: <select id="snEmailRates">' + (l.ratesFromChannel === 'Y' ? '<option value="">Don\'t send (rates come from the channel manager)</option>' : '<option value="all">All future rates</option><option value="new">Only new/changed</option><option value="">Don\'t send</option>') + '</select></label>' +
             '<label>As: <select id="snEmailFmt"><option value="xlsx">.xlsx</option><option value="csv">.csv</option><option value="both">.xlsx and .csv</option></select></label>' +
           '</div>' +
           '<label class="hint" for="snEmailNote" style="display:block; margin:0 0 3px;">Message (optional)</label>' +
@@ -7192,13 +7206,33 @@
           if(!d.properties.length){ host.innerHTML = '<div class="hint">No properties are connected in Property Affiliate.</div>'; return; }
           host.innerHTML = '<div class="table-wrap"><table><thead><tr><th>Property</th><th>Site Nr</th><th>Units</th><th></th></tr></thead><tbody>' +
             d.properties.map(function(pr){
-              return '<tr><td>' + escapeHtml(pr.name || '(no name)') + '</td><td>' + escapeHtml(pr.siteNr) + '</td><td>' + pr.units + '</td><td>' +
+              return '<tr><td>' + escapeHtml(pr.name || '(no name)') + (pr.channel ? ' <small style="color:#1f7a6e; font-weight:700;">Channel property</small>' : '') + '</td><td>' + escapeHtml(pr.siteNr) + '</td><td>' + pr.units + '</td><td>' +
                 (pr.listingId ? '<button type="button" class="btn-outline" data-ex-open="' + escapeHtml(pr.listingId) + '">Open listing (' + escapeHtml(pr.listingId) + ')</button>'
                   : '<button type="button" class="primary" data-ex-create="' + escapeHtml(pr.siteId) + '">Create listing</button>') + '</td></tr>';
             }).join('') + '</tbody></table></div>';
         }).catch(function(){ host.innerHTML = '<div class="hint">Could not load.</div>'; });
       }
       document.getElementById('existingPropsBtn').addEventListener('click', loadExistingProps);
+      // Just the Site Nr and Site ID: the hub reads the rest (Jean, 2026-10-13).
+      function getBySite(resortId){
+        var nr = document.getElementById('exSiteNr').value.trim(), sid = document.getElementById('exSiteId').value.trim();
+        var st = document.getElementById('exGetStatus'), btn = document.getElementById('exGetBtn');
+        if(!nr){ st.textContent = 'Type the Site Nr.'; return; }
+        btn.disabled = true; st.textContent = 'Reading the property from Stock Network\u2026';
+        propAdminPost('createFromExisting', { siteNr: nr, siteIdIn: sid, resortId: resortId || '' }).then(function(res){
+          btn.disabled = false;
+          var d = res.data || {};
+          if(d.chooseResort){
+            st.innerHTML = 'Site Nr ' + escapeHtml(nr) + ' has more than one property. Tap the one you mean: ' + d.chooseResort.map(function(r){ return '<button type="button" class="btn-outline" data-ex-rid="' + escapeHtml(r.resortId) + '" style="margin:4px 4px 0 0;">' + escapeHtml(r.name) + '</button>'; }).join('');
+            return;
+          }
+          if(d.ok){ st.textContent = 'Done. The listing is open below.'; loadPropertyListings(); openPropertyDetailsModal(d.listingId); return; }
+          if(d.listingId){ st.textContent = d.error; openPropertyDetailsModal(d.listingId); return; }
+          st.textContent = d.error || 'Could not get the property.';
+        }).catch(function(){ btn.disabled = false; st.textContent = 'No connection. Try again.'; });
+      }
+      document.getElementById('exGetBtn').addEventListener('click', function(){ getBySite(''); });
+      document.getElementById('exGetStatus').addEventListener('click', function(e){ var rid = e.target.getAttribute('data-ex-rid'); if(rid) getBySite(rid); });
       document.getElementById('existingPropsHost').addEventListener('click', function(e){
         var open = e.target.getAttribute('data-ex-open'), create = e.target.getAttribute('data-ex-create');
         if(open){ openPropertyDetailsModal(open); return; }

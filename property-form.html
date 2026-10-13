@@ -148,6 +148,11 @@
   .modal-box .modal-body{ padding:16px 20px; overflow-y:auto; font-size:13px; line-height:1.55; }
   .modal-close{ background:none; border:none; font-size:20px; cursor:pointer; color:var(--muted); line-height:1; }
   @media (max-width: 600px){ .row{ flex-direction:column; gap:0; } .steps button .lbl{ display:none; } .steps button.on .lbl{ display:inline; } }
+  /* Rates from a channel manager (NightsBridge etc., Jean 2026-10-13): no calendar or rates here. */
+  .rates-note{ display:none; }
+  body.rates-channel .rates-note{ display:block; }
+  body.rates-channel section[data-step="6"] .card:not(.rates-note), body.rates-channel section[data-step="6"] [data-shots], body.rates-channel section[data-step="6"] .step-lede{ display:none; }
+  body.rates-channel [data-dl="stockx"], body.rates-channel [data-dl="stockc"]{ display:none; }
 </style>
 <style>
   /* Phones: text boxes at 16px so iPhones don't zoom in when one is tapped
@@ -361,6 +366,7 @@
   <!-- ============ STEP 6: CALENDAR & RATES ============ -->
   <section class="step" data-step="6" data-title="Calendar &amp; rates">
     <h2 class="step-title">6. Calendar &amp; rates</h2>
+    <div class="card rates-note"><p class="note info" style="margin:0"><b>Nothing to fill in here.</b> Your rates and availability come from your channel manager (for example NightsBridge) through Stock Network, so they stay there. Go on to step 7.</p></div>
     <p class="step-lede">Tap a first night and a last night, type the <b>rack rate</b> (the public price per night) and minimum stay, and tap <b>Apply rate</b>. Block nights that are already booked. Avante works out the Stock Network rate for you.</p>
     <div data-shots="6"></div>
     <div class="card">
@@ -1311,9 +1317,9 @@
       [treePlaced || (!!$('pSuburb').value.trim() && !!$('pCity').value.trim() && editing), 'Placed in the hub location tree', 3],
       [unitRows().some(function(r){ return r.querySelector('.pu-name').value.trim() && r.querySelector('.pu-maxOcc').value.trim(); }), 'Unit type name and sleeps', 5],
       [amenCount > 0, 'Amenities ticked (' + amenCount + ')', 5],
-      [s.length > 0, 'Rates set on the calendar (' + s.length + ' season' + (s.length === 1 ? '' : 's') + ')', 6],
+      [RATES_FROM_CHANNEL || s.length > 0, RATES_FROM_CHANNEL ? 'Rates come from your channel manager' : 'Rates set on the calendar (' + s.length + ' season' + (s.length === 1 ? '' : 's') + ')', 6],
       [uploadedImages.length > 0, 'Photos (' + uploadedImages.length + ')', 7],
-      [anyDoc('id-document') && anyDoc('proof-of-ownership') && anyDoc('proof-of-residence'), 'ID, proof of ownership and proof of residence', 7],
+      [EXISTING_ON_SN || (anyDoc('id-document') && anyDoc('proof-of-ownership') && anyDoc('proof-of-residence')), EXISTING_ON_SN ? 'Documents (done when you joined Stock Network)' : 'ID, proof of ownership and proof of residence', 7],
       [!isAff || anyDoc('mandate'), 'Signed mandate (affiliates only)', 7],
       [!!$('depositText').value.trim(), 'Cancellation policy', 8]
     ];
@@ -1327,7 +1333,7 @@
   document.addEventListener('click', function(e){
     var b = e.target.closest && e.target.closest('[data-dl]'); if(!b) return;
     var listing = buildPayload(), kind = b.getAttribute('data-dl');
-    if(!listing.rateSeasons.length && kind !== 'property'){ $('dlStatus').textContent = 'Set rates in step 6 first.'; return; }
+    if(!listing.rateSeasons.length && kind !== 'property'){ $('dlStatus').textContent = RATES_FROM_CHANNEL ? 'Rates come from the channel manager.' : 'Set rates in step 6 first.'; return; }
     try {
       if(kind === 'property') AvanteSNExport.downloadPropertyFile(listing, listing.siteNr);
       if(kind === 'stockx') AvanteSNExport.downloadStockXlsx(listing, listing.siteNr);
@@ -1498,6 +1504,19 @@
     pSiteNr:'siteNr', pSiteId:'siteId', pType:'propertyType', pHost:'hostName', pPhone:'telephone', pEmail:'email', pInfoLink:'infoLink', pBookingLink:'bookingLink', pCheckIn:'checkInTime', pCheckOut:'checkOutTime', pDesc:'description',
     pRules:'houseRules', pAccess:'accessibility', pRating:'selfSupplierRating', pGrading:'tourismBoardGrading', pRatingLink:'ratingLink', pReviews:'channelReviews', pMoreInfo:'moreInfo', pAreaInfo:'areaInfo', pNotIncluded:'notIncluded',
     depositText:'depositPolicyText', depositPct:'depositPct', depositDays:'depositDays', childPolicy:'childPolicy', icalLink:'icalLink', channelLink:'channelListingLink', pLat:'latitude', pLng:'longitude' };
+  var RATES_FROM_CHANNEL = false, EXISTING_ON_SN = false;
+  // Facilities read from Stock Network, ticked on the amenities list when they
+  // match (only while nothing is ticked yet); the rest go in More info.
+  function tickSnFacilities(list){
+    if(!list || !list.length || document.querySelectorAll('.amenity-check:checked').length) return;
+    var norm = function(t){ return String(t || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); };
+    var boxes = [].slice.call(document.querySelectorAll('.amenity-check')), left = [];
+    list.forEach(function(f){
+      var nf = norm(f), hit = boxes.filter(function(cb){ var ni = norm(cb.getAttribute('data-item')); return ni && (ni === nf || (ni.length >= 4 && (' ' + nf + ' ').indexOf(' ' + ni + ' ') > -1) || (nf.length >= 4 && (' ' + ni + ' ').indexOf(' ' + nf + ' ') > -1)); });
+      if(hit.length) hit.forEach(function(cb){ cb.checked = true; }); else left.push(f);
+    });
+    if(left.length && $('pMoreInfo') && !$('pMoreInfo').value.trim()) $('pMoreInfo').value = 'Also offers: ' + left.join(', ') + '.';
+  }
   function fillFromListing(L){
     Object.keys(KEY_MAP).forEach(function(id){ if($(id)) $(id).value = L[KEY_MAP[id]] == null ? '' : L[KEY_MAP[id]]; });
     Array.prototype.forEach.call(document.getElementsByName('submittedBy'), function(r){ r.checked = r.value === (L.submittedBy === 'Affiliate' ? 'Affiliate' : 'Owner'); r.dispatchEvent(new Event('change')); });
@@ -1539,6 +1558,10 @@
       eachDay(rs.from, rs.to, function(k){ RATES[uid][k] = { rack: +rs.rackRate, min: +rs.minStay || 1 }; });
     });
     BLOCKED = {}; (L.blockedNights || []).forEach(function(k){ BLOCKED[k] = true; });
+    RATES_FROM_CHANNEL = L.ratesFromChannel === 'Y';
+    EXISTING_ON_SN = L.existingOnSN === 'Y';
+    document.body.classList.toggle('rates-channel', RATES_FROM_CHANNEL);
+    tickSnFacilities(L.snFacilities);
     // Files already uploaded stay with the listing
     uploadedDocs = (L.documents || []).map(function(d){ return { type: d.type, key: d.key, fileName: d.fileName }; });
     uploadedImages = (L.images || []).map(function(im){ return { type: im.type, unitTypeName: im.unitTypeName, key: im.key, fileName: im.fileName, caption: im.caption, cover: im.cover }; });
@@ -1561,7 +1584,9 @@
       $('sigCard').style.display = 'none';
       $('editSaveCard').style.display = '';
       renderChannelChips();
-      goStep(editAsAdmin ? 1 : 6);
+      // A property already on Stock Network opens on the Ready check, which
+      // lists only what is still to do (Jean: very simple and easy).
+      goStep(editAsAdmin ? 1 : (res.listing.existingOnSN === 'Y' ? 8 : (RATES_FROM_CHANNEL ? 1 : 6)));
     });
   }
   $('saveEditBtn').addEventListener('click', function(){

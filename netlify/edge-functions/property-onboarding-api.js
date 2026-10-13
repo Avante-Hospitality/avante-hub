@@ -1,6 +1,7 @@
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
 import { readListingScreenshots } from "./lib/listing-reader.js";
 import { HOOKS_URL, makeHooksTicket } from "./lib/hooks-ticket.js";
+import { readResortInfo, copySnPhotos } from "./lib/sn-resort-info.js";
 import { forwardGeocode, reverseGeocode } from "./lib/geocode.js";
 import { searchPlacePhotos, searchPlaceCandidates } from "./lib/places-images.js";
 import { placeCoordinate, snFieldsFromPlace, placeText, PLACES_STORE, PROPERTY_KEY } from "./lib/tree.js";
@@ -653,9 +654,12 @@ export default async (request, context) => {
       const before = JSON.parse(JSON.stringify(record));
       const KEEP = ["listingId", "status", "dateSubmitted", "submittedBy", "affId", "editToken", "history",
         "commissionRate", "listingDuration", "agreementTerms", "agreementStatus", "agreementToken", "agreementSentAt",
-        "agreementRespondedAt", "snSentSeasons", "snSentAt", "snEmailLog", "photosToken", "libraryPhotos", "existingOnSN", "paSiteId", "resortId", "editLinkLog", "agreementSigned", "signatoryName", "signatoryCapacity",
+        "agreementRespondedAt", "snSentSeasons", "snSentAt", "snEmailLog", "photosToken", "libraryPhotos", "existingOnSN", "paSiteId", "resortId", "editLinkLog", "channelProperty", "ratesFromChannel", "snFacilities", "agreementSigned", "signatoryName", "signatoryCapacity",
         "signatoryIdPassport", "signatureDate", "signaturePlace", "coordsVerifiedAt"];
       Object.keys(incoming).forEach((k) => { if (KEEP.indexOf(k) === -1) record[k] = incoming[k]; });
+      // A channel property's commission (4.95% + VAT on hub bookings) is set by
+      // Avante, not by the form's default.
+      if (before.channelProperty === "Y") record.commissionPct = before.commissionPct || "4.95";
       if (!isAdmin) {
         record.siteNr = before.siteNr || "";   // the Site Nr is allocated by Avante
         // Location is locked once submitted: coordinates, address and the
@@ -848,27 +852,64 @@ export default async (request, context) => {
         const pr = await paStore.get(b.key, { type: "json" }).catch(() => null);
         if (pr && pr.siteId) props.push(pr);
       }
+      // Channel Property Affiliates (on NightsBridge etc.) are already on
+      // Stock Network too, but aren't connected in Property Affiliate: they
+      // come from the affiliates list (type "channel") and its Site Nr.
+      const cur = await getStore({ name: "resort-list", consistency: "strong" }).get("current", { type: "json" }).catch(() => null);
+      const resortRows = (cur && cur.resorts) || [];
+      const dirStore = getStore({ name: "affiliates-directory", consistency: "strong" });
+      for (const b of (await dirStore.list()).blobs) {
+        const a = await dirStore.get(b.key, { type: "json" }).catch(() => null);
+        if (!a || !Array.isArray(a.types) || a.types.indexOf("channel") === -1) continue;
+        const aff = a.affId || b.key;
+        if (props.some((pr) => pr.aff === aff)) continue;
+        const rows = resortRows.filter((r) => a.siteNr && String(r.siteId || "").trim() === String(a.siteNr).trim());
+        props.push({ siteId: "aff:" + aff, site: a.siteNr || "", resortId: rows.length === 1 ? rows[0].resortId : "", resortName: a.name || (rows[0] && rows[0].name) || "",
+          aff, units: [], settings: { email: a.email || "", phone: a.phone || "" }, channel: true, siteIdForListing: aff });
+      }
       const all = (await Promise.all((await store.list()).blobs.map((b) => store.get(b.key, { type: "json" })))).filter(Boolean);
-      const listingFor = (pr) => all.find((r) => (r.paSiteId && r.paSiteId === pr.siteId) || (r.resortId && pr.resortId && r.resortId === pr.resortId));
+      const listingFor = (pr) => all.find((r) => (r.paSiteId && r.paSiteId === pr.siteId) || (r.resortId && pr.resortId && r.resortId === pr.resortId) || (pr.channel && r.channelProperty === "Y" && r.affId === pr.aff));
 
       if (action === "existingProperties") {
         return json({ ok: true, properties: props.map((pr) => {
           const l = listingFor(pr);
-          return { siteId: pr.siteId, siteNr: String(pr.site || ""), resortId: pr.resortId || "", name: pr.resortName || "", aff: pr.aff || "", units: (pr.units || []).length, listingId: l ? l.listingId : "" };
+          return { siteId: pr.siteId, siteNr: String(pr.site || ""), resortId: pr.resortId || "", name: pr.resortName || "", aff: pr.aff || "", units: (pr.units || []).length, channel: !!pr.channel, listingId: l ? l.listingId : "" };
         }).sort((a, b) => a.name.localeCompare(b.name)) });
       }
 
-      const pr = props.find((x) => x.siteId === clean(body.siteId, 100));
+      let pr = props.find((x) => x.siteId === clean(body.siteId, 100));
+      // Jean (2026-10-13): or just type the Site Nr and Site ID, and the hub
+      // finds the rest (Stock Network's property list and public page).
+      const bySiteNr = clean(body.siteNr, 20);
+      if (!pr && bySiteNr) {
+        const rows = resortRows.filter((r) => String(r.siteId || "").trim() === bySiteNr);
+        if (!rows.length) return json({ error: "No property with Site Nr " + bySiteNr + " is in the hub's Stock Network list yet. Check the number, or refresh the property list in SN Cleanup." }, 404);
+        const wantRid = clean(body.resortId, 64);
+        if (rows.length > 1 && !wantRid) return json({ ok: false, chooseResort: rows.map((r) => ({ resortId: r.resortId, name: r.name })) });
+        const row0 = rows.find((r) => !wantRid || String(r.resortId).toLowerCase() === wantRid.toLowerCase()) || rows[0];
+        const typedSiteId = clean(body.siteIdIn, 100);
+        const known = props.find((x) => (x.resortId && String(x.resortId).toLowerCase() === String(row0.resortId).toLowerCase()) || (typedSiteId && (x.siteIdForListing === typedSiteId || x.aff === typedSiteId)));
+        pr = known ? Object.assign({}, known, { site: known.site || bySiteNr, resortId: known.resortId || row0.resortId, resortName: known.resortName || row0.name }) : { siteId: "nr:" + bySiteNr + ":" + row0.resortId, site: bySiteNr, resortId: row0.resortId, resortName: row0.name, aff: "", units: [], settings: {} };
+        if (typedSiteId) { pr = Object.assign({}, pr, { typedSiteId }); }
+      }
       if (!pr) return json({ error: "That property wasn't found." }, 404);
       const have = listingFor(pr);
       if (have) return json({ error: "This property already has a listing (" + have.listingId + ").", listingId: have.listingId }, 409);
-      const cur = await getStore({ name: "resort-list", consistency: "strong" }).get("current", { type: "json" }).catch(() => null);
-      const row = ((cur && cur.resorts) || []).find((r) => r.resortId && pr.resortId && String(r.resortId).toLowerCase() === String(pr.resortId).toLowerCase()) || {};
+      const row = resortRows.find((r) => r.resortId && pr.resortId && String(r.resortId).toLowerCase() === String(pr.resortId).toLowerCase()) || {};
       const st = pr.settings || {};
       const yn = (v) => /^(y|yes|true|1)$/i.test(String(v || "").trim()) ? "Y" : "N";
+      // What Stock Network shows publicly: description, facilities, unit
+      // types with sleeps, photos (Jean: get it by API, seamless — no retyping).
+      const sn = pr.resortId ? await readResortInfo(pr.resortId) : { ok: false };
+      const snUnits = sn.ok ? sn.units : [];
+      const units = snUnits.length
+        ? snUnits.map((u) => ({ name: u.name, numUnits: "1", maxOccupancy: u.maxGuests ? String(u.maxGuests) : "", description: u.description || u.roomType || "" }))
+        : (pr.units || []).map((u) => ({ name: u.name, numUnits: "1", maxOccupancy: u.size ? String(u.size) : "",
+            description: st.prices && st.prices[u.name] ? "Hub price: R" + st.prices[u.name] + " a night" : "" }));
       const now = new Date().toISOString();
       const listingId = genListingId();
       const record = Object.assign({ listingId, status: "Listed", dateSubmitted: now, dateUpdated: now }, submittedFields({
+        description: sn.ok ? sn.about : "", areaInfo: sn.ok ? sn.attractions : "",
         propertyName: pr.resortName || row.name || "", propertyType: row.propertyType || "",
         country: row.snCountry || "", stateProvince: row.state || "", area: row.area || "", district: row.district || "",
         city: row.city || "", city2: row.city2 || "", suburb: row.suburb || "",
@@ -877,20 +918,42 @@ export default async (request, context) => {
         checkInTime: row.checkinTime || "", checkOutTime: row.checkoutTime || "",
         selfSupplierRating: row.supplierRating || "", tourismBoardGrading: row.tourismBoardRating || "",
         allowSameDayBooking: yn(row.allowSameDayBooking) === "Y" ? "Y" : "N",
-        siteNr: String(pr.site || ""), siteId: pr.siteId, affId: pr.aff || "", submittedBy: "Owner",
-        unitTypes: (pr.units || []).map((u) => ({ name: u.name, numUnits: "1", maxOccupancy: u.size ? String(u.size) : "",
-          description: st.prices && st.prices[u.name] ? "Hub price: R" + st.prices[u.name] + " a night" : "" })),
+        siteNr: String(pr.site || ""), siteId: pr.typedSiteId || (pr.channel ? pr.siteIdForListing : (/^nr:/.test(pr.siteId) ? "" : pr.siteId)), affId: pr.aff || pr.typedSiteId || "", submittedBy: "Owner",
+        unitTypes: units,
       }), {
-        editToken: genToken(), agreementSigned: "Y", existingOnSN: "Y", paSiteId: pr.siteId, resortId: pr.resortId || "",
+        editToken: genToken(), agreementSigned: "Y", existingOnSN: "Y", paSiteId: pr.channel || /^nr:/.test(pr.siteId) ? "" : pr.siteId, resortId: pr.resortId || "",
+        snFacilities: sn.ok ? sn.facilities.slice(0, 80) : [],
+        // Channel properties (NightsBridge etc.): rates and availability come
+        // from their channel manager through Stock Network — no calendar or
+        // rates in the hub, and commission on hub bookings is 4.95% + VAT.
+        channelProperty: pr.channel ? "Y" : "", ratesFromChannel: pr.channel ? "Y" : "", commissionPct: pr.channel ? "4.95" : "",
         commissionRate: "", listingDuration: "", agreementTerms: "", agreementStatus: "Not Sent", agreementToken: "", agreementSentAt: "", agreementRespondedAt: "",
       });
       // Place names from the hub location tree (the master), as for any listing.
       const placed = await getStore({ name: PLACES_STORE, consistency: "strong" }).get(PROPERTY_KEY, { type: "json" }).catch(() => null);
       const place = (placed && pr.resortId && (placed[pr.resortId] || placed[String(pr.resortId).toLowerCase()])) || await placeInTree(record.latitude, record.longitude);
       await applyTreePlace(record, place, false);
-      addHistory(record, "admin", "Listing created from the property already on Stock Network (Site Nr " + (pr.site || "?") + ")");
+      // Its pin was placed in the hub tree (by Google); the property can't move it.
+      if (place) { record.coordsVerified = "Y"; record.coordsVerifiedPlace = record.treePlaceText || ""; record.coordsVerifiedAt = new Date().toISOString(); }
+      if (sn.ok && sn.photos.length) record.images = await copySnPhotos(sn.photos, listingId, getStore({ name: "property-listing-files", consistency: "strong" }));
+      addHistory(record, "admin", "Listing created from the property already on Stock Network (Site Nr " + (pr.site || "?") + ")" +
+        (sn.ok ? "; details, " + units.length + " unit type(s), " + record.snFacilities.length + " facilities and " + record.images.length + " photo(s) read from Stock Network" : "; Stock Network's page couldn't be read"));
       await store.setJSON(listingId, record);
       return json({ ok: true, listingId });
+    }
+
+    if (action === "setRatesFromChannel") {
+      const denied = await requireAdmin();
+      if (denied) return denied;
+      const listingId = clean(body.listingId, 20);
+      const record = listingId && await store.get(listingId, { type: "json" });
+      if (!record) return json({ error: "not found" }, 404);
+      const before = { ratesFromChannel: record.ratesFromChannel || "" };
+      record.ratesFromChannel = body.on ? "Y" : "";
+      record.dateUpdated = new Date().toISOString();
+      addHistory(record, "admin", body.on ? "Rates set to come from the channel manager" : "Rates set to be kept in the hub", before);
+      await store.setJSON(listingId, record);
+      return json({ ok: true });
     }
 
     if (action === "sendEditLink") {
