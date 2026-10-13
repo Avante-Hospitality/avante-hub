@@ -901,7 +901,7 @@ export default async (request, context) => {
       const name = typeof body.name === "string" ? body.name.trim() : "";
       const email = typeof body.email === "string" ? body.email.trim() : "";
       const siteNr = typeof body.siteNr === "string" ? body.siteNr.trim() : "";
-      const ALLOWED_TYPES = ["franchise", "property", "agent"];
+      const ALLOWED_TYPES = ["franchise", "property", "agent", "channel"];
       const types = Array.isArray(body.types)
         ? [...new Set(body.types.filter((t) => ALLOWED_TYPES.includes(t)))]
         : [];

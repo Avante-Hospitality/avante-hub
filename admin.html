@@ -607,8 +607,9 @@
         <label style="display:flex; align-items:center; gap:6px; font-weight:400;"><input type="checkbox" value="franchise" id="affTypeFranchise"> Franchise Affiliate</label>
         <label style="display:flex; align-items:center; gap:6px; font-weight:400;"><input type="checkbox" value="property" id="affTypeProperty"> Property Affiliate</label>
         <label style="display:flex; align-items:center; gap:6px; font-weight:400;"><input type="checkbox" value="agent" id="affTypeAgent"> Agent Affiliate</label>
+        <label style="display:flex; align-items:center; gap:6px; font-weight:400;"><input type="checkbox" value="channel" id="affTypeChannel"> Channel Property Affiliate</label>
       </div>
-      <p class="modal-sub" style="margin:-2px 0 8px;">An affiliate can be more than one type. Not used to control access yet — just a label for now.</p>
+      <p class="modal-sub" style="margin:-2px 0 8px;">Decides which menus they see in their hub. <b>Agent</b>: the link builders. <b>Property</b>: the Property Affiliate module (calendar, bookings, channels). <b>Channel Property</b> (on NightsBridge or another channel manager): only the hook builder and guest payment settings. Tick several to give all of them. Franchise, or nothing ticked, sees everything.</p>
       <label>Revenue share — by channel</label>
       <p class="modal-sub" style="margin:-2px 0 8px;">Each channel matches a tab in this affiliate's Hub. For each one, choose <strong>%</strong> for a percentage of revenue, or <strong>R flat</strong> for a fixed Rand amount paid per entry regardless of revenue. Leave at 0 if they don't get a cut of that channel.</p>
       <div class="row" id="affShareFields" style="flex-wrap:wrap; gap:10px 12px;"></div>
@@ -2907,7 +2908,7 @@
         tdSiteNr.style.fontSize = '12px';
         tdSiteNr.style.color = a.siteNr ? 'inherit' : 'var(--muted)';
         var tdType = document.createElement('td');
-        var typeLabels = { franchise: 'Franchise', property: 'Property', agent: 'Agent' };
+        var typeLabels = { franchise: 'Franchise', property: 'Property', agent: 'Agent', channel: 'Channel Property' };
         var affTypes = Array.isArray(a.types) ? a.types : [];
         tdType.textContent = affTypes.length ? affTypes.map(function(t){ return typeLabels[t] || t; }).join(', ') : '\u2014';
         tdType.style.fontSize = '12px';
@@ -3345,6 +3346,7 @@
       document.getElementById('affTypeFranchise').checked = existingTypes.indexOf('franchise') > -1;
       document.getElementById('affTypeProperty').checked = existingTypes.indexOf('property') > -1;
       document.getElementById('affTypeAgent').checked = existingTypes.indexOf('agent') > -1;
+      document.getElementById('affTypeChannel').checked = existingTypes.indexOf('channel') > -1;
       buildAffShareFields(existing ? existing.revenueShare : null);
       var bank = (existing && existing.bank) || {};
       document.getElementById('affBankNameInput').value = bank.bankName || '';
@@ -3377,6 +3379,7 @@
       if(document.getElementById('affTypeFranchise').checked) types.push('franchise');
       if(document.getElementById('affTypeProperty').checked) types.push('property');
       if(document.getElementById('affTypeAgent').checked) types.push('agent');
+      if(document.getElementById('affTypeChannel').checked) types.push('channel');
       var revenueShare = readAffShareFields();
       var bank = {
         bankName: document.getElementById('affBankNameInput').value.trim(),

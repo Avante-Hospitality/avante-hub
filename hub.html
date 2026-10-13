@@ -949,6 +949,13 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.css">
   <link rel="stylesheet" href="property-affiliate.css">
+  <style>
+    /* Channel property (types: channel, not property): its own simple view
+       in the Property Affiliate panel instead of the calendar/booking module. */
+    body:not(.channel-only) #cp-app{ display:none; }
+    body.channel-only #pa-app, body.channel-only #pa-onboarding{ display:none !important; }
+    .tab.type-hidden, .panel.type-hidden{ display:none !important; }
+  </style>
 <style>
   /* Phones: text boxes at 16px so iPhones don't zoom in when one is tapped
      (that zoom is what makes a page stop fitting the screen). */
@@ -1572,6 +1579,7 @@
 
       <!-- ===================== PROPERTY AFFILIATE ===================== -->
       <section class="panel" id="panel-property">
+        <div id="cp-app"></div>
         <div id="pa-app"></div>
         <div id="pa-onboarding" style="display:none">
         <div class="card">
@@ -2406,8 +2414,46 @@
       fetch('/api/auth', { method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ action: 'getProfile', aff: AFF_ID, session: hubSession() }) })
         .then(function(r){ return r.json(); })
-        .then(function(d){ if(d && d.ok && d.profile && d.profile.hooksAccess) document.body.classList.add('hooks-on'); })
+        .then(function(d){
+          if(!(d && d.ok && d.profile)) return;
+          if(d.profile.hooksAccess) document.body.classList.add('hooks-on');
+          applyTypeMenus(d.profile.types || []);
+        })
         .catch(function(){});
+      // Menus by affiliate type (Jean, 2026-10-13): each type sees only what
+      // it uses; several types see everything for all of them. Franchise, or
+      // no type set yet, sees everything as before.
+      var TYPE_PANELS = {
+        agent: ['home','dashboard','marketing','accom','exploreMap','package','flight','activity','car','esim','shortlinks','account','tutorials'],
+        property: ['home','dashboard','marketing','property','shortlinks','account','tutorials'],
+        channel: ['home','marketing','property','shortlinks','account','tutorials']
+      };
+      function applyTypeMenus(types){
+        types = types.filter(function(t){ return t === 'franchise' || TYPE_PANELS[t]; });
+        if(!types.length || types.indexOf('franchise') > -1) return;
+        var allowed = {};
+        types.forEach(function(t){ (TYPE_PANELS[t] || []).forEach(function(p){ allowed[p] = true; }); });
+        var activeHidden = false;
+        document.querySelectorAll('.tab[data-panel]').forEach(function(tab){
+          var name = tab.getAttribute('data-panel'), hide = !allowed[name];
+          tab.classList.toggle('type-hidden', hide);
+          var panel = document.getElementById('panel-' + name);
+          if(panel) panel.classList.toggle('type-hidden', hide);
+          if(hide && tab.classList.contains('active')) activeHidden = true;
+        });
+        var channelOnly = types.indexOf('channel') > -1 && types.indexOf('property') === -1;
+        if(channelOnly){
+          document.body.classList.add('channel-only');
+          var pTab = document.querySelector('.tab[data-panel="property"]');
+          if(pTab) pTab.textContent = 'Channel Property';
+          if(window.ChannelProperty) window.ChannelProperty.start(AFF_ID, hubSession());
+          else window.addEventListener('load', function(){ if(window.ChannelProperty) window.ChannelProperty.start(AFF_ID, hubSession()); });
+        }
+        if(activeHidden){
+          var first = document.querySelector('.tab[data-panel]:not(.type-hidden)');
+          if(first) first.click();
+        }
+      }
     })();
     // "Post to Facebook" under each hook (Jean, 2026-10-09): shown only if
     // /api/fb-post says this affiliate may post (testing: site 36 only).
@@ -5362,6 +5408,7 @@
 
   <script src="qrcode.js" defer></script>
   <script src="property-affiliate.js" defer></script>
+  <script src="channel-property.js" defer></script>
 <script>
   // The one "Open the hook builder" button above the hooks (Jean, 2026-10-08).
   document.getElementById('openHookBuilderTop').addEventListener('click', function(){ window.openHookBuilder(this); });
