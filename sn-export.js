@@ -88,6 +88,15 @@
     return ws;
   }
   function fileSafe(name){ return s(name).replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'property'; }
+  // Jean (2026-10-13): the Site Nr and Site ID (= affiliate number) are
+  // allocated first; only then can the files be downloaded for Stock
+  // Network (manual upload or SN's import).
+  function needSite(listing, siteNr){
+    var missing = [];
+    if(!s(siteNr || listing.siteNr)) missing.push('StockNetwork Site Nr');
+    if(!s(listing.siteId)) missing.push('Site ID (affiliate number)');
+    if(missing.length) throw new Error('Allocate the ' + missing.join(' and ') + ' first — the Stock Network files need ' + (missing.length > 1 ? 'them' : 'it') + '.');
+  }
   function needXlsx(){ if(!window.XLSX) throw new Error('The spreadsheet tool did not load. Check your internet and reload the page.'); }
 
   function propertyWorkbook(listing, siteNr){
@@ -122,18 +131,22 @@
   window.AvanteSNExport = {
     STOCK_COLS: STOCK_COLS,
     stockRows: stockRows,
+    needSite: needSite,
     downloadPropertyFile: function(listing, siteNr){
+      needSite(listing, siteNr);
       var nr = s(siteNr || listing.siteNr);
       window.XLSX && window.XLSX.writeFile(propertyWorkbook(listing, nr), 'SN_new_property_' + (nr ? 'site' + nr + '_' : '') + fileSafe(listing.propertyName) + '.xlsx');
       if(!window.XLSX) needXlsx();
     },
     countToSend: function(listing, onlyChanged){ return seasonsToSend(listing, onlyChanged).length; },
     downloadStockXlsx: function(listing, siteNr, onlyChanged){
+      needSite(listing, siteNr);
       var nr = s(siteNr || listing.siteNr);
       window.XLSX && window.XLSX.writeFile(stockWorkbook(listing, onlyChanged), 'SN_stock_rates_' + (onlyChanged ? 'new_' : '') + (nr ? 'site' + nr + '_' : '') + fileSafe(listing.propertyName) + '.xlsx');
       if(!window.XLSX) needXlsx();
     },
     downloadStockCsv: function(listing, siteNr, onlyChanged){
+      needSite(listing, siteNr);
       var nr = s(siteNr || listing.siteNr);
       download('SN_stock_rates_' + (onlyChanged ? 'new_' : '') + (nr ? 'site' + nr + '_' : '') + fileSafe(listing.propertyName) + '.csv', new Blob(['\ufeff' + stockCsv(listing, onlyChanged)], { type: 'text/csv;charset=utf-8' }));
     }

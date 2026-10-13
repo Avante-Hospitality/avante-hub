@@ -6670,6 +6670,7 @@
       var FILE_LABELS = { 'id-document': 'Owner ID / passport', 'proof-of-ownership': 'Proof of ownership', 'proof-of-residence': 'Proof of residence', 'mandate': 'Signed mandate', 'property-info': 'Property document (rates / info)' };
       function renderListingFiles(host, l){
         if(!host) return;
+        var lSaved = l;
         host.innerHTML = '';
         var files = (l.documents || []).map(function(d){ return { label: FILE_LABELS[d.type] || d.type || 'Document', key: d.key, name: d.fileName }; })
           .concat((l.images || []).map(function(im){ return { label: (im.type || 'Photo') + ' photo' + (im.unitTypeName ? ' \u2014 ' + im.unitTypeName : ''), key: im.key, name: im.fileName }; }));
@@ -6700,7 +6701,7 @@
         var info = document.createElement('div');
         info.className = 'hint';
         info.style.marginTop = '8px';
-        info.textContent = units + ' unit type(s), ' + seasons + ' rate season(s). Type the StockNetwork Site Nr above first \u2014 it goes into the files.';
+        info.textContent = units + ' unit type(s), ' + seasons + ' rate season(s). The files download only once the StockNetwork Site Nr (below the status) and the Site ID (affiliate number, in the fields above) are filled in.';
         host.appendChild(info);
         var bar = document.createElement('div');
         bar.style.cssText = 'display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;';
@@ -6711,6 +6712,8 @@
           btn.type = 'button'; btn.className = 'btn-outline'; btn.textContent = b[1];
           btn.addEventListener('click', function(){
             var nr = siteNrInput.value.trim();
+            var sidEl = document.getElementById('propField_siteId');
+            var l = Object.assign({}, lSaved, { siteId: (sidEl && sidEl.value.trim()) || lSaved.siteId || '' });
             try {
               if(b[0] === 'property') { AvanteSNExport.downloadPropertyFile(l, nr); return; }
               var only = b[0] === 'newx' || b[0] === 'newc';
