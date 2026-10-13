@@ -230,6 +230,9 @@
   }
   .panel{ display:none; }
   .panel.active{ display:block; }
+  /* A property already connected on this device opens straight on Property Affiliate (set in <head>). */
+  html.pa-first .panel.active{ display:none; }
+  html.pa-first #panel-property{ display:block; }
 
   .hero{
     text-align:center;
@@ -970,6 +973,15 @@
   body.hooks-on .hookbuilder-box.hookbuilder-top{ display:block; }
   body.hooks-on .old-hook-fields{ display:none; }
 </style>
+<script>
+  // Property already connected on this device: open on Property Affiliate, not Home.
+  (function(){
+    try{
+      var aff = new URLSearchParams(location.search).get('aff') || '';
+      if(aff && (localStorage.getItem('avante-pa-token:' + aff) || localStorage.getItem('avante-pa-token'))) document.documentElement.classList.add('pa-first');
+    }catch(e){}
+  })();
+</script>
 </head>
 <body>
 

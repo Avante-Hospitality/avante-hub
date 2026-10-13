@@ -128,6 +128,7 @@
     if (S.err) h += '<div class="pa-err" role="alert" style="margin-bottom:12px">' + esc(S.err) + ' <button type="button" class="pa-btn small ghost" data-act="dismiss" style="margin-left:8px">OK</button></div>';
     if (S.msg) h += '<div class="pa-ok" role="status" style="margin-bottom:12px">' + esc(S.msg) + '</div>';
     if (S.view === 'onb') h += '';
+    else if (!connected && S.opening) h += '<div class="pa-card pa-hint" role="status">Opening ' + esc((S.prop && S.prop.resortName) || 'your property') + '…</div>';
     else if (!connected) h += viewConnect();
     else if (S.view === 'avail') h += viewAvail();
     else if (S.view === 'chan') h += viewChan();
@@ -1447,7 +1448,7 @@
   // ---------- start ----------
   render();
   // Property affiliates land on Property Affiliate when the hub opens.
-  function openOwnTab() { var tab = document.querySelector('.tab[data-panel="property"]'); if (tab && !tab.classList.contains('active')) tab.click(); }
+  function openOwnTab() { var tab = document.querySelector('.tab[data-panel="property"]'); if (tab && !tab.classList.contains('active')) tab.click(); document.documentElement.classList.remove('pa-first'); }
   function checkAffiliate() {
     if (!aff) return;
     api('affStatus', { aff: aff }).then(function (d) { if (d.linked) { S.resume = { resortName: d.resortName }; openOwnTab(); render(); } }).catch(function () {});
@@ -1455,7 +1456,9 @@
   if (S.token) {
     openOwnTab();
     // One call: the property and its last saved grid, shown at once; then a refresh from Stock Network.
+    S.opening = true; render();
     api('open').then(function (d) {
+      S.opening = false;
       S.prop = d.property;
       if (d.newToken) setToken(d.newToken);
       if (d.timing && window.console) console.info('[hub] property + saved grid, ms:', d.timing);
@@ -1463,6 +1466,6 @@
       if (av && av.units && av.units.length) { S.from = av.from; mergeAv(av, av.from, av.to, av.fresh ? Date.now() : 0); }
       render();
       if (av && av.fresh) afterFirstGrid(); else loadAvailability(S.from || startDate());
-    }).catch(function (e) { if (S.token) fail(e); else checkAffiliate(); });
+    }).catch(function (e) { S.opening = false; if (S.token) fail(e); else { render(); checkAffiliate(); } });
   } else checkAffiliate();
 })();
