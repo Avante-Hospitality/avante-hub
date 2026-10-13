@@ -144,6 +144,9 @@ async function applyTreePlace(record, place, keepTypedLocation) {
   record.treePlace = place;
   record.treePlaceText = placeText(place);
   if (!keepTypedLocation) Object.assign(record, treeFields(place));
+  // A property already on Stock Network is in the tree under its own Resort
+  // ID; don't add it a second time as a listing.
+  if (record.resortId) return;
   try {
     const store = getStore({ name: PLACES_STORE, consistency: "strong" });
     const map = (await store.get(PROPERTY_KEY, { type: "json" })) || {};
@@ -544,7 +547,7 @@ export default async (request, context) => {
           if (!record.photosToken) record.photosToken = [...crypto.getRandomValues(new Uint8Array(18))].map((x) => x.toString(16).padStart(2, "0")).join("");
           photosUrl = new URL(request.url).origin + "/api/property-photos?l=" + encodeURIComponent(listingId) + "&k=" + record.photosToken;
         }
-        const subject = clean(body.subject, 200) || ("New property for Stock Network: " + (record.propertyName || "property") + (siteNr ? " (Site Nr " + siteNr + ")" : ""));
+        const subject = clean(body.subject, 200) || ((record.existingOnSN === "Y" ? "Updated property details for Stock Network: " : "New property for Stock Network: ") + (record.propertyName || "property") + (siteNr ? " (Site Nr " + siteNr + ")" : ""));
         const html = "<p>Hello,</p>" +
           (note ? "<p>" + esc(note).replace(/\n/g, "<br>") + "</p>" : "<p>Please find attached the Stock Network files for <b>" + esc(record.propertyName || "the property") + "</b>.</p>") +
           "<p><b>Property:</b> " + esc(record.propertyName || "") + "<br><b>Site Nr:</b> " + esc(siteNr || "(not allocated)") +
@@ -650,7 +653,7 @@ export default async (request, context) => {
       const before = JSON.parse(JSON.stringify(record));
       const KEEP = ["listingId", "status", "dateSubmitted", "submittedBy", "affId", "editToken", "history",
         "commissionRate", "listingDuration", "agreementTerms", "agreementStatus", "agreementToken", "agreementSentAt",
-        "agreementRespondedAt", "snSentSeasons", "snSentAt", "snEmailLog", "photosToken", "libraryPhotos", "agreementSigned", "signatoryName", "signatoryCapacity",
+        "agreementRespondedAt", "snSentSeasons", "snSentAt", "snEmailLog", "photosToken", "libraryPhotos", "existingOnSN", "paSiteId", "resortId", "editLinkLog", "agreementSigned", "signatoryName", "signatoryCapacity",
         "signatoryIdPassport", "signatureDate", "signaturePlace", "coordsVerifiedAt"];
       Object.keys(incoming).forEach((k) => { if (KEEP.indexOf(k) === -1) record[k] = incoming[k]; });
       if (!isAdmin) {
@@ -821,6 +824,7 @@ export default async (request, context) => {
           siteNr: r.siteNr || "",
           siteId: r.siteId || "",
           coordsVerified: r.coordsVerified || "N",
+          existingOnSN: r.existingOnSN || "",
           agreementStatus: r.agreementStatus,
           dateSubmitted: r.dateSubmitted,
           dateUpdated: r.dateUpdated,
@@ -828,6 +832,91 @@ export default async (request, context) => {
         .sort((a, b) => new Date(b.dateSubmitted) - new Date(a.dateSubmitted));
 
       return json({ ok: true, listings: summaries });
+    }
+
+    if (action === "existingProperties" || action === "createFromExisting") {
+      // Jean (2026-10-13): properties that joined before the onboarding form
+      // (connected in Property Affiliate, already on Stock Network — e.g.
+      // The Dunes, Silver Ranch) get a listing too, filled in from what the
+      // hub already knows, so they and admin can complete the fields that
+      // weren't there then and send the updates to Stock Network.
+      const denied = await requireAdmin();
+      if (denied) return denied;
+      const paStore = getStore({ name: "property-affiliate", consistency: "strong" });
+      const props = [];
+      for (const b of (await paStore.list({ prefix: "site:" })).blobs) {
+        const pr = await paStore.get(b.key, { type: "json" }).catch(() => null);
+        if (pr && pr.siteId) props.push(pr);
+      }
+      const all = (await Promise.all((await store.list()).blobs.map((b) => store.get(b.key, { type: "json" })))).filter(Boolean);
+      const listingFor = (pr) => all.find((r) => (r.paSiteId && r.paSiteId === pr.siteId) || (r.resortId && pr.resortId && r.resortId === pr.resortId));
+
+      if (action === "existingProperties") {
+        return json({ ok: true, properties: props.map((pr) => {
+          const l = listingFor(pr);
+          return { siteId: pr.siteId, siteNr: String(pr.site || ""), resortId: pr.resortId || "", name: pr.resortName || "", aff: pr.aff || "", units: (pr.units || []).length, listingId: l ? l.listingId : "" };
+        }).sort((a, b) => a.name.localeCompare(b.name)) });
+      }
+
+      const pr = props.find((x) => x.siteId === clean(body.siteId, 100));
+      if (!pr) return json({ error: "That property wasn't found." }, 404);
+      const have = listingFor(pr);
+      if (have) return json({ error: "This property already has a listing (" + have.listingId + ").", listingId: have.listingId }, 409);
+      const cur = await getStore({ name: "resort-list", consistency: "strong" }).get("current", { type: "json" }).catch(() => null);
+      const row = ((cur && cur.resorts) || []).find((r) => r.resortId && pr.resortId && String(r.resortId).toLowerCase() === String(pr.resortId).toLowerCase()) || {};
+      const st = pr.settings || {};
+      const yn = (v) => /^(y|yes|true|1)$/i.test(String(v || "").trim()) ? "Y" : "N";
+      const now = new Date().toISOString();
+      const listingId = genListingId();
+      const record = Object.assign({ listingId, status: "Listed", dateSubmitted: now, dateUpdated: now }, submittedFields({
+        propertyName: pr.resortName || row.name || "", propertyType: row.propertyType || "",
+        country: row.snCountry || "", stateProvince: row.state || "", area: row.area || "", district: row.district || "",
+        city: row.city || "", city2: row.city2 || "", suburb: row.suburb || "",
+        latitude: row.latitude || "", longitude: row.longitude || "",
+        telephone: st.phone || "", email: st.email || "",
+        checkInTime: row.checkinTime || "", checkOutTime: row.checkoutTime || "",
+        selfSupplierRating: row.supplierRating || "", tourismBoardGrading: row.tourismBoardRating || "",
+        allowSameDayBooking: yn(row.allowSameDayBooking) === "Y" ? "Y" : "N",
+        siteNr: String(pr.site || ""), siteId: pr.siteId, affId: pr.aff || "", submittedBy: "Owner",
+        unitTypes: (pr.units || []).map((u) => ({ name: u.name, numUnits: "1", maxOccupancy: u.size ? String(u.size) : "",
+          description: st.prices && st.prices[u.name] ? "Hub price: R" + st.prices[u.name] + " a night" : "" })),
+      }), {
+        editToken: genToken(), agreementSigned: "Y", existingOnSN: "Y", paSiteId: pr.siteId, resortId: pr.resortId || "",
+        commissionRate: "", listingDuration: "", agreementTerms: "", agreementStatus: "Not Sent", agreementToken: "", agreementSentAt: "", agreementRespondedAt: "",
+      });
+      // Place names from the hub location tree (the master), as for any listing.
+      const placed = await getStore({ name: PLACES_STORE, consistency: "strong" }).get(PROPERTY_KEY, { type: "json" }).catch(() => null);
+      const place = (placed && pr.resortId && (placed[pr.resortId] || placed[String(pr.resortId).toLowerCase()])) || await placeInTree(record.latitude, record.longitude);
+      await applyTreePlace(record, place, false);
+      addHistory(record, "admin", "Listing created from the property already on Stock Network (Site Nr " + (pr.site || "?") + ")");
+      await store.setJSON(listingId, record);
+      return json({ ok: true, listingId });
+    }
+
+    if (action === "sendEditLink") {
+      // Email the property its private "Edit my listing" link.
+      const denied = await requireAdmin();
+      if (denied) return denied;
+      const listingId = clean(body.listingId, 20);
+      const record = listingId && await store.get(listingId, { type: "json" });
+      if (!record) return json({ error: "not found" }, 404);
+      const to = clean(body.to, 200);
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) return json({ error: "Type a valid email address." }, 400);
+      if (!record.editToken) record.editToken = genToken();
+      const editLink = new URL(request.url).origin + "/property-form.html?edit=" + encodeURIComponent(listingId) + "&key=" + encodeURIComponent(record.editToken);
+      const apiKey = Netlify.env.get("RESEND_API_KEY");
+      if (!apiKey) return json({ error: "Email isn't switched on (RESEND_API_KEY missing)." }, 500);
+      const r = await fetch("https://api.resend.com/emails", { method: "POST", headers: { authorization: "Bearer " + apiKey, "content-type": "application/json" },
+        body: JSON.stringify({ from: "Avante Travel <bookings@go.avantetravel.co.za>", to: [to], subject: "Please complete your Avante listing — " + (record.propertyName || ""),
+          html: "<p>Hello,</p><p>Avante Travel has a new, fuller listing form for <strong>" + escapeHtml(record.propertyName || "your property") + "</strong>. We filled in what we already have.</p>" +
+            "<p>Please open it, check everything and fill in what is missing (for example photos, amenities, policies and rates), then tap <b>Save changes</b> on the last step:<br><a href=\"" + editLink + "\">Edit my listing</a></p>" +
+            "<p>Keep this email: you can use the link again any time. Anyone with this link can edit the listing, so don't share it.</p><p>Avante Travel</p>" }) });
+      const d = await r.json().catch(() => ({}));
+      const at = new Date().toISOString();
+      record.editLinkLog = (Array.isArray(record.editLinkLog) ? record.editLinkLog : []).concat([{ at, to, ok: r.ok, error: r.ok ? undefined : (d.message || ("status " + r.status)) }]).slice(-50);
+      record.history = (Array.isArray(record.history) ? record.history : []).concat([{ at, by: "admin", action: (r.ok ? "Edit link emailed to " : "Edit link email FAILED to ") + to }]).slice(-HISTORY_MAX);
+      await store.setJSON(listingId, record);
+      return r.ok ? json({ ok: true }) : json({ error: "Not sent: " + (d.message || ("the email service said " + r.status)) }, 502);
     }
 
     if (action === "updateListing") {

@@ -1255,6 +1255,13 @@
         </script>
       </div>
 
+      <div class="card">
+        <h2 class="section-heading" style="margin-top:0;">Properties already on Stock Network</h2>
+        <p class="hint">Properties connected in Property Affiliate before the onboarding form existed (e.g. The Dunes). Give each one a listing, filled in from what the hub already has, so the property and you can complete the missing fields and send the updates to Stock Network.</p>
+        <button class="btn-outline" id="existingPropsBtn" type="button">Show properties</button>
+        <div id="existingPropsHost" style="margin-top:10px;"></div>
+      </div>
+
       <div class="card" style="margin-top:20px;">
         <label for="notificationEmailInput">Notify this email address when a new listing is submitted</label>
         <input id="notificationEmailInput" type="email" placeholder="e.g. bookings@avantetravel.co.za">
@@ -6786,6 +6793,35 @@
           sentInfo.textContent = 'Rates last marked as sent to SN: ' + fmtPropDate(l.snSentAt) + '.';
           host.appendChild(sentInfo);
         }
+        // The property's private "Edit my listing" link (Jean, 2026-10-13):
+        // so it can complete its listing, e.g. a property already on SN.
+        if(l.editToken){
+          var el = document.createElement('div');
+          el.style.cssText = 'margin-top:14px; padding:12px; border:1px solid #d6e3e1; border-radius:10px;';
+          var link = location.origin + '/property-form.html?edit=' + encodeURIComponent(l.listingId) + '&key=' + encodeURIComponent(l.editToken);
+          var sentTo = (l.editLinkLog || []).filter(function(x){ return x.ok; });
+          el.innerHTML = '<div style="font-weight:700; margin-bottom:6px;">Let the property complete its listing</div>' +
+            (l.existingOnSN === 'Y' ? '<div class="hint" style="margin:0 0 6px;">Already on Stock Network (Site Nr ' + escapeHtml(l.siteNr || '?') + '). Made from what the hub had; the missing fields still need filling in.</div>' : '') +
+            '<label class="hint" for="elTo" style="display:block; margin:0 0 3px;">Email the edit link to</label>' +
+            '<input id="elTo" type="text" style="width:100%;" value="' + escapeHtml(l.ownerEmail || l.email || l.affiliateEmail || '') + '">' +
+            '<div style="margin-top:8px; display:flex; flex-wrap:wrap; gap:8px; align-items:center;"><button type="button" class="btn-outline" id="elSend">Email the edit link</button><button type="button" class="btn-outline" id="elCopy">Copy the link</button><span class="hint" id="elStatus" style="margin:0"></span></div>' +
+            (sentTo.length ? '<div class="hint" style="margin-top:6px;">Last emailed to ' + escapeHtml(sentTo[sentTo.length - 1].to) + ' on ' + escapeHtml(fmtPropDate(sentTo[sentTo.length - 1].at)) + '.</div>' : '');
+          host.appendChild(el);
+          el.querySelector('#elCopy').addEventListener('click', function(){
+            var st = el.querySelector('#elStatus');
+            (navigator.clipboard ? navigator.clipboard.writeText(link) : Promise.reject()).then(function(){ st.textContent = 'Copied \u2714'; }, function(){ window.prompt('Copy this link:', link); });
+          });
+          el.querySelector('#elSend').addEventListener('click', function(){
+            var b = this, st = el.querySelector('#elStatus');
+            b.disabled = true; st.textContent = 'Sending\u2026';
+            propAdminPost('sendEditLink', { listingId: l.listingId, to: el.querySelector('#elTo').value.trim() }).then(function(res){
+              b.disabled = false;
+              if(res.data && res.data.ok){ st.textContent = 'Sent \u2714'; openPropertyDetailsModal(l.listingId); }
+              else st.textContent = (res.data && res.data.error) || 'Could not send.';
+            });
+          });
+        }
+
         // Photos on the listing: add or delete (Jean, 2026-10-13). The photo
         // link in the Stock Network email always shows these, as they are now.
         var ph = document.createElement('div');
@@ -7143,6 +7179,37 @@
           modalStatusEl.textContent = 'Could not save.';
           modalStatusEl.className = 'modal-status show';
         });
+      });
+
+      // Properties already on Stock Network (connected in Property Affiliate)
+      // get a listing too (Jean, 2026-10-13).
+      function loadExistingProps(){
+        var host = document.getElementById('existingPropsHost');
+        host.innerHTML = '<div class="hint">Loading\u2026</div>';
+        propAdminPost('existingProperties', {}).then(function(res){
+          var d = res.data || {};
+          if(!d.ok){ host.innerHTML = '<div class="hint">' + escapeHtml(d.error || 'Could not load.') + '</div>'; return; }
+          if(!d.properties.length){ host.innerHTML = '<div class="hint">No properties are connected in Property Affiliate.</div>'; return; }
+          host.innerHTML = '<div class="table-wrap"><table><thead><tr><th>Property</th><th>Site Nr</th><th>Units</th><th></th></tr></thead><tbody>' +
+            d.properties.map(function(pr){
+              return '<tr><td>' + escapeHtml(pr.name || '(no name)') + '</td><td>' + escapeHtml(pr.siteNr) + '</td><td>' + pr.units + '</td><td>' +
+                (pr.listingId ? '<button type="button" class="btn-outline" data-ex-open="' + escapeHtml(pr.listingId) + '">Open listing (' + escapeHtml(pr.listingId) + ')</button>'
+                  : '<button type="button" class="primary" data-ex-create="' + escapeHtml(pr.siteId) + '">Create listing</button>') + '</td></tr>';
+            }).join('') + '</tbody></table></div>';
+        }).catch(function(){ host.innerHTML = '<div class="hint">Could not load.</div>'; });
+      }
+      document.getElementById('existingPropsBtn').addEventListener('click', loadExistingProps);
+      document.getElementById('existingPropsHost').addEventListener('click', function(e){
+        var open = e.target.getAttribute('data-ex-open'), create = e.target.getAttribute('data-ex-create');
+        if(open){ openPropertyDetailsModal(open); return; }
+        if(create){
+          e.target.disabled = true; e.target.textContent = 'Creating\u2026';
+          propAdminPost('createFromExisting', { siteId: create }).then(function(res){
+            var d = res.data || {};
+            if(d.ok || d.listingId){ loadExistingProps(); loadPropertyListings(); openPropertyDetailsModal(d.listingId); }
+            else { e.target.disabled = false; e.target.textContent = 'Create listing'; window.alert(d.error || 'Could not create the listing.'); }
+          });
+        }
       });
 
       document.getElementById('propertyDetailsDeleteBtn').addEventListener('click', function(){
