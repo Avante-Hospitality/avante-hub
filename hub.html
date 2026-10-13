@@ -5217,6 +5217,13 @@
           clicksEl.className = 'shortlink-clicks';
           clicksEl.innerHTML = '<b>' + (link.clicks || 0) + '</b> click' + (link.clicks === 1 ? '' : 's') +
             (link.createdAt ? ' &middot; ' + formatDate(link.createdAt) : '');
+          if(link.copies){
+            var copiesEl = document.createElement('div');
+            copiesEl.className = 'shortlink-long';
+            copiesEl.textContent = '+ ' + link.copies + (link.copies === 1 ? ' older copy of this link (it still works; its clicks are added above)' : ' older copies of this link (they still work; their clicks are added above)');
+            copiesEl.title = (link.otherShortUrls || []).join('\n');
+            main.appendChild(copiesEl);
+          }
 
           var copyBtn = document.createElement('button');
           copyBtn.type = 'button';
