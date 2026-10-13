@@ -701,8 +701,9 @@
   }
   function frontPhotos() {
     var F = S.front, all = [];
-    (F.uploadedPhotos || []).concat(F.snPhotos || []).forEach(function (u) { if (all.indexOf(u) < 0) all.push(u); });
     var chosen = Array.isArray(F.settings.photos) ? F.settings.photos.slice() : null;
+    // Photos added by link (e.g. Stock Network photos) are only in the chosen list.
+    (F.uploadedPhotos || []).concat(F.snPhotos || [], chosen || []).forEach(function (u) { if (all.indexOf(u) < 0) all.push(u); });
     return { all: all, chosen: chosen };
   }
   function linkRow(label, url, act) {
@@ -781,6 +782,8 @@
     h += fsStep('photos', ++n, 'Photos', shown.length + ' photo' + (shown.length === 1 ? '' : 's') + ' showing',
       '<p class="pa-hint" style="margin:0">' + (ph.chosen ? 'Your own choice and order.' : 'Automatic: your uploaded photos, then Stock Network\'s.') + ' The first photo is the big one at the top (★ Cover). The next five make the photo block under it.</p>' +
       '<div class="pa-actions" style="margin-top:8px"><button type="button" class="pa-btn small" data-act="fsUpload">Upload photo</button><input type="file" id="fs-file" accept="image/jpeg,image/png,image/webp" style="display:none">' + (ph.chosen ? '<button type="button" class="pa-btn small ghost" data-act="fsAuto">Back to automatic</button>' : '') + '</div>' + ph3 +
+      '<p class="pa-label" style="margin:14px 0 4px"><label for="fs-plink">Add a photo by link</label></p><div class="pa-copy"><input type="url" id="fs-plink" placeholder="https://… (one or more links, e.g. from Stock Network)"><button type="button" class="pa-btn small" data-act="fsLink">Add photo</button></div>' +
+      '<p class="pa-hint" style="margin:4px 0 0">Paste the link of a photo that is already online (it starts with https://). Several links? Put a space between them.</p>' +
       '<p class="pa-label" style="margin:14px 0 4px">Find photos on Google</p>' + fsGoogleBox('gallery', (S.prop.resortName || '') + ' ' + fsPlace()));
     // 4 highlights
     var hl = (st.highlights || []).slice(); while (hl.length < 6) hl.push('');
@@ -935,7 +938,7 @@
       var bar = root.querySelector('.pa-tabbar'), barB = bar ? Math.max(0, bar.getBoundingClientRect().bottom) : 0;
       top = Math.max(r.top, barB + 8); var bottom = Math.min(window.innerHeight - 10, r.bottom);
       left = r.left; width = r.width; height = bottom - top;
-      if (height < 220) { box.style.display = 'none'; return; }
+      if (height < 120) { box.style.display = 'none'; return; } // short windows: it grows as you scroll
       box.style.cssText = 'display:flex;top:' + top + 'px;left:' + left + 'px;width:' + width + 'px;height:' + height + 'px';
     } else box.style.cssText = 'display:flex';
     // Scale a phone-wide (390px) or computer-wide (1280px) page into the box.
@@ -1725,6 +1728,13 @@
     }
     if (a === 'fsActReset') { keepFront(); var ap2 = S.front.settings.actPhotos = Object.assign({}, S.front.settings.actPhotos || {}); delete ap2[t.dataset.name]; fsMarkDirty(); S.front._fresh = true; render(); return; }
     if (a === 'fsFill') return fsFill(t);
+    if (a === 'fsLink') {
+      var li = document.getElementById('fs-plink'), links = String(li ? li.value : '').split(/\s+/).filter(function (x) { return /^https:\/\/\S+$/.test(x); });
+      if (!links.length) { S.err = 'Paste a photo link that starts with https://'; return render(); }
+      keepFront(); var bf = frontPhotos(), lst = (bf.chosen || bf.all).slice();
+      links.forEach(function (x) { if (lst.indexOf(x) < 0) lst.push(x); });
+      S.front.settings.photos = lst.slice(0, 24); fsMarkDirty(); S.front._fresh = true; render(); return;
+    }
     if (a === 'saveFront') {
       var fb = collectFront(); if (!fb) return;
       t.textContent = 'Saving…';
