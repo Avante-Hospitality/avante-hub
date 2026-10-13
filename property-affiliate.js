@@ -1457,6 +1457,7 @@
     // One call: the property and its last saved grid, shown at once; then a refresh from Stock Network.
     api('open').then(function (d) {
       S.prop = d.property;
+      if (d.newToken) setToken(d.newToken);
       if (d.timing && window.console) console.info('[hub] property + saved grid, ms:', d.timing);
       var av = d.availability;
       if (av && av.units && av.units.length) { S.from = av.from; mergeAv(av, av.from, av.to, av.fresh ? Date.now() : 0); }

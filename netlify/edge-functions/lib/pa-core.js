@@ -109,18 +109,22 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
 
   // A property stays connected until someone presses Disconnect: sessions
   // don't expire, and they stop working once the property is disconnected.
+  // The token starts with the site id ("<siteId>~<random>"), so the session and the
+  // property (and its grid) can be read at the same time instead of one after another.
   async function newSession(prop) {
-    const token = randomToken(24);
+    const token = String(prop.siteId).replace(/[^A-Za-z0-9-]/g, "") + "~" + randomToken(24).replace(/[^A-Za-z0-9_-]/g, "");
     await setJSON("sess:" + token, { siteId: prop.siteId, aff: prop.aff || "", createdAt: now().toISOString() });
     return token;
   }
 
+  function siteOfToken(token) { const m = /^([A-Za-z0-9-]{8,64})~/.exec(String(token || "")); return m ? m[1] : null; }
   async function auth(token, { repairLink = false } = {}) {
-    const t = cleanStr(token, 100);
+    const t = cleanStr(token, 120);
     if (!t) throw new PAError("Not connected.", 401);
-    const s = await getJSON("sess:" + t);
+    const guess = siteOfToken(t);
+    const [s, guessed] = await Promise.all([getJSON("sess:" + t), guess ? getJSON("site:" + guess) : null]);
     if (!s) throw new PAError("Not connected on this device.", 401);
-    const prop = await getJSON("site:" + s.siteId);
+    const prop = guess && s.siteId === guess ? guessed : await getJSON("site:" + s.siteId);
     if (!prop) throw new PAError("This property is no longer connected.", 401);
     if (repairLink && prop.aff) { const link = await getJSON("aff:" + prop.aff); if (!link) await setJSON("aff:" + prop.aff, { siteId: prop.siteId }); }
     return prop;
@@ -128,7 +132,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
 
   async function disconnect(token) {
     const prop = await auth(token);
-    await store.delete("sess:" + cleanStr(token, 100));
+    await store.delete("sess:" + cleanStr(token, 120));
     await store.delete("feed:" + prop.feedToken);
     await store.delete("site:" + prop.siteId);
     await store.delete("tok:" + prop.siteId);
@@ -300,13 +304,16 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
   // ---------- availability for the grid / calendar ----------
   // cached: answer straight from what was saved last time (no Stock Network call), so the
   // grid shows at once; the screen then asks again without cached to refresh from SN.
-  async function availability(prop, from, to, { cached = false, timing = null } = {}) {
+  // Reads that only need the site id, started before the login check finishes (see pa-api "open").
+  function prefetch(siteId) { const p = { siteId }; return { siteId, snap: loadSnap(p), bookings: bookingsOf(p), events: getJSON("chan:" + siteId) }; }
+  async function availability(prop, from, to, { cached = false, timing = null, pre = null } = {}) {
     from = from || today(); to = to || addDays(from, 14);
     if (!isoDate(from) || !isoDate(to) || !(nightsBetween(from, to) >= 1 && nightsBetween(from, to) <= MAX_WINDOW_DAYS)) throw new PAError("Choose a shorter date range.");
     const mark = (k) => { if (timing) timing[k] = Date.now() - timing._t0; };
     // Only the days on screen are read from SN (past days never are).
-    const snapP = cached || !(to > today()) ? loadSnap(prop) : ensureWindow(prop, from < today() ? today() : from, to);
-    const [snap, bookings, events0] = await Promise.all([snapP, bookingsOf(prop), getJSON("chan:" + prop.siteId)]);
+    const usePre = pre && pre.siteId === prop.siteId;
+    const snapP = cached || !(to > today()) ? (usePre ? pre.snap : loadSnap(prop)) : ensureWindow(prop, from < today() ? today() : from, to);
+    const [snap, bookings, events0] = await Promise.all([snapP, usePre ? pre.bookings : bookingsOf(prop), usePre ? pre.events : getJSON("chan:" + prop.siteId)]);
     mark(cached ? "savedGrid" : "stockNetwork");
     const ours = activeNightsByUnit(bookings);
     const events = events0 || {};
@@ -1639,5 +1646,5 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
   }
   function notDemo(b) { if (b && b.demo) throw new PAError("This is a demo booking: it isn't on Stock Network, so it can't be changed, paid or cancelled.", 409); }
 
-  return { decide, refreshStatuses, clientFor, connect, auth, disconnect, publicProperty, availability, search, book, cancel, cancelUnit, edit, find, saveSettings, channelsView, payInfo, markPaidEft, approvalInfo, approveCancel, affStatus, resume, seedDemo, clearDemo, isDemoSite, saveContact, checkIn, guests, messagesView, saveMessages, prepareMessage, markMessage, emailNow, inHouse, emailInHouse, firstBookable, fsSettings, saveFrontStore, frontStoreView, uploadFrontPhoto, removeFrontPhoto, frontPhoto, propertyBySlug, publicFrontStore, publicGuestInfo, guestKeyOk, publicOffers, publicAvailability, publicQuote, publicBook, fsStat, propertyReviewLink, remindMessages, icalFeed, runSync, syncProperty, channelEvents, addChannelEvent, snapshot, ensureWindow, resolveUnitNotice, findResortsForSite };
+  return { prefetch, siteOfToken, newSession, decide, refreshStatuses, clientFor, connect, auth, disconnect, publicProperty, availability, search, book, cancel, cancelUnit, edit, find, saveSettings, channelsView, payInfo, markPaidEft, approvalInfo, approveCancel, affStatus, resume, seedDemo, clearDemo, isDemoSite, saveContact, checkIn, guests, messagesView, saveMessages, prepareMessage, markMessage, emailNow, inHouse, emailInHouse, firstBookable, fsSettings, saveFrontStore, frontStoreView, uploadFrontPhoto, removeFrontPhoto, frontPhoto, propertyBySlug, publicFrontStore, publicGuestInfo, guestKeyOk, publicOffers, publicAvailability, publicQuote, publicBook, fsStat, propertyReviewLink, remindMessages, icalFeed, runSync, syncProperty, channelEvents, addChannelEvent, snapshot, ensureWindow, resolveUnitNotice, findResortsForSite };
 }

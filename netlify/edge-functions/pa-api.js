@@ -58,7 +58,10 @@ export default async (request) => {
     if (a === "approvalInfo") return json(Object.assign({ ok: true }, await core.approvalInfo(body.t)));
     if (a === "approveCancel") return json(Object.assign({ ok: true }, await core.approveCancel(body.t, body.password)));
     const t0 = Date.now();
-    const prop = await core.auth(body.token, { repairLink: a === "status" || a === "open" });
+    // Opening: start reading the saved grid while the login is checked (token carries the site id).
+    const preSite = a === "open" ? core.siteOfToken(body.token) : null;
+    const pre = preSite ? core.prefetch(preSite) : null;
+    const prop = await core.auth(body.token, { repairLink: a === "status" });
     const authMs = Date.now() - t0;
     // Activities the property sells to guests, with the supplier's reference numbers.
     if (a.startsWith("act")) {
@@ -87,9 +90,11 @@ export default async (request) => {
       // Opening the property: who it is plus the last saved grid in one call (no Stock Network call).
       case "open": {
         const timing = { _t0: t0 };
-        const av = await core.availability(prop, body.from || core.firstBookable(prop), body.to, { cached: true, timing });
+        const av = await core.availability(prop, body.from || core.firstBookable(prop), body.to, { cached: true, timing, pre });
+        // Older logins get a new token in the faster format (the old one keeps working).
+        const newToken = preSite ? undefined : await core.newSession(prop);
         delete timing._t0; timing.login = authMs; timing.total = Date.now() - t0;
-        return json({ ok: true, property: core.publicProperty(prop), availability: av, timing });
+        return json({ ok: true, property: core.publicProperty(prop), availability: av, timing, newToken });
       }
       case "disconnect": return json(await core.disconnect(body.token));
       case "availability": {
