@@ -238,7 +238,7 @@
   <!-- ============ STEP 3: LOCATION ============ -->
   <section class="step" data-step="3" data-title="Location">
     <h2 class="step-title">3. Location</h2>
-    <p class="step-lede">Find the property on Google, then check the coordinates. The Google pin is what Avante uses — the place name a channel shows is only used to spot mistakes.</p>
+    <p class="step-lede">Find the property on Google, then check the coordinates. The pin is placed in the Avante hub location tree, and the place names come from the tree — the place name a channel shows is only used to spot mistakes.</p>
     <div data-shots="3"></div>
     <div class="card">
       <h2 class="section-heading">Address</h2>
@@ -259,8 +259,9 @@
       <div id="verifyResult"></div>
     </div>
     <div class="card">
-      <h2 class="section-heading">Place names</h2>
-      <p class="hint">Filled from the Google pin. Change them only if Google is wrong.</p>
+      <h2 class="section-heading">Place names <span class="coordstate no" id="treeState">Not placed yet</span></h2>
+      <p class="hint" id="placeHint">Filled from the Avante hub location tree once the coordinates are checked. Only Avante admin can change them.</p>
+      <div id="treePath"></div>
       <div class="row">
         <div><label for="pCountry">Country</label><input id="pCountry" value="South Africa"></div>
         <div><label for="pProvince">State/Province</label><input id="pProvince"></div>
@@ -932,11 +933,6 @@
     set('pType', f.propertyType, 'Property type');
     set('pComplex', f.complexName, 'Complex/estate');
     set('pAddress', f.streetAddress, 'Address');
-    set('pSuburb', f.suburb, 'Suburb');
-    set('pCity', f.city, 'City / town');
-    set('pRegion', f.region, 'Tourism region');
-    set('pProvince', f.province, 'Province');
-    set('pCountry', f.country, 'Country');
     if(typeof f.latitude === 'number' && typeof f.longitude === 'number'){ set('pLat', f.latitude, 'Latitude'); set('pLng', f.longitude, 'Longitude'); setCoordsVerified(false); }
     set('pCheckIn', f.checkInTime, 'Check-in');
     set('pCheckOut', f.checkOutTime, 'Check-out');
@@ -951,7 +947,7 @@
     }
     if((f.notIncluded || []).length) set('pNotIncluded', f.notIncluded.join(', '), 'Not included');
     if((f.otherAmenities || []).length) set('pMoreInfo', 'Also offers: ' + f.otherAmenities.join(', ') + '.', 'Other amenities');
-    if(f.channelPlaceName) channelPlaceName = f.channelPlaceName;
+    if(f.channelPlaceName || f.suburb || f.city) channelPlaceName = f.channelPlaceName || f.suburb || f.city;
 
     // Unit: first unit row.
     var row = unitRows()[0];
@@ -1030,12 +1026,27 @@
     var link = $('mapLink');
     if(lat && lng){ link.href = 'https://www.google.com/maps?q=' + encodeURIComponent(lat + ',' + lng); link.style.display = ''; } else link.style.display = 'none';
   }
-  ['pLat','pLng'].forEach(function(id){ $(id).addEventListener('input', function(){ setCoordsVerified(false); $('verifyResult').innerHTML = ''; }); });
+  ['pLat','pLng'].forEach(function(id){ $(id).addEventListener('input', function(){ setCoordsVerified(false); setTreePlaced(''); $('verifyResult').innerHTML = ''; }); });
+  // Place names come from the hub location tree (the master). Owners and
+  // affiliates can't change them; admin can.
+  var treePlaced = false;
+  function setTreePlaced(text){
+    treePlaced = !!text;
+    $('treeState').textContent = text ? '✓ Placed in the hub tree' : 'Not placed yet';
+    $('treeState').className = 'coordstate ' + (text ? 'yes' : 'no');
+    $('treePath').innerHTML = text ? '<p class="note ok">Hub location tree: <b>' + esc(text) + '</b></p>' : '';
+  }
+  var LOC_IDS = ['pCountry','pProvince','pRegion','pCity','pSuburb','pArea','pDistrict','pCity2'];
+  function lockLocation(asAdmin){
+    LOC_IDS.forEach(function(id){ $(id).readOnly = !asAdmin; });
+    $('placeHint').textContent = asAdmin ? 'Filled from the Avante hub location tree once the coordinates are checked. You are admin, so you can change them.' : 'Filled from the Avante hub location tree once the coordinates are checked. Only Avante admin can change them.';
+  }
+  lockLocation(!!ADMIN_T);
   function updatePlaceNote(){
     var sub = $('pSuburb').value.trim(), town = $('pCity').value.trim();
     var el = $('placeNote');
     if(channelPlaceName && sub && channelPlaceName.toLowerCase() !== sub.toLowerCase() && channelPlaceName.toLowerCase() !== town.toLowerCase()){
-      el.innerHTML = '<p class="note warn">' + esc(channel) + ' calls the place <b>' + esc(channelPlaceName) + '</b>, but the address says <b>' + esc(sub) + '</b>. The Google pin decides — check it below.</p>';
+      el.innerHTML = '<p class="note warn">' + esc(channel) + ' calls the place <b>' + esc(channelPlaceName) + '</b>, but the hub location tree puts the pin in <b>' + esc(sub) + (town && town !== sub ? ', ' + esc(town) : '') + '</b>. The hub tree decides — check the pin is right.</p>';
     } else el.innerHTML = '';
   }
   $('findGoogleBtn').addEventListener('click', function(){
@@ -1053,12 +1064,8 @@
         var b = e.target.closest('[data-cand]'); if(!b) return;
         var c = res.candidates[+b.getAttribute('data-cand')];
         $('pLat').value = c.lat.toFixed(6); $('pLng').value = c.lng.toFixed(6);
-        var put = function(id, v){ if(v){ $(id).value = v; $(id).classList.add('filled'); } };
-        put('pCountry', c.country); put('pProvince', c.province);
-        if(c.townType !== 'administrative_area_level_2') put('pCity', c.town);
-        put('pSuburb', c.suburb);
-        if(!$('pAddress').value.trim()) put('pAddress', c.address);
-        $('candList').innerHTML = '<p class="note ok">Using ' + esc(c.name || c.address) + '. Now checking the coordinates…</p>';
+        if(!$('pAddress').value.trim()){ $('pAddress').value = c.address; $('pAddress').classList.add('filled'); }
+        $('candList').innerHTML = '<p class="note ok">Using ' + esc(c.name || c.address) + '. Now checking the coordinates and placing it in the hub location tree…</p>';
         updatePlaceNote();
         verifyCoords();
       };
@@ -1077,8 +1084,15 @@
       out.innerHTML = '<p class="note ' + (warn.length ? 'warn' : 'ok') + '">Google puts this pin in <b>' + esc(place) + '</b>.' +
         (res.addressDistanceKm != null && !warn.length ? ' It is ' + res.addressDistanceKm + ' km from the address.' : '') +
         (warn.length ? '<br>' + warn.map(esc).join('<br>') : '') + '</p>';
-      var fill = function(id, v){ if(v && !$(id).value.trim()){ $(id).value = v; $(id).classList.add('filled'); } };
-      fill('pCountry', res.country); fill('pProvince', res.province); if(res.townType !== 'administrative_area_level_2') fill('pCity', res.town); fill('pSuburb', res.suburb);
+      if(res.tree && res.tree.fields){
+        var tf = res.tree.fields;
+        var put = function(id, v){ $(id).value = v || ''; $(id).classList.add('filled'); };
+        put('pCountry', tf.country); put('pProvince', tf.stateProvince); put('pRegion', tf.region); put('pCity', tf.city); put('pSuburb', tf.suburb); put('pArea', tf.area); put('pDistrict', tf.district);
+        setTreePlaced(res.tree.text);
+      } else {
+        setTreePlaced('');
+        $('treePath').innerHTML = '<p class="note warn">The pin couldn\'t be placed in the hub location tree just now. Avante will place it when reviewing the listing.</p>';
+      }
       updatePlaceNote();
     });
   }
@@ -1242,7 +1256,7 @@
       [!!$('ownerName').value.trim() && !!$('ownerId').value.trim(), 'Owner name and ID number', 2],
       [!!($('pLat').value.trim() && $('pLng').value.trim()), 'Coordinates filled in', 3],
       [coordsVerified, 'Coordinates checked with Google', 3],
-      [!!$('pSuburb').value.trim() && !!$('pCity').value.trim(), 'Suburb and town', 3],
+      [treePlaced || (!!$('pSuburb').value.trim() && !!$('pCity').value.trim() && editing), 'Placed in the hub location tree', 3],
       [!!$('pSiteId').value.trim(), 'Site ID (affiliate number)', 3],
       [unitRows().some(function(r){ return r.querySelector('.pu-name').value.trim() && r.querySelector('.pu-maxOcc').value.trim(); }), 'Unit type name and sleeps', 5],
       [amenCount > 0, 'Amenities ticked (' + amenCount + ')', 5],
@@ -1444,6 +1458,13 @@
     $('pSiteNr').readOnly = !editAsAdmin;
     if(!editAsAdmin) $('pSiteNr').placeholder = 'Allocated by Avante';
     setCoordsVerified(L.coordsVerified === 'Y', L.coordsVerifiedPlace);
+    lockLocation(editAsAdmin);
+    setTreePlaced(L.treePlaceText || '');
+    if(!editAsAdmin){
+      ['pLat','pLng','pAddress'].forEach(function(id){ $(id).readOnly = true; });
+      $('findGoogleBtn').style.display = 'none'; $('verifyBtn').style.display = 'none';
+      $('candList').innerHTML = '<p class="note info">The location is set by Avante from the hub location tree. To change it, contact Avante Travel.</p>';
+    }
     if(L.coordsVerified === 'Y') $('verifyResult').innerHTML = '<p class="note ok">Checked with Google: <b>' + esc(L.coordsVerifiedPlace || '') + '</b>. Change the coordinates and it must be checked again.</p>';
     // Units
     unitRows().forEach(function(r){ r.remove(); });

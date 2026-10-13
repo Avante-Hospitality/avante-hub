@@ -2,6 +2,7 @@ import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
 import { readListingScreenshots } from "./lib/listing-reader.js";
 import { forwardGeocode, reverseGeocode } from "./lib/geocode.js";
 import { searchPlacePhotos, searchPlaceCandidates } from "./lib/places-images.js";
+import { placeCoordinate, snFieldsFromPlace, placeText, PLACES_STORE, PROPERTY_KEY } from "./lib/tree.js";
 
 // Backs the "Property Affiliate" onboarding tab in hub.html, the
 // "Property Listings" tab in admin.html, and the public property-agreement.html
@@ -112,6 +113,44 @@ function sanitizeFileRefs(input, max) {
     caption: clean(f && f.caption, 300),
     cover: (f && f.cover) === "Y" ? "Y" : "N",
   }));
+}
+
+// The hub location tree is the master for a property's place names
+// (Jean, 2026-10-13): Country, Province, Region, City/Town, Suburb, and the
+// Stock Network Area / District, all come from placing the pin in the tree —
+// never from what an owner types or what a channel shows. Only admin can
+// override them.
+const LOCATION_FIELDS = ["country", "stateProvince", "region", "city", "suburb", "district", "area"];
+function treeFields(place) {
+  const sn = snFieldsFromPlace(place);
+  return {
+    country: sn.country, stateProvince: sn.state,
+    region: (place.r || []).filter((x) => x && !/^\(/.test(x)).join(" / "),
+    city: sn.city, suburb: sn.suburb, district: sn.district, area: sn.area,
+  };
+}
+async function placeInTree(lat, lng) {
+  const la = Number(lat), lo = Number(lng);
+  if (!validCoord(la, lo)) return null;
+  const r = await placeCoordinate(la, lo, Deno.env.get("GOOGLE_GEOCODING_API_KEY") || "");
+  return r && r.ok ? r.place : null;
+}
+// Puts the tree's place on the record (location fields too unless an admin
+// chose their own) and keeps it in the hub's live placements store, the same
+// way Admin's "Place in the location tree" lookup does for a listing.
+async function applyTreePlace(record, place, keepTypedLocation) {
+  if (!place) return;
+  record.treePlace = place;
+  record.treePlaceText = placeText(place);
+  if (!keepTypedLocation) Object.assign(record, treeFields(place));
+  try {
+    const store = getStore({ name: PLACES_STORE, consistency: "strong" });
+    const map = (await store.get(PROPERTY_KEY, { type: "json" })) || {};
+    map["listing:" + record.listingId] = place;
+    await store.setJSON(PROPERTY_KEY, map);
+  } catch (e) {
+    // The listing itself is still saved; admin can re-place it from the listing.
+  }
 }
 
 // Straight-line distance in km between two coordinates (haversine).
@@ -405,7 +444,9 @@ export default async (request, context) => {
           400
         );
       }
-      addHistory(record, record.submittedBy, "Submitted");
+      const submitAsAdmin = await verifyAdminToken(body.token);
+      await applyTreePlace(record, await placeInTree(record.latitude, record.longitude), submitAsAdmin);
+      addHistory(record, submitAsAdmin ? "admin" : record.submittedBy, "Submitted");
 
       await store.setJSON(listingId, record);
 
@@ -483,7 +524,15 @@ export default async (request, context) => {
         "agreementRespondedAt", "snSentSeasons", "snSentAt", "agreementSigned", "signatoryName", "signatoryCapacity",
         "signatoryIdPassport", "signatureDate", "signaturePlace", "coordsVerifiedAt"];
       Object.keys(incoming).forEach((k) => { if (KEEP.indexOf(k) === -1) record[k] = incoming[k]; });
-      if (!isAdmin) record.siteNr = before.siteNr || "";   // the Site Nr is allocated by Avante
+      if (!isAdmin) {
+        record.siteNr = before.siteNr || "";   // the Site Nr is allocated by Avante
+        // Location is locked once submitted: coordinates, address and the
+        // place names stay as Avante has them (the hub location tree is the master).
+        ["latitude", "longitude", "streetAddress", "coordsVerified", "coordsVerifiedPlace"].concat(LOCATION_FIELDS)
+          .forEach((k) => { record[k] = before[k] === undefined ? "" : before[k]; });
+      } else if (before.latitude !== record.latitude || before.longitude !== record.longitude || !before.treePlace) {
+        await applyTreePlace(record, await placeInTree(record.latitude, record.longitude), true);
+      }
       if (incoming.coordsVerified === "Y" && (before.latitude !== record.latitude || before.longitude !== record.longitude || before.coordsVerified !== "Y")) {
         record.coordsVerifiedAt = new Date().toISOString();
       }
@@ -581,6 +630,8 @@ export default async (request, context) => {
       const r = await reverseGeocode(lat, lng, geoKey);
       if (!r || !r.ok) return json({ ok: false, reason: (r && r.reason) || "failed", message: "Google couldn't check these coordinates just now." });
       const result = { ok: true, country: r.country, province: r.province, town: r.town, townType: r.townType, suburb: r.suburb, warnings: [] };
+      const place = await placeInTree(lat, lng);
+      if (place) result.tree = { text: placeText(place), fields: treeFields(place) };
       // Compare with what the form says, and with the address if given.
       const said = { country: clean(body.country, 100), province: clean(body.province, 100), town: clean(body.city, 100) };
       const low = (s) => String(s || "").toLowerCase();
