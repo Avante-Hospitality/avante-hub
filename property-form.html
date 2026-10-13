@@ -526,7 +526,7 @@
     if(ADMIN_T && !payload.token) payload.token = ADMIN_T;
     return fetch(API, { method:'POST', headers:{ 'content-type':'application/json' }, body: JSON.stringify(payload) })
       .then(function(r){ return r.json(); })
-      .catch(function(){ return { ok:false, message:'No connection. Check your internet and try again.' }; });
+      .catch(function(){ return { ok:false, reason:'network', message:'The hub didn\'t answer in time. Try again in a moment.' }; });
   }
   var params = new URLSearchParams(window.location.search);
   var AFF = params.get('aff') || '';
@@ -648,14 +648,14 @@
       var listEl = wrap.querySelector('.pu-images-list');
       Array.prototype.forEach.call(e.target.files, function(file){
         var row = document.createElement('div');
-        row.textContent = file.name + ' — uploading...';
+        row.textContent = file.name + ' — waiting to upload…';
         listEl.appendChild(row);
         uploadFile(file, 'image', 'unit', function(data){
           if(data && data.ok){
             row.textContent = '✓ ' + file.name;
             uploadedImages.push({ type: 'Unit', unitTypeName: nameInput.value.trim(), key: data.key, fileName: file.name, cover: 'N' });
           } else {
-            row.textContent = file.name + ' — upload failed';
+            row.textContent = file.name + ' — upload failed (' + ((data && data.error) || 'unknown') + ')';
           }
         });
       });
@@ -671,13 +671,64 @@
   var LISTING_TMP = 'draft-' + Date.now() + '-' + Math.floor(Math.random()*100000);
   var uploadedDocs = [];
   var uploadedImages = [];
+  // Uploads go through a queue, 2 at a time, and each one is retried up to
+  // 3 times — sending many at once made the server refuse some of them.
+  // Photos are made smaller first (longest side 2400px, JPEG), so a big
+  // camera or channel image (e.g. .avif) never goes over the 10MB limit.
+  var UPLOAD_PARALLEL = 2, uploadActive = 0, uploadQueue = [];
   function uploadFile(file, kind, label, cb){
-    fetch('/api/property-file?listingId=' + encodeURIComponent(LISTING_TMP) + '&kind=' + encodeURIComponent(kind) + '&label=' + encodeURIComponent(label) + '&fileName=' + encodeURIComponent(file.name || 'photo.jpg'), {
+    uploadQueue.push({ file: file, kind: kind, label: label, cb: cb });
+    pumpUploads();
+  }
+  function pumpUploads(){
+    while(uploadActive < UPLOAD_PARALLEL && uploadQueue.length){
+      var job = uploadQueue.shift();
+      uploadActive++;
+      prepareUpload(job.file, job.kind).then(function(job){ return function(f){ sendUpload(f, job, 1); }; }(job));
+    }
+  }
+  function prepareUpload(file, kind){
+    var isImage = kind === 'image' && /^image\//.test(file.type || '');
+    var small = file.size < 1.5 * 1024 * 1024 && /^image\/(jpeg|png|webp)$/.test(file.type || '');
+    if(!isImage || small) return Promise.resolve(file);
+    return new Promise(function(resolve){
+      var url = URL.createObjectURL(file), img = new Image();
+      img.onload = function(){
+        var max = 2400, sc = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+        var c = document.createElement('canvas');
+        c.width = Math.round(img.naturalWidth * sc); c.height = Math.round(img.naturalHeight * sc);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(url);
+        c.toBlob(function(blob){
+          if(!blob) return resolve(file);
+          var name = String(file.name || 'photo').replace(/\.[^.]+$/, '').slice(0, 60) + '.jpg';
+          resolve(new File([blob], name, { type: 'image/jpeg' }));
+        }, 'image/jpeg', 0.86);
+      };
+      img.onerror = function(){ URL.revokeObjectURL(url); resolve(file); };
+      img.src = url;
+    });
+  }
+  function sendUpload(file, job, attempt){
+    if(file.size > 10 * 1024 * 1024){ finishUpload(job, { error: 'too big (over 10MB)' }); return; }
+    fetch('/api/property-file?listingId=' + encodeURIComponent(LISTING_TMP) + '&kind=' + encodeURIComponent(job.kind) + '&label=' + encodeURIComponent(job.label) + '&fileName=' + encodeURIComponent(String(file.name || 'photo.jpg').slice(-120)), {
       method: 'POST',
       headers: { 'content-type': file.type || 'application/octet-stream' },
       body: file
-    }).then(function(r){ return r.json(); }).then(function(data){ cb(data); })
-      .catch(function(){ cb({ error: 'Upload failed' }); });
+    }).then(function(r){
+      return r.json().catch(function(){ return { error: 'server said ' + r.status }; });
+    }).then(function(data){
+      if(data && data.ok){ data.fileName = file.name; finishUpload(job, data); return; }
+      retryOrFail(file, job, attempt, (data && data.error) || 'refused');
+    }).catch(function(){ retryOrFail(file, job, attempt, 'connection dropped'); });
+  }
+  function retryOrFail(file, job, attempt, why){
+    if(attempt < 3) setTimeout(function(){ sendUpload(file, job, attempt + 1); }, 1500 * attempt);
+    else finishUpload(job, { error: why });
+  }
+  function finishUpload(job, data){
+    uploadActive--;
+    try { job.cb(data); } finally { pumpUploads(); }
   }
   Array.prototype.forEach.call(document.querySelectorAll('.doc-input'), function(input){
     input.addEventListener('change', function(){
@@ -701,14 +752,14 @@
   $('imageInput').addEventListener('change', function(){
     Array.prototype.forEach.call($('imageInput').files, function(file){
       var row = document.createElement('div');
-      row.textContent = file.name + ' — uploading...';
+      row.textContent = file.name + ' — waiting to upload…';
       $('imageList').appendChild(row);
       uploadFile(file, 'image', 'property', function(data){
         if(data && data.ok){
           row.textContent = '✓ ' + file.name;
           uploadedImages.push({ type: 'Property', unitTypeName: '', key: data.key, fileName: file.name, cover: 'N' });
         } else {
-          row.textContent = file.name + ' — upload failed';
+          row.textContent = file.name + ' — upload failed (' + ((data && data.error) || 'unknown') + ')';
         }
       });
     });
@@ -1207,10 +1258,11 @@
   $('gFindBtn').addEventListener('click', function(){
     var q = $('gQuery').value.trim(), btn = this;
     if(!q){ $('gStatus').innerHTML = '<p class="note err">Type what to search for, e.g. the resort name and town.</p>'; return; }
-    btn.disabled = true; $('gStatus').innerHTML = '<p class="note info">Searching Google…</p>'; $('gPhotos').innerHTML = '';
-    api({ action: 'findPhotos', query: q }).then(function(res){
+    btn.disabled = true; $('gStatus').innerHTML = '<p class="note info">Searching Google and fetching the photos… this can take up to 30 seconds.</p>'; $('gPhotos').innerHTML = '';
+    var tryFind = function(attempt){ return api({ action: 'findPhotos', query: q }).then(function(res){ return (res && res.ok) || attempt >= 2 || (res && res.reason && res.reason !== 'network') ? res : tryFind(attempt + 1); }); };
+    tryFind(1).then(function(res){
       btn.disabled = false;
-      if(!res || !res.ok){ $('gStatus').innerHTML = '<p class="note err">' + esc((res && res.message) || 'No photos found. Try a different search.') + '</p>'; return; }
+      if(!res || !res.ok){ $('gStatus').innerHTML = '<p class="note err">' + esc(res && res.reason === 'network' ? 'Google took too long to send the photos back. Tap Find photos on Google again, or try a shorter search (e.g. the resort name and town).' : ((res && res.message) || 'No photos found. Try a different search.')) + '</p>'; return; }
       gImages = res.images || [];
       $('gStatus').innerHTML = '<p class="note ok">Photos Google has for <b>' + esc(res.place && res.place.name) + '</b>' + (res.place && res.place.formattedAddress ? ' (' + esc(res.place.formattedAddress) + ')' : '') + '. Tap <b>Add</b> on the ones to include.</p>';
       $('gPhotos').innerHTML = gImages.map(function(g, i){ return '<div class="gphoto"><img src="' + g.dataUri + '" alt="Google photo ' + (i+1) + '"><div><span class="hint" style="margin:0">' + esc(g.attribution ? 'Photo: ' + g.attribution : 'Google photo') + '</span><button type="button" class="btn-navy btn-sm" data-gadd="' + i + '">Add</button></div></div>'; }).join('');

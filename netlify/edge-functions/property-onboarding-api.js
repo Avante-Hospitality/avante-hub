@@ -655,7 +655,7 @@ export default async (request, context) => {
         return json({ ok: false, reason: "limit", message: "Daily limit for Google photo searches reached." });
       }
       const query = clean(body.query, 200);
-      const result = await searchPlacePhotos(query, Deno.env.get("GOOGLE_PLACES_API_KEY") || "", 9);
+      const result = await searchPlacePhotos(query, Deno.env.get("GOOGLE_PLACES_API_KEY") || "", 6);
       return json(result);
     }
 
