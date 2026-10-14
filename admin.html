@@ -6702,6 +6702,11 @@
         { key: 'icalLink', label: 'Calendar link (iCal)', el: 'input' }
       ];
 
+      // What a listing needs that Stock Network may not have (marked in the listing).
+      var SN_GAP_FIELDS = [['propertyType', 'Property type'], ['telephone', 'Property telephone'], ['email', 'Property email'], ['description', 'Description'],
+        ['streetAddress', 'Street address'], ['ownerFullName', 'Owner name'], ['ownerEmail', 'Owner email'], ['ownerPhone', 'Owner phone'],
+        ['checkInTime', 'Check-in time (full form)'], ['checkOutTime', 'Check-out time (full form)']];
+
       function defaultAgreementTerms(l){
         return 'This agreement confirms that ' + (l.propertyName || 'the property') + ', represented by ' +
           (l.ownerFullName || 'the owner/agent') + ', will be listed on Avante Travel\'s Private Property STR Database.\n\n' +
@@ -7136,17 +7141,44 @@
             (l.screenshotsRead ? detailRow('Filled from screenshots', l.screenshotsRead + ' screenshot(s)') : '') +
             ((l.rateSeasons || []).length ? detailRow('Rates (rack \u2192 SN)', l.rateSeasons.map(function(r){ return r.unitTypeName + ': ' + r.from + ' to ' + r.to + ', R' + r.rackRate + ' \u2192 R' + r.snRate + ', min ' + r.minStay; }).join(' | ')) : '') +
             ((l.blockedNights || []).length ? detailRow('Blocked nights', l.blockedNights.length + ' night(s)') : '');
+          // A property already on Stock Network (Jean, 2026-10-14): everything
+          // Stock Network has is pulled in; what it doesn't have is marked here.
+          var onSn = !!l.resortId;
+          var gaps = onSn ? SN_GAP_FIELDS.filter(function(g){ return !String(l[g[0]] || '').trim(); }) : [];
+          if(onSn){
+            html += '<div class="sn-gaps" style="border:3px solid var(--navy); border-radius:8px; padding:10px 12px; margin:12px 0;">' +
+              (gaps.length ? '<b>Not on Stock Network \u2014 please fill in:</b> ' + gaps.map(function(g){ return escapeHtml(g[1]); }).join(', ') + '.'
+                : '<b>\u2713 Everything needed is filled in.</b>') +
+              '<div style="margin-top:8px;"><button type="button" class="btn-outline" id="snRepullBtn">Pull again from Stock Network</button> <span class="hint" id="snRepullMsg">Fills only empty boxes. Never changes what is typed.</span></div></div>';
+          }
+          var gapKeys = gaps.map(function(g){ return g[0]; });
           EDIT_FIELDS.forEach(function(f){
             var val = escapeHtml(l[f.key] || '');
+            var gap = gapKeys.indexOf(f.key) !== -1;
+            var mark = gap ? ' style="border:3px dashed #8a4b00;"' : '';
+            var note = gap ? '<div class="hint" style="margin:2px 0 4px; font-weight:600;">Not on Stock Network \u2014 please fill in' +
+              (f.key === 'propertyType' && l.snTypeCode ? '. Type it once: the hub then fills it for every Stock Network property of this type.' : '.') + '</div>' : '';
             if(f.el === 'textarea'){
-              html += '<label for="propField_' + f.key + '">' + escapeHtml(f.label) + '</label>' +
-                '<textarea id="propField_' + f.key + '">' + val + '</textarea>';
+              html += '<label for="propField_' + f.key + '">' + escapeHtml(f.label) + '</label>' + note +
+                '<textarea id="propField_' + f.key + '"' + mark + '>' + val + '</textarea>';
             } else {
-              html += '<label for="propField_' + f.key + '">' + escapeHtml(f.label) + '</label>' +
-                '<input id="propField_' + f.key + '" value="' + val + '">';
+              html += '<label for="propField_' + f.key + '">' + escapeHtml(f.label) + '</label>' + note +
+                '<input id="propField_' + f.key + '" value="' + val + '"' + mark + '>';
             }
           });
           bodyEl.innerHTML = html;
+          var repull = document.getElementById('snRepullBtn');
+          if(repull) repull.addEventListener('click', function(){
+            var msg = document.getElementById('snRepullMsg');
+            repull.disabled = true; msg.textContent = 'Reading Stock Network\u2026';
+            propAdminPost('snRepull', { listingId: listingId }).then(function(r){
+              if(r.data && r.data.ok){
+                var f = r.data.filled || [];
+                showToast(f.length ? 'Filled from Stock Network: ' + f.join(', ') : 'Stock Network had nothing new for the empty boxes');
+                openPropertyDetailsModal(listingId);
+              } else { repull.disabled = false; msg.textContent = (r.data && r.data.error) || 'Could not read Stock Network.'; }
+            }).catch(function(){ repull.disabled = false; msg.textContent = 'Could not reach the server.'; });
+          });
 
           // Place in the location tree (2026-10-07): read-only, from the pin.
           var pickerHost = document.getElementById('propertyLocationPickerHost');

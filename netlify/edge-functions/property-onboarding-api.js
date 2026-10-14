@@ -2,7 +2,7 @@ import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
 import { readListingScreenshots } from "./lib/listing-reader.js";
 import { HOOKS_URL, makeHooksTicket } from "./lib/hooks-ticket.js";
 import { readResortInfo, copySnPhotos } from "./lib/sn-resort-info.js";
-import { feedByBbid } from "./lib/sn-feed.js";
+import { feedByBbid, feedRowByResort, fillFromFeed, typeNames, learnTypeName, typeCodeOf } from "./lib/sn-feed.js";
 import { forwardGeocode, reverseGeocode } from "./lib/geocode.js";
 import { searchPlacePhotos, searchPlaceCandidates } from "./lib/places-images.js";
 import { placeCoordinate, snFieldsFromPlace, placeText, PLACES_STORE, PROPERTY_KEY } from "./lib/tree.js";
@@ -201,6 +201,9 @@ async function buildListingFromSn(pr, row, opts = {}) {
     channelProperty: pr.channel ? "Y" : "", ratesFromChannel: pr.channel ? "Y" : "", commissionPct: pr.channel ? "4.95" : "",
     commissionRate: "", listingDuration: "", agreementTerms: "", agreementStatus: "Not Sent", agreementToken: "", agreementSentAt: "", agreementRespondedAt: "",
   });
+  // Everything else Stock Network's feed has (type, phone, email, links, times…).
+  const fromFeed = await fillListingFromFeed(record).catch(() => []);
+  if (row && row.propertyType && record.snTypeCode) await learnTypeName(record.snTypeCode, row.propertyType).catch(() => {});
   // Place names from the hub location tree (the master), as for any listing.
   const placed = await getStore({ name: PLACES_STORE, consistency: "strong" }).get(PROPERTY_KEY, { type: "json" }).catch(() => null);
   const place = (placed && pr.resortId && (placed[pr.resortId] || placed[String(pr.resortId).toLowerCase()])) || await placeInTree(record.latitude, record.longitude);
@@ -210,8 +213,41 @@ async function buildListingFromSn(pr, row, opts = {}) {
   if (place) { record.coordsVerified = "Y"; record.coordsVerifiedPlace = record.treePlaceText || ""; record.coordsVerifiedAt = new Date().toISOString(); }
   if (sn.ok && sn.photos.length) record.images = await copySnPhotos(sn.photos, listingId, getStore({ name: "property-listing-files", consistency: "strong" }));
   addHistory(record, opts.by || "admin", (opts.historyNote || "Listing created from the property already on Stock Network") + " (Site Nr " + (pr.site || "?") + ")" +
-    (sn.ok ? "; details, " + units.length + " unit type(s), " + record.snFacilities.length + " facilities and " + record.images.length + " photo(s) read from Stock Network" : "; Stock Network's page couldn't be read"));
+    (sn.ok ? "; details, " + units.length + " unit type(s), " + record.snFacilities.length + " facilities and " + record.images.length + " photo(s) read from Stock Network" : "; Stock Network's page couldn't be read") +
+    (fromFeed.length ? "; from Stock Network's feed: " + fromFeed.join(", ") : ""));
   return Object.assign(record, opts.extra || {});
+}
+
+// Everything Stock Network's own feed has for the property goes into the
+// listing's EMPTY fields (Jean, 2026-10-14: pull all we can, then fill in only
+// what isn't there). The property type: the hub knows the words for the
+// feed's type code once it has seen them — typed on a listing, or on a resort
+// list spreadsheet (Property Type column) for any property with the same code.
+async function typeNameFor(code) {
+  if (!code) return "";
+  const names = await typeNames();
+  if (names[code]) return names[code];
+  try {
+    const list = await getStore({ name: "resort-list", consistency: "strong" }).get("current", { type: "json" });
+    const idx = await getStore({ name: "sn-feed", consistency: "strong" }).get("resort-index", { type: "json" });
+    const votes = {};
+    for (const r of (list && list.resorts) || []) {
+      if (!r || !r.propertyType || !r.resortId) continue;
+      const fr = idx && idx.byResort && idx.byResort[String(r.resortId).toLowerCase()];
+      if (fr && typeCodeOf(fr) === code) votes[r.propertyType] = (votes[r.propertyType] || 0) + 1;
+    }
+    const best = Object.entries(votes).sort((a, b) => b[1] - a[1])[0];
+    if (best) { await learnTypeName(code, best[0]); return best[0]; }
+  } catch (e) { /* not learnt yet */ }
+  return "";
+}
+async function fillListingFromFeed(record) {
+  if (!record.resortId) return [];
+  const row = await feedRowByResort(record.resortId).catch(() => null);
+  if (!row) return [];
+  const code = typeCodeOf(row), names = await typeNames();
+  if (code && !names[code]) { const t = await typeNameFor(code); if (t) names[code] = t; }
+  return fillFromFeed(record, row, names);
 }
 
 // Straight-line distance in km between two coordinates (haversine).
@@ -1139,9 +1175,41 @@ export default async (request, context) => {
 
       record.dateUpdated = new Date().toISOString();
       addHistory(record, "admin", "Edited in admin", beforeEdit);
+      // The type admin typed teaches the hub the words for this Stock Network type code.
+      if (record.resortId && String(record.propertyType || "").trim() && record.propertyType !== beforeEdit.propertyType) {
+        if (!record.snTypeCode) { const fr = await feedRowByResort(record.resortId).catch(() => null); const c = fr && typeCodeOf(fr); if (c) record.snTypeCode = c; }
+        if (record.snTypeCode) await learnTypeName(record.snTypeCode, record.propertyType).catch(() => {});
+      }
       await store.setJSON(listingId, record);
 
       return json({ ok: true, listing: withAgreementDefaults(record) });
+    }
+
+    if (action === "snRepull") {
+      // "Pull again from Stock Network": fills only the EMPTY fields of a listing
+      // of a property already on Stock Network — never overwrites what's typed.
+      const denied = await requireAdmin();
+      if (denied) return denied;
+      const listingId = clean(body.listingId, 20);
+      const record = listingId && await store.get(listingId, { type: "json" });
+      if (!record) return json({ error: "not found" }, 404);
+      if (!record.resortId) return json({ error: "This listing isn't linked to a property on Stock Network (no Resort ID)." }, 400);
+      const before = JSON.parse(JSON.stringify(record)), filled = [];
+      const sn = await readResortInfo(record.resortId);
+      if (sn.ok) {
+        if (!String(record.description || "").trim() && sn.about) { record.description = sn.about; filled.push("description"); }
+        if (!String(record.areaInfo || "").trim() && sn.attractions) { record.areaInfo = sn.attractions; filled.push("areaInfo"); }
+        if (!(record.snFacilities || []).length && sn.facilities.length) { record.snFacilities = sn.facilities.slice(0, 80); filled.push("facilities"); }
+        if (!(record.unitTypes || []).some((u) => u && u.name) && sn.units.length) {
+          record.unitTypes = sn.units.map((u) => ({ name: u.name, numUnits: "1", maxOccupancy: u.maxGuests ? String(u.maxGuests) : "", description: u.description || u.roomType || "" })); filled.push("unit types");
+        }
+        if (!(record.images || []).length && sn.photos.length) { record.images = await copySnPhotos(sn.photos, listingId, getStore({ name: "property-listing-files", consistency: "strong" })); filled.push("photos"); }
+      }
+      filled.push(...await fillListingFromFeed(record).catch(() => []));
+      record.dateUpdated = new Date().toISOString();
+      addHistory(record, "admin", filled.length ? "Pulled again from Stock Network: " + filled.join(", ") : "Pulled again from Stock Network: nothing new", before);
+      await store.setJSON(listingId, record);
+      return json({ ok: true, filled, snRead: !!sn.ok, listing: withAgreementDefaults(record) });
     }
 
     if (action === "sendAgreement") {
