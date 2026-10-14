@@ -6819,6 +6819,19 @@
             '<div style="margin-top:8px; display:flex; flex-wrap:wrap; gap:8px; align-items:center;"><button type="button" class="btn-outline" id="elSend">Email the edit link</button><button type="button" class="btn-outline" id="elCopy">Copy the link</button><span class="hint" id="elStatus" style="margin:0"></span></div>' +
             (sentTo.length ? '<div class="hint" style="margin-top:6px;">Last emailed to ' + escapeHtml(sentTo[sentTo.length - 1].to) + ' on ' + escapeHtml(fmtPropDate(sentTo[sentTo.length - 1].at)) + '.</div>' : '');
           host.appendChild(el);
+          if(l.siteId){
+            var ca = document.createElement('div'); ca.style.cssText = 'margin-top:10px; padding-top:10px; border-top:1px solid #e3e9e8;';
+            ca.innerHTML = '<button type="button" class="btn-outline" id="elCreateAff">Create the affiliate</button> <span class="hint" id="elAffStatus" style="margin:0">' +
+              (l.affiliateCreatedAt ? 'Affiliate ' + escapeHtml(l.affId) + ' was created from this listing.' : 'Makes affiliate ' + escapeHtml(l.siteId) + ' (' + (l.channelProperty === 'Y' ? 'Channel Property Affiliate' : 'Property Affiliate') + ', Site Nr ' + escapeHtml(l.siteNr || '?') + ', hook builder access on).') + '</span>';
+            el.appendChild(ca);
+            ca.querySelector('#elCreateAff').addEventListener('click', function(){
+              var b = this, st2 = ca.querySelector('#elAffStatus'); b.disabled = true; st2.textContent = 'Creating\u2026';
+              propAdminPost('createAffiliateFromListing', { listingId: l.listingId }).then(function(res){
+                b.disabled = false; var d2 = res.data || {};
+                st2.textContent = d2.ok ? 'Affiliate ' + d2.affId + ' created \u2714 Check its revenue share in Affiliates.' : (d2.error || 'Could not create it.');
+              });
+            });
+          }
           el.querySelector('#elRatesCh').addEventListener('change', function(){
             var on = this.checked, st = el.querySelector('#elStatus');
             propAdminPost('setRatesFromChannel', { listingId: l.listingId, on: on }).then(function(res){
@@ -7232,7 +7245,9 @@
             st.innerHTML = (bb ? 'BBID ' + escapeHtml(bb) : 'Site Nr ' + escapeHtml(nr)) + ' has more than one property. Tap the one you mean: ' + d.chooseResort.map(function(r){ return '<button type="button" class="btn-outline" data-ex-rid="' + escapeHtml(r.resortId) + '" style="margin:4px 4px 0 0;">' + escapeHtml(r.name) + '</button>'; }).join('');
             return;
           }
-          if(d.ok){ st.textContent = 'Done. The listing is open below.'; loadPropertyListings(); openPropertyDetailsModal(d.listingId); return; }
+          var snNote = d.snSite ? ' From Stock Network: ' + [d.snSite.siteNr ? 'Site Nr ' + d.snSite.siteNr : 'no Site Nr', d.snSite.siteId ? 'Site ID ' + d.snSite.siteId : 'no Site ID'].join(' \u00b7 ') + '.' : '';
+          if(d.ok){ st.textContent = 'Done. The listing is open below.' + snNote; loadPropertyListings(); openPropertyDetailsModal(d.listingId); return; }
+          if(d.snSite && d.snSite.fields){ st.textContent = (d.error || 'Not found.') + ' Stock Network sent these site fields: ' + (Object.keys(d.snSite.fields).map(function(k){ return k + ' = ' + d.snSite.fields[k]; }).join(', ') || 'none') + '.'; return; }
           if(d.listingId){ st.textContent = d.error; openPropertyDetailsModal(d.listingId); return; }
           st.textContent = d.error || 'Could not get the property.';
         }).catch(function(){ btn.disabled = false; st.textContent = 'No connection. Try again.'; });

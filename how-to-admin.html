@@ -39,6 +39,7 @@
     <div class="ht-card ht-new" aria-label="What's new">
       <h2>What's new</h2>
       <ul>
+        <li><time>14 Oct 2026</time> Only a NightsBridge BBID? <b>Get the property</b> now asks Stock Network's property feed for the Site Nr and Site ID. New in the listing: <b>Create the affiliate</b> (one tap, never overwrites). See <a href="#addNbProperty">Add a NightsBridge property</a>.</li>
         <li><time>14 Oct 2026</time> Every activity on the map gets a main photo by itself, a few every 2 minutes (its map photo, else the photo library, else Google). The ones where nothing was found are listed at <b>go.avantetravel.co.za/api/act-photos?report=1</b>; they don't show on front stores until they have a photo.</li>
         <li><time>14 Oct 2026</time> Property Listings: <b>Properties already on Stock Network</b> has a <b>NightsBridge BBID</b> box. Type the BBID and tap <b>Get the property</b>; the hub finds the Site Nr and builds the listing as a channel property.</li>
         <li><time>14 Oct 2026</time> New: <b>Add a NightsBridge property (start to finish)</b>, every step in one place. See <a href="#addNbProperty">Add a NightsBridge property</a>.</li>
@@ -247,7 +248,8 @@
         <li>Tap <span class="btn">Get the property</span>. The hub reads the rest from Stock Network: name, place in the location tree, description, unit types with sleeps, facilities and photos. The listing opens.</li>
         <li>More than one property on that BBID or Site Nr? Tap the one you mean.</li>
         <li>With a BBID, the hub finds the property itself (Stock Network's <b>External Resort Code</b>) and makes it a channel property: no rates, Stock Network payment page only, 4.95% + VAT.</li>
-        <li>It says the list has <b>no Site Nr</b> for it? Type the <span class="field">Site Nr</span> as well (keep the BBID) and tap <span class="btn">Get the property</span> again. A Site Nr you type always wins over the list's.</li>
+        <li>Only have the BBID? That's enough: when the hub's list lacks the Site Nr or Site ID, the hub asks Stock Network's own property feed and fills them in. The message says what Stock Network gave (<b>From Stock Network: Site Nr … · Site ID …</b>).</li>
+        <li>It still says there's <b>no Site Nr</b>? Type the <span class="field">Site Nr</span> as well (keep the BBID) and tap <span class="btn">Get the property</span> again. A Site Nr or Site ID you type always wins.</li>
         <li>Email the property its edit link (see below). The link opens on the <b>Ready check</b>, which lists only what is still to do (usually the owner's details and the cancellation policy).</li>
       </ol>
       <div class="tip">If the Site ID belongs to a Channel Property Affiliate, the listing is made as a channel property (no rates, Avante's payment gateway, 4.95% + VAT).</div>
@@ -357,7 +359,7 @@
       <h3>A. Get the property into the hub (pick one)</h3>
       <ol class="steps">
         <li><b>The property starts it:</b> it opens the <b>List your property</b> page, taps <b>NightsBridge</b>, types its <span class="field">NightsBridge BBID Number</span> and taps <span class="btn">Submit</span>. You get an email: <b>Listing request: …</b>.</li>
-        <li><b>Or you start it:</b> tap <span class="tab">Property Listings</span>. Under <b>Properties already on Stock Network</b>, type the <span class="field">NightsBridge BBID</span> (or the <span class="field">Site Nr</span>) and the <span class="field">Site ID (affiliate number)</span> if you have it, then tap <span class="btn">Get the property</span>.</li>
+        <li><b>Or you start it:</b> tap <span class="tab">Property Listings</span>. Under <b>Properties already on Stock Network</b>, type the <span class="field">NightsBridge BBID</span> (or the <span class="field">Site Nr</span>), then tap <span class="btn">Get the property</span>. With a BBID the hub fetches the Site Nr and Site ID from Stock Network when it can.</li>
       </ol>
       <div class="tip">Either way the listing is filled in from Stock Network: description, unit types and sleeps, facilities and photos. No rates: they come from NightsBridge.</div>
       <h3>B. Check the listing</h3>
@@ -369,7 +371,8 @@
       </ol>
       <h3>C. Create the affiliate</h3>
       <ol class="steps">
-        <li>Tap <span class="tab">Affiliates</span>, then <span class="btn t">+ Add Affiliate</span>.</li>
+        <li><b>Quick way:</b> in the listing, under <b>Let the property complete its listing</b>, tap <span class="btn g">Create the affiliate</span>. It makes the affiliate with the Site ID as its number, the Site Nr and name, <b>Channel Property Affiliate</b> and hook builder access. It never changes an affiliate that already exists. Then set its revenue share in <span class="tab">Affiliates</span>.</li>
+        <li><b>Or by hand:</b> tap <span class="tab">Affiliates</span>, then <span class="btn t">+ Add Affiliate</span>.</li>
         <li>Type the Site ID in <span class="field">Affiliate ID</span>. Type the <span class="field">Name</span> and the <span class="field">StockNetwork Site Nr (optional)</span>.</li>
         <li>Tick <span class="field">Channel Property Affiliate</span> and <span class="field">Hook builder access</span>.</li>
         <li>Tap <span class="btn">Save Affiliate</span>.</li>

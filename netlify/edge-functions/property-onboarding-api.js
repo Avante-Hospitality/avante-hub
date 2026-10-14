@@ -2,6 +2,7 @@ import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
 import { readListingScreenshots } from "./lib/listing-reader.js";
 import { HOOKS_URL, makeHooksTicket } from "./lib/hooks-ticket.js";
 import { readResortInfo, copySnPhotos } from "./lib/sn-resort-info.js";
+import { feedByBbid } from "./lib/sn-feed.js";
 import { forwardGeocode, reverseGeocode } from "./lib/geocode.js";
 import { searchPlacePhotos, searchPlaceCandidates } from "./lib/places-images.js";
 import { placeCoordinate, snFieldsFromPlace, placeText, PLACES_STORE, PROPERTY_KEY } from "./lib/tree.js";
@@ -709,7 +710,7 @@ export default async (request, context) => {
       const before = JSON.parse(JSON.stringify(record));
       const KEEP = ["listingId", "status", "dateSubmitted", "submittedBy", "affId", "editToken", "history",
         "commissionRate", "listingDuration", "agreementTerms", "agreementStatus", "agreementToken", "agreementSentAt",
-        "agreementRespondedAt", "snSentSeasons", "snSentAt", "snEmailLog", "photosToken", "libraryPhotos", "existingOnSN", "paSiteId", "resortId", "editLinkLog", "channelProperty", "ratesFromChannel", "snFacilities", "agreementSigned", "signatoryName", "signatoryCapacity",
+        "agreementRespondedAt", "snSentSeasons", "snSentAt", "snEmailLog", "photosToken", "libraryPhotos", "existingOnSN", "paSiteId", "resortId", "editLinkLog", "affiliateCreatedAt", "snSiteFields", "bbid", "channelProperty", "ratesFromChannel", "snFacilities", "agreementSigned", "signatoryName", "signatoryCapacity",
         "signatoryIdPassport", "signatureDate", "signaturePlace", "coordsVerifiedAt"];
       Object.keys(incoming).forEach((k) => { if (KEEP.indexOf(k) === -1) record[k] = incoming[k]; });
       // A channel property's commission (4.95% + VAT on hub bookings) is set by
@@ -990,18 +991,38 @@ export default async (request, context) => {
       // Or the NightsBridge BBID (Jean, 2026-10-14): found in the hub's Stock
       // Network list (External Resort Code); the property is then a channel property.
       const bbid = clean(body.bbid, 40);
-      let bySiteNr = clean(body.siteNr, 20), bbidRid = "", bbidHit = null;
+      let bySiteNr = clean(body.siteNr, 20), bbidRid = "", bbidHit = null, snSite = null;
+      let typedSiteIdIn = clean(body.siteIdIn, 100);
       if (!pr && bbid) {
         const nb = (v) => String(v || "").trim().toLowerCase().replace(/^0+/, "");
-        const hits = resortRows.filter((r) => r.externalResortCode && nb(r.externalResortCode) === nb(bbid));
-        if (!hits.length) return json({ error: "BBID " + bbid + " isn't in the hub's Stock Network list (External Resort Code). Check the number, or use the Site Nr instead." }, 404);
+        let hits = resortRows.filter((r) => r.externalResortCode && nb(r.externalResortCode) === nb(bbid));
+        // Stock Network's own property feed (Jean, 2026-10-14): when the hub's
+        // list doesn't have the BBID, its Site Nr or the Site ID, ask the feed.
+        // Typed numbers always win.
+        if (!hits.length || (!bySiteNr && !hits.some((h) => String(h.siteId || "").trim())) || !typedSiteIdIn) {
+          const f = await feedByBbid(bbid);
+          if (f.ok && f.matches.length) {
+            const pick0 = clean(body.resortId, 64).toLowerCase();
+            const m = f.matches.length === 1 ? f.matches[0] : (f.matches.find((x) => pick0 && x.resortId.toLowerCase() === pick0) || (hits.length === 1 ? f.matches.find((x) => x.resortId.toLowerCase() === String(hits[0].resortId).toLowerCase()) : null));
+            if (m) {
+              snSite = { siteNr: m.siteNr, siteId: m.siteId, fields: m.siteFields };
+              if (!hits.length) hits = [{ name: m.name, resortId: m.resortId, siteId: m.siteNr, latitude: m.latitude == null ? "" : String(m.latitude), longitude: m.longitude == null ? "" : String(m.longitude), fromFeed: true }];
+              if (!bySiteNr && m.siteNr && !String((hits[0] && hits[0].siteId) || "").trim()) bySiteNr = m.siteNr;
+              if (!typedSiteIdIn && m.siteId) typedSiteIdIn = m.siteId;
+            } else if (!hits.length) {
+              return json({ ok: false, chooseResort: f.matches.map((x) => ({ resortId: x.resortId, name: x.name + (x.siteNr ? " (Site Nr " + x.siteNr + ")" : "") })) });
+            }
+          } else if (!hits.length) {
+            return json({ error: "BBID " + bbid + " isn't in the hub's Stock Network list or in Stock Network's property feed" + (f.ok ? "" : " (" + f.error + ")") + ". Check the number, or use the Site Nr instead." }, 404);
+          }
+        }
         const pick = clean(body.resortId, 64).toLowerCase();
         const hit = hits.length > 1 ? hits.find((r) => pick && String(r.resortId).toLowerCase() === pick) : hits[0];
         if (!hit) return json({ ok: false, chooseResort: hits.map((r) => ({ resortId: r.resortId, name: r.name + " (Site Nr " + (r.siteId || "?") + ")" })) });
         // The Site Nr typed next to the BBID, else the one in the list (the list
         // can lack it: Jean, 2026-10-14, 37 On Anderson, Site Nr 4851).
         bySiteNr = bySiteNr || String(hit.siteId || "").trim(); bbidRid = hit.resortId; bbidHit = hit;
-        if (!bySiteNr) return json({ error: "Found " + hit.name + " (BBID " + bbid + "), but the Stock Network list has no Site Nr for it. Type its Site Nr too, then tap Get the property." }, 400);
+        if (!bySiteNr) return json({ error: "Found " + hit.name + " (BBID " + bbid + "), but neither the hub's list nor Stock Network's feed gave its Site Nr. Type its Site Nr too, then tap Get the property.", snSite }, 400);
       }
       if (!pr && bySiteNr) {
         const rows = bbidHit ? [bbidHit] : resortRows.filter((r) => String(r.siteId || "").trim() === bySiteNr);
@@ -1009,7 +1030,7 @@ export default async (request, context) => {
         const wantRid = clean(body.resortId, 64) || bbidRid;
         if (rows.length > 1 && !wantRid) return json({ ok: false, chooseResort: rows.map((r) => ({ resortId: r.resortId, name: r.name })) });
         const row0 = rows.find((r) => !wantRid || String(r.resortId).toLowerCase() === wantRid.toLowerCase()) || rows[0];
-        const typedSiteId = clean(body.siteIdIn, 100);
+        const typedSiteId = typedSiteIdIn;
         const known = props.find((x) => (x.resortId && String(x.resortId).toLowerCase() === String(row0.resortId).toLowerCase()) || (typedSiteId && (x.siteIdForListing === typedSiteId || x.aff === typedSiteId)));
         pr = known ? Object.assign({}, known, { site: known.site || bySiteNr, resortId: known.resortId || row0.resortId, resortName: known.resortName || row0.name }) : { siteId: "nr:" + bySiteNr + ":" + row0.resortId, site: bySiteNr, resortId: row0.resortId, resortName: row0.name, aff: "", units: [], settings: {} };
         if (typedSiteId) { pr = Object.assign({}, pr, { typedSiteId }); }
@@ -1019,10 +1040,38 @@ export default async (request, context) => {
       const have = listingFor(pr);
       if (have) return json({ error: "This property already has a listing (" + have.listingId + ").", listingId: have.listingId }, 409);
       const row = resortRows.find((r) => r.resortId && pr.resortId && String(r.resortId).toLowerCase() === String(pr.resortId).toLowerCase()) || {};
-      const record = await buildListingFromSn(pr, row, bbid ? { by: "admin", historyNote: "Listing created from NightsBridge BBID " + bbid, extra: { bbid, channelManager: "NightsBridge" } } : { by: "admin" });
+      const rowFor = row.resortId ? row : (bbidHit && bbidHit.fromFeed ? bbidHit : row);
+      const record = await buildListingFromSn(pr, rowFor, bbid ? { by: "admin", historyNote: "Listing created from NightsBridge BBID " + bbid, extra: { bbid, channelManager: "NightsBridge", snSiteFields: snSite ? snSite.fields : undefined } } : { by: "admin" });
       const listingId = record.listingId;
       await store.setJSON(listingId, record);
-      return json({ ok: true, listingId });
+      return json({ ok: true, listingId, snSite });
+    }
+
+    if (action === "createAffiliateFromListing") {
+      // One tap from the listing (Jean, 2026-10-14): a new affiliate with the
+      // listing's Site ID as its number, its Site Nr and name, typed Channel
+      // Property Affiliate (or Property Affiliate) with hook builder access.
+      // Never overwrites an affiliate that already exists.
+      const denied = await requireAdmin();
+      if (denied) return denied;
+      const listingId = clean(body.listingId, 20);
+      const record = listingId && await store.get(listingId, { type: "json" });
+      if (!record) return json({ error: "not found" }, 404);
+      const affId = clean(record.siteId, 100);
+      if (!affId) return json({ error: "Type the Site ID (affiliate number) on the listing and tap Save Changes first." }, 400);
+      const dir = getStore({ name: "affiliates-directory", consistency: "strong" });
+      if (await dir.get(affId, { type: "json" })) return json({ error: "An affiliate with number " + affId + " already exists. Open it in Affiliates to check its type and Site Nr.", exists: true }, 409);
+      const now = new Date().toISOString();
+      const aff = { affId, name: record.propertyName || "", email: record.email || record.ownerEmail || "", siteNr: record.siteNr || "",
+        types: [record.channelProperty === "Y" ? "channel" : "property"], phone: record.telephone || "",
+        revenueShare: Object.fromEntries(["accommodation", "flights", "activities", "car", "package"].map((k) => [k, { type: "percent", value: 0 }])),
+        bank: { bankName: "", accountHolder: "", accountNumber: "", branchCode: "", accountType: "" }, notes: "Created from listing " + listingId,
+        status: "active", totalRevenue: 0, totalOwed: 0, totalPaid: 0, channelRevenue: {}, hooksAccess: true, createdAt: now, updatedAt: now };
+      await dir.setJSON(affId, aff);
+      record.affId = affId; record.affiliateCreatedAt = now; record.dateUpdated = now;
+      record.history = (Array.isArray(record.history) ? record.history : []).concat([{ at: now, by: "admin", action: "Affiliate " + affId + " created (" + aff.types[0] + ")" }]).slice(-HISTORY_MAX);
+      await store.setJSON(listingId, record);
+      return json({ ok: true, affId });
     }
 
     if (action === "setRatesFromChannel") {
