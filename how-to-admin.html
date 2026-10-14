@@ -39,6 +39,7 @@
     <div class="ht-card ht-new" aria-label="What's new">
       <h2>What's new</h2>
       <ul>
+        <li><time>14 Oct 2026</time> New: <b>Add a NightsBridge property (start to finish)</b>, every step in one place. See <a href="#addNbProperty">Add a NightsBridge property</a>.</li>
         <li><time>14 Oct 2026</time> Default Hooks' Auto-build tree: <span class="btn g">Units ▸</span> next to each property shows its unit types and how many they sleep.</li>
         <li><time>14 Oct 2026</time> The <b>Master map</b> tree shows each property's <b>unit types</b> (type and how many it sleeps, identical units once). They are read from Stock Network's property pages, about 60 properties every 10 minutes. A list of units that need tidying on Stock Network (no Max Guests, own text in Room Type) is at <b>go.avantetravel.co.za/api/sn-units?messy=1</b> (downloads a spreadsheet).</li>
         <li><time>13 Oct 2026</time> Channel Property Affiliates now connect in Property Affiliate like any property, and see only Bookings, Activities, Front store and Reviews (Stock Network payment page only). The <b>List your property</b> page now sends requests to Property Listings and finds a NightsBridge property by its BBID. Place names on listings come only from the hub location tree. See <a href="#propertyListings">Property Listings</a>.</li>
@@ -344,6 +345,51 @@
       <div class="tip">Past rates are never sent again, but they stay on record: the property file has a sheet <b>All rates on record</b> with every season marked Past, Sent to SN or Not sent yet.</div>
       <div class="tip">The owner's own files (ID, proof of ownership, rate sheets, photos) are listed under <b>Files and Stock Network</b>. Tap a file name to download it.</div>
       <div class="tip">"Listed" can only be chosen after the agreement is accepted. To say no, set Status to Rejected and save. Every status change emails the person who sent the listing.</div>
+    </section>
+
+    <section id="addNbProperty">
+      <h2>🏨 Add a NightsBridge property (start to finish)</h2>
+      <p class="what"><b>What it's for:</b> every step to bring a property that runs on NightsBridge into the hub, from the first contact to its first booking.</p>
+      <h3>A. Get the property into the hub (pick one)</h3>
+      <ol class="steps">
+        <li><b>The property starts it:</b> it opens the <b>List your property</b> page, taps <b>NightsBridge</b>, types its <span class="field">NightsBridge BBID Number</span> and taps <span class="btn">Submit</span>. You get an email: <b>Listing request: …</b>.</li>
+        <li><b>Or you start it:</b> tap <span class="tab">Property Listings</span>. Under <b>Properties already on Stock Network</b>, type the <span class="field">Site Nr</span> and <span class="field">Site ID (affiliate number)</span>, then tap <span class="btn">Get the property</span>.</li>
+      </ol>
+      <div class="tip">Either way the listing is filled in from Stock Network: description, unit types and sleeps, facilities and photos. No rates: they come from NightsBridge.</div>
+      <h3>B. Check the listing</h3>
+      <ol class="steps">
+        <li>Tap <span class="tab">Property Listings</span>, then <span class="btn g">View</span> on the listing.</li>
+        <li>Check the name, the place in the location tree, the units and the photos.</li>
+        <li>It says <b>Not placed in the location tree yet</b>? Type the <span class="field">Latitude</span> and <span class="field">Longitude</span> and tap <span class="btn">Save Changes</span>. Open it again with <span class="btn g">View</span> and tap <span class="btn g">Look up again</span>.</li>
+        <li>No Site ID yet (made from the List your property page)? Type it in <span class="field">Site ID (affiliate number) — from SN after the Site Nr, for going live</span> and tap <span class="btn">Save Changes</span>.</li>
+      </ol>
+      <h3>C. Create the affiliate</h3>
+      <ol class="steps">
+        <li>Tap <span class="tab">Affiliates</span>, then <span class="btn t">+ Add Affiliate</span>.</li>
+        <li>Type the Site ID in <span class="field">Affiliate ID</span>. Type the <span class="field">Name</span> and the <span class="field">StockNetwork Site Nr (optional)</span>.</li>
+        <li>Tick <span class="field">Channel Property Affiliate</span> and <span class="field">Hook builder access</span>.</li>
+        <li>Tap <span class="btn">Save Affiliate</span>.</li>
+      </ol>
+      <h3>D. Stock Network</h3>
+      <ol class="steps">
+        <li>In the listing, under <b>Send the files by email</b>, type Stock Network's address. Leave <span class="field">Property file (.xlsx)</span> and <span class="field">Add a link to the photos</span> ticked. The <span class="field">Rates file</span> stays on <b>Don't send</b>. Tap <span class="btn g">Send email</span>.</li>
+        <li>In Stock Network, set the property's commission to <b>4.95% + VAT</b>.</li>
+        <li>Get the property's Stock Network API login (username, client ID, client secret) for step E.</li>
+      </ol>
+      <h3>E. The property completes it</h3>
+      <ol class="steps">
+        <li>In the listing, under <b>Let the property complete its listing</b>, tap <span class="btn g">Email the edit link</span>.</li>
+        <li>The property opens the link on the <b>Ready check</b>, fills in the few things left (owner details, cancellation policy) and taps <span class="btn">Save changes</span>.</li>
+        <li>The property logs into its hub, taps <span class="tab">Channel Property</span> and connects with its Stock Network login.</li>
+        <li>On <span class="tab">Bookings</span> it types its email and phone and taps <span class="btn">Save</span>. Then it builds its <span class="tab">Front store</span>, adds nearby <span class="tab">Activities</span>, and uses <span class="btn g">More ▾</span> → <span class="btn g">Hook Builder</span> for promotions.</li>
+      </ol>
+      <h3>F. Test it once</h3>
+      <ol class="steps">
+        <li>Make one test booking on its front store.</li>
+        <li>Check it reaches NightsBridge marked <b>Avante Hub booking</b>, that payment goes through the Stock Network payment page, and that it shows in the property's <span class="tab">Bookings</span> in the hub.</li>
+        <li>Make one booking through one of its hook links. Check it shows in <span class="tab">Bookings</span> too (after opening Bookings, or within 15 minutes).</li>
+      </ol>
+      <div class="warn">A hook-link booking that doesn't show in <b>Bookings</b>: tell the developer. The hub keeps a note of what Stock Network sent, so it can be fixed quickly.</div>
     </section>
 
     <section id="mapActivities">
