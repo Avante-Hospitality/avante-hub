@@ -309,3 +309,10 @@ button.pa-block:hover, button.pa-block:focus-visible{ outline:2px solid var(--te
 .fs-mvbox > b{ font:700 17px 'Montserrat',sans-serif; color:#0e2f44; }
 .fs-mvframe{ width:100%; aspect-ratio:16/10; border-radius:10px; background:#dfe7ea center/cover no-repeat; cursor:grab; touch-action:none; border:2px solid #0e2f44; }
 .fs-mvframe:active{ cursor:grabbing; }
+/* Things to do on the page now: kept or random (Jean, 2026-10-14) */
+.fs-onpage{ border:1.5px solid var(--line,#e3e9e8); border-radius:12px; padding:8px 10px; background:var(--mint,#f4fbfa); }
+.fs-oprow{ display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:6px 0; border-bottom:1px solid var(--line,#e3e9e8); }
+.fs-oprow:last-child{ border-bottom:none; }
+.fs-oprow .grow{ flex:1 1 180px; min-width:0; }
+.fs-optag{ flex:none; font:700 11.5px 'Montserrat',sans-serif; padding:3px 8px; border-radius:999px; background:#fff; border:1.5px solid var(--line,#e3e9e8); color:var(--pa-ink); }
+.fs-swap{ flex:1 1 100%; margin-top:4px; }

@@ -744,6 +744,16 @@
     return list.length ? 'From ' + money(Math.min.apply(null, list)) + ' a night' : '';
   }
   function fsPosCss(u) { var p = ((S.front && S.front.settings.photoPos) || {})[u]; return p ? ';background-position:' + p : ''; }
+  // The 10 things to do on the page now: the ones kept by the property (📌),
+  // then a random pick of the rest (same pick until the list reloads).
+  function fsPageActs() {
+    var st = S.front.settings, all = (S.fpv && S.fpv.nearby) || [], hid = st.actHidden || [], pins = st.actPinned || [];
+    var ord = S.fpvOrder || all.map(function (a, i) { return i; });
+    var kept = [], rest = [];
+    all.forEach(function (a, i) { if (hid.indexOf(a.name) < 0 && pins.indexOf(a.name) >= 0) kept.push(i); });
+    ord.forEach(function (i) { var a = all[i]; if (a && hid.indexOf(a.name) < 0 && pins.indexOf(a.name) < 0) rest.push(i); });
+    return kept.slice(0, 10).concat(rest).slice(0, 10).sort(function (x, y) { return x - y; });
+  }
   // "Change photo" for a thing to do: the shared photo library first, then Google
   // (Google's photos go into the library too). Jean, 2026-10-14.
   function fsActChoices(i, a, photo) {
@@ -859,7 +869,21 @@
       '<p class="pa-hint">Guests see <b>10 of these, picked at random</b> on every visit, closest first. They can pick another distance on the page. Untick one to never show it. Tap <b>Change photo</b> to pick a map photo, a Google photo or your own; <b>Move photo</b> to choose which part shows.</p>';
     if (!S.fpv || S.fsActsBusy) actsBody += '<p class="pa-hint" role="status">Loading things to do…</p>';
     else if (!acts.length) actsBody += '<p class="pa-hint">' + (S.fpv.area || st.actPlace ? 'Nothing on the Avante map within ' + esc(st.nearbyKm) + ' km yet. Try a bigger distance.' : 'We don\'t know where your property is yet: type your area above.') + '</p>';
-    else actsBody += acts.map(function (a, i) {
+    else {
+      // On the page now: kept ones stay, the rest are random (Jean, 2026-10-14).
+      var pins = st.actPinned || [], onPage = fsPageActs();
+      actsBody += '<div class="fs-onpage"><p class="pa-label" style="margin:12px 0 2px">On your page now (' + onPage.length + ')</p>' +
+        '<p class="pa-hint" style="margin:0 0 6px">📌 Kept = you chose it, it stays. 🔀 Random = guests get a new random pick on every visit. Tap <b>Swap</b> to choose another one: that one then stays.</p>' +
+        onPage.map(function (i) { var a = acts[i], kept = pins.indexOf(a.name) >= 0, sw = S.fsSwap === i;
+          var others = acts.map(function (b, k) { return k; }).filter(function (k) { return onPage.indexOf(k) < 0 && hidA.indexOf(acts[k].name) < 0; });
+          return '<div class="fs-oprow"><span class="fs-optag">' + (kept ? '📌 Kept' : '🔀 Random') + '</span><span class="grow"><b>' + esc(a.name) + '</b> <span class="pa-hint">' + esc(a.distance || '') + '</span></span>' +
+            '<span class="pa-actions" style="gap:4px">' + (kept ? '<button type="button" class="pa-btn small ghost" data-act="fsPin" data-name="' + esc(a.name) + '" data-on="0">Let it be random</button>' : '<button type="button" class="pa-btn small ghost" data-act="fsPin" data-name="' + esc(a.name) + '" data-on="1"' + (pins.length >= 10 ? ' disabled' : '') + '>Keep</button>') +
+            '<button type="button" class="pa-btn small' + (sw ? '' : ' ghost') + '" data-act="fsSwapOpen" data-i="' + i + '" aria-expanded="' + sw + '">Swap</button></span>' +
+            (sw ? '<div class="fs-swap"><label class="pa-label" for="fs-swapsel">Show this instead</label><div class="pa-copy"><select id="fs-swapsel">' + others.map(function (k) { return '<option value="' + k + '">' + esc(acts[k].name) + ' · ' + esc(acts[k].distance || '') + '</option>'; }).join('') + '</select>' +
+              '<button type="button" class="pa-btn small teal" data-act="fsSwapDo" data-old="' + esc(a.name) + '">Choose</button></div></div>' : '') + '</div>';
+        }).join('') + '</div><p class="pa-label" style="margin:14px 0 2px">All things to do within ' + esc(st.nearbyKm) + ' km</p>';
+    }
+    if (S.fpv && !S.fsActsBusy && acts.length) actsBody += acts.map(function (a, i) {
       var photo = ap[a.name] || a.autoPhoto || a.basePhoto, off = hidA.indexOf(a.name) >= 0, gt = 'act:' + i, open = S.fsActOpen === i;
       var body = '';
       if (open) {
@@ -940,6 +964,7 @@
     if (S.fpv) { var shownA = all('[data-fsact]'); var hid = (F.settings.actHidden || []).filter(function (n) { return !shownA.some(function (x) { return x.dataset.fsact === n; }); }); shownA.forEach(function (x) { if (!x.checked) hid.push(x.dataset.fsact); }); b.actHidden = hid; }
     b.actPhotos = F.settings.actPhotos || {};
     b.actPlace = F.settings.actPlace || null;
+    b.actPinned = F.settings.actPinned || [];
     b.photoPos = F.settings.photoPos || {};
     b.photos = F.settings.photos; // changed by the photo controls directly
     return b;
@@ -959,8 +984,8 @@
     var wa = String(st.whatsapp || st.phone || F.propertyPhone || '').replace(/\D/g, ''); if (wa.indexOf('00') === 0) wa = wa.slice(2); if (wa.charAt(0) === '0') wa = '27' + wa.slice(1);
     d.contact = { phone: st.phone || F.propertyPhone || '', whatsapp: wa.length >= 9 ? wa : '', email: st.email || F.propertyEmail || '' };
     var hidA = st.actHidden || [], ap = st.actPhotos || {};
-    var all = S.fpv.nearby || [], ord = S.fpvOrder || all.map(function (a, i) { return i; });
-    d.nearby = ord.filter(function (i) { return all[i] && hidA.indexOf(all[i].name) < 0; }).slice(0, 10).sort(function (a, b) { return a - b; })
+    var all = S.fpv.nearby || [];
+    d.nearby = fsPageActs()
       .map(function (i) { return Object.assign({}, all[i], { photo: ap[all[i].name] || all[i].autoPhoto || all[i].basePhoto || '' }); });
     d.offers = st.showOffers ? (S.fpv.offers || []) : [];
     d.photoPos = st.photoPos || {};
@@ -1032,7 +1057,7 @@
   function fsLoadPreview(km) {
     S.fsActsBusy = true;
     return api('frontPreview', { km: km || (S.front && S.front.settings.nearbyKm) || 30, actPlace: S.front ? S.front.settings.actPlace || null : undefined }).then(function (d) {
-      S.fpv = d; S.fsActsBusy = false; S.fsActOpen = null; S.fsAP = null;
+      S.fpv = d; S.fsActsBusy = false; S.fsActOpen = null; S.fsAP = null; S.fsSwap = null;
       // The preview shows 10 picked at random, like the real page (same pick until the list reloads).
       var ord = (d.nearby || []).map(function (a, i) { return i; }); for (var k = ord.length - 1; k > 0; k--) { var j = Math.floor(Math.random() * (k + 1)), x = ord[k]; ord[k] = ord[j]; ord[j] = x; } S.fpvOrder = ord;
       if (S.front) { S.front.snPhotos = d.snPhotos || []; S.front.snDescription = d.snDescription || ''; }
@@ -1824,6 +1849,15 @@
     if (a === 'fsActPick') { keepFront(); var ai = +t.dataset.i; S.fsActOpen = S.fsActOpen === ai ? null : ai; S.fsG = null; S.front._fresh = true; render();
       if (S.fsActOpen === ai) fsActLoad(ai, false); else S.fsAP = null; return; }
     if (a === 'fsAPg') return fsActLoad(+t.dataset.i, true);
+    if (a === 'fsPin') { keepFront(); var pn = (S.front.settings.actPinned || []).filter(function (x) { return x !== t.dataset.name; }); if (t.dataset.on === '1') pn.push(t.dataset.name); S.front.settings.actPinned = pn.slice(0, 10); fsMarkDirty(); S.front._fresh = true; render(); pvSend('nearby'); return; }
+    if (a === 'fsSwapOpen') { keepFront(); var si = +t.dataset.i; S.fsSwap = S.fsSwap === si ? null : si; S.front._fresh = true; render(); return; }
+    if (a === 'fsSwapDo') {
+      keepFront(); var sel = document.getElementById('fs-swapsel'), nw = sel && (S.fpv.nearby || [])[+sel.value]; if (!nw) return;
+      var p2 = (S.front.settings.actPinned || []).filter(function (x) { return x !== t.dataset.old && x !== nw.name; }); p2.push(nw.name);
+      // The swapped-out one makes room: a random one leaves the random pick, a kept one is no longer kept.
+      if (S.fpvOrder) { var oi = (S.fpv.nearby || []).findIndex(function (x) { return x.name === t.dataset.old; }); if (oi >= 0) S.fpvOrder = S.fpvOrder.filter(function (k) { return k !== oi; }).concat([oi]); }
+      S.front.settings.actPinned = p2.slice(0, 10); S.fsSwap = null; fsMarkDirty(); S.front._fresh = true; render(); pvSend('nearby'); return;
+    }
     if (a === 'fsActUse') { keepFront(); var apu = S.front.settings.actPhotos = Object.assign({}, S.front.settings.actPhotos || {}); apu[t.dataset.name] = t.dataset.u; fsMarkDirty(); S.front._fresh = true; render(); pvSend('nearby'); return; }
     if (a === 'fsActUp') { S.fsActUpName = t.dataset.name; var af = document.getElementById('fs-actfile'); if (af) af.click(); return; }
     if (a === 'fsMove') { keepFront(); var cur = ((S.front.settings.photoPos || {})[t.dataset.u] || '50% 50%').split(' '); S.fsMove = { u: t.dataset.u, x: parseInt(cur[0], 10), y: parseInt(cur[1], 10) }; S.front._fresh = true; render(); var fr = document.getElementById('fs-mvframe'); if (fr) fr.focus(); return; }

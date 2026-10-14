@@ -1504,7 +1504,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     // Front store builder (Jean, 2026-10-13): the big headline, a price badge,
     // short highlights, a rating badge, a photo/beds/line per unit, and a
     // photo per nearby activity (or hidden).
-    headline: "", priceFrom: "", highlights: [], ratingValue: "", ratingCount: "", ratingLink: "", unitInfo: {}, actPhotos: {}, actHidden: [],
+    headline: "", priceFrom: "", highlights: [], ratingValue: "", ratingCount: "", ratingLink: "", unitInfo: {}, actPhotos: {}, actPinned: [], actHidden: [],
     // Where to find things to do from, when not the property's own pin/tree place: { p, t, s }.
     actPlace: null,
     // Where each photo sits in its frame ("Move photo" in the builder): { url: "x% y%" }.
@@ -1550,6 +1550,8 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     if (body.photoPos && typeof body.photoPos === "object") { s.photoPos = {}; for (const [k, v] of Object.entries(body.photoPos).slice(0, 150)) { const u = cleanStr(String(k || ""), 600), pos = String(v || ""); if (okPhoto(u) && /^\d{1,3}% \d{1,3}%$/.test(pos) && pos !== "50% 50%") s.photoPos[u] = pos; } }
     if (body.actPlace === null) s.actPlace = null;
     else if (body.actPlace && typeof body.actPlace === "object") { const t = cleanStr(String(body.actPlace.t || ""), 80); s.actPlace = t ? { p: cleanStr(String(body.actPlace.p || ""), 80), t, s: cleanStr(String(body.actPlace.s || ""), 80) } : null; }
+    // Things to do the property keeps on its page (the rest come up at random), at most 10.
+    if (Array.isArray(body.actPinned)) s.actPinned = [...new Set(body.actPinned.map((x) => cleanStr(String(x || ""), 120)).filter(Boolean))].slice(0, 10);
     if (Array.isArray(body.actHidden)) s.actHidden = body.actHidden.map((x) => cleanStr(String(x || ""), 120)).filter(Boolean).slice(0, 100);
     str("welcome", 160); str("description", 3000); str("phone", 30); str("whatsapp", 30); str("email", 120);
     str("wifiName", 60); str("wifiPassword", 60); str("guestNotes", 1500);
@@ -1644,7 +1646,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
       payMode: payMode(prop), approveGuests: !prop.channel && !!(prop.settings && prop.settings.approveGuests),
       headline: s.headline || "", highlights: s.highlights || [], priceFrom: fsPriceFrom(prop, s),
       rating: s.ratingValue ? { value: s.ratingValue, count: s.ratingCount || "", link: s.ratingLink || "" } : null,
-      actPhotos: s.actPhotos || {}, actHidden: s.actHidden || [], actPlace: s.actPlace || null, photoPos: s.photoPos || {} };
+      actPhotos: s.actPhotos || {}, actHidden: s.actHidden || [], actPinned: s.actPinned || [], actPlace: s.actPlace || null, photoPos: s.photoPos || {} };
   }
   // The price badge: what the property typed, else its lowest price a night
   // (Reservation settings), only when prices are switched on.

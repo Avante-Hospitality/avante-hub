@@ -58,10 +58,13 @@ export async function stayPayload(core, prop, opts) {
     });
     if (opts.all) list = list.slice(0, 60); // the builder: all of them, closest first
     else {
-      // Guests: 10 picked at random from everything within the distance, shown closest first.
+      // Guests: the ones the property keeps on its page, then the rest picked at
+      // random from everything within the distance (10 in all), closest first.
+      const pins = new Set(page.actPinned || []);
       list = list.filter((a) => !a.hidden);
-      for (let i = list.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [list[i], list[j]] = [list[j], list[i]]; }
-      list = list.slice(0, 10).sort((a, b) => a.km - b.km);
+      const kept = list.filter((a) => pins.has(a.name)), rest = list.filter((a) => !pins.has(a.name));
+      for (let i = rest.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [rest[i], rest[j]] = [rest[j], rest[i]]; }
+      list = kept.slice(0, 10).concat(rest).slice(0, 10).sort((a, b) => a.km - b.km);
     }
     // No photo yet and never looked for: find one (library first, then Google) and remember it.
     const missing = list.filter((a) => !a.photo && a.id && !(a.id in remembered) && !a.hidden);
@@ -77,6 +80,6 @@ export async function stayPayload(core, prop, opts) {
     photos, description: page.description || info.description || "", attractions: info.attractions || "", moreInfo: info.moreInfo || "",
     place: { country: place.country || "", province: place.province || "", region: place.region || "", city: place.city || "", suburb: place.suburb || "" },
     latitude: isFinite(lat) && lat !== 0 ? lat : null, longitude: isFinite(lng) && lng !== 0 ? lng : null, nearby, nearbyKm: outKm,
-    actPhotos: undefined, actHidden: undefined, actPlace: opts.all ? page.actPlace || null : undefined, area: opts.all ? area || null : undefined,
+    actPhotos: undefined, actHidden: undefined, actPinned: undefined, actPlace: opts.all ? page.actPlace || null : undefined, area: opts.all ? area || null : undefined,
   }, opts.all ? { snPhotos: info.images || [], snDescription: info.description || "", uploaded } : {});
 }
