@@ -412,7 +412,7 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
     var d = S.d;
     if (map) { map.remove(); map = null; }
     map = L.map(el, { scrollWheelZoom: false });
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, referrerPolicy: 'strict-origin-when-cross-origin', attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
     var home = L.circleMarker([d.latitude, d.longitude], { radius: 10, color: '#0e2f44', fillColor: '#0DCDC2', fillOpacity: 1, weight: 3 }).addTo(map).bindPopup('<b>' + esc(d.name) + '</b>');
     var pts = [[d.latitude, d.longitude]];
     (d.nearby || []).forEach(function (a) { if (isFinite(a.latitude) && isFinite(a.longitude)) { pts.push([a.latitude, a.longitude]); L.circleMarker([a.latitude, a.longitude], { radius: 7, color: '#ED8B00', fillColor: '#ffd59a', fillOpacity: 1, weight: 2 }).addTo(map).bindPopup('<b>' + esc(a.name) + '</b><br>' + esc(a.distance || '')); } });
