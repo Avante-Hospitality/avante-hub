@@ -9,6 +9,7 @@
 import { PAError } from "./pa-core.js";
 import { nearestByDistance } from "./geo-distance.js";
 import { randomToken } from "./pa-crypto.js";
+import { badEmails } from "./emails.js";
 
 // Booking systems the hub knows. "direct" = phone / email / website.
 // Activitar (operators on <operator>.activitar.com) and ActivityBridge (by
@@ -70,7 +71,7 @@ export function cleanActivity(body, cur = {}) {
   // Reference numbers needed to book it
   s("bookingSystem", 40); s("systemName", 60); s("supplierRef", 60); s("productCode", 60); s("optionCode", 60);
   // How to book it
-  s("bookingPhone", 30); s("bookingEmail", 120); s("bookingUrl", 400);
+  s("bookingPhone", 30); s("bookingEmail", 600); s("bookingUrl", 400);
   s("hubActivityId", 80);
   if (body.days !== undefined) a.days = (Array.isArray(body.days) ? body.days : []).filter((d) => DAYS.includes(d));
   if (body.pickup !== undefined) a.pickup = !!body.pickup;
@@ -90,7 +91,8 @@ export function cleanActivity(body, cur = {}) {
   if (a.active === undefined) a.active = true;
   if (!Array.isArray(a.days)) a.days = [];
   if (!a.name) throw new PAError("Give the activity a name.");
-  if (!okEmail(a.bookingEmail)) throw new PAError("The supplier's booking email doesn't look right.");
+  // Several supplier addresses are fine, separated by commas (Jean, 2026-10-14).
+  if (badEmails(a.bookingEmail).length) throw new PAError("The supplier's booking email: \"" + badEmails(a.bookingEmail)[0] + "\" doesn't look like an email address. Separate several with a comma.");
   if (!okUrl(a.bookingUrl)) throw new PAError("The booking link must start with https://");
   if (a.minPax && a.maxPax && a.minPax > a.maxPax) throw new PAError("Minimum people can't be more than maximum people.");
   if (a.bookingSystem === "other" && !a.productCode) throw new PAError("Add the activity's product code in the booking system, so it can be booked there.");

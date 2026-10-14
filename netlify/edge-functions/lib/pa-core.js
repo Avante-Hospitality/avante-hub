@@ -18,6 +18,7 @@
 import { SNClient, SNError, addDays, nightsBetween } from "./sn-client.js";
 import { parseIcs, buildIcs, nightsToRanges } from "./ical.js";
 import { encryptJSON, decryptJSON, randomToken, sha256Hex } from "./pa-crypto.js";
+import { emailList as listOf, badEmails, recipients } from "./emails.js";
 
 export const CHANNELS = { bcom: "Booking.com", airbnb: "Airbnb", lekke: "LekkeSlaap" };
 const CONNECT_DAYS = [14];               // connect reads only the first 14 days; later days load as the calendar moves (Jean: keep SN calls light)
@@ -151,6 +152,22 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     if (!!prop.channel !== ch) { prop.channel = ch; await setJSON("site:" + prop.siteId, prop); }
   }
   const CHANNEL_COMMISSION = 4.95;
+
+  // Who gets the hub's emails about the property (Jean, 2026-10-14): its own
+  // email (settings.email), its contact person for bookings and queries
+  // (settings.contactEmail), or both (settings.notifyWho). Every field may
+  // hold several addresses separated by commas.
+  const NOTIFY_WHO = ["owner", "contact", "both"];
+  function propertyTo(prop) { const s = (prop && prop.settings) || {}; return recipients(s.email, s.contactEmail, s.notifyWho || "both").join(", "); }
+  // Saves the contact fields both kinds of property share; throws on a bad address.
+  function saveContactFields(s, body) {
+    const em = (k, label) => { if (body[k] === undefined) return; const v = cleanStr(body[k], 600); if (badEmails(v).length) throw new PAError(label + ": \"" + badEmails(v)[0] + "\" doesn't look like an email address. Separate several with a comma."); s[k] = listOf(v).join(", "); };
+    em("email", "Email"); em("contactEmail", "Contact email");
+    if (body.phone !== undefined) s.phone = cleanStr(body.phone, 120);
+    if (body.contactName !== undefined) s.contactName = cleanStr(body.contactName, 120);
+    if (body.contactPhone !== undefined) s.contactPhone = cleanStr(body.contactPhone, 120);
+    if (body.notifyWho !== undefined) s.notifyWho = NOTIFY_WHO.includes(body.notifyWho) ? body.notifyWho : "both";
+  }
 
   async function disconnect(token) {
     const prop = await auth(token);
@@ -518,7 +535,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     await refreshPayment(client, b);
     if (b.status === "Cancelled") { b.approval.state = "expired"; await saveBookings(prop, list); throw new PAError(b.ref + " was already cancelled on Stock Network (its request time ran out).", 409); }
     const g = b.guest || {}, units = b.items.filter((i) => !i.cancelled).map((i) => i.unit + " " + i.start + " to " + i.end).join(", ");
-    const fs = fsSettings(prop), replyTo = validEmail(fs.email) ? fs.email : (prop.settings && prop.settings.email) || "";
+    const fs = fsSettings(prop), replyTo = listOf(fs.email).length ? fs.email : propertyTo(prop);
     if (accept) {
       const d = await client.setStatus(b.reservationId, "Booked", "Accepted by the property (Avante hub)");
       b.status = b.snStatus = d.reservationStatus || "Booked";
@@ -734,7 +751,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     a.used = true; a.usedAt = now().toISOString();
     await setJSON("appr:" + t, a);
     await saveBookings(prop, list);
-    if (prop.settings && prop.settings.email) await sendEmail(prop.settings.email, "Booking " + b.ref + " cancelled (approved)", "<p>The affiliate approved the cancellation of paid booking <b>" + esc(b.ref) + "</b>. It is now cancelled on Stock Network. Any refund to the guest is handled outside the hub.</p>").catch(() => false);
+    if (propertyTo(prop)) await sendEmail(propertyTo(prop), "Booking " + b.ref + " cancelled (approved)", "<p>The affiliate approved the cancellation of paid booking <b>" + esc(b.ref) + "</b>. It is now cancelled on Stock Network. Any refund to the guest is handled outside the hub.</p>").catch(() => false);
     return { ref: b.ref, resortName: prop.resortName };
   }
 
@@ -821,15 +838,13 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     if (prop.channel) {
       // Only the contact details: everything else comes from its channel manager.
       const s0 = prop.settings || {};
-      if (body.email !== undefined) s0.email = cleanStr(body.email, 120);
-      if (body.phone !== undefined) s0.phone = cleanStr(body.phone, 30);
+      saveContactFields(s0, body);
       prop.settings = s0;
       await setJSON("site:" + prop.siteId, prop);
-      return { ok: true, settings: { email: s0.email || "", phone: s0.phone || "" } };
+      return { ok: true, settings: { email: s0.email || "", phone: s0.phone || "", contactName: s0.contactName || "", contactPhone: s0.contactPhone || "", contactEmail: s0.contactEmail || "", notifyWho: s0.notifyWho || "both" } };
     }
     const s = prop.settings || {};
-    if (body.email !== undefined) s.email = cleanStr(body.email, 120);
-    if (body.phone !== undefined) s.phone = cleanStr(body.phone, 30);
+    saveContactFields(s, body);
     if (body.minStay !== undefined) s.minStay = Math.max(1, Math.min(30, Number(body.minStay) || 1));
     if (body.autoBook !== undefined) s.autoBook = !!body.autoBook;
     if (body.calendarStart && typeof body.calendarStart === "object") {
@@ -978,14 +993,14 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     const label = CHANNELS[ev.channel];
     const nights = nightsBetween(ev.start, ev.end);
     try {
-      const res = await createOnSN(prop, client, [{ unit: ev.unit, start: ev.start, end: ev.end }], { fullName: label, email: s.email || "", cellphone: s.phone }, {
+      const res = await createOnSN(prop, client, [{ unit: ev.unit, start: ev.start, end: ev.end }], { fullName: label, email: listOf(s.email)[0] || "", cellphone: s.phone }, {
         reference: String(ev.uid).slice(0, 50), notes: label + " booking imported by the Avante hub" + (ev.summary ? " · " + ev.summary : ""),
         amountFor: (it, stock) => (s.prices && s.prices[ev.unit] ? s.prices[ev.unit] * nights : stock.availability.rates.rate),
       });
       // No payment on Stock Network for channel bookings: Booked straight away, so SN's request rule can't cancel them.
       const st = await holdBooked(client, res, label + " booking (paid on the channel)");
       list.push({ ref: "J" + res.refNo, reservationId: res.reservationId, status: st || res.status || "Request", snStatus: st || res.status || "Request", statusError: st ? undefined : "Still a Request on Stock Network: set it to Booked there.", origin: "channel", channel: ev.channel, source: label, channelRef: ev.uid,
-        guest: { first: label, last: "", email: s.email || "", cellphone: s.phone }, items: [{ unit: ev.unit, start: ev.start, end: ev.end, detailId: res.details[0] ? res.details[0].detailId : null }], total: res.total, createdAt: now().toISOString() });
+        guest: { first: label, last: "", email: listOf(s.email)[0] || "", cellphone: s.phone }, items: [{ unit: ev.unit, start: ev.start, end: ev.end, detailId: res.details[0] ? res.details[0].detailId : null }], total: res.total, createdAt: now().toISOString() });
       ev.status = "booked"; ev.ref = "J" + res.refNo; ev.error = null;
     } catch (e) {
       ev.status = e.status === 409 ? "clash" : "error"; ev.error = e.message;
@@ -1347,7 +1362,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     const c = contactOf(b);
     if (!validEmail(c.email)) return { sent: false, error: "no-email" };
     const s = prop.settings || {};
-    const ok = await sendEmail(c.email, subject, emailHtml(prop, text), { fromName: prop.resortName || "", replyTo: validEmail(s.email) ? s.email : "" }).catch(() => false);
+    const ok = await sendEmail(c.email, subject, emailHtml(prop, text), { fromName: prop.resortName || "", replyTo: propertyTo(prop) }).catch(() => false);
     if (ok) b.msgLog = (b.msgLog || []).concat([{ at: now().toISOString(), kind, via: "email", subject: cleanStr(subject, 150), text: cleanStr(text, 1500) }]).slice(-30);
     return ok ? { sent: true } : { sent: false, error: "failed" };
   }
@@ -1428,7 +1443,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     const list = await bookingsOf(prop);
     const items = messageItems(prop, list);
     const t = now().getTime();
-    return { list: msgList(prop), reviewsConnected: !!(reviews && reviews.baseUrl && reviews.secret), propertyEmail: (prop.settings && prop.settings.email) || "",
+    return { list: msgList(prop), reviewsConnected: !!(reviews && reviews.baseUrl && reviews.secret), propertyEmail: propertyTo(prop),
       // WhatsApp messages waiting for the property to tap Send.
       due: items.filter((i) => i.wa === "due"),
       // Emails the hub couldn't send (no address yet, or the send failed).
@@ -1484,9 +1499,9 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
       }
     }
     if (changed) await saveBookings(prop, list);
-    if (fresh.length && s.email) {
+    if (fresh.length && propertyTo(prop)) {
       const rows = fresh.map(({ b, msg }) => { const c = contactOf(b); return "<li><b>" + esc(msg.name) + "</b> to " + esc(c.name || "the guest") + " (" + esc(b.ref) + ")" + (waNumber(c.cell) ? "" : " — add their cellphone number first") + "</li>"; }).join("");
-      await sendEmail(s.email, "WhatsApp messages to send: " + (prop.resortName || "your property"),
+      await sendEmail(propertyTo(prop), "WhatsApp messages to send: " + (prop.resortName || "your property"),
         "<p>These guest messages are ready to send on WhatsApp:</p><ul>" + rows + "</ul><p>Open the Avante hub, Property Affiliate → Communication, and tap <b>WhatsApp</b> on each one. WhatsApp opens with the message ready.</p>").catch(() => false);
     }
     return fresh.length + emailed;
@@ -1553,9 +1568,9 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     // Things to do the property keeps on its page (the rest come up at random), at most 10.
     if (Array.isArray(body.actPinned)) s.actPinned = [...new Set(body.actPinned.map((x) => cleanStr(String(x || ""), 120)).filter(Boolean))].slice(0, 10);
     if (Array.isArray(body.actHidden)) s.actHidden = body.actHidden.map((x) => cleanStr(String(x || ""), 120)).filter(Boolean).slice(0, 100);
-    str("welcome", 160); str("description", 3000); str("phone", 30); str("whatsapp", 30); str("email", 120);
+    str("welcome", 160); str("description", 3000); str("phone", 30); str("whatsapp", 30); str("email", 600);
     str("wifiName", 60); str("wifiPassword", 60); str("guestNotes", 1500);
-    if (s.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.email)) throw new PAError("That email address doesn't look right.");
+    if (s.email && badEmails(s.email).length) throw new PAError("\"" + badEmails(s.email)[0] + "\" doesn't look like an email address. Separate several with a comma.");
     if (body.nearbyKm !== undefined) s.nearbyKm = Math.max(1, Math.min(150, Math.round(Number(body.nearbyKm)) || 30));
     if (body.minNoticeDays !== undefined) s.minNoticeDays = Math.max(0, Math.min(30, Math.round(Number(body.minNoticeDays)) || 0));
     if (Array.isArray(body.hiddenUnits)) s.hiddenUnits = body.hiddenUnits.map((u) => cleanStr(String(u), 200)).filter((u) => prop.units.some((x) => x.name === u));
@@ -1743,18 +1758,18 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     if (approval) {
       const b0 = res.booking, st0 = prop.settings || {}, u0 = b0.items.map((i) => i.unit + " " + i.start + " to " + i.end).join(", ");
       await fsStat(prop, "bookings").catch(() => {});
-      if (st0.email) await sendEmail(st0.email, "Booking request to approve " + b0.ref + " · " + (prop.resortName || ""),
+      if (propertyTo(prop)) await sendEmail(propertyTo(prop), "Booking request to approve " + b0.ref + " · " + (prop.resortName || ""),
         "<p>A guest asked to book on your Avante front store. Accept or decline it in the hub: Property Affiliate → Bookings.</p><p><b>" + esc(b0.ref) + "</b> · " + esc(u0) + "<br>Guest: " + esc(b0.guest.first + " " + b0.guest.last) + " · " + esc(b0.guest.cellphone) + " · " + esc(b0.guest.email) + (b0.total ? "<br>Total: R" + esc(Math.round(b0.total)) : "") + "</p><p>If you don't answer, Stock Network cancels the request after the number of days set in its back office.</p>").catch(() => false);
       await sendEmail(email, "Booking request " + b0.ref + " at " + (prop.resortName || ""),
         "<div style=\"font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.55;color:#1f2937;max-width:560px\"><p>Hi " + esc(b0.guest.first) + ",</p><p>Thank you. <b>" + esc(prop.resortName || "") + "</b> has your booking request <b>" + esc(b0.ref) + "</b> (" + esc(u0) + ") and will confirm it soon. You'll get the payment details as soon as it's accepted.</p></div>",
-        { fromName: prop.resortName || "", replyTo: s.email || st0.email || "" }).catch(() => false);
+        { fromName: prop.resortName || "", replyTo: propertyTo(prop) }).catch(() => false);
       return { ref: b0.ref, total: b0.total, items: b0.items.map((i) => ({ unit: i.unit, start: i.start, end: i.end })), status: "Request", awaitingApproval: true, pay: { gatewayUrl: null, bank: null, noMethod: false, emailed: true } };
     }
     const b = res.booking, pay = res.pay || {};
     await fsStat(prop, "bookings").catch(() => {});
     const units2 = b.items.map((i) => i.unit + " " + i.start + " to " + i.end).join(", ");
     const st = prop.settings || {};
-    if (st.email) await sendEmail(st.email, "New front store booking " + b.ref + " · " + (prop.resortName || ""),
+    if (propertyTo(prop)) await sendEmail(propertyTo(prop), "New front store booking " + b.ref + " · " + (prop.resortName || ""),
       "<p>A guest booked on your Avante front store.</p><p><b>" + esc(b.ref) + "</b> · " + esc(units2) + "<br>Guest: " + esc(b.guest.first + " " + b.guest.last) + " · " + esc(b.guest.cellphone) + " · " + esc(b.guest.email) +
       (b.total ? "<br>Total: R" + esc(Math.round(b.total)) : "") + "</p><p>It's on Stock Network as " + esc(b.status) + " and in the hub under Property Affiliate → Bookings.</p>").catch(() => false);
     // Built from parts: only the payment gateway address becomes a link.
@@ -1762,7 +1777,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     const bankHtml = pay.bank ? "<p><b>" + (payLink ? "Or pay by EFT" : "Please pay by EFT") + "</b><br>Bank: " + esc(pay.bank.bankName) + "<br>Account name: " + esc(pay.bank.accountHolder) + "<br>Account number: " + esc(pay.bank.accountNumber) + "<br>Branch code: " + esc(pay.bank.branchCode || "") + "<br>Reference: <b>" + esc(b.ref) + "</b>" + (pay.bank.note ? "<br>" + esc(pay.bank.note) : "") + "</p>" : "";
     if (payLink || bankHtml) await sendEmail(email, "Your booking " + b.ref + " at " + (prop.resortName || ""),
       "<div style=\"font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.55;color:#1f2937;max-width:560px\"><p>Hi " + esc(b.guest.first) + ",</p><p>Thank you for booking <b>" + esc(prop.resortName || "with us") + "</b>.</p><p>Booking reference: <b>" + esc(b.ref) + "</b><br>" + esc(units2) + (b.total ? "<br>Amount: R" + esc(Math.round(b.total)) : "") + "</p>" + payLink + bankHtml + "<p>Reply to this email if you have any questions.</p></div>",
-      { fromName: prop.resortName || "", replyTo: s.email || st.email || "" }).catch(() => false);
+      { fromName: prop.resortName || "", replyTo: propertyTo(prop) }).catch(() => false);
     return { ref: b.ref, total: b.total, items: b.items.map((i) => ({ unit: i.unit, start: i.start, end: i.end })), status: b.status,
       pay: { gatewayUrl: pay.gatewayUrl || null, bank: pay.bank || null, noMethod: !!pay.noMethod, emailed: !!(pay.gatewayUrl || pay.bank) } };
   }
@@ -1806,5 +1821,5 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
   }
   function notDemo(b) { if (b && b.demo) throw new PAError("This is a demo booking: it isn't on Stock Network, so it can't be changed, paid or cancelled.", 409); }
 
-  return { requestChannelHelp, prefetch, siteOfToken, newSession, decide, refreshStatuses, clientFor, connect, auth, disconnect, publicProperty, availability, search, book, cancel, cancelUnit, edit, find, saveSettings, channelsView, payInfo, markPaidEft, approvalInfo, approveCancel, affStatus, resume, seedDemo, clearDemo, isDemoSite, saveContact, checkIn, guests, messagesView, saveMessages, prepareMessage, markMessage, emailNow, inHouse, emailInHouse, firstBookable, fsSettings, saveFrontStore, frontStoreView, uploadFrontPhoto, removeFrontPhoto, frontPhoto, propertyBySlug, publicFrontStore, publicGuestInfo, guestKeyOk, publicOffers, publicAvailability, publicQuote, publicBook, fsStat, propertyReviewLink, remindMessages, icalFeed, runSync, syncProperty, channelEvents, addChannelEvent, snapshot, ensureWindow, resolveUnitNotice, findResortsForSite };
+  return { propertyTo, requestChannelHelp, prefetch, siteOfToken, newSession, decide, refreshStatuses, clientFor, connect, auth, disconnect, publicProperty, availability, search, book, cancel, cancelUnit, edit, find, saveSettings, channelsView, payInfo, markPaidEft, approvalInfo, approveCancel, affStatus, resume, seedDemo, clearDemo, isDemoSite, saveContact, checkIn, guests, messagesView, saveMessages, prepareMessage, markMessage, emailNow, inHouse, emailInHouse, firstBookable, fsSettings, saveFrontStore, frontStoreView, uploadFrontPhoto, removeFrontPhoto, frontPhoto, propertyBySlug, publicFrontStore, publicGuestInfo, guestKeyOk, publicOffers, publicAvailability, publicQuote, publicBook, fsStat, propertyReviewLink, remindMessages, icalFeed, runSync, syncProperty, channelEvents, addChannelEvent, snapshot, ensureWindow, resolveUnitNotice, findResortsForSite };
 }

@@ -39,6 +39,8 @@
     <div class="ht-card ht-new" aria-label="What's new">
       <h2>What's new</h2>
       <ul>
+        <li><time>14 Oct 2026</time> Every email box takes <b>several email addresses</b>, separated by a comma: affiliate <span class="field">Email (optional; several: separate with commas)</span>, the two "Notify these email addresses…" boxes, <span class="field">Email the edit link to (several: separate with commas)</span>, and the owner, contact and property emails on a listing. Each address gets the email, so you can add one that sets off other actions (for example WhatsApp group messages).</li>
+        <li><time>14 Oct 2026</time> Listings have a <b>contact person for bookings and queries</b> (<span class="field">Contact person</span>, <span class="field">Contact phone</span>, <span class="field">Contact email (several: separate with commas)</span>) and <span class="field">Send Avante's emails about this listing to</span>: both, the owner only, or the contact person only. Status emails and the edit link follow that choice. See <a href="#propertyListings">Review a listing</a>.</li>
         <li><time>14 Oct 2026</time> Properties already on Stock Network: <b>Get the property</b> also reads Stock Network's property feed (property type, phone, email, links, check-in/out times). The listing shows <b>Not on Stock Network — please fill in:</b> with the missing boxes marked, and a <b>Pull again from Stock Network</b> button that only fills empty boxes. A property type you type once is remembered for every property of that Stock Network type.</li>
         <li><time>14 Oct 2026</time> Add an activity: Google photos come up as soon as you type the name, and you can pick one (or upload) before you save. Every activity photo now also goes into the hook builder's photo library, tagged with the activity and its town, and becomes its main photo.</li>
         <li><time>14 Oct 2026</time> Main photos: the photo you add last to an activity in Map &amp; Activities becomes its main photo on every front store and hook. A main photo chosen in the hook builder works the same way (the latest one wins).</li>
@@ -99,7 +101,7 @@
       <ol class="steps">
         <li>Tap the <span class="tab">Affiliates</span> tab, then <span class="btn">+ Add Affiliate</span>.</li>
         <li>Type the <span class="field">Affiliate ID</span> (their Stock Network agent GUID; it is also their hub username).</li>
-        <li>Type their <span class="field">Name</span> and <span class="field">Email (optional)</span>. Fill in the email: it's needed for "forgot password".</li>
+        <li>Type their <span class="field">Name</span> and <span class="field">Email (optional; several: separate with commas)</span>. Fill in the email: it's needed for "forgot password". With several addresses, each one gets the reset email.</li>
         <li>Type their <span class="field">StockNetwork Site Nr (optional)</span> (needed to match their bookings).</li>
         <li>Tick their type: Franchise Affiliate, Property Affiliate, Agent Affiliate or Channel Property Affiliate. The type decides which menus they see in their hub (Franchise or nothing ticked sees everything).</li>
         <li>Set the <b>Revenue share</b> for each channel: % or R flat.</li>
@@ -128,7 +130,7 @@
     <section id="applications">
       <h2>📝 Applications</h2>
       <ol class="steps">
-        <li>Tap <span class="tab">Applications</span>. Set the email that gets new applications and tap <b>Save</b> (once).</li>
+        <li>Tap <span class="tab">Applications</span>. In <span class="field">Notify these email addresses when a new application is submitted (separate several with commas)</span>, type the address(es) and tap <b>Save</b> (once).</li>
         <li>Tap <span class="btn g">View details</span> on an application.</li>
         <li>Contact the person. Set the status to <b>Contacted</b>.</li>
         <li>When you say yes, set it to <b>Approved</b>.</li>
@@ -263,7 +265,7 @@
       <ol class="steps">
         <li>In the same card, tap <span class="btn g">Show properties</span>. It lists every property connected in Property Affiliate, and every Channel Property Affiliate.</li>
         <li>Tap <span class="btn">Create listing</span> next to the property. The listing opens, filled in from what the hub has: name, Site Nr, Site ID, place names from the location tree, coordinates, check-in/out, units and how many each sleeps, email and phone.</li>
-        <li>Under <b>Let the property complete its listing</b>, check the address in <span class="field">Email the edit link to</span> and tap <span class="btn g">Email the edit link</span>. (Or tap <span class="btn g">Copy the link</span> and send it yourself.)</li>
+        <li>Under <b>Let the property complete its listing</b>, check the address in <span class="field">Email the edit link to (several: separate with commas)</span> (it is filled in from <b>Send Avante's emails about this listing to</b>) and tap <span class="btn g">Email the edit link</span>. (Or tap <span class="btn g">Copy the link</span> and send it yourself.)</li>
         <li>The property opens the link, fills in what's missing (owner name, photos, amenities, policies, rates…) and taps <span class="btn">Save changes</span> on step 8.</li>
         <li>Want to fill it in yourself? Tap <span class="btn g">Open full form to edit (units, amenities, rates)</span>.</li>
         <li>When it's complete, send it to Stock Network under <b>Send the files by email</b>. The email says <b>Updated property details for Stock Network</b>. If the property's rates come from NightsBridge, set <span class="field">Rates file</span> to <b>Don't send</b>.</li>
@@ -301,10 +303,13 @@
       <div class="tip">Each unit from Stock Network becomes its own unit type with 1 unit. If several units are the same type, the property can join them in step 5 (one row, with the number of units).</div>
       <h3>Review a listing</h3>
       <ol class="steps">
-        <li>Once: set <span class="field">Notify this email address when a new listing is submitted</span> and tap <b>Save</b>. New listings and agreement answers are emailed there.</li>
+        <li>Once: type the address(es) in <span class="field">Notify these email addresses when a new listing is submitted (separate several with commas)</span> and tap <b>Save</b>. New listings, listing requests and agreement answers are emailed to every address there.</li>
         <li>Tap <span class="btn g">Refresh</span>. Tap <span class="btn g">View</span> on a listing.</li>
         <li>Read the top rows: <b>Coordinates checked with Google</b>, <b>Filled from screenshots</b>, and <b>Rates (rack → SN)</b> per season.</li>
-        <li>Check and correct the details, then tap <span class="btn">Save Changes</span> (Send Agreement doesn't save these).</li>
+        <li>Check and correct the details. Several owner or property emails? Separate them with a comma.</li>
+        <li>Someone else handles the property's bookings? Fill in <span class="field">Contact person</span>, <span class="field">Contact phone</span> and <span class="field">Contact email (several: separate with commas)</span>.</li>
+        <li>Pick who gets Avante's emails in <span class="field">Send Avante's emails about this listing to</span>: <b>Both the owner and the contact person</b>, <b>The owner only</b> or <b>The contact person only</b>.</li>
+        <li>Tap <span class="btn">Save Changes</span> (Send Agreement doesn't save these).</li>
         <li>Open it again and fill in <span class="field">Commission / Revenue Share</span>, <span class="field">Listing Duration</span> and the <span class="field">Agreement Terms</span>.</li>
         <li>Tap <span class="btn">Send Agreement for Acceptance</span>. The person who sent the listing (owner or affiliate) gets an email to accept.</li>
         <li>Wait until the <b>Agreement</b> column says Accepted (you also get an email).</li>
@@ -356,7 +361,7 @@
       </ol>
       <div class="tip">Past rates are never sent again, but they stay on record: the property file has a sheet <b>All rates on record</b> with every season marked Past, Sent to SN or Not sent yet.</div>
       <div class="tip">The owner's own files (ID, proof of ownership, rate sheets, photos) are listed under <b>Files and Stock Network</b>. Tap a file name to download it.</div>
-      <div class="tip">"Listed" can only be chosen after the agreement is accepted. To say no, set Status to Rejected and save. Every status change emails the person who sent the listing.</div>
+      <div class="tip">"Listed" can only be chosen after the agreement is accepted. To say no, set Status to Rejected and save. Every status change emails the people chosen in <b>Send Avante's emails about this listing to</b> (for a listing sent by an affiliate, "owner" means the affiliate).</div>
     </section>
 
     <section id="addNbProperty">

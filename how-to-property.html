@@ -37,6 +37,8 @@
     <div class="ht-card ht-new" aria-label="What's new">
       <h2>What's new</h2>
       <ul>
+        <li><time>14 Oct 2026</time> <b>Contact person for bookings and queries</b>: add the person who handles your bookings, if it isn't you, and choose who gets Avante's emails in <span class="field">Send Avante's emails to</span> (both, your email only, or the contact person only). It's in <a href="#chan">Channels → Reservation settings</a>, or on <span class="tab">Bookings</span> for a <a href="#channel">Channel Property</a>.</li>
+        <li><time>14 Oct 2026</time> Every email box takes <b>several email addresses</b>, separated by a comma (for example <i>me@x.co.za, bookings@x.co.za</i>). Each address gets the email. The email box in Reservation settings is now called <span class="field">Your email (and on SN reservations)</span>.</li>
         <li><time>14 Oct 2026</time> Things to do photos now come in this order: Avante's main photo for the activity, then its map photo, then one found by itself. A photo you choose for your own store still wins.</li>
         <li><time>14 Oct 2026</time> Front store: the <b>Availability</b> calendar now comes after <b>Things to do nearby</b> and the map, just above Contact. Guests can still tap <b>Check availability</b> at any time.</li>
         <li><time>14 Oct 2026</time> Front store on phones: the <b>Book your stay</b> box is gone (the calendar and the bottom <b>Check availability</b> bar already do it). It appears only to show the free units after a guest checks dates.</li>
@@ -261,7 +263,7 @@
         <li>Tap <span class="btn">Add</span> next to one. Or tap <span class="btn">Add activity</span> to start from nothing.</li>
         <li>Paste the activity's booking page into <span class="field">Booking link</span>. If it is an Activitar or ActivityBridge link, the hub fills in <span class="field">Booking system</span>, <span class="field">Operator / supplier account</span> and <span class="field">Product code / activity ID</span> for you.</li>
         <li>Add <span class="field">Option / rate code</span>, prices, <span class="field">Commission %</span>, people and <span class="field">Runs on</span> days.</li>
-        <li>Add the supplier's <span class="field">Booking email</span> so the hub can email booking requests.</li>
+        <li>Add the supplier's <span class="field">Booking email</span> so the hub can email booking requests. Several addresses? Separate them with a comma.</li>
         <li>Tap <span class="btn">Save activity</span>.</li>
       </ol>
       <div class="tip">Activitar link: <code>oceansafaris.activitar.com/services/575</code> → operator <b>oceansafaris</b>, product <b>575</b>. ActivityBridge link: <code>secure.activitybridge.com/book?activityid=12564</code> → activity ID <b>12564</b>. Under "Missing:" the hub shows what still needs filling in.</div>
@@ -302,7 +304,7 @@
 
       <h3>Send WhatsApps that are due</h3>
       <ol class="steps">
-        <li>An orange number on <b>Communication</b> means WhatsApps are waiting. You also get an email (sent to your <b>Email on SN reservations</b> address).</li>
+        <li>An orange number on <b>Communication</b> means WhatsApps are waiting. You also get an email (sent to the people you chose in <span class="field">Send Avante's emails to</span>).</li>
         <li>Under <b>WhatsApp to send</b>, tap <span class="btn t">WhatsApp</span>.</li>
         <li>Check the message, then tap <span class="btn t">Open WhatsApp</span> and press Send in WhatsApp.</li>
         <li>Don't want to send it? Tap <span class="btn g">Skip</span>.</li>
@@ -318,7 +320,7 @@
         <li>WhatsApp: tap <span class="btn t">WhatsApp</span> next to each guest, one by one, and press Send in WhatsApp.</li>
         <li>Tap <span class="btn g">Done</span>.</li>
       </ol>
-      <div class="note">Set your email address first (Channels → Reservation settings) so guests' replies reach you.</div>
+      <div class="note">Set your email address first (Channels → Reservation settings) so guests' replies reach you. Replies go to the people you chose in <span class="field">Send Avante's emails to</span>.</div>
     </section>
 
     <section id="frontstore">
@@ -391,7 +393,7 @@
       <h3>8. Words and contact details</h3>
       <ol class="steps">
         <li>If you like, type your own <span class="field">About the property</span> (empty = your Stock Network description).</li>
-        <li>Type the <span class="field">Phone</span>, <span class="field">WhatsApp number</span> and <span class="field">Email</span> guests should use (empty = your Reservation settings).</li>
+        <li>Type the <span class="field">Phone</span>, <span class="field">WhatsApp number</span> and <span class="field">Email</span> guests should use (empty = your Reservation settings). The email box takes several addresses, separated by a comma.</li>
       </ol>
       <h3>9. Guest page and room card (for guests who are staying)</h3>
       <ol class="steps">
@@ -418,12 +420,15 @@
       <h3>Reservation settings</h3>
       <ol class="steps">
         <li>Tap <b>Channels</b>.</li>
-        <li>Type your <span class="field">Email on SN reservations</span> (also where guests' email replies go) and <span class="field">Phone on SN reservations (required)</span>.</li>
+        <li>Type <span class="field">Your email (and on SN reservations)</span> and <span class="field">Phone on SN reservations (required)</span>. Several email addresses? Separate them with a comma.</li>
         <li>Type your <span class="field">Minimum stay (nights)</span>.</li>
         <li>Under <b>Calendar opens on</b>, choose <b>Today</b>, or <b>A set date</b> and pick the date.</li>
         <li>Optional: type a nightly channel price per unit.</li>
+        <li>Someone else handles your bookings and questions? Under <b>Contact person for bookings and queries</b>, type the <span class="field">Contact person</span>, <span class="field">Contact phone</span> and <span class="field">Contact email</span>.</li>
+        <li>Pick who gets Avante's emails in <span class="field">Send Avante's emails to</span>: <b>Both (your email and the contact person)</b>, <b>Your email only</b> or <b>The contact person only</b>.</li>
         <li>Tap <span class="btn">Save reservation settings</span>.</li>
       </ol>
+      <div class="tip">Avante's emails are new bookings, booking requests to approve, approved cancellations and the "WhatsApp messages to send" list. Guests' email replies go to the same people. Add an extra address (for example one that sends WhatsApp group messages) the same way, with a comma.</div>
       <div class="tip"><b>A set date</b> is also your first bookable date: nobody can book in the hub before it, until that date has passed. Handy when you open for the season.</div>
       <h3>Guest payments</h3>
       <ol class="steps">
@@ -502,7 +507,9 @@
       <h3>Bookings from the hub</h3>
       <ol class="steps">
         <li>Tap <span class="tab">Bookings</span>. The list shows only bookings that came through Avante: your <b>front store</b>, and your <b>hook and booking links</b>.</li>
-        <li>Type your <span class="field">Email for new booking notices</span> and <span class="field">Phone</span>, then tap <span class="btn">Save</span>.</li>
+        <li>Type <span class="field">Your email for new booking notices</span> (several: separate with commas) and <span class="field">Phone</span>.</li>
+        <li>Someone else handles your bookings? Type the <span class="field">Contact person</span>, <span class="field">Contact phone</span> and <span class="field">Contact email</span>, and pick who gets the emails in <span class="field">Send Avante's emails to</span>.</li>
+        <li>Tap <span class="btn">Save</span>.</li>
         <li>These bookings reach your NightsBridge through Stock Network like any other Stock Network booking, marked <b>Avante Hub booking</b>.</li>
         <li>Guests always pay on the <b>Stock Network payment page</b>. There's no EFT or manual "Paid": the booking shows Paid once the payment goes through.</li>
       </ol>
@@ -531,7 +538,7 @@
         <tr><th>Problem</th><th>Try this</th></tr>
         <tr><td>A night shows "Not on SN"</td><td>That night was never given to Stock Network. Load it on Stock Network; the hub picks it up within 15 minutes.</td></tr>
         <tr><td>"Bookings open from …"</td><td>Your calendar start date is in the future. Change it in Channels → Reservation settings.</td></tr>
-        <tr><td>Guests' email replies don't reach me</td><td>Fill in Email on SN reservations in Channels → Reservation settings.</td></tr>
+        <tr><td>Guests' email replies don't reach me</td><td>Fill in <span class="field">Your email (and on SN reservations)</span> in Channels → Reservation settings, and check <span class="field">Send Avante's emails to</span>.</td></tr>
         <tr><td>An email to a guest didn't go</td><td>Add their email in the booking's Guest part. It goes on the next round.</td></tr>
         <tr><td>I can't change a booking</td><td>It is paid (locked). Change it in Stock Network, or Request cancellation.</td></tr>
         <tr><td>A channel shows "Needs attention"</td><td>Check the channel's calendar link is correct and starts with https://, then Save.</td></tr>

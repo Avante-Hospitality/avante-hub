@@ -1,4 +1,5 @@
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
+import { emailList, badEmails } from "./lib/emails.js";
 
 // Backs the public "Become an Affiliate" application form (affiliate-application.html)
 // and a matching "Applications" review tab in admin.html. Covers both Agent
@@ -49,7 +50,8 @@ async function verifyAdminToken(token) {
 async function sendNotificationEmail(to, subject, html) {
   try {
     const apiKey = Netlify.env.get("RESEND_API_KEY");
-    if (!apiKey || !to) return;
+    const list = emailList(to);   // several addresses, comma-separated (Jean, 2026-10-14)
+    if (!apiKey || !list.length) return;
     await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
@@ -58,7 +60,7 @@ async function sendNotificationEmail(to, subject, html) {
       },
       body: JSON.stringify({
         from: "Avante Travel <bookings@go.avantetravel.co.za>",
-        to: [to],
+        to: list,
         subject: subject,
         html: html,
       }),
@@ -220,7 +222,8 @@ export default async (request, context) => {
       const denied = await requireAdmin();
       if (denied) return denied;
 
-      const notificationEmail = clean(body.notificationEmail, 200);
+      const notificationEmail = clean(body.notificationEmail, 600);
+      if (badEmails(notificationEmail).length) return json({ ok: false, error: "\"" + badEmails(notificationEmail)[0] + "\" doesn't look like an email address. Separate several addresses with a comma." }, 400);
       const settingsStore = getStore({ name: "affiliate-application-settings", consistency: "strong" });
       await settingsStore.setJSON("config", { notificationEmail: notificationEmail });
       return json({ ok: true });

@@ -8,6 +8,7 @@
 //   POST { action:"book", slug, checkIn, checkOut, unit, guest, adults, children, notes }
 // Settings live in the Property Affiliate tab (pa-api.js → saveFrontStore).
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
+import { emailList } from "./lib/emails.js";
 import { createCore, PAError } from "./lib/pa-core.js";
 import { stayPayload } from "./lib/stay-payload.js";
 import { GREF, LIBID } from "./lib/act-photos.js";
@@ -31,8 +32,9 @@ export default async (request, context) => {
       const key = env("RESEND_API_KEY");
       if (!key || !to) return false;
       const name = String(opts.fromName || "").replace(/[\r\n"<>]/g, "").trim().slice(0, 80);
-      const msg = { from: (name ? '"' + name + '"' : "Avante Travel") + " <bookings@go.avantetravel.co.za>", to: [to], subject, html };
-      if (opts.replyTo) msg.reply_to = [opts.replyTo];
+      const msg = { from: (name ? '"' + name + '"' : "Avante Travel") + " <bookings@go.avantetravel.co.za>", to: emailList(to, 20), subject, html };
+    if (!msg.to.length) return false;
+      if (opts.replyTo && emailList(opts.replyTo).length) msg.reply_to = emailList(opts.replyTo);
       try { const r = await fetch("https://api.resend.com/emails", { method: "POST", headers: { authorization: "Bearer " + key, "content-type": "application/json" }, body: JSON.stringify(msg) }); return r.ok; } catch (_) { return false; }
     },
   });

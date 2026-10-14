@@ -2,6 +2,7 @@
 // availability, book / find / change / cancel, channel settings, and the
 // 15-minute channel sync (called by netlify/functions/pa-channel-sync.mjs).
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
+import { emailList } from "./lib/emails.js";
 import { createCore, PAError } from "./lib/pa-core.js";
 import { fetchResortInfo } from "./lib/hook-source.js";
 import { createActivities } from "./lib/pa-activities.js";
@@ -25,8 +26,9 @@ export default async (request) => {
     const key = env("RESEND_API_KEY");
     if (!key || !to) return false;
     const name = String(opts.fromName || "").replace(/[\r\n"<>]/g, "").trim().slice(0, 80);
-    const msg = { from: (name ? '"' + name + '"' : "Avante Travel") + " <bookings@go.avantetravel.co.za>", to: [to], subject, html };
-    if (opts.replyTo) msg.reply_to = [opts.replyTo];
+    const msg = { from: (name ? '"' + name + '"' : "Avante Travel") + " <bookings@go.avantetravel.co.za>", to: emailList(to, 20), subject, html };
+    if (!msg.to.length) return false;
+    if (opts.replyTo && emailList(opts.replyTo).length) msg.reply_to = emailList(opts.replyTo);
     try {
       const r = await fetch("https://api.resend.com/emails", { method: "POST", headers: { authorization: "Bearer " + key, "content-type": "application/json" },
         body: JSON.stringify(msg) });
@@ -83,7 +85,8 @@ export default async (request) => {
           return ((rl && rl.resorts) || []).find((r) => r && r.resortId === p.resortId) || null;
         },
       });
-      const replyTo = (prop.frontStore && prop.frontStore.email) || (prop.settings && prop.settings.email) || "";
+      // Replies go to the front store email, else to who the property chose (owner / contact person / both).
+      const replyTo = (prop.frontStore && emailList(prop.frontStore.email).length && prop.frontStore.email) || core.propertyTo(prop);
       switch (a) {
         case "activities": return json(Object.assign({ ok: true }, await acts.view(prop)));
         case "actSave": return json(Object.assign({ ok: true }, await acts.save(prop, body.activity || {})));

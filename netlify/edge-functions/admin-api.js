@@ -1,4 +1,5 @@
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
+import { badEmails } from "./lib/emails.js";
 import { generateHashtags } from "./lib/hashtag-helper.js";
 import { isShortLink, resolveShortLink, findExistingShortLink, createShortLink } from "./lib/short-link.js";
 import { correctBookingLinkSiteId, ADMIN_MASTER_SITE_GUID, toHolidayBuilderUrl } from "./lib/booking-link.js";
@@ -899,7 +900,8 @@ export default async (request, context) => {
       const affId = typeof body.affId === "string" ? body.affId.trim() : "";
       if (!affId) return json({ ok: false, error: "Please enter an affiliate ID." }, 400, cors);
       const name = typeof body.name === "string" ? body.name.trim() : "";
-      const email = typeof body.email === "string" ? body.email.trim() : "";
+      const email = typeof body.email === "string" ? body.email.trim().slice(0, 600) : "";
+      if (badEmails(email).length) return json({ ok: false, error: "Email: \"" + badEmails(email)[0] + "\" doesn't look like an email address. Separate several with a comma." }, 400, cors);
       const siteNr = typeof body.siteNr === "string" ? body.siteNr.trim() : "";
       const ALLOWED_TYPES = ["franchise", "property", "agent", "channel"];
       const types = Array.isArray(body.types)

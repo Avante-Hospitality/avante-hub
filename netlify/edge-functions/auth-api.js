@@ -1,4 +1,5 @@
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
+import { emailList, badEmails } from "./lib/emails.js";
 import {
   periodBounds,
   aggregateTransactions,
@@ -22,12 +23,13 @@ function maskEmail(e) { const m = /^(.)(.*)(@.*)$/.exec(String(e || "")); return
 
 async function sendResendEmail(to, subject, html) {
   const key = (typeof Netlify !== "undefined" ? Netlify.env.get("RESEND_API_KEY") : Deno.env.get("RESEND_API_KEY")) || "";
-  if (!key || !to) return false;
+  const list = emailList(to);   // the affiliate's email may hold several addresses
+  if (!key || !list.length) return false;
   try {
     const r = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { authorization: "Bearer " + key, "content-type": "application/json" },
-      body: JSON.stringify({ from: "Avante Travel <bookings@go.avantetravel.co.za>", to: [to], subject, html }),
+      body: JSON.stringify({ from: "Avante Travel <bookings@go.avantetravel.co.za>", to: list, subject, html }),
     });
     return r.ok;
   } catch (_) { return false; }
@@ -279,7 +281,9 @@ export default async (request, context) => {
       // upsertAffiliate action, which requires an admin session token) can
       // change an affiliate's revenue share or StockNetwork site number.
       const name = typeof body.name === "string" ? body.name.trim().slice(0, 200) : "";
-      const email = typeof body.email === "string" ? body.email.trim().slice(0, 200) : "";
+      const email = typeof body.email === "string" ? body.email.trim().slice(0, 600) : "";
+      // Several addresses are fine, separated by commas (Jean, 2026-10-14).
+      if (badEmails(email).length) return json({ ok: false, error: "\"" + badEmails(email)[0] + "\" doesn't look like an email address. Separate several with a comma." }, 400);
       const phone = typeof body.phone === "string" ? body.phone.trim().slice(0, 60) : "";
       const bank = sanitizeBankDetails(body.bank);
 

@@ -111,6 +111,19 @@
   // channel manager, so it gets only what NightsBridge doesn't give it:
   // Bookings (from the hub only), Activities, Front store and Reviews.
   function isCh() { return !!(S.prop && S.prop.channel); }
+  // Contact person for bookings and queries, and who gets the hub's emails
+  // about the property (Jean, 2026-10-14). Email boxes take several addresses.
+  function contactBlock(st) {
+    var who = st.notifyWho || 'both';
+    return '<fieldset class="pa-fieldset" style="margin-top:10px"><legend class="pa-label">Contact person for bookings and queries</legend><div class="pa-form">' +
+      '<div class="pa-field"><label class="pa-label" for="pa-cn">Contact person</label><input id="pa-cn" type="text" value="' + esc(st.contactName || '') + '" placeholder="e.g. a manager or reservations office"></div>' +
+      '<div class="pa-field"><label class="pa-label" for="pa-cp">Contact phone</label><input id="pa-cp" type="tel" value="' + esc(st.contactPhone || '') + '"></div>' +
+      '<div class="pa-field"><label class="pa-label" for="pa-ce">Contact email</label><input id="pa-ce" type="text" inputmode="email" value="' + esc(st.contactEmail || '') + '" placeholder="name@example.com, other@example.com"></div>' +
+      '<div class="pa-field"><label class="pa-label" for="pa-nw">Send Avante\'s emails to</label><select id="pa-nw">' +
+        [['both', 'Both (your email and the contact person)'], ['owner', 'Your email only'], ['contact', 'The contact person only']].map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === who ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') +
+      '</select></div></div><p class="pa-hint">Several email addresses? Separate them with a comma.</p></fieldset>';
+  }
+  function contactVals() { return { contactName: val('pa-cn').trim(), contactPhone: val('pa-cp').trim(), contactEmail: val('pa-ce').trim(), notifyWho: val('pa-nw') || 'both' }; }
   var CH_TABS = ['book', 'acts', 'front', 'rev'];
   function tabsFor() { return isCh() ? TABS.filter(function (v) { return CH_TABS.indexOf(v[0]) > -1; }) : TABS; }
   function homeView() { return isCh() ? 'book' : 'avail'; }
@@ -334,9 +347,9 @@
     });
     h += viewConnectChannels();
     h += '<section class="pa-card" aria-label="Reservation settings"><p class="pa-h2">Reservation settings</p><p class="pa-hint">Used when the hub books another channel\'s reservation onto Stock Network (client name = the channel).</p><div class="pa-form" style="margin-top:10px">' +
-      '<div class="pa-field"><label class="pa-label" for="pa-se">Email on SN reservations</label><input id="pa-se" type="email" value="' + esc(st.email || '') + '" placeholder="Your reservations inbox"></div>' +
+      '<div class="pa-field"><label class="pa-label" for="pa-se">Your email (and on SN reservations)</label><input id="pa-se" type="text" inputmode="email" value="' + esc(st.email || '') + '" placeholder="Your reservations inbox, another@example.com"></div>' +
       '<div class="pa-field"><label class="pa-label" for="pa-sp">Phone on SN reservations (required)</label><input id="pa-sp" type="tel" value="' + esc(st.phone || '') + '"></div>' +
-      '<div class="pa-field"><label class="pa-label" for="pa-sm">Minimum stay (nights)</label><input id="pa-sm" type="number" min="1" max="30" value="' + esc(st.minStay || 2) + '"></div></div>' +
+      '<div class="pa-field"><label class="pa-label" for="pa-sm">Minimum stay (nights)</label><input id="pa-sm" type="number" min="1" max="30" value="' + esc(st.minStay || 2) + '"></div></div>' + contactBlock(st) +
       (function () {
         var cs = st.calendarStart || {}, isDate = cs.mode === 'date';
         return '<fieldset class="pa-fieldset"><legend class="pa-label">Calendar opens on</legend>' +
@@ -491,8 +504,8 @@
       var cs = S.prop.settings || {};
       h += '<section class="pa-card" aria-label="How it works"><p class="pa-h2">Bookings from the hub</p>' +
         '<p class="pa-hint">This list shows only bookings that came through Avante: your front store, and your hook and booking links. They reach your NightsBridge (or other channel manager) through Stock Network, marked <b>Avante Hub booking</b>. Guests pay on the Stock Network payment page. Your rates, availability, other bookings and guest messages stay in your channel manager.</p>' +
-        '<div class="pa-form" style="margin-top:10px"><div class="pa-field"><label class="pa-label" for="ch-email">Email for new booking notices</label><input id="ch-email" type="email" value="' + esc(cs.email || '') + '"></div>' +
-        '<div class="pa-field"><label class="pa-label" for="ch-phone">Phone</label><input id="ch-phone" type="tel" value="' + esc(cs.phone || '') + '"></div></div>' +
+        '<div class="pa-form" style="margin-top:10px"><div class="pa-field"><label class="pa-label" for="ch-email">Your email for new booking notices</label><input id="ch-email" type="text" inputmode="email" value="' + esc(cs.email || '') + '" placeholder="name@example.com, other@example.com"></div>' +
+        '<div class="pa-field"><label class="pa-label" for="ch-phone">Phone</label><input id="ch-phone" type="tel" value="' + esc(cs.phone || '') + '"></div></div>' + contactBlock(cs) +
         '<div class="pa-row" style="margin-top:8px"><button type="button" class="pa-btn small" data-act="chSaveContact">Save</button></div></section>';
     }
     h += '<section class="pa-card"><div class="pa-row" style="justify-content:space-between;align-items:center"><p class="pa-h2">' + (isCh() ? 'Your hub bookings' : 'Bookings made or synced by the hub') + '</p><div class="pa-field" style="flex:0 1 280px"><label class="pa-label" for="pa-bq">Search</label><input id="pa-bq" type="search" value="' + esc(S.findQ) + '" placeholder="Reference, guest, unit or channel"></div></div>';
@@ -915,7 +928,7 @@
       '<div class="pa-field"><label class="pa-label" for="fs-desc">About the property</label><textarea id="fs-desc" rows="6" placeholder="' + esc(F.snDescription ? 'Empty = your Stock Network description is used' : 'Tell guests about your property') + '">' + esc(st.description) + '</textarea></div>' +
       '<div class="pa-form" style="margin-top:10px"><div class="pa-field"><label class="pa-label" for="fs-phone">Phone</label><input id="fs-phone" type="tel" value="' + esc(st.phone) + '" placeholder="' + esc(F.propertyPhone || '') + '"></div>' +
       '<div class="pa-field"><label class="pa-label" for="fs-wa">WhatsApp number</label><input id="fs-wa" type="tel" value="' + esc(st.whatsapp) + '" placeholder="Empty = the phone number"></div>' +
-      '<div class="pa-field"><label class="pa-label" for="fs-email">Email</label><input id="fs-email" type="email" value="' + esc(st.email) + '" placeholder="' + esc(F.propertyEmail || '') + '"></div></div>' +
+      '<div class="pa-field"><label class="pa-label" for="fs-email">Email</label><input id="fs-email" type="text" inputmode="email" value="' + esc(st.email) + '" placeholder="' + esc(F.propertyEmail || 'name@example.com, other@example.com') + '"></div></div>' +
       '<p class="pa-hint">' + (isCh() ? 'Empty boxes use the email and phone on your Bookings tab.' : 'Empty boxes use your Reservation settings (Channels).') + '</p>');
     // 9 guest page
     h += fsStep('guest', ++n, 'Guest page and room card', st.wifiName ? '✓ Wi-Fi added' : 'Not on the public page',
@@ -1286,7 +1299,7 @@
     ['minPax', 'Minimum people', 'number'], ['maxPax', 'Maximum people', 'number'], ['cutoffHours', 'Book at least … hours before', 'number'],
     ['days', 'Runs on', 'days'], ['pickup', 'Pick-up from the property possible', 'check'],
     ['h', 'How to book it with the supplier'],
-    ['bookingUrl', 'Booking link', 'url', 'Paste the Activitar / ActivityBridge link: codes fill in'], ['bookingEmail', 'Booking email', 'email', 'Booking requests are emailed here'], ['bookingPhone', 'Booking phone', 'tel'],
+    ['bookingUrl', 'Booking link', 'url', 'Paste the Activitar / ActivityBridge link: codes fill in'], ['bookingEmail', 'Booking email', 'text', 'Booking requests are emailed here (several: separate with commas)'], ['bookingPhone', 'Booking phone', 'tel'],
     ['notes', 'Notes for your staff', 'area'], ['active', 'Available to book', 'check'],
   ];
   function loadActivities() { return api('activities').then(function (d) { S.acts = d; render(); }).catch(fail); }
@@ -1668,7 +1681,7 @@
       }).catch(fail);
     }
     if (a === 'chSaveContact') {
-      return api('saveSettings', { email: val('ch-email').trim(), phone: val('ch-phone').trim() }).then(function (d) {
+      return api('saveSettings', Object.assign({ email: val('ch-email').trim(), phone: val('ch-phone').trim() }, contactVals())).then(function (d) {
         S.prop.settings = Object.assign({}, S.prop.settings || {}, d.settings || {}); S.msg = 'Saved.'; render();
       }).catch(fail);
     }
@@ -1758,7 +1771,7 @@
       var channels = {}; root.querySelectorAll('[data-imp]').forEach(function (el) { var p = el.dataset.imp.split('|'); (channels[p[0]] = channels[p[0]] || {})[p[1]] = el.value.trim(); });
       var pmEl = root.querySelector('input[name="pa-pm"]:checked');
       var csMode = root.querySelector('input[name="pa-cs-mode"]:checked');
-      return api('saveSettings', { calendarStart: { mode: csMode ? csMode.value : 'today', date: val('pa-cs-date') }, email: val('pa-se'), phone: val('pa-sp'), minStay: val('pa-sm'), autoBook: document.getElementById('pa-auto').checked, prices: prices, channels: channels,
+      return api('saveSettings', { calendarStart: { mode: csMode ? csMode.value : 'today', date: val('pa-cs-date') }, email: val('pa-se'), phone: val('pa-sp'), contactName: contactVals().contactName, contactPhone: contactVals().contactPhone, contactEmail: contactVals().contactEmail, notifyWho: contactVals().notifyWho, minStay: val('pa-sm'), autoBook: document.getElementById('pa-auto').checked, prices: prices, channels: channels,
         payMode: pmEl ? pmEl.value : 'both', approveGuests: !!(document.getElementById('pa-appr') || {}).checked, bank: { bankName: val('pa-bn'), accountHolder: val('pa-bh'), accountNumber: val('pa-ba'), branchCode: val('pa-bb'), accountType: val('pa-bt'), note: val('pa-bx') } })
         .then(function (d) { S.channels = d; S.prop.settings = d.settings; if (d.firstBookable) S.prop.firstBookable = d.firstBookable; S.from = startDate(); S.searched = null; S.msg = 'Saved. The hub reads your channel links every 15 minutes.'; render(); window.scrollTo(0, 0); }).catch(function (e) { fail(e); window.scrollTo(0, 0); });
     }

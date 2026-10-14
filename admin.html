@@ -597,8 +597,8 @@
       <input id="affIdInput" placeholder="e.g. c2fef00f-7330-4eb3-b993-f5f43fc73dff">
       <label for="affNameInput">Name</label>
       <input id="affNameInput" placeholder="e.g. Jane Smith">
-      <label for="affEmailInput">Email (optional)</label>
-      <input id="affEmailInput" placeholder="e.g. jane@example.com">
+      <label for="affEmailInput">Email (optional; several: separate with commas)</label>
+      <input id="affEmailInput" inputmode="email" placeholder="e.g. jane@example.com, bookings@example.com">
       <label for="affSiteNrInput">StockNetwork Site Nr (optional)</label>
       <input id="affSiteNrInput" placeholder="e.g. 12345">
       <p class="modal-sub" style="margin:-2px 0 8px;">The StockNetwork site number this affiliate's accommodation bookings are linked to. Shown read-only in their Hub.</p>
@@ -1202,8 +1202,8 @@
       </div>
 
       <div class="card">
-        <label for="aaNotificationEmailInput">Notify this email address when a new application is submitted</label>
-        <input id="aaNotificationEmailInput" type="email" placeholder="e.g. bookings@avantetravel.co.za">
+        <label for="aaNotificationEmailInput">Notify these email addresses when a new application is submitted (separate several with commas)</label>
+        <input id="aaNotificationEmailInput" type="text" inputmode="email" placeholder="e.g. bookings@avantetravel.co.za, info@avantetravel.co.za">
         <button class="primary" id="aaSaveNotificationEmailBtn" style="margin-top:10px;">Save</button>
         <div class="status" id="aaSettingsStatus"></div>
       </div>
@@ -1271,8 +1271,8 @@
       </div>
 
       <div class="card" style="margin-top:20px;">
-        <label for="notificationEmailInput">Notify this email address when a new listing is submitted</label>
-        <input id="notificationEmailInput" type="email" placeholder="e.g. bookings@avantetravel.co.za">
+        <label for="notificationEmailInput">Notify these email addresses when a new listing is submitted (separate several with commas)</label>
+        <input id="notificationEmailInput" type="text" inputmode="email" placeholder="e.g. bookings@avantetravel.co.za, info@avantetravel.co.za">
         <button class="primary" id="saveNotificationEmailBtn" style="margin-top:10px;">Save</button>
         <div class="status" id="propertySettingsStatus"></div>
       </div>
@@ -6683,10 +6683,15 @@
         { key: 'stateProvince', label: 'State / Province', el: 'input' },
         { key: 'country', label: 'Country', el: 'input' },
         { key: 'ownerFullName', label: 'Owner name', el: 'input' },
-        { key: 'ownerEmail', label: 'Owner email', el: 'input' },
+        { key: 'ownerEmail', label: 'Owner email (several: separate with commas)', el: 'input' },
         { key: 'ownerPhone', label: 'Owner phone', el: 'input' },
+        // Contact person for bookings and queries, and who gets the hub's emails (Jean, 2026-10-14).
+        { key: 'contactName', label: 'Contact person', el: 'input' },
+        { key: 'contactPhone', label: 'Contact phone', el: 'input' },
+        { key: 'contactEmail', label: 'Contact email (several: separate with commas)', el: 'input' },
+        { key: 'notifyWho', label: "Send Avante's emails about this listing to", el: 'select', options: [['both', 'Both the owner and the contact person'], ['owner', 'The owner only'], ['contact', 'The contact person only']] },
         { key: 'telephone', label: 'Property telephone', el: 'input' },
-        { key: 'email', label: 'Property email', el: 'input' },
+        { key: 'email', label: 'Property email (several: separate with commas)', el: 'input' },
         { key: 'infoLink', label: 'Info link', el: 'input' },
         { key: 'bookingLink', label: 'Booking link', el: 'input' },
         { key: 'description', label: 'Description', el: 'textarea' },
@@ -6733,6 +6738,14 @@
       // the property file (property + unit types + rates) and the rates /
       // stock upload file, using the Site Nr typed above.
       var FILE_LABELS = { 'id-document': 'Owner ID / passport', 'proof-of-ownership': 'Proof of ownership', 'proof-of-residence': 'Proof of residence', 'mandate': 'Signed mandate', 'property-info': 'Property document (rates / info)' };
+      // Who gets the hub's emails about a listing: owner, contact person or both
+      // (l.notifyWho), as on the server (property-onboarding-api.js submitterEmailFor).
+      function listingRecipients(l){
+        var split = function(v){ return String(v || '').split(/[,;\s]+/).filter(function(x){ return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x); }); };
+        var owner = split(l.submittedBy === 'Affiliate' ? l.affiliateEmail : (l.ownerEmail || l.email)), contact = split(l.contactEmail), who = l.notifyWho || 'both';
+        var list = who === 'owner' ? (owner.length ? owner : contact) : who === 'contact' ? (contact.length ? contact : owner) : owner.concat(contact);
+        return list.filter(function(x, i){ return list.map(function(y){ return y.toLowerCase(); }).indexOf(x.toLowerCase()) === i; }).join(', ');
+      }
       function renderListingFiles(host, l){
         if(!host) return;
         var lSaved = l;
@@ -6819,8 +6832,8 @@
             (l.existingOnSN === 'Y' ? '<div class="hint" style="margin:0 0 6px;">Already on Stock Network (Site Nr ' + escapeHtml(l.siteNr || '?') + '). Made from what the hub and Stock Network had; the missing fields still need filling in.</div>' : '') +
             (l.channelProperty === 'Y' ? '<div class="hint" style="margin:0 0 6px;"><b>Channel Property Affiliate.</b> Commission on bookings from its hooks: ' + escapeHtml(l.commissionPct || '4.95') + '% + VAT (' + (Math.round((+l.commissionPct || 4.95) * 115) / 100).toFixed(2) + '%). Guests pay through Avante\'s payment gateway.</div>' : '') +
             '<label style="display:block; font-size:13px; margin:0 0 8px;"><input type="checkbox" id="elRatesCh"' + (l.ratesFromChannel === 'Y' ? ' checked' : '') + '> Rates and availability come from a channel manager (e.g. NightsBridge): no calendar or rates in the form</label>' +
-            '<label class="hint" for="elTo" style="display:block; margin:0 0 3px;">Email the edit link to</label>' +
-            '<input id="elTo" type="text" style="width:100%;" value="' + escapeHtml(l.ownerEmail || l.email || l.affiliateEmail || '') + '">' +
+            '<label class="hint" for="elTo" style="display:block; margin:0 0 3px;">Email the edit link to (several: separate with commas)</label>' +
+            '<input id="elTo" type="text" style="width:100%;" value="' + escapeHtml(listingRecipients(l)) + '">' +
             '<div style="margin-top:8px; display:flex; flex-wrap:wrap; gap:8px; align-items:center;"><button type="button" class="btn-outline" id="elSend">Email the edit link</button><button type="button" class="btn-outline" id="elCopy">Copy the link</button><span class="hint" id="elStatus" style="margin:0"></span></div>' +
             (sentTo.length ? '<div class="hint" style="margin-top:6px;">Last emailed to ' + escapeHtml(sentTo[sentTo.length - 1].to) + ' on ' + escapeHtml(fmtPropDate(sentTo[sentTo.length - 1].at)) + '.</div>' : '');
           host.appendChild(el);
@@ -7158,7 +7171,11 @@
             var mark = gap ? ' style="border:3px dashed #8a4b00;"' : '';
             var note = gap ? '<div class="hint" style="margin:2px 0 4px; font-weight:600;">Not on Stock Network \u2014 please fill in' +
               (f.key === 'propertyType' && l.snTypeCode ? '. Type it once: the hub then fills it for every Stock Network property of this type.' : '.') + '</div>' : '';
-            if(f.el === 'textarea'){
+            if(f.el === 'select'){
+              var cur = l[f.key] || f.options[0][0];
+              html += '<label for="propField_' + f.key + '">' + escapeHtml(f.label) + '</label>' +
+                '<select id="propField_' + f.key + '">' + f.options.map(function(o){ return '<option value="' + escapeHtml(o[0]) + '"' + (o[0] === cur ? ' selected' : '') + '>' + escapeHtml(o[1]) + '</option>'; }).join('') + '</select>';
+            } else if(f.el === 'textarea'){
               html += '<label for="propField_' + f.key + '">' + escapeHtml(f.label) + '</label>' + note +
                 '<textarea id="propField_' + f.key + '"' + mark + '>' + val + '</textarea>';
             } else {

@@ -1,4 +1,5 @@
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
+import { emailList, badEmails, emailText, recipients } from "./lib/emails.js";
 import { readListingScreenshots } from "./lib/listing-reader.js";
 import { HOOKS_URL, makeHooksTicket } from "./lib/hooks-ticket.js";
 import { readResortInfo, copySnPhotos } from "./lib/sn-resort-info.js";
@@ -66,12 +67,26 @@ const EDITABLE_FIELDS = [
   "commissionRate", "listingDuration", "agreementTerms",
   "streetAddress", "siteId", "region", "sourceChannel", "channelListingLink",
   "channelReviews", "hostName", "accessibility", "icalLink",
+  // Contact person for bookings and queries, and who gets the hub's emails (Jean, 2026-10-14).
+  "contactName", "contactPhone", "contactEmail", "notifyWho",
 ];
 
 const EDITABLE_FIELD_MAX = {
   description: 4000, houseRules: 4000, moreInfo: 4000, areaInfo: 4000,
   agreementTerms: 6000, depositPolicyText: 2000, childPolicy: 1000,
+  // Email fields hold several addresses, separated by commas.
+  email: 600, ownerEmail: 600, contactEmail: 600, contactPhone: 200, telephone: 200, ownerPhone: 200,
 };
+const EMAIL_FIELDS = { ownerEmail: "Owner email", email: "Property email", affiliateEmail: "Affiliate email", contactEmail: "Contact person email" };
+// The first email field with an address that isn't valid, as a message; "" when all are fine.
+function emailFieldError(rec) {
+  for (const k of Object.keys(EMAIL_FIELDS)) {
+    const bad = badEmails(rec[k]);
+    if (bad.length) return EMAIL_FIELDS[k] + ": \"" + bad[0] + "\" doesn't look like an email address. Separate several addresses with a comma.";
+  }
+  return "";
+}
+const NOTIFY_WHO = ["owner", "contact", "both"];
 
 function sanitizeUnitTypes(input) {
   if (!Array.isArray(input)) return [];
@@ -318,7 +333,7 @@ function submittedFields(body) {
     bookingLink: clean(body.bookingLink, 300),
     siteNr: clean(body.siteNr, 30),
     telephone: clean(body.telephone, 60),
-    email: clean(body.email, 200),
+    email: clean(body.email, 600),
     latitude: clean(body.latitude, 30),
     longitude: clean(body.longitude, 30),
     selfSupplierRating: clean(body.selfSupplierRating, 50),
@@ -349,14 +364,18 @@ function submittedFields(body) {
 
     ownerFullName: clean(body.ownerFullName, 200),
     ownerIdPassport: clean(body.ownerIdPassport, 60),
-    ownerEmail: clean(body.ownerEmail, 200),
+    ownerEmail: clean(body.ownerEmail, 600),
     ownerPhone: clean(body.ownerPhone, 60),
 
     submittedBy: body.submittedBy === "Affiliate" ? "Affiliate" : "Owner",
     affId: clean(body.affId, 100),
     affiliateAgentName: clean(body.affiliateAgentName, 200),
     affiliateCompany: clean(body.affiliateCompany, 200),
-    affiliateEmail: clean(body.affiliateEmail, 200),
+    affiliateEmail: clean(body.affiliateEmail, 600),
+    contactName: clean(body.contactName, 200),
+    contactPhone: clean(body.contactPhone, 200),
+    contactEmail: clean(body.contactEmail, 600),
+    notifyWho: NOTIFY_WHO.includes(body.notifyWho) ? body.notifyWho : "both",
     affiliatePhone: clean(body.affiliatePhone, 60),
 
     checkInTime: clean(body.checkInTime, 20),
@@ -422,7 +441,7 @@ async function verifyAdminToken(token) {
 async function sendNotificationEmail(to, subject, html) {
   try {
     const apiKey = Netlify.env.get("RESEND_API_KEY");
-    if (!apiKey || !to) return;
+    if (!apiKey || !emailList(to).length) return;
     await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
@@ -431,7 +450,7 @@ async function sendNotificationEmail(to, subject, html) {
       },
       body: JSON.stringify({
         from: "Avante Travel <bookings@go.avantetravel.co.za>",
-        to: [to],
+        to: emailList(to, 20),
         subject: subject,
         html: html,
       }),
@@ -447,8 +466,12 @@ async function getNotificationEmail() {
   return (settings && settings.notificationEmail) || "";
 }
 
+// Who gets the hub's emails about a listing (Jean, 2026-10-14): the owner side
+// (the owner, or the affiliate who submitted it), the contact person, or both
+// (record.notifyWho). Returned as "a@x, b@y"; every address gets the email.
 function submitterEmailFor(record) {
-  return record.submittedBy === "Affiliate" ? record.affiliateEmail : record.ownerEmail;
+  const ownerSide = record.submittedBy === "Affiliate" ? record.affiliateEmail : record.ownerEmail;
+  return recipients(ownerSide, record.contactEmail, record.notifyWho || "both").join(", ");
 }
 
 function withAgreementDefaults(record) {
@@ -535,6 +558,8 @@ export default async (request, context) => {
         agreementRespondedAt: "",
       };
 
+      const emailErr0 = emailFieldError(record);
+      if (emailErr0) return json({ error: emailErr0 }, 400);
       if (!record.propertyName || !record.ownerFullName || record.agreementSigned !== "Y") {
         return json(
           { error: "Property name, owner name, and agreement acceptance are required." },
@@ -655,7 +680,7 @@ export default async (request, context) => {
         else {
           try {
             const msg = { from: "Avante Travel <bookings@go.avantetravel.co.za>", to, subject, html, attachments: files };
-            if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(replyTo)) msg.reply_to = [replyTo];
+            if (emailList(replyTo).length) msg.reply_to = emailList(replyTo);
             const r = await fetch("https://api.resend.com/emails", { method: "POST", headers: { authorization: "Bearer " + apiKey, "content-type": "application/json" }, body: JSON.stringify(msg) });
             const d = await r.json().catch(() => ({}));
             ok = r.ok; emailId = (d && d.id) || "";
@@ -765,6 +790,8 @@ export default async (request, context) => {
         record.coordsVerifiedAt = new Date().toISOString();
       }
       if (!record.propertyName || !record.ownerFullName) return json({ error: "Property name and owner name can't be empty." }, 400);
+      const emailErr1 = emailFieldError(record);
+      if (emailErr1) return json({ error: emailErr1 }, 400);
       record.dateUpdated = new Date().toISOString();
       const changed = addHistory(record, isAdmin ? "admin" : (record.submittedBy || "owner"), "Edited", before);
       if (!changed) return json({ ok: true, listing: { listingId: listingId }, unchanged: true });
@@ -937,11 +964,12 @@ export default async (request, context) => {
       // the listing from Stock Network. It stays a request: the property gets
       // no edit link until admin has checked it and sends one from Admin.
       if (await overDailyLimit("listingRequest", request, context)) return json({ error: "Too many requests from this connection today. Please email info@avantehospitality.co.za." }, 429);
-      const contact = { name: clean(body.contactPerson, 120), phone: clean(body.phone, 40), email: clean(body.email, 200) };
+      const contact = { name: clean(body.contactPerson, 120), phone: clean(body.phone, 200), email: clean(body.email, 600) };
       const propertyName = clean(body.propertyName, 200);
       const cm = ["NightsBridge", "eRes/NebulaCRS", "None yet"].includes(body.channelManager) ? body.channelManager : "";
       const bbid = clean(body.bbid, 40), eresRef = clean(body.eresRef, 60);
-      if (!propertyName || !contact.name || !contact.phone || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(contact.email) || !cm) return json({ error: "Fill in every field." }, 400);
+      if (!propertyName || !contact.name || !contact.phone || !contact.email || !cm) return json({ error: "Fill in every field." }, 400);
+      if (badEmails(contact.email).length || !emailList(contact.email).length) return json({ error: "\"" + (badEmails(contact.email)[0] || contact.email) + "\" doesn't look like an email address. Separate several addresses with a comma." }, 400);
       if (body.acceptTerms !== true) return json({ error: "Accept the Terms & Conditions first." }, 400);
       if (cm === "NightsBridge" && !bbid) return json({ error: "Type your NightsBridge BBID number." }, 400);
       const norm = (v) => String(v || "").trim().toLowerCase().replace(/^0+/, "");
@@ -955,7 +983,8 @@ export default async (request, context) => {
           already = all.find((r) => r.resortId && String(r.resortId).toLowerCase() === String(row.resortId).toLowerCase()) || null;
         }
       }
-      const extra = { requestContact: contact, channelManager: cm, bbid, eresRef, requestedAt: new Date().toISOString() };
+      const extra = { requestContact: contact, contactName: contact.name, contactPhone: contact.phone, contactEmail: emailText(contact.email), notifyWho: "both",
+        channelManager: cm, bbid, eresRef, requestedAt: new Date().toISOString() };
       let record = null;
       if (row && !already) {
         record = await buildListingFromSn({ site: String(row.siteId || ""), resortId: row.resortId, resortName: row.name, aff: "", units: [], settings: { email: contact.email, phone: contact.phone }, channel: true, siteIdForListing: "" },
@@ -1131,14 +1160,14 @@ export default async (request, context) => {
       const listingId = clean(body.listingId, 20);
       const record = listingId && await store.get(listingId, { type: "json" });
       if (!record) return json({ error: "not found" }, 404);
-      const to = clean(body.to, 200);
-      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) return json({ error: "Type a valid email address." }, 400);
+      const to = clean(body.to, 600);
+      if (!emailList(to).length || badEmails(to).length) return json({ error: badEmails(to).length ? "\"" + badEmails(to)[0] + "\" doesn't look like an email address. Separate several with a comma." : "Type the email address." }, 400);
       if (!record.editToken) record.editToken = genToken();
       const editLink = new URL(request.url).origin + "/property-form.html?edit=" + encodeURIComponent(listingId) + "&key=" + encodeURIComponent(record.editToken);
       const apiKey = Netlify.env.get("RESEND_API_KEY");
       if (!apiKey) return json({ error: "Email isn't switched on (RESEND_API_KEY missing)." }, 500);
       const r = await fetch("https://api.resend.com/emails", { method: "POST", headers: { authorization: "Bearer " + apiKey, "content-type": "application/json" },
-        body: JSON.stringify({ from: "Avante Travel <bookings@go.avantetravel.co.za>", to: [to], subject: "Please complete your Avante listing — " + (record.propertyName || ""),
+        body: JSON.stringify({ from: "Avante Travel <bookings@go.avantetravel.co.za>", to: emailList(to, 20), subject: "Please complete your Avante listing — " + (record.propertyName || ""),
           html: "<p>Hello,</p><p>Avante Travel has a new, fuller listing form for <strong>" + escapeHtml(record.propertyName || "your property") + "</strong>. We filled in what we already have.</p>" +
             "<p>Please open it, check everything and fill in what is missing (for example photos, amenities, policies and rates), then tap <b>Save changes</b> on the last step:<br><a href=\"" + editLink + "\">Edit my listing</a></p>" +
             "<p>Keep this email: you can use the link again any time. Anyone with this link can edit the listing, so don't share it.</p><p>Avante Travel</p>" }) });
@@ -1172,6 +1201,9 @@ export default async (request, context) => {
       if (typeof body.allowSameDayBooking === "string") {
         record.allowSameDayBooking = body.allowSameDayBooking === "Y" ? "Y" : "N";
       }
+      if (!NOTIFY_WHO.includes(record.notifyWho)) record.notifyWho = "both";
+      const emailErr2 = emailFieldError(record);
+      if (emailErr2) return json({ error: emailErr2 }, 400);
 
       record.dateUpdated = new Date().toISOString();
       addHistory(record, "admin", "Edited in admin", beforeEdit);
@@ -1411,7 +1443,8 @@ if (action === "getSettings") {
       const denied = await requireAdmin();
       if (denied) return denied;
 
-      const notificationEmail = clean(body.notificationEmail, 200);
+      const notificationEmail = clean(body.notificationEmail, 600);
+      if (badEmails(notificationEmail).length) return json({ ok: false, error: "\"" + badEmails(notificationEmail)[0] + "\" doesn't look like an email address. Separate several addresses with a comma." }, 400);
       const settingsStore = getStore({ name: "property-settings", consistency: "strong" });
       await settingsStore.setJSON("config", { notificationEmail: notificationEmail });
       return json({ ok: true });
