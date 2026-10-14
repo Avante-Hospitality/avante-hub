@@ -48,6 +48,7 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
 .text{ white-space:pre-line; }
 .book{ position:sticky; top:76px; box-shadow:0 18px 50px rgba(14,47,68,.10); }
 .book h2{ font-size:20px; margin-bottom:4px; }
+.bkbusy{ display:none; margin-top:10px; font-weight:700; }
 .f2{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:12px; }
 .fld{ display:flex; flex-direction:column; gap:4px; min-width:0; }
 .fld label{ font:700 11.5px 'Montserrat',sans-serif; text-transform:uppercase; letter-spacing:.06em; color:var(--teal-d); }
@@ -186,6 +187,9 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
 @media (max-width:900px){
   .grid{ grid-template-columns:1fr; gap:22px; }
   .book{ position:static; order:-1; }
+  .book.oncal .bkform{ display:none; }
+  .book.oncal.idle{ display:none; }
+  .book.oncal .bkbusy{ display:block; }
   .bar{ display:flex; position:fixed; left:0; right:0; bottom:0; z-index:60; background:#fff; border-top:1px solid var(--line); padding:10px 16px calc(10px + env(safe-area-inset-bottom)); gap:10px; align-items:center; box-shadow:0 -8px 24px rgba(14,47,68,.10); }
   .bar div.t{ flex:1; min-width:0; font-size:13px; color:var(--muted); }
   .bar div.t b{ display:block; color:var(--ink); font:700 15px 'Montserrat',sans-serif; }
@@ -298,7 +302,7 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
       (telLink(d) ? '<a class="btn g" href="' + esc(telLink(d)) + '">📞 ' + esc(d.contact.phone) + '</a>' : '') +
       (d.contact.email ? '<a class="btn g" href="mailto:' + esc(d.contact.email) + '">✉️ Email</a>' : '') +
       '<a class="btn g" href="' + esc(mapsLink(d)) + '" target="_blank" rel="noopener">🧭 Directions</a></div></section>';
-    h += '</main><aside class="card book" id="book" aria-label="Book your stay">' + bookHtml() + '</aside></div></div>';
+    h += '</main><aside class="' + bookCls() + '" id="book" aria-label="Book your stay">' + bookHtml() + '</aside></div></div>';
     h += '<p class="foot">Book direct with ' + esc(d.name) + ' · secure booking through Avante Travel</p>';
     h += '<div class="bar"><div class="t"><b>' + (S.quote ? 'Pick a unit' : 'Book direct') + '</b>' + esc(nice(S.ci) + ' – ' + nice(S.co)) + '</div><button type="button" class="btn t" data-act="toBook">Check availability</button></div>';
     app.innerHTML = h;
@@ -318,12 +322,12 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
         '<p class="muted" style="margin-top:12px">' + (p.emailed ? 'We\'ve emailed you these details. ' : '') + 'Questions? Contact ' + esc(d.name) + (waLink(d) ? ' on <a href="' + esc(waLink(d, 'Hi, about my booking ' + b.ref)) + '" target="_blank" rel="noopener">WhatsApp</a>' : '') + '.</p>' +
         '<button type="button" class="btn g sm" data-act="again">Make another booking</button>';
     }
-    var h = '<h2>Book your stay</h2><div class="muted">Minimum ' + (d.minStay || 1) + (d.minStay === 1 ? ' night' : ' nights') + '. Best rate when you book direct.</div>' +
+    var h = '<h2>Book your stay</h2><div class="bkform"><div class="muted">Minimum ' + (d.minStay || 1) + (d.minStay === 1 ? ' night' : ' nights') + '. Best rate when you book direct.</div>' +
       '<div class="f2"><div class="fld"><label for="ci">Check-in</label><input id="ci" type="date" value="' + S.ci + '" min="' + d.firstBookable + '"></div>' +
       '<div class="fld"><label for="co">Check-out</label><input id="co" type="date" value="' + S.co + '" min="' + add(d.firstBookable, 1) + '"></div>' +
       '<div class="fld"><label for="ad">Adults</label><select id="ad">' + [1,2,3,4,5,6,7,8,9,10].map(function (n) { return '<option' + (n === S.adults ? ' selected' : '') + '>' + n + '</option>'; }).join('') + '</select></div>' +
       '<div class="fld"><label for="ch">Children</label><select id="ch">' + [0,1,2,3,4,5,6].map(function (n) { return '<option' + (n === S.children ? ' selected' : '') + '>' + n + '</option>'; }).join('') + '</select></div></div>' +
-      '<button type="button" class="btn" style="width:100%;margin-top:14px" data-act="quote"' + (S.busy ? ' disabled' : '') + '>' + (S.busy === 'quote' ? 'Checking…' : 'Check availability') + '</button>';
+      '<button type="button" class="btn" style="width:100%;margin-top:14px" data-act="quote"' + (S.busy ? ' disabled' : '') + '>' + (S.busy === 'quote' ? 'Checking…' : 'Check availability') + '</button></div>' + (S.busy === 'quote' ? '<div class="bkbusy" role="status">Checking…</div>' : '');
     if (S.err) h += '<div class="err" role="alert">' + esc(S.err) + '</div>';
     if (S.quote && !S.pick) {
       var q = S.quote;
@@ -351,7 +355,10 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
     }
     return h;
   }
-  function drawBook() { var el = document.getElementById('book'); if (el) el.innerHTML = bookHtml(); drawCalPick(); }
+  // Phones: when the calendar is on the page, its date picker and the bottom bar do the booking,
+  // so the Book your stay form is hidden; the card only shows for results, errors and the guest form.
+  function bookCls() { return 'card book' + (S.d && S.d.showCalendar ? ' oncal' : '') + (S.busy || S.err || S.quote || S.pick || S.booked ? '' : ' idle'); }
+  function drawBook() { var el = document.getElementById('book'); if (el) { el.className = bookCls(); el.innerHTML = bookHtml(); } drawCalPick(); }
   function drawCal() {
     var el = document.getElementById('cal'); if (!el) return;
     var d = S.d, m = S.month, y = +m.slice(0, 4), mo = +m.slice(5, 7) - 1, data = S.monthData[m];
