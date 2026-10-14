@@ -9,6 +9,7 @@ import { parseUnits, unitLines } from "./lib/sn-units.js";
 
 const RESORT_INFO = "https://old.stocknetwork.co.za/ResortInfo.aspx?ResortID=";
 const BATCH = 60, PARALLEL = 4, BUDGET_MS = 25000;
+const CORS = { "access-control-allow-origin": "*", "access-control-allow-methods": "GET" }; // the hook builder reads it too
 const json = (o, status = 200, extra = {}) => new Response(JSON.stringify(o), { status, headers: { "content-type": "application/json", ...extra } });
 let cache = null; // { at, body }
 
@@ -70,13 +71,13 @@ export default async (request) => {
     return new Response(rows.join("\n"), { headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": 'attachment; filename="sn-units-to-tidy.csv"' } });
   }
 
-  if (cache && Date.now() - cache.at < 10 * 60 * 1000) return new Response(cache.body, { headers: { "content-type": "application/json", "cache-control": "public, max-age=600" } });
+  if (cache && Date.now() - cache.at < 10 * 60 * 1000) return new Response(cache.body, { headers: { "content-type": "application/json", "cache-control": "public, max-age=600", ...CORS } });
   let seed = { units: {} };
   try { const r = await fetch(new URL("/sn-units.json", url.origin)); if (r.ok) seed = await r.json(); } catch (_) { /* live only */ }
   const live = (await store.get("all", { type: "json" }).catch(() => null)) || {};
   const body = JSON.stringify({ ok: true, generated: seed.generated || "", updated: live.at || "", units: Object.assign({}, seed.units || {}, live.units || {}) });
   cache = { at: Date.now(), body };
-  return new Response(body, { headers: { "content-type": "application/json", "cache-control": "public, max-age=600" } });
+  return new Response(body, { headers: { "content-type": "application/json", "cache-control": "public, max-age=600", ...CORS } });
 };
 
 export const config = { path: "/api/sn-units" };

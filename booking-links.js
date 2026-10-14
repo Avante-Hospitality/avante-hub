@@ -246,7 +246,7 @@
         option(usel, '', 'Loading…'); usel.disabled = true;
         loadUnits().then(function (u) {
           if (selects[5].value !== id) return;
-          var ls = u[id] || []; usel.innerHTML = '';
+          var ls = u[id] || u[String(id).toLowerCase()] || []; usel.innerHTML = '';
           option(usel, '', ls.length ? ls.length + (ls.length === 1 ? ' unit type' : ' unit types') : 'None listed on Stock Network');
           ls.forEach(function (l, k) { option(usel, String(k), unitLabel(l)); });
           usel.disabled = !ls.length; usel._lines = ls;
@@ -281,8 +281,34 @@
     return d.join(' · ');
   }
 
+  // A small "Units ▸" button for a property row in any tree, and the list it
+  // opens (put the list right after the row). Jean, 2026-10-14.
+  function unitToggle(resortId) {
+    var btn = document.createElement('button'), list = document.createElement('div');
+    btn.type = 'button'; btn.textContent = 'Units ▸'; btn.setAttribute('aria-expanded', 'false');
+    btn.style.cssText = 'margin-left:auto;flex:none;border:1px solid #cfdcdb;background:#fff;color:#0e2f44;border-radius:6px;font:600 11.5px inherit;padding:2px 8px;cursor:pointer;';
+    list.hidden = true; list.style.cssText = 'margin:0 0 6px 40px;padding-left:10px;border-left:2px solid #e3e9e8;font-size:12.5px;';
+    btn.addEventListener('click', function (e) {
+      e.preventDefault(); e.stopPropagation();
+      var open = list.hidden; list.hidden = !open; btn.textContent = open ? 'Units ▾' : 'Units ▸'; btn.setAttribute('aria-expanded', String(open));
+      if (!open || list.childNodes.length) return;
+      list.textContent = 'Loading…';
+      loadUnits().then(function (u) {
+        var ls = u[resortId] || u[String(resortId).toLowerCase()] || []; list.innerHTML = '';
+        if (!ls.length) { list.textContent = 'No unit types listed on Stock Network.'; return; }
+        ls.forEach(function (l) {
+          var d = document.createElement('div'); d.style.padding = '2px 0';
+          var b = document.createElement('b'); b.textContent = unitLabel(l); d.appendChild(b);
+          var sm = document.createElement('div'); sm.style.cssText = 'color:#5f6b6e;font-size:11.5px;'; sm.textContent = unitDetail(l); d.appendChild(sm);
+          list.appendChild(d);
+        });
+      }).catch(function () { list.textContent = 'Unit types could not be loaded.'; });
+    });
+    return { btn: btn, list: list };
+  }
+
   root.AvanteBooking = {
     BASE: BASE, FIELDS: FIELDS, build: build, parse: parse, convert: convert, siteId: siteId,
-    loadTree: loadTree, mountTreePicker: mountTreePicker, loadUnits: loadUnits, unitLabel: unitLabel, unitDetail: unitDetail
+    loadTree: loadTree, mountTreePicker: mountTreePicker, loadUnits: loadUnits, unitLabel: unitLabel, unitDetail: unitDetail, unitToggle: unitToggle
   };
 })(window);

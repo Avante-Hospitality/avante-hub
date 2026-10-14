@@ -4406,6 +4406,8 @@
               row.appendChild(cb);
               row.appendChild(span);
               parentEl.appendChild(row);
+              // Its unit types (type, sleeps) under the row (Jean, 2026-10-14).
+              if(window.AvanteBooking && AvanteBooking.unitToggle && r.resortId){ var ut = AvanteBooking.unitToggle(r.resortId); row.appendChild(ut.btn); parentEl.appendChild(ut.list); }
               register(cb, function(){ return [key]; });
             });
           }
