@@ -7,6 +7,7 @@ import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
 import { fetchResortInfo } from "./hook-source.js";
 import { propertyTreeOpts, propertyTreePlace, treePlaceCentre } from "./tree-place.js";
 import { nearestByDistance } from "./geo-distance.js";
+import { rememberedPhotos, fillActPhotos } from "./act-photos.js";
 
 const INFO_TTL_MS = 24 * 3600 * 1000;
 
@@ -45,11 +46,13 @@ export async function stayPayload(core, prop, opts) {
     const km = Math.max(1, Math.min(150, Number(opts.km) || page.nearbyKm || 30));
     outKm = km;
     const hidden = new Set(page.actHidden || []), mine = page.actPhotos || {};
+    const remembered = await rememberedPhotos().catch(() => ({}));
     let list = nearestByDistance(lat, lng, acts, { maxKm: km }).map((a) => {
       const keys = Array.isArray(a.photoKeys) ? a.photoKeys : a.photoKey ? [a.photoKey] : [];
       const base = keys[0] ? "/api/property-file?key=" + encodeURIComponent(keys[0]) : "";
-      return { name: a.name || "", area: a.area || "", price: a.price || "", description: String(a.description || "").slice(0, 300), link: a.contactLink || "",
-        photo: mine[a.name] || base, latitude: parseFloat(a.latitude), longitude: parseFloat(a.longitude), distance: a.distanceLabel, km: a.distanceKm,
+      const auto = base || (remembered[a.id] || "");
+      return { id: a.id || "", name: a.name || "", area: a.area || "", price: a.price || "", description: String(a.description || "").slice(0, 300), link: a.contactLink || "",
+        photo: mine[a.name] || auto, autoPhoto: opts.all ? auto : undefined, latitude: parseFloat(a.latitude), longitude: parseFloat(a.longitude), distance: a.distanceLabel, km: a.distanceKm,
         hidden: hidden.has(a.name), basePhoto: opts.all ? base : undefined,
         mapPhotos: opts.all ? keys.slice(0, 8).map((k) => "/api/property-file?key=" + encodeURIComponent(k)) : undefined };
     });
@@ -59,6 +62,14 @@ export async function stayPayload(core, prop, opts) {
       list = list.filter((a) => !a.hidden);
       for (let i = list.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [list[i], list[j]] = [list[j], list[i]]; }
       list = list.slice(0, 10).sort((a, b) => a.km - b.km);
+    }
+    // No photo yet and never looked for: find one (library first, then Google) and remember it.
+    const missing = list.filter((a) => !a.photo && a.id && !(a.id in remembered) && !a.hidden);
+    if (missing.length) {
+      if (opts.all) {
+        const found = await fillActPhotos(missing.map((a) => ({ id: a.id, name: a.name, area: a.area, latitude: a.latitude, longitude: a.longitude })), 6).catch(() => ({}));
+        for (const a of list) if (!a.photo && found[a.id]) { a.photo = found[a.id]; a.autoPhoto = found[a.id]; }
+      } else later(fillActPhotos(missing.map((a) => ({ id: a.id, name: a.name, area: a.area, latitude: a.latitude, longitude: a.longitude })), 10).catch(() => {}));
     }
     nearby = list.map((a) => Object.assign(a, { km: undefined }));
   }

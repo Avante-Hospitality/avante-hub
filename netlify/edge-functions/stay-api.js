@@ -10,6 +10,8 @@
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
 import { createCore, PAError } from "./lib/pa-core.js";
 import { stayPayload } from "./lib/stay-payload.js";
+import { GREF, LIBID } from "./lib/act-photos.js";
+import { HOOKS_URL, makeHooksTicket } from "./lib/hooks-ticket.js";
 
 // Reading is open to any site; booking only from our own pages (checked below).
 const cors = { "access-control-allow-origin": "*", "access-control-allow-methods": "GET", "access-control-allow-headers": "content-type" };
@@ -41,6 +43,25 @@ export default async (request, context) => {
         const p = await core.frontPhoto(photo);
         if (!p) return new Response("Not found", { status: 404, headers: cors });
         return new Response(p.data, { headers: { "content-type": p.type, "x-content-type-options": "nosniff", "cache-control": "public, max-age=86400", ...cors } });
+      }
+      // A Google photo (by its reference) or a photo from the shared photo library,
+      // for things to do (lib/act-photos.js). Kept a day by Netlify's cache, so
+      // Google is asked at most about once a day per photo.
+      const gref = url.searchParams.get("gphoto"), lid = url.searchParams.get("libphoto");
+      if (gref) {
+        if (!GREF.test(gref)) return new Response("Bad photo", { status: 400, headers: cors });
+        const key = env("GOOGLE_PLACES_API_KEY"); if (!key) return new Response("Not set up", { status: 404, headers: cors });
+        const r = await fetch("https://places.googleapis.com/v1/" + gref + "/media?maxWidthPx=1200&key=" + encodeURIComponent(key)).catch(() => null);
+        const type = (r && r.headers.get("content-type")) || "";
+        if (!r || !r.ok || !type.startsWith("image/")) return new Response("Not found", { status: 404, headers: cors });
+        return new Response(await r.arrayBuffer(), { headers: { "content-type": type, "cache-control": "public, max-age=86400", "netlify-cdn-cache-control": "public, s-maxage=86400", ...cors } });
+      }
+      if (lid) {
+        if (!LIBID.test(lid)) return new Response("Bad photo", { status: 400, headers: cors });
+        const tk = await makeHooksTicket({ sub: "admin", name: "Avante front store", role: "admin" }).catch(() => "");
+        const r = tk ? await fetch(new URL("/api/library?img=" + encodeURIComponent(lid), HOOKS_URL).href, { headers: { authorization: "Bearer " + tk } }).catch(() => null) : null;
+        if (!r || !r.ok) return new Response("Not found", { status: 404, headers: cors });
+        return new Response(await r.arrayBuffer(), { headers: { "content-type": r.headers.get("content-type") || "image/jpeg", "cache-control": "public, max-age=604800", "netlify-cdn-cache-control": "public, s-maxage=604800", ...cors } });
       }
       const prop = await core.propertyBySlug(url.searchParams.get("slug") || "");
       if (!prop) return json({ ok: false, error: "This page isn't available." }, 404);
@@ -83,4 +104,4 @@ export default async (request, context) => {
   }
 };
 
-export const config = { path: "/api/stay" };
+export const config = { path: "/api/stay", cache: "manual" }; // photo answers are kept by Netlify's cache; everything else says no-store

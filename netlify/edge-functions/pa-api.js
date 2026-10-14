@@ -7,6 +7,7 @@ import { fetchResortInfo } from "./lib/hook-source.js";
 import { createActivities } from "./lib/pa-activities.js";
 import { stayPayload } from "./lib/stay-payload.js";
 import { treeAreaList } from "./lib/tree-place.js";
+import { libraryPhotos, googlePhotos } from "./lib/act-photos.js";
 import { searchPlacePhotos } from "./lib/places-images.js";
 
 const cors = { "access-control-allow-origin": "*", "access-control-allow-methods": "POST, OPTIONS", "access-control-allow-headers": "content-type, x-pa-sync-secret" };
@@ -153,6 +154,15 @@ export default async (request) => {
         const pv = await stayPayload(core, prop, { store: st, origin: new URL(request.url).origin, km: body.km, all: true, actPlace: body.actPlace });
         pv.offers = await core.publicOffers(prop, getStore({ name: "promo-hooks", consistency: "strong" })).catch(() => []);
         return json(Object.assign(pv, { ok: true }));
+      }
+      // Photo choices for one thing to do: the shared library first; Google
+      // (its photos then go into the library) when asked, or when the library has none.
+      case "frontActPhotos": {
+        const a = body.act || {}, act = { id: String(a.id || "").slice(0, 80), name: String(a.name || "").slice(0, 120), area: String(a.area || "").slice(0, 80), latitude: +a.latitude || null, longitude: +a.longitude || null };
+        const library = body.google ? [] : await libraryPhotos(act);
+        let google = null, gErr = "";
+        if (body.google || !library.length) { const g = await googlePhotos(act, { query: String(body.query || "").trim().slice(0, 200) || undefined, limit: 6 }); if (g.ok) google = g.photos; else gErr = g.error; }
+        return json({ ok: true, library, google, googleError: gErr });
       }
       case "frontAreas": return json({ ok: true, areas: await treeAreaList(new URL(request.url).origin) });
       case "frontGoogle": {

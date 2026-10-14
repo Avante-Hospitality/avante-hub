@@ -1539,7 +1539,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     if (s.ratingValue && !/^[0-5](\.\d)?$/.test(s.ratingValue)) throw new PAError("The rating should be a number from 0 to 5, e.g. 4.6.");
     if (s.ratingLink && !/^https:\/\//.test(s.ratingLink)) s.ratingLink = "";
     if (Array.isArray(body.highlights)) s.highlights = body.highlights.map((x) => cleanStr(String(x || ""), 40)).filter(Boolean).slice(0, 6);
-    const okPhoto = (u) => /^https:\/\//.test(u) || /^\/api\/stay\?photo=/.test(u) || /^\/api\/property-file\?key=/.test(u);
+    const okPhoto = (u) => /^https:\/\//.test(u) || /^\/api\/stay\?(photo|gphoto|libphoto)=/.test(u) || /^\/api\/property-file\?key=/.test(u);
     if (body.unitInfo && typeof body.unitInfo === "object") {
       s.unitInfo = {};
       for (const u of prop.units) { const x = body.unitInfo[u.name]; if (!x || typeof x !== "object") continue;
