@@ -19,6 +19,8 @@ export async function makeHooksTicket(who) {
     sub: String(who.sub || ""),
     name: String(who.name || "").slice(0, 80),
     role: who.role === "admin" ? "admin" : "affiliate",
+    // The master affiliate (site 36): its photo choices become everyone's main photos.
+    ...(who.master ? { m: 1 } : {}),
     exp: Date.now() + 5 * 60 * 1000,
     n: b64url(crypto.getRandomValues(new Uint8Array(9))),
   };

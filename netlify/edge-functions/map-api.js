@@ -9,6 +9,7 @@ import { searchPlacePhotos, searchPlaceCandidates } from "./lib/places-images.js
 import { dataUriToBytes } from "./lib/data-uri.js";
 import { nearestByDistance } from "./lib/geo-distance.js";
 import { cachedForwardGeocode, checkNameAgainstCoordinate } from "./lib/name-check.js";
+import { clearActMain } from "./lib/act-photos.js";
 
 // Backs the new "Map & Activities" admin tab and the new "Explore Map" hub
 // tab. Two data sources feed one shared response:
@@ -1501,12 +1502,14 @@ export default async (request, context) => {
       const existing = all[idx];
       const keys = Array.isArray(existing.photoKeys) ? existing.photoKeys.slice() : existing.photoKey ? [existing.photoKey] : [];
       if (keys.length >= 12) return json({ error: "Maximum 12 photos per activity." }, 400);
-      keys.push(photoKey);
+      // The photo admin adds last becomes the activity's main photo everywhere (Jean, 2026-10-14).
+      keys.unshift(photoKey);
       existing.photoKeys = keys;
       delete existing.photoKey;
       existing.updatedAt = new Date().toISOString();
       all[idx] = existing;
       await saveActivities(activitiesStore, all);
+      await clearActMain(id).catch(() => null);
       return json({ ok: true, activity: existing });
     }
 
@@ -1566,12 +1569,14 @@ export default async (request, context) => {
         metadata: { contentType: parsed.contentType, fileName: "google-places", listingId: "activity-" + id, kind: "image", label: "activity", sourceUrl: "google_places" },
       });
 
-      keys.push(photoKey);
+      // The photo admin adds last becomes the activity's main photo everywhere (Jean, 2026-10-14).
+      keys.unshift(photoKey);
       existing.photoKeys = keys;
       delete existing.photoKey;
       existing.updatedAt = new Date().toISOString();
       all[idx] = existing;
       await saveActivities(activitiesStore, all);
+      await clearActMain(id).catch(() => null);
       return json({ ok: true, activity: existing });
     }
 

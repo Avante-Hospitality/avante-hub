@@ -7,7 +7,7 @@ import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
 import { fetchResortInfo } from "./hook-source.js";
 import { propertyTreeOpts, propertyTreePlace, treePlaceCentre } from "./tree-place.js";
 import { nearestByDistance } from "./geo-distance.js";
-import { rememberedPhotos, fillActPhotos } from "./act-photos.js";
+import { rememberedPhotos, fillActPhotos, mainActPhotos } from "./act-photos.js";
 
 const INFO_TTL_MS = 24 * 3600 * 1000;
 
@@ -46,11 +46,12 @@ export async function stayPayload(core, prop, opts) {
     const km = Math.max(1, Math.min(150, Number(opts.km) || page.nearbyKm || 30));
     outKm = km;
     const hidden = new Set(page.actHidden || []), mine = page.actPhotos || {};
-    const remembered = await rememberedPhotos().catch(() => ({}));
+    const [remembered, mains] = await Promise.all([rememberedPhotos().catch(() => ({})), mainActPhotos().catch(() => ({}))]);
     let list = nearestByDistance(lat, lng, acts, { maxKm: km }).map((a) => {
       const keys = Array.isArray(a.photoKeys) ? a.photoKeys : a.photoKey ? [a.photoKey] : [];
       const base = keys[0] ? "/api/property-file?key=" + encodeURIComponent(keys[0]) : "";
-      const auto = remembered[a.id] || base; // admin's main photo, else the map photo
+      // Admin's main photo (hook builder / library), else the map photo, else the one found by itself.
+      const auto = mains[String(a.id || "").toLowerCase()] || base || remembered[a.id];
       return { id: a.id || "", name: a.name || "", area: a.area || "", price: a.price || "", description: String(a.description || "").slice(0, 300), link: a.contactLink || "",
         photo: mine[a.name] || auto, autoPhoto: opts.all ? auto : undefined, latitude: parseFloat(a.latitude), longitude: parseFloat(a.longitude), distance: a.distanceLabel, km: a.distanceKm,
         hidden: hidden.has(a.name), basePhoto: opts.all ? base : undefined,

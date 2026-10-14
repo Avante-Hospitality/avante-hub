@@ -263,7 +263,7 @@ export default async (request, context) => {
         return json({ ok: false, error: "The hook builder is switched off for your account. Ask Avante Travel to switch it on." }, 403);
       }
       try {
-        return json({ ok: true, url: await hooksLink({ sub: aff, name: (dirRecord && dirRecord.name) || aff, role: "affiliate" }) });
+        return json({ ok: true, url: await hooksLink({ sub: aff, name: (dirRecord && dirRecord.name) || aff, role: "affiliate", master: String((dirRecord && dirRecord.siteNr) || "").trim() === "36" }) });
       } catch (e) {
         return json({ ok: false, error: e.message || "The hook builder couldn't be opened." }, 500);
       }

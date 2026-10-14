@@ -34,9 +34,9 @@ async function libIndex() {
   try {
     const r = await timed(new URL("/api/library", HOOKS_URL).href, { headers: { authorization: await bearer() } }, 10000);
     const d = r.ok ? await r.json() : null;
-    if (d && d.ok) { libCache = { at: Date.now(), idx: { items: d.items || [], gq: d.gq || {} } }; return libCache.idx; }
+    if (d && d.ok) { libCache = { at: Date.now(), idx: { items: d.items || [], gq: d.gq || {}, mains: d.mains || {} } }; return libCache.idx; }
   } catch (_) { /* library not reachable: Google only */ }
-  return { items: [], gq: {} };
+  return { items: [], gq: {}, mains: {} };
 }
 async function libPost(body) {
   try {
@@ -45,6 +45,19 @@ async function libPost(body) {
   } catch (_) { return null; }
 }
 const itemUrl = (it) => (it.source === "google" && it.ref && GREF.test(it.ref) ? gphotoUrl(it.ref) : LIBID.test(it.id || "") ? libphotoUrl(it.id) : "");
+// Admin's main photos (set in the hook builder or library): { activityId (lower case): url }.
+export async function mainActPhotos() {
+  const idx = await libIndex(), out = {};
+  for (const [k, m] of Object.entries(idx.mains || {})) {
+    if (!/^act:/.test(k) || !m) continue;
+    const it = idx.items.find((x) => x.id === m.id), u = it && itemUrl(it);
+    if (u) out[k.slice(4)] = u;
+  }
+  return out;
+}
+// Admin changed an activity's photos on the map: that photo is now its main
+// photo, so an older main photo chosen in the hook builder no longer applies.
+export async function clearActMain(id) { libCache = null; return libPost({ op: "clearMain", key: "act:" + String(id).toLowerCase() }); }
 export const actQuery = (a) => [a.name, a.area].filter(Boolean).join(" ").replace(/\s+/g, " ").trim().slice(0, 200);
 
 // Library photos for one activity: tagged with it, then an earlier Google search for the same words.
