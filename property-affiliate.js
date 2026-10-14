@@ -750,8 +750,10 @@
     var st = S.front.settings, all = (S.fpv && S.fpv.nearby) || [], hid = st.actHidden || [], pins = st.actPinned || [];
     var ord = S.fpvOrder || all.map(function (a, i) { return i; });
     var kept = [], rest = [];
-    all.forEach(function (a, i) { if (hid.indexOf(a.name) < 0 && pins.indexOf(a.name) >= 0) kept.push(i); });
-    ord.forEach(function (i) { var a = all[i]; if (a && hid.indexOf(a.name) < 0 && pins.indexOf(a.name) < 0) rest.push(i); });
+    // Guests only see things to do that have a photo.
+    var ap = st.actPhotos || {}, hasPh = function (a) { return !!(ap[a.name] || a.autoPhoto || a.basePhoto); };
+    all.forEach(function (a, i) { if (hid.indexOf(a.name) < 0 && pins.indexOf(a.name) >= 0 && hasPh(a)) kept.push(i); });
+    ord.forEach(function (i) { var a = all[i]; if (a && hid.indexOf(a.name) < 0 && pins.indexOf(a.name) < 0 && hasPh(a)) rest.push(i); });
     return kept.slice(0, 10).concat(rest).slice(0, 10).sort(function (x, y) { return x - y; });
   }
   // "Change photo" for a thing to do: the shared photo library first, then Google
@@ -894,6 +896,7 @@
       }
       return '<div class="fs-act' + (off ? ' off' : '') + '"><div class="fs-actimg"' + (photo ? ' style="background-image:url(\'' + esc(photo) + '\')' + fsPosCss(photo) + '"' : '') + '>' + (photo ? '' : '<span>No photo</span>') + '</div>' +
         '<div class="grow"><label class="pa-check"><input type="checkbox" data-fsact="' + esc(a.name) + '"' + (off ? '' : ' checked') + '> <b>' + esc(a.name) + '</b></label><span class="pa-hint">' + esc(a.distance || '') + (a.area ? ' · ' + esc(a.area) : '') + '</span>' +
+        (photo ? '' : '<span class="pa-hint"><b>Not shown to guests until it has a photo.</b> Tap Change photo to give it one.</span>') +
         '<div class="pa-actions" style="margin-top:6px"><button type="button" class="pa-btn small' + (open ? '' : ' ghost') + '" data-act="fsActPick" data-i="' + i + '" aria-expanded="' + open + '">Change photo</button>' +
         (photo ? '<button type="button" class="pa-btn small ghost" data-act="fsMove" data-u="' + esc(photo) + '">Move photo</button>' : '') +
         (ap[a.name] ? '<button type="button" class="pa-btn small ghost" data-act="fsActReset" data-name="' + esc(a.name) + '">' + (a.autoPhoto ? 'Back to the automatic photo' : 'Remove my photo') + '</button>' : '') + '</div>' +
@@ -988,7 +991,7 @@
     d.nearby = fsPageActs()
       .map(function (i) { return Object.assign({}, all[i], { photo: ap[all[i].name] || all[i].autoPhoto || all[i].basePhoto || '' }); });
     d.offers = st.showOffers ? (S.fpv.offers || []) : [];
-    d.mapActs = (S.fpv.nearby || []).filter(function (a) { return hidA.indexOf(a.name) < 0; }).map(function (a) { return Object.assign({}, a, { photo: ap[a.name] || a.autoPhoto || a.basePhoto || '' }); });
+    d.mapActs = (S.fpv.nearby || []).filter(function (a) { return hidA.indexOf(a.name) < 0 && (ap[a.name] || a.autoPhoto || a.basePhoto); }).map(function (a) { return Object.assign({}, a, { photo: ap[a.name] || a.autoPhoto || a.basePhoto || '' }); });
     d.photoPos = st.photoPos || {};
     return d;
   }

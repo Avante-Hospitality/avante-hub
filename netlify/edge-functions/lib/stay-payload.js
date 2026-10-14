@@ -50,12 +50,15 @@ export async function stayPayload(core, prop, opts) {
     let list = nearestByDistance(lat, lng, acts, { maxKm: km }).map((a) => {
       const keys = Array.isArray(a.photoKeys) ? a.photoKeys : a.photoKey ? [a.photoKey] : [];
       const base = keys[0] ? "/api/property-file?key=" + encodeURIComponent(keys[0]) : "";
-      const auto = base || (remembered[a.id] || "");
+      const auto = remembered[a.id] || base; // admin's main photo, else the map photo
       return { id: a.id || "", name: a.name || "", area: a.area || "", price: a.price || "", description: String(a.description || "").slice(0, 300), link: a.contactLink || "",
         photo: mine[a.name] || auto, autoPhoto: opts.all ? auto : undefined, latitude: parseFloat(a.latitude), longitude: parseFloat(a.longitude), distance: a.distanceLabel, km: a.distanceKm,
         hidden: hidden.has(a.name), basePhoto: opts.all ? base : undefined,
         mapPhotos: opts.all ? keys.slice(0, 8).map((k) => "/api/property-file?key=" + encodeURIComponent(k)) : undefined };
     });
+    // Guests only see activities that have a photo (Jean, 2026-10-14); the ones
+    // without are on admin's report (/api/act-photos?report=1).
+    if (!opts.all) list = list.filter((a) => a.photo);
     // The map shows every activity within the distance (not hidden), with its photo.
     mapActs = list.filter((a) => !a.hidden).slice(0, 200);
     if (opts.all) list = list.slice(0, 60); // the builder: all of them, closest first
