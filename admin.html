@@ -7225,11 +7225,11 @@
         var st = document.getElementById('exGetStatus'), btn = document.getElementById('exGetBtn');
         if(!nr && !bb){ st.textContent = 'Type the NightsBridge BBID or the Site Nr.'; return; }
         btn.disabled = true; st.textContent = 'Reading the property from Stock Network\u2026';
-        propAdminPost('createFromExisting', { bbid: nr ? '' : bb, siteNr: nr, siteIdIn: sid, resortId: resortId || '' }).then(function(res){
+        propAdminPost('createFromExisting', { bbid: bb, siteNr: nr, siteIdIn: sid, resortId: resortId || '' }).then(function(res){
           btn.disabled = false;
           var d = res.data || {};
           if(d.chooseResort){
-            st.innerHTML = (nr ? 'Site Nr ' + escapeHtml(nr) : 'BBID ' + escapeHtml(bb)) + ' has more than one property. Tap the one you mean: ' + d.chooseResort.map(function(r){ return '<button type="button" class="btn-outline" data-ex-rid="' + escapeHtml(r.resortId) + '" style="margin:4px 4px 0 0;">' + escapeHtml(r.name) + '</button>'; }).join('');
+            st.innerHTML = (bb ? 'BBID ' + escapeHtml(bb) : 'Site Nr ' + escapeHtml(nr)) + ' has more than one property. Tap the one you mean: ' + d.chooseResort.map(function(r){ return '<button type="button" class="btn-outline" data-ex-rid="' + escapeHtml(r.resortId) + '" style="margin:4px 4px 0 0;">' + escapeHtml(r.name) + '</button>'; }).join('');
             return;
           }
           if(d.ok){ st.textContent = 'Done. The listing is open below.'; loadPropertyListings(); openPropertyDetailsModal(d.listingId); return; }

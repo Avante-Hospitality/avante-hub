@@ -990,7 +990,7 @@ export default async (request, context) => {
       // Or the NightsBridge BBID (Jean, 2026-10-14): found in the hub's Stock
       // Network list (External Resort Code); the property is then a channel property.
       const bbid = clean(body.bbid, 40);
-      let bySiteNr = clean(body.siteNr, 20), bbidRid = "";
+      let bySiteNr = clean(body.siteNr, 20), bbidRid = "", bbidHit = null;
       if (!pr && bbid) {
         const nb = (v) => String(v || "").trim().toLowerCase().replace(/^0+/, "");
         const hits = resortRows.filter((r) => r.externalResortCode && nb(r.externalResortCode) === nb(bbid));
@@ -998,11 +998,13 @@ export default async (request, context) => {
         const pick = clean(body.resortId, 64).toLowerCase();
         const hit = hits.length > 1 ? hits.find((r) => pick && String(r.resortId).toLowerCase() === pick) : hits[0];
         if (!hit) return json({ ok: false, chooseResort: hits.map((r) => ({ resortId: r.resortId, name: r.name + " (Site Nr " + (r.siteId || "?") + ")" })) });
-        bySiteNr = String(hit.siteId || "").trim(); bbidRid = hit.resortId;
-        if (!bySiteNr) return json({ error: "BBID " + bbid + " was found (" + hit.name + ") but it has no Site Nr in the Stock Network list." }, 404);
+        // The Site Nr typed next to the BBID, else the one in the list (the list
+        // can lack it: Jean, 2026-10-14, 37 On Anderson, Site Nr 4851).
+        bySiteNr = bySiteNr || String(hit.siteId || "").trim(); bbidRid = hit.resortId; bbidHit = hit;
+        if (!bySiteNr) return json({ error: "Found " + hit.name + " (BBID " + bbid + "), but the Stock Network list has no Site Nr for it. Type its Site Nr too, then tap Get the property." }, 400);
       }
       if (!pr && bySiteNr) {
-        const rows = resortRows.filter((r) => String(r.siteId || "").trim() === bySiteNr);
+        const rows = bbidHit ? [bbidHit] : resortRows.filter((r) => String(r.siteId || "").trim() === bySiteNr);
         if (!rows.length) return json({ error: "No property with Site Nr " + bySiteNr + " is in the hub's Stock Network list yet. Check the number, or refresh the property list in SN Cleanup." }, 404);
         const wantRid = clean(body.resortId, 64) || bbidRid;
         if (rows.length > 1 && !wantRid) return json({ ok: false, chooseResort: rows.map((r) => ({ resortId: r.resortId, name: r.name })) });
