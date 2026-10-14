@@ -1259,6 +1259,8 @@
         <h2 class="section-heading" style="margin-top:0;">Properties already on Stock Network</h2>
         <p class="hint">Properties connected in Property Affiliate before the onboarding form existed (e.g. The Dunes). Give each one a listing, filled in from what the hub already has, so the property and you can complete the missing fields and send the updates to Stock Network.</p>
         <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; margin:6px 0 12px;">
+          <div><label for="exBbid">NightsBridge BBID</label><input id="exBbid" placeholder="e.g. 12345" style="width:140px;"></div>
+          <div style="align-self:center; padding-top:18px; color:var(--muted); font-size:13px;">or</div>
           <div><label for="exSiteNr">Site Nr</label><input id="exSiteNr" placeholder="e.g. 5980" style="width:130px;"></div>
           <div style="flex:1; min-width:220px;"><label for="exSiteId">Site ID (affiliate number)</label><input id="exSiteId" placeholder="e.g. 6de763dc-ea92-…" style="width:100%;"></div>
           <button class="primary" id="exGetBtn" type="button">Get the property</button>
@@ -7219,15 +7221,15 @@
       document.getElementById('existingPropsBtn').addEventListener('click', loadExistingProps);
       // Just the Site Nr and Site ID: the hub reads the rest (Jean, 2026-10-13).
       function getBySite(resortId){
-        var nr = document.getElementById('exSiteNr').value.trim(), sid = document.getElementById('exSiteId').value.trim();
+        var nr = document.getElementById('exSiteNr').value.trim(), sid = document.getElementById('exSiteId').value.trim(), bb = document.getElementById('exBbid').value.trim();
         var st = document.getElementById('exGetStatus'), btn = document.getElementById('exGetBtn');
-        if(!nr){ st.textContent = 'Type the Site Nr.'; return; }
+        if(!nr && !bb){ st.textContent = 'Type the NightsBridge BBID or the Site Nr.'; return; }
         btn.disabled = true; st.textContent = 'Reading the property from Stock Network\u2026';
-        propAdminPost('createFromExisting', { siteNr: nr, siteIdIn: sid, resortId: resortId || '' }).then(function(res){
+        propAdminPost('createFromExisting', { bbid: nr ? '' : bb, siteNr: nr, siteIdIn: sid, resortId: resortId || '' }).then(function(res){
           btn.disabled = false;
           var d = res.data || {};
           if(d.chooseResort){
-            st.innerHTML = 'Site Nr ' + escapeHtml(nr) + ' has more than one property. Tap the one you mean: ' + d.chooseResort.map(function(r){ return '<button type="button" class="btn-outline" data-ex-rid="' + escapeHtml(r.resortId) + '" style="margin:4px 4px 0 0;">' + escapeHtml(r.name) + '</button>'; }).join('');
+            st.innerHTML = (nr ? 'Site Nr ' + escapeHtml(nr) : 'BBID ' + escapeHtml(bb)) + ' has more than one property. Tap the one you mean: ' + d.chooseResort.map(function(r){ return '<button type="button" class="btn-outline" data-ex-rid="' + escapeHtml(r.resortId) + '" style="margin:4px 4px 0 0;">' + escapeHtml(r.name) + '</button>'; }).join('');
             return;
           }
           if(d.ok){ st.textContent = 'Done. The listing is open below.'; loadPropertyListings(); openPropertyDetailsModal(d.listingId); return; }

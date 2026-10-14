@@ -987,23 +987,37 @@ export default async (request, context) => {
       let pr = props.find((x) => x.siteId === clean(body.siteId, 100));
       // Jean (2026-10-13): or just type the Site Nr and Site ID, and the hub
       // finds the rest (Stock Network's property list and public page).
-      const bySiteNr = clean(body.siteNr, 20);
+      // Or the NightsBridge BBID (Jean, 2026-10-14): found in the hub's Stock
+      // Network list (External Resort Code); the property is then a channel property.
+      const bbid = clean(body.bbid, 40);
+      let bySiteNr = clean(body.siteNr, 20), bbidRid = "";
+      if (!pr && bbid) {
+        const nb = (v) => String(v || "").trim().toLowerCase().replace(/^0+/, "");
+        const hits = resortRows.filter((r) => r.externalResortCode && nb(r.externalResortCode) === nb(bbid));
+        if (!hits.length) return json({ error: "BBID " + bbid + " isn't in the hub's Stock Network list (External Resort Code). Check the number, or use the Site Nr instead." }, 404);
+        const pick = clean(body.resortId, 64).toLowerCase();
+        const hit = hits.length > 1 ? hits.find((r) => pick && String(r.resortId).toLowerCase() === pick) : hits[0];
+        if (!hit) return json({ ok: false, chooseResort: hits.map((r) => ({ resortId: r.resortId, name: r.name + " (Site Nr " + (r.siteId || "?") + ")" })) });
+        bySiteNr = String(hit.siteId || "").trim(); bbidRid = hit.resortId;
+        if (!bySiteNr) return json({ error: "BBID " + bbid + " was found (" + hit.name + ") but it has no Site Nr in the Stock Network list." }, 404);
+      }
       if (!pr && bySiteNr) {
         const rows = resortRows.filter((r) => String(r.siteId || "").trim() === bySiteNr);
         if (!rows.length) return json({ error: "No property with Site Nr " + bySiteNr + " is in the hub's Stock Network list yet. Check the number, or refresh the property list in SN Cleanup." }, 404);
-        const wantRid = clean(body.resortId, 64);
+        const wantRid = clean(body.resortId, 64) || bbidRid;
         if (rows.length > 1 && !wantRid) return json({ ok: false, chooseResort: rows.map((r) => ({ resortId: r.resortId, name: r.name })) });
         const row0 = rows.find((r) => !wantRid || String(r.resortId).toLowerCase() === wantRid.toLowerCase()) || rows[0];
         const typedSiteId = clean(body.siteIdIn, 100);
         const known = props.find((x) => (x.resortId && String(x.resortId).toLowerCase() === String(row0.resortId).toLowerCase()) || (typedSiteId && (x.siteIdForListing === typedSiteId || x.aff === typedSiteId)));
         pr = known ? Object.assign({}, known, { site: known.site || bySiteNr, resortId: known.resortId || row0.resortId, resortName: known.resortName || row0.name }) : { siteId: "nr:" + bySiteNr + ":" + row0.resortId, site: bySiteNr, resortId: row0.resortId, resortName: row0.name, aff: "", units: [], settings: {} };
         if (typedSiteId) { pr = Object.assign({}, pr, { typedSiteId }); }
+        if (bbid && !pr.channel && !pr.paSiteId && /^nr:/.test(pr.siteId)) pr = Object.assign({}, pr, { channel: true, siteIdForListing: typedSiteId || "" });
       }
       if (!pr) return json({ error: "That property wasn't found." }, 404);
       const have = listingFor(pr);
       if (have) return json({ error: "This property already has a listing (" + have.listingId + ").", listingId: have.listingId }, 409);
       const row = resortRows.find((r) => r.resortId && pr.resortId && String(r.resortId).toLowerCase() === String(pr.resortId).toLowerCase()) || {};
-      const record = await buildListingFromSn(pr, row, { by: "admin" });
+      const record = await buildListingFromSn(pr, row, bbid ? { by: "admin", historyNote: "Listing created from NightsBridge BBID " + bbid, extra: { bbid, channelManager: "NightsBridge" } } : { by: "admin" });
       const listingId = record.listingId;
       await store.setJSON(listingId, record);
       return json({ ok: true, listingId });

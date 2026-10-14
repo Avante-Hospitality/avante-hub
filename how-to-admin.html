@@ -39,6 +39,7 @@
     <div class="ht-card ht-new" aria-label="What's new">
       <h2>What's new</h2>
       <ul>
+        <li><time>14 Oct 2026</time> Property Listings: <b>Properties already on Stock Network</b> has a <b>NightsBridge BBID</b> box. Type the BBID and tap <b>Get the property</b>; the hub finds the Site Nr and builds the listing as a channel property.</li>
         <li><time>14 Oct 2026</time> New: <b>Add a NightsBridge property (start to finish)</b>, every step in one place. See <a href="#addNbProperty">Add a NightsBridge property</a>.</li>
         <li><time>14 Oct 2026</time> Default Hooks' Auto-build tree: <span class="btn g">Units ▸</span> next to each property shows its unit types and how many they sleep.</li>
         <li><time>14 Oct 2026</time> The <b>Master map</b> tree shows each property's <b>unit types</b> (type and how many it sleeps, identical units once). They are read from Stock Network's property pages, about 60 properties every 10 minutes. A list of units that need tidying on Stock Network (no Max Guests, own text in Room Type) is at <b>go.avantetravel.co.za/api/sn-units?messy=1</b> (downloads a spreadsheet).</li>
@@ -241,9 +242,10 @@
       <h3>Properties already on Stock Network (The Dunes, Silver Ranch …)</h3>
       <h3>The quick way: Site Nr and Site ID</h3>
       <ol class="steps">
-        <li>Tap <span class="tab">Property Listings</span>. In the card <b>Properties already on Stock Network</b>, type the <span class="field">Site Nr</span> and the <span class="field">Site ID (affiliate number)</span>.</li>
+        <li>Tap <span class="tab">Property Listings</span>. In the card <b>Properties already on Stock Network</b>, type the <span class="field">NightsBridge BBID</span> or the <span class="field">Site Nr</span>, and the <span class="field">Site ID (affiliate number)</span>.</li>
         <li>Tap <span class="btn">Get the property</span>. The hub reads the rest from Stock Network: name, place in the location tree, description, unit types with sleeps, facilities and photos. The listing opens.</li>
-        <li>More than one property on that Site Nr? Tap the one you mean.</li>
+        <li>More than one property on that BBID or Site Nr? Tap the one you mean.</li>
+        <li>With a BBID, the hub finds the Site Nr itself (Stock Network's <b>External Resort Code</b>) and makes it a channel property: no rates, Stock Network payment page only, 4.95% + VAT.</li>
         <li>Email the property its edit link (see below). The link opens on the <b>Ready check</b>, which lists only what is still to do (usually the owner's details and the cancellation policy).</li>
       </ol>
       <div class="tip">If the Site ID belongs to a Channel Property Affiliate, the listing is made as a channel property (no rates, Avante's payment gateway, 4.95% + VAT).</div>
@@ -353,7 +355,7 @@
       <h3>A. Get the property into the hub (pick one)</h3>
       <ol class="steps">
         <li><b>The property starts it:</b> it opens the <b>List your property</b> page, taps <b>NightsBridge</b>, types its <span class="field">NightsBridge BBID Number</span> and taps <span class="btn">Submit</span>. You get an email: <b>Listing request: …</b>.</li>
-        <li><b>Or you start it:</b> tap <span class="tab">Property Listings</span>. Under <b>Properties already on Stock Network</b>, type the <span class="field">Site Nr</span> and <span class="field">Site ID (affiliate number)</span>, then tap <span class="btn">Get the property</span>.</li>
+        <li><b>Or you start it:</b> tap <span class="tab">Property Listings</span>. Under <b>Properties already on Stock Network</b>, type the <span class="field">NightsBridge BBID</span> (or the <span class="field">Site Nr</span>) and the <span class="field">Site ID (affiliate number)</span> if you have it, then tap <span class="btn">Get the property</span>.</li>
       </ol>
       <div class="tip">Either way the listing is filled in from Stock Network: description, unit types and sleeps, facilities and photos. No rates: they come from NightsBridge.</div>
       <h3>B. Check the listing</h3>
