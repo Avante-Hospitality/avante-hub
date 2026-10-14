@@ -294,9 +294,10 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
       return '<article class="ucard"><div class="im" style="' + (img ? 'background-image:url(\'' + esc(img) + '\')' + bgPos(img) : '') + '">' + (u.price ? '<span class="pr">From ' + money(u.price) + ' a night</span>' : '') + '</div>' +
         '<div class="bd"><b>' + esc(u.name) + '</b>' + ((u.size || u.beds) ? '<span class="meta">' + esc([u.size, u.beds].filter(Boolean).join(' · ')) + '</span>' : '') +
         (u.blurb ? '<span style="font-size:14.5px">' + esc(u.blurb) + '</span>' : '') + '<button type="button" class="btn t sm" data-act="toBook">Check dates</button></div></article>'; }).join('') + '</div></section>';
-    if (d.showCalendar) h += '<section class="sec" id="calsec"><h2>Availability</h2><p class="lead">Tap your arrival day, then your last night. Or type your dates under the calendar.</p><div class="card" id="cal"></div><div class="card calpick" id="calpick"></div></section>';
     if (d.showOffers) h += offersHtml();
     if (d.showActivities) h += nearbyHtml();
+    // Availability comes after Things to do, so the page doesn't seem to end before the activities (Jean, 2026-10-14).
+    if (d.showCalendar) h += '<section class="sec" id="calsec"><h2>Availability</h2><p class="lead">Tap your arrival day, then your last night. Or type your dates under the calendar.</p><div class="card" id="cal"></div><div class="card calpick" id="calpick"></div></section>';
     h += '<section class="sec"><h2>Contact ' + esc(d.name) + '</h2><div class="contact">' +
       (waLink(d) ? '<a class="btn" style="background:#25D366" href="' + esc(waLink(d, 'Hi, I have a question about ' + d.name + '.')) + '" target="_blank" rel="noopener">💬 WhatsApp</a>' : '') +
       (telLink(d) ? '<a class="btn g" href="' + esc(telLink(d)) + '">📞 ' + esc(d.contact.phone) + '</a>' : '') +
