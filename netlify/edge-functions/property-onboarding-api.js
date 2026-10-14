@@ -1238,10 +1238,12 @@ export default async (request, context) => {
         if (!(record.images || []).length && sn.photos.length) { record.images = await copySnPhotos(sn.photos, listingId, getStore({ name: "property-listing-files", consistency: "strong" })); filled.push("photos"); }
       }
       filled.push(...await fillListingFromFeed(record).catch(() => []));
+      // Everything the feed holds for this property, shown to admin so every field can be matched.
+      const feed = await feedRowByResort(record.resortId).catch(() => null);
       record.dateUpdated = new Date().toISOString();
       addHistory(record, "admin", filled.length ? "Pulled again from Stock Network: " + filled.join(", ") : "Pulled again from Stock Network: nothing new", before);
       await store.setJSON(listingId, record);
-      return json({ ok: true, filled, snRead: !!sn.ok, listing: withAgreementDefaults(record) });
+      return json({ ok: true, filled, snRead: !!sn.ok, feed: feed || null, listing: withAgreementDefaults(record) });
     }
 
     if (action === "sendAgreement") {

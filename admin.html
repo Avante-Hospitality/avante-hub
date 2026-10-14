@@ -6708,6 +6708,7 @@
       ];
 
       // What a listing needs that Stock Network may not have (marked in the listing).
+      var LAST_FEED = {};
       var SN_GAP_FIELDS = [['propertyType', 'Property type'], ['telephone', 'Property telephone'], ['email', 'Property email'], ['description', 'Description'],
         ['streetAddress', 'Street address'], ['ownerFullName', 'Owner name'], ['ownerEmail', 'Owner email'], ['ownerPhone', 'Owner phone'],
         ['checkInTime', 'Check-in time (full form)'], ['checkOutTime', 'Check-out time (full form)']];
@@ -7184,6 +7185,16 @@
             }
           });
           bodyEl.innerHTML = html;
+          // After "Pull again": everything Stock Network's feed holds for this property.
+          if(onSn && LAST_FEED[listingId] !== undefined){
+            var fr = LAST_FEED[listingId], box = bodyEl.querySelector('.sn-gaps');
+            var d = document.createElement('details'); d.open = true; d.style.marginTop = '8px';
+            d.innerHTML = fr ? '<summary><b>What Stock Network\'s feed has for this property (' + Object.keys(fr).length + ' fields)</b></summary>' +
+              '<div style="font-size:12px; line-height:1.6; max-height:260px; overflow:auto; border:1px solid var(--line); padding:6px 8px; margin-top:6px;">' +
+              Object.keys(fr).map(function(k){ return '<div><b>' + escapeHtml(k) + ':</b> ' + escapeHtml(String(fr[k])) + '</div>'; }).join('') + '</div>'
+              : '<summary><b>Stock Network\'s feed has no row for this property\'s Resort ID.</b></summary>';
+            if(box) box.appendChild(d);
+          }
           var repull = document.getElementById('snRepullBtn');
           if(repull) repull.addEventListener('click', function(){
             var msg = document.getElementById('snRepullMsg');
@@ -7192,6 +7203,7 @@
               if(r.data && r.data.ok){
                 var f = r.data.filled || [];
                 showToast(f.length ? 'Filled from Stock Network: ' + f.join(', ') : 'Stock Network had nothing new for the empty boxes');
+                LAST_FEED[listingId] = r.data.feed || false;
                 openPropertyDetailsModal(listingId);
               } else { repull.disabled = false; msg.textContent = (r.data && r.data.error) || 'Could not read Stock Network.'; }
             }).catch(function(){ repull.disabled = false; msg.textContent = 'Could not reach the server.'; });
