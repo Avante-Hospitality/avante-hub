@@ -9,7 +9,7 @@ import { searchPlacePhotos, searchPlaceCandidates } from "./lib/places-images.js
 import { dataUriToBytes } from "./lib/data-uri.js";
 import { nearestByDistance } from "./lib/geo-distance.js";
 import { cachedForwardGeocode, checkNameAgainstCoordinate } from "./lib/name-check.js";
-import { clearActMain } from "./lib/act-photos.js";
+import { clearActMain, activityToLibrary } from "./lib/act-photos.js";
 
 // Backs the new "Map & Activities" admin tab and the new "Explore Map" hub
 // tab. Two data sources feed one shared response:
@@ -1511,6 +1511,21 @@ export default async (request, context) => {
       await saveActivities(activitiesStore, all);
       await clearActMain(id).catch(() => null);
       return json({ ok: true, activity: existing });
+    }
+
+    if (action === "activityLibraryAdd") {
+      // One of the activity's photos into the hook builder's photo library,
+      // tagged with the activity and its town; it becomes the main photo.
+      const id = clean(body.id, 20);
+      const all = await loadActivities(activitiesStore);
+      const a = all.find((r) => r.id === id);
+      if (!a) return json({ ok: false, error: "not found" }, 404);
+      const places = (await getStore({ name: PLACES_STORE, consistency: "strong" }).get(ACTIVITY_KEY, { type: "json" }).catch(() => null)) || {};
+      const photo = body.ref ? { ref: clean(body.ref, 400), credit: clean(body.credit, 160) }
+        : { key: clean(body.photoKey, 300), full: String(body.full || ""), thumb: String(body.thumb || ""), w: body.w, h: body.h, hash: clean(body.hash, 16) };
+      if (!photo.ref && (!photo.key || !photo.full)) return json({ ok: false, error: "missing photo" }, 400);
+      const r = await activityToLibrary({ id: a.id, name: a.name }, places[a.id] || null, photo);
+      return json(r, r.ok ? 200 : 502);
     }
 
     if (action === "removeActivityPhoto") {

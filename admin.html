@@ -1980,7 +1980,7 @@
         <label style="margin-top:14px; display:block;">Photos (up to 12)</label>
         <div id="activityFormPhotos" style="display:flex; flex-wrap:wrap; gap:8px; margin:6px 0;"></div>
         <input type="file" id="activityPhotoInput" accept="image/*" multiple style="display:block;">
-        <p id="activityPhotoHint" style="margin:6px 0 0; font-size:12px; color:var(--muted);">For a new activity, save it first — photos then upload automatically right after.</p>
+        <p id="activityPhotoHint" style="margin:6px 0 0; font-size:12px; color:var(--muted);">Upload photos, or pick a Google photo below (it comes up by itself when you type the name). They are saved with the activity, go into the hook builder's photo library tagged with this activity, and the last one becomes its main photo.</p>
         <button type="button" class="btn-outline autobuild-toggle" style="border-color:var(--navy); color:var(--navy); margin-top:8px;" id="activityFindPhotoToggle">🖼️ Find photo</button>
         <div class="autobuild-box" id="activityFindPhotoBox">
           <label>Search Google for a photo of this activity/place</label>
@@ -1988,7 +1988,7 @@
             <input id="activityPhotoQuery" placeholder="e.g. Bloukrans Bungy, South Africa">
             <button type="button" class="btn-outline" id="activityPhotoSearchBtn">Search</button>
           </div>
-          <div class="hint" style="margin-top:4px;">Save the activity first — a picked photo is added to its photo list above.</div>
+          <div class="hint" style="margin-top:4px;">A picked photo is added to the photos above (for a new activity, when you tap Save activity).</div>
           <div class="autobuild-status" id="activityPhotoStatus"></div>
           <div class="autobuild-photo-grid" id="activityPhotoGrid"></div>
         </div>
@@ -7362,7 +7362,32 @@
       var photoInput = document.getElementById('activityPhotoInput');
       var photoHintEl = document.getElementById('activityPhotoHint');
       var currentFormPhotoKeys = [];
-      var pendingPhotoFiles = []; // { file, objectUrl } — only used before a new activity has an id
+      var pendingPhotoFiles = []; // { file, objectUrl } or { google, objectUrl } — only used before a new activity has an id
+
+      // Jean (2026-10-14): every activity photo also goes into the hook builder's
+      // photo library, tagged with the activity (and its town), and becomes its
+      // main photo. Uploads: this browser makes the flyer-size copy, thumbnail
+      // and picture hash (as the hook builder does). Google: its reference only.
+      function actScaled(img, max, q){
+        var k = Math.min(1, max / Math.max(img.width, img.height)), w = Math.max(1, Math.round(img.width * k)), h = Math.max(1, Math.round(img.height * k));
+        var c = document.createElement('canvas'); c.width = w; c.height = h; c.getContext('2d').drawImage(img, 0, 0, w, h);
+        return { url: c.toDataURL('image/jpeg', q), w: w, h: h, canvas: c };
+      }
+      function actHash(src){
+        var c = document.createElement('canvas'); c.width = 9; c.height = 8;
+        var x = c.getContext('2d'); x.drawImage(src, 0, 0, 9, 8); var d = x.getImageData(0, 0, 9, 8).data, bits = '';
+        for(var y = 0; y < 8; y++) for(var k2 = 0; k2 < 8; k2++){ var a = (y * 9 + k2) * 4, b = a + 4; bits += (d[a] + d[a+1] + d[a+2]) > (d[b] + d[b+1] + d[b+2]) ? '1' : '0'; }
+        return bits.match(/.{4}/g).map(function(n){ return parseInt(n, 2).toString(16); }).join('');
+      }
+      function activityPhotoToLibrary(activityId, photoKey, google){
+        if(google && google.ref) return mapAdminPost('activityLibraryAdd', { id: activityId, ref: google.ref, credit: google.attribution || '' }).catch(function(){});
+        return fetch('/api/property-file?key=' + encodeURIComponent(photoKey)).then(function(r){ if(!r.ok) throw new Error('photo ' + r.status); return r.blob(); })
+          .then(function(b){ return createImageBitmap(b); })
+          .then(function(bmp){
+            var full = actScaled(bmp, 1600, 0.82), th = actScaled(bmp, 360, 0.72);
+            return mapAdminPost('activityLibraryAdd', { id: activityId, photoKey: photoKey, full: full.url, thumb: th.url, w: full.w, h: full.h, hash: actHash(th.canvas) });
+          }).catch(function(){ /* the photo is saved on the activity either way */ });
+      }
 
       function renderFormPhotoThumbs(){
         formPhotosEl.innerHTML = '';
@@ -7429,7 +7454,8 @@
           body: file
         }).then(function(r){ return r.json(); }).then(function(res){
           if(!res || !res.ok) throw new Error((res && res.error) || 'Upload failed.');
-          return mapAdminPost('addActivityPhoto', { id: activityId, photoKey: res.key });
+          var key = res.key;
+          return mapAdminPost('addActivityPhoto', { id: activityId, photoKey: key }).then(function(r){ return activityPhotoToLibrary(activityId, key).then(function(){ return r; }); });
         });
       }
 
@@ -7531,13 +7557,33 @@
         });
       }
       activityPhotoSearchBtn.addEventListener('click', searchActivityPlacePhotos);
+      // A new activity: as soon as its name is typed, Google photos come up to pick from
+      // (or upload your own above). Jean, 2026-10-14.
+      var autoSearchedFor = '';
+      function autoFindPhoto(){
+        var nm = nameInput.value.trim();
+        if(idInput.value.trim() || !nm || currentFormPhotoKeys.length || pendingPhotoFiles.length) return;
+        var q = (nm + (areaInput.value.trim() ? ', ' + areaInput.value.trim() : '')).trim();
+        if(q === autoSearchedFor) return;
+        autoSearchedFor = q;
+        activityFindPhotoBox.classList.add('show');
+        activityPhotoQueryEl.value = q;
+        searchActivityPlacePhotos();
+      }
+      nameInput.addEventListener('change', autoFindPhoto);
+      areaInput.addEventListener('change', function(){ if(autoSearchedFor) { autoSearchedFor = ''; } autoFindPhoto(); });
 
       function pickActivityPlacePhoto(idx){
         var img = activityPlacePhotoResults[idx];
         if(!img) return;
         var id = idInput.value.trim();
         if(!id){
-          activityPhotoStatusEl.textContent = 'Save this activity first, then pick a photo.';
+          // A new activity: keep the photo and save it with the activity.
+          if(currentFormPhotoKeys.length + pendingPhotoFiles.length >= 12){ activityPhotoStatusEl.textContent = 'Maximum 12 photos per activity.'; return; }
+          Array.prototype.forEach.call(activityPhotoGridEl.children, function(el, i){ if(i === idx) el.classList.add('picked'); });
+          pendingPhotoFiles.push({ google: img, objectUrl: img.dataUri });
+          renderFormPhotoThumbs();
+          activityPhotoStatusEl.textContent = 'Photo picked. It is saved when you tap Save activity.';
           return;
         }
         if(currentFormPhotoKeys.length >= 12){
@@ -7551,6 +7597,7 @@
             activityPhotoStatusEl.textContent = 'Photo added.';
             showToast('Photo added to activity');
             currentFormPhotoKeys = res.data.activity.photoKeys || [];
+            activityPhotoToLibrary(id, currentFormPhotoKeys[0], img);
             renderFormPhotoThumbs();
             loadActivities();
           }else{
@@ -8910,7 +8957,8 @@
         pendingPhotoFiles.forEach(function(p){ URL.revokeObjectURL(p.objectUrl); });
         pendingPhotoFiles = [];
         photoInput.value = '';
-        photoHintEl.textContent = 'For a new activity, save it first — photos then upload automatically right after.';
+        photoHintEl.textContent = 'Upload photos, or pick a Google photo below (it comes up by itself when you type the name). They are saved with the activity, go into the hook builder\'s photo library tagged with this activity, and the last one becomes its main photo.';
+        autoSearchedFor = ''; activityFindPhotoBox.classList.remove('show'); activityPhotoGridEl.innerHTML = ''; activityPhotoStatusEl.textContent = ''; activityPhotoQueryEl.value = '';
         renderFormPhotoThumbs();
       }
 
@@ -9016,7 +9064,8 @@
                 body: file
               }).then(function(r){ return r.json(); }).then(function(res){
                 if(res && res.ok){
-                  return mapAdminPost('addActivityPhoto', { id: a.id, photoKey: res.key });
+                  var key = res.key;
+                  return mapAdminPost('addActivityPhoto', { id: a.id, photoKey: key }).then(function(r){ return activityPhotoToLibrary(a.id, key).then(function(){ return r; }); });
                 }
                 throw new Error((res && res.error) || 'Upload failed.');
               }).then(function(){ uploadNext(); }).catch(function(err){
@@ -9337,10 +9386,18 @@
             var newId = res.data.activity && res.data.activity.id;
             if(newId && pendingPhotoFiles.length){
               formStatusEl.textContent = 'Saved. Uploading photos\u2026';
-              var files = pendingPhotoFiles.map(function(p){ return p.file; });
-              pendingPhotoFiles.forEach(function(p){ URL.revokeObjectURL(p.objectUrl); });
+              var files = pendingPhotoFiles.filter(function(p){ return p.file; }).map(function(p){ return p.file; });
+              var googles = pendingPhotoFiles.filter(function(p){ return p.google; }).map(function(p){ return p.google; });
+              pendingPhotoFiles.forEach(function(p){ if(p.file) URL.revokeObjectURL(p.objectUrl); });
               pendingPhotoFiles = [];
-              uploadPhotosSequentially(newId, files).then(function(){
+              var saveGoogles = googles.reduce(function(chain, g){
+                return chain.then(function(){ return mapAdminPost('saveActivityPlacePhoto', { id: newId, dataUri: g.dataUri }).then(function(r){
+                  var k = r.data && r.data.ok && r.data.activity && (r.data.activity.photoKeys || [])[0];
+                  if(!(r.data && r.data.ok)) throw new Error((r.data && r.data.error) || 'Google photo not saved.');
+                  return activityPhotoToLibrary(newId, k, g);
+                }); });
+              }, Promise.resolve());
+              saveGoogles.then(function(){ return uploadPhotosSequentially(newId, files); }).then(function(){
                 formStatusEl.textContent = 'Saved.';
                 resetActivityForm();
                 loadActivities();

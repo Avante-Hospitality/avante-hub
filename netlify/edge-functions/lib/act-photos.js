@@ -58,6 +58,33 @@ export async function mainActPhotos() {
 // Admin changed an activity's photos on the map: that photo is now its main
 // photo, so an older main photo chosen in the hook builder no longer applies.
 export async function clearActMain(id) { libCache = null; return libPost({ op: "clearMain", key: "act:" + String(id).toLowerCase() }); }
+// A photo admin gave an activity in Map & Activities goes into the shared
+// photo library, tagged with the activity (and its town in the location tree),
+// and becomes the activity's main photo (Jean, 2026-10-14).
+//   upload: { full, thumb, w, h, hash } made in admin's browser;  google: { ref, credit }
+const normName = (s) => String(s || "").toLowerCase().replace(/[\u2018\u2019'`]/g, "").replace(/[^a-z0-9&]+/g, " ").trim();
+export function townTagOf(pl) {
+  if (!pl || !pl.t) return null;
+  const r = Array.isArray(pl.r) ? pl.r[0] || "" : pl.r || "";
+  const reg = r && normName(r) !== normName(pl.p) ? r : pl.p; // same shape as the hook builder's town keys
+  return reg ? { key: "t:" + reg + "|" + normName(pl.t), name: pl.t } : null;
+}
+export async function activityToLibrary(a, place, photo) {
+  const tags = [{ key: "act:" + a.id, name: a.name || "Activity" }], town = townTagOf(place);
+  if (town) tags.push(town);
+  let d;
+  if (photo.ref) {
+    if (!GREF.test(photo.ref)) return { ok: false, error: "Bad Google reference" };
+    d = await libPost({ op: "addRef", item: { name: a.name || "Activity", tags, src: "google:" + photo.ref, source: "google", ref: photo.ref, credit: String(photo.credit || "Photo via Google").slice(0, 160) } });
+  } else {
+    d = await libPost({ op: "add", item: { name: a.name || "Activity", tags, src: "hub-activity:" + photo.key, source: "hub", w: +photo.w || 0, h: +photo.h || 0,
+      hash: /^[0-9a-f]{16}$/.test(photo.hash || "") ? photo.hash : "" }, full: String(photo.full || ""), thumb: String(photo.thumb || "") });
+  }
+  if (!d || !d.ok) return { ok: false, error: (d && d.error) || "The photo library didn't answer." };
+  const m = await libPost({ op: "setMain", key: "act:" + String(a.id).toLowerCase(), id: d.id });
+  libCache = null;
+  return { ok: true, id: d.id, main: !!(m && m.ok) };
+}
 export const actQuery = (a) => [a.name, a.area].filter(Boolean).join(" ").replace(/\s+/g, " ").trim().slice(0, 200);
 
 // Library photos for one activity: tagged with it, then an earlier Google search for the same words.

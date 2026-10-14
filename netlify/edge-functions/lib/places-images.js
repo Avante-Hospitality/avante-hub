@@ -149,6 +149,7 @@ export async function searchPlacePhotos(query, apiKey, limit) {
             : "Photo via Google";
         return {
           dataUri: bytesToDataUri(buf, contentType),
+          ref: photo.name || "", // Google's photo reference, kept by the photo library
           width: photo.widthPx || null,
           height: photo.heightPx || null,
           attribution: attribution,
