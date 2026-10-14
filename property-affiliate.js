@@ -988,6 +988,7 @@
     d.nearby = fsPageActs()
       .map(function (i) { return Object.assign({}, all[i], { photo: ap[all[i].name] || all[i].autoPhoto || all[i].basePhoto || '' }); });
     d.offers = st.showOffers ? (S.fpv.offers || []) : [];
+    d.mapActs = (S.fpv.nearby || []).filter(function (a) { return hidA.indexOf(a.name) < 0; }).map(function (a) { return Object.assign({}, a, { photo: ap[a.name] || a.autoPhoto || a.basePhoto || '' }); });
     d.photoPos = st.photoPos || {};
     return d;
   }

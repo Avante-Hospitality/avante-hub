@@ -39,7 +39,7 @@ export async function stayPayload(core, prop, opts) {
   let lat = hasPin ? pinLat : NaN, lng = hasPin ? pinLng : NaN;
   if ((page.actPlace || !hasPin) && area) { const c = await treePlaceCentre(origin, area).catch(() => null); if (c) { lat = c.lat; lng = c.lng; } }
   if (!place.city && page.actPlace) Object.assign(place, { country: "South Africa", province: page.actPlace.p || "", city: page.actPlace.t || "", suburb: page.actPlace.s || "" });
-  let nearby = [], outKm = page.nearbyKm || 30;
+  let nearby = [], mapActs = [], outKm = page.nearbyKm || 30;
   if ((page.showActivities || opts.all) && isFinite(lat) && isFinite(lng)) {
     const acts = ((await getStore({ name: "map-activities", consistency: "strong" }).get("all", { type: "json" }).catch(() => null)) || []).filter((a) => a && a.visible !== false);
     // The property sets its default distance; the guest can change it on the page (?km=).
@@ -56,6 +56,8 @@ export async function stayPayload(core, prop, opts) {
         hidden: hidden.has(a.name), basePhoto: opts.all ? base : undefined,
         mapPhotos: opts.all ? keys.slice(0, 8).map((k) => "/api/property-file?key=" + encodeURIComponent(k)) : undefined };
     });
+    // The map shows every activity within the distance (not hidden), with its photo.
+    mapActs = list.filter((a) => !a.hidden).slice(0, 200);
     if (opts.all) list = list.slice(0, 60); // the builder: all of them, closest first
     else {
       // Guests: the ones the property keeps on its page, then the rest picked at
@@ -75,11 +77,12 @@ export async function stayPayload(core, prop, opts) {
       } else later(fillActPhotos(missing.map((a) => ({ id: a.id, name: a.name, area: a.area, latitude: a.latitude, longitude: a.longitude })), 10).catch(() => {}));
     }
     nearby = list.map((a) => Object.assign(a, { km: undefined }));
+    mapActs = mapActs.map((a) => ({ name: a.name, latitude: a.latitude, longitude: a.longitude, distance: a.distance, photo: a.photo || "", description: String(a.description || "").slice(0, 140), price: a.price || "", link: a.link || "" }));
   }
   return Object.assign({ ok: true }, page, {
     photos, description: page.description || info.description || "", attractions: info.attractions || "", moreInfo: info.moreInfo || "",
     place: { country: place.country || "", province: place.province || "", region: place.region || "", city: place.city || "", suburb: place.suburb || "" },
-    latitude: isFinite(lat) && lat !== 0 ? lat : null, longitude: isFinite(lng) && lng !== 0 ? lng : null, nearby, nearbyKm: outKm,
+    latitude: isFinite(lat) && lat !== 0 ? lat : null, longitude: isFinite(lng) && lng !== 0 ? lng : null, nearby, mapActs, nearbyKm: outKm,
     actPhotos: undefined, actHidden: undefined, actPinned: undefined, actPlace: opts.all ? page.actPlace || null : undefined, area: opts.all ? area || null : undefined,
   }, opts.all ? { snPhotos: info.images || [], snDescription: info.description || "", uploaded } : {});
 }

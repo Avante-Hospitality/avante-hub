@@ -85,6 +85,12 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
 .act .im{ height:130px; background:#e9e4da center/cover; }
 .act .bd{ padding:12px 14px; display:flex; flex-direction:column; gap:4px; flex:1; }
 .act b{ font:700 15px 'Montserrat',sans-serif; color:var(--ink); }
+.mpop img{ display:block; width:100%; height:130px; object-fit:cover; border-radius:8px; margin-bottom:8px; }
+.mpop b{ display:block; font:800 15px/1.2 'Montserrat',sans-serif; color:var(--ink); }
+.mpop .mk{ display:inline-block; margin-top:4px; background:#ffde59; color:var(--ink); border-radius:999px; padding:2px 8px; font:700 11.5px 'Montserrat',sans-serif; }
+.mpop p{ margin:6px 0 0; font-size:13px; line-height:1.4; color:#4a5658; }
+.mpop .pz{ font-weight:700; color:var(--ink); }
+.mpop a{ display:inline-block; margin-top:6px; font-weight:700; }
 #map{ height:320px; border-radius:14px; border:1px solid var(--line); margin-top:14px; z-index:0; }
 .offers{ display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:14px; }
 .offer{ border:1px solid var(--line); border-radius:14px; overflow:hidden; background:#fff; }
@@ -394,8 +400,8 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
   function nearbyHtml() {
     var d = S.d, list = d.nearby || [], kms = [10, 30, 50, 100];
     if (kms.indexOf(S.km) < 0) { kms.push(S.km); kms.sort(function (a, b) { return a - b; }); }
-    var h = '<section class="sec" id="nearby"><h2>Things to do nearby</h2><div class="chips" role="group" aria-label="Distance">' +
-      kms.map(function (k) { return '<button type="button" class="chip" data-act="km" data-k="' + k + '" aria-pressed="' + (k === S.km) + '">Within ' + k + ' km</button>'; }).join('') + '</div>';
+    var chips = '<div class="chips" role="group" aria-label="Distance">' + kms.map(function (k) { return '<button type="button" class="chip" data-act="km" data-k="' + k + '" aria-pressed="' + (k === S.km) + '">Within ' + k + ' km</button>'; }).join('') + '</div>';
+    var h = '<div id="nearby"><section class="sec" id="tdn"><h2>Things to do nearby</h2>';
     h += list.length ? '<div class="tiles">' + list.map(function (a) {
       var img = safeUrl(a.photo), lk = safeLink(a.link);
       return (lk ? '<a class="tile" href="' + esc(lk) + '" target="_blank" rel="noopener">' : '<article class="tile">') +
@@ -403,8 +409,15 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
         '<div class="bd"><b>' + esc(a.name) + '</b>' +
         ((a.description || a.area) ? '<span>' + esc((a.description || a.area).slice(0, 110)) + '</span>' : '') + (a.price ? '<span class="pz">' + esc(a.price) + '</span>' : '') + '</div>' + (lk ? '</a>' : '</article>');
     }).join('') + '</div>' : '<p class="muted">Nothing listed within ' + S.km + ' km yet. Try a bigger distance.</p>';
-    if (d.latitude != null) h += '<div id="map" role="img" aria-label="Map of ' + esc(d.name) + ' and things to do nearby"></div>';
-    return h + '</section>';
+    h += '</section>';
+    // The map: every activity within the distance (not only the 10 above). Jean, 2026-10-14.
+    if (d.latitude != null) {
+      var all = d.mapActs || list;
+      h += '<section class="sec" id="mapsec"><h2>All activities nearby</h2>' + chips +
+        '<p class="lead" style="margin:6px 0 0">' + all.length + (all.length === 1 ? ' activity' : ' activities') + ' within ' + S.km + ' km. Point at a dot for its name; tap it for the photo and details.</p>' +
+        '<div id="map" role="img" aria-label="Map of ' + esc(d.name) + ' and ' + all.length + ' activities nearby"></div></section>';
+    }
+    return h + '</div>';
   }
   var map = null;
   function drawMap() {
@@ -415,7 +428,15 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, referrerPolicy: 'strict-origin-when-cross-origin', attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
     var home = L.circleMarker([d.latitude, d.longitude], { radius: 10, color: '#0e2f44', fillColor: '#0DCDC2', fillOpacity: 1, weight: 3 }).addTo(map).bindPopup('<b>' + esc(d.name) + '</b>');
     var pts = [[d.latitude, d.longitude]];
-    (d.nearby || []).forEach(function (a) { if (isFinite(a.latitude) && isFinite(a.longitude)) { pts.push([a.latitude, a.longitude]); L.circleMarker([a.latitude, a.longitude], { radius: 7, color: '#ED8B00', fillColor: '#ffd59a', fillOpacity: 1, weight: 2 }).addTo(map).bindPopup('<b>' + esc(a.name) + '</b><br>' + esc(a.distance || '')); } });
+    (d.mapActs || d.nearby || []).forEach(function (a) {
+      if (!isFinite(a.latitude) || !isFinite(a.longitude)) return;
+      pts.push([a.latitude, a.longitude]);
+      var img = safeUrl(a.photo), lk = safeLink(a.link);
+      var pop = '<div class="mpop">' + (img ? '<img src="' + esc(img) + '" alt="">' : '') + '<b>' + esc(a.name) + '</b>' + (a.distance ? '<span class="mk">' + esc(a.distance) + '</span>' : '') +
+        (a.description ? '<p>' + esc(a.description.slice(0, 140)) + '</p>' : '') + (a.price ? '<p class="pz">' + esc(a.price) + '</p>' : '') + (lk ? '<a href="' + esc(lk) + '" target="_blank" rel="noopener">More info</a>' : '') + '</div>';
+      L.circleMarker([a.latitude, a.longitude], { radius: 7, color: '#ED8B00', fillColor: '#ffd59a', fillOpacity: 1, weight: 2 }).addTo(map)
+        .bindTooltip(esc(a.name), { direction: 'top', offset: [0, -6] }).bindPopup(pop, { maxWidth: 260, minWidth: 220 });
+    });
     if (pts.length > 1) map.fitBounds(pts, { padding: [24, 24], maxZoom: 13 }); else map.setView(pts[0], 12);
     void home;
   }
@@ -524,7 +545,7 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
       }).catch(function () { S.busy = false; t.disabled = false; t.textContent = 'Confirm booking'; });
     }
     if (a === 'again') { S.booked = null; return drawBook(); }
-    if (a === 'km') { S.km = +t.getAttribute('data-k'); return api('slug=' + encodeURIComponent(CFG.slug) + (CFG.mode === 'guest' ? '&guest=1' + (CFG.key ? '&key=' + encodeURIComponent(CFG.key) : '') : '') + '&km=' + S.km).then(function (d) { if (d.ok) { S.d.nearby = d.nearby; S.km = d.nearbyKm; var el = document.getElementById('nearby'); if (el) { el.outerHTML = nearbyHtml(); drawMap(); } } }); }
+    if (a === 'km') { S.km = +t.getAttribute('data-k'); return api('slug=' + encodeURIComponent(CFG.slug) + (CFG.mode === 'guest' ? '&guest=1' + (CFG.key ? '&key=' + encodeURIComponent(CFG.key) : '') : '') + '&km=' + S.km).then(function (d) { if (d.ok) { S.d.nearby = d.nearby; S.d.mapActs = d.mapActs; S.km = d.nearbyKm; var el = document.getElementById('nearby'); if (el) { el.outerHTML = nearbyHtml(); drawMap(); } } }); }
     if (a === 'copyWifi') { var pw = (S.d.guest || {}).wifiPassword || ''; (navigator.clipboard ? navigator.clipboard.writeText(pw) : Promise.reject()).then(function () { t.textContent = 'Copied ✓'; }, function () { prompt('Wi-Fi password:', pw); }); return; }
     if (a === 'print') { window.print(); return; }
   });
