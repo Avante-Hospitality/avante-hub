@@ -178,7 +178,7 @@
       var path = container.appendChild(document.createElement('div'));
       path.className = 'hint tree-picker-path';
       path.style.marginTop = '6px';
-      var selects = [];
+      var selects = [], usel = null;
       LEVELS.forEach(function (lv, i) {
         var lab = document.createElement('label');
         lab.style.cssText = 'display:flex;flex-direction:column;gap:3px;font-size:12px;margin:0;';
@@ -228,8 +228,31 @@
         var shown = [];
         FIELDS.forEach(function (f) { if (opts[f]) shown.push(opts[f]); });
         path.textContent = shown.length ? shown.join(' › ') : 'Nothing picked: the link searches everything.';
+        if (usel && usel._for !== selects[5].value) { usel._for = selects[5].value; fillUnits(); }
         onChange(opts);
       }
+      // Under the property: its unit types (Jean, 2026-10-14) — each kind of
+      // unit once, with what it sleeps. For information only: the link stays
+      // the property's own link.
+      var ulab = document.createElement('label');
+      ulab.style.cssText = 'display:flex;flex-direction:column;gap:3px;font-size:12px;margin:0;';
+      ulab.textContent = 'Unit type';
+      usel = document.createElement('select'); usel.disabled = true; usel._for = null; ulab.appendChild(usel); wrap.appendChild(ulab);
+      var udet = container.appendChild(document.createElement('div'));
+      udet.className = 'hint tree-picker-unit'; udet.style.marginTop = '4px';
+      function fillUnits() {
+        var id = selects[5].value; usel.innerHTML = ''; udet.textContent = '';
+        if (!id) { option(usel, '', '—'); usel.disabled = true; return; }
+        option(usel, '', 'Loading…'); usel.disabled = true;
+        loadUnits().then(function (u) {
+          if (selects[5].value !== id) return;
+          var ls = u[id] || []; usel.innerHTML = '';
+          option(usel, '', ls.length ? ls.length + (ls.length === 1 ? ' unit type' : ' unit types') : 'None listed on Stock Network');
+          ls.forEach(function (l, k) { option(usel, String(k), unitLabel(l)); });
+          usel.disabled = !ls.length; usel._lines = ls;
+        });
+      }
+      usel.addEventListener('change', function () { var l = (usel._lines || [])[+usel.value]; udet.textContent = usel.value === '' || !l ? '' : unitDetail(l); });
       api.reset = function () { selects[0].value = ''; fill(1); emit(); };
       fill(0);
       emit();
@@ -239,8 +262,27 @@
     return api;
   }
 
+  // ---------- Unit types per property (/api/sn-units, Jean 2026-10-14) ----------
+  // Line: [type, sleeps, bedrooms, count, unitNames]. Loaded only when needed (about 300 KB).
+  var unitsPromise = null;
+  function loadUnits() {
+    if (unitsPromise) return unitsPromise;
+    unitsPromise = fetch('/api/sn-units').then(function (r) { if (!r.ok) throw new Error('units'); return r.json(); })
+      .catch(function () { return fetch('sn-units.json').then(function (r) { return r.json(); }); })
+      .then(function (d) { return (d && d.units) || {}; });
+    unitsPromise.catch(function () { unitsPromise = null; });
+    return unitsPromise;
+  }
+  function unitLabel(l) { return l[0] + (l[1] ? ' · ' + l[1] + ' sleeper' : '') + (l[3] > 1 ? ' (×' + l[3] + ')' : ''); }
+  function unitDetail(l) {
+    var d = [l[1] ? 'Sleeps ' + l[1] : 'Sleeps: not given on Stock Network'];
+    if (l[2] === 0) d.push('studio'); else if (l[2]) d.push(l[2] + (l[2] === 1 ? ' bedroom' : ' bedrooms'));
+    d.push(l[3] + (l[3] === 1 ? ' unit' : ' units') + (l[4] && l[4].length ? ': ' + l[4].join(', ') : ''));
+    return d.join(' · ');
+  }
+
   root.AvanteBooking = {
     BASE: BASE, FIELDS: FIELDS, build: build, parse: parse, convert: convert, siteId: siteId,
-    loadTree: loadTree, mountTreePicker: mountTreePicker
+    loadTree: loadTree, mountTreePicker: mountTreePicker, loadUnits: loadUnits, unitLabel: unitLabel, unitDetail: unitDetail
   };
 })(window);

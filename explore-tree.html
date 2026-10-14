@@ -48,6 +48,13 @@
   .dot.act{background:var(--act)}
   .subl{font-size:12px;color:var(--muted)}
   .also{font-size:11.5px;color:var(--teal-dark);font-weight:600}
+  .utog{margin-left:auto;font-size:11.5px;color:var(--teal-dark);font-weight:700;white-space:nowrap}
+  .ulist{margin:2px 0 6px 22px;padding-left:10px;border-left:2px solid var(--line)}
+  .urow{display:block;width:100%;text-align:left;border:0;background:none;padding:4px 6px;border-radius:6px;font:inherit;font-size:13px;color:var(--ink);cursor:pointer}
+  .urow:hover,.urow[aria-expanded="true"]{background:#eef6f5}
+  .urow b{font-weight:700}
+  .udet{font-size:12px;color:var(--muted);padding:0 6px 6px}
+  .ucard{margin-top:10px}.ucard h3{font-size:14px;margin:0 0 4px}.ucard li{font-size:13px;margin:3px 0}
   .allhead{margin:8px 6px 2px;font-family:'Montserrat',sans-serif;font-weight:700;font-size:12px;color:var(--muted)}
   .right{display:grid;gap:12px;min-width:0}
   .mapcard{background:#fff;border:1px solid var(--line);border-radius:12px;padding:6px}
@@ -303,8 +310,34 @@ function revealItem(it){
 function itemEl(o,showSub){
   var it=o.it, b=document.createElement('button'); b.type='button'; b.className='row'; b.setAttribute('data-id',it.id);
   b.innerHTML='<span class="dot'+(it.kind==='activity'?' act':'')+'"></span><span class="nm">'+esc(it.name)+(showSub&&it.s?' <span class="subl">'+esc(it.s)+'</span>':'')+(it.hidden?' <span class="subl">(hidden)</span>':'')+(o.other.length?'<br><span class="also">Also in '+esc(o.other.join(', '))+'</span>':'')+'</span>';
-  b.addEventListener('click',function(){ pick(b,{item:it}); });
-  return b;
+  if(it.kind!=='property'){ b.addEventListener('click',function(){ pick(b,{item:it}); }); return b; }
+  // Properties open to their unit types (Jean, 2026-10-14): each kind of unit once, with what it sleeps.
+  var w=document.createElement('div'), ul=document.createElement('div'); ul.className='ulist'; ul.hidden=true;
+  var tg=document.createElement('span'); tg.className='utog'; b.appendChild(tg);
+  function tog(){ var ls=UNITS&&UNITS[it.id]; tg.textContent=UNITS?(ls&&ls.length?(ul.hidden?'▸ ':'▾ ')+ls.length+' unit type'+(ls.length===1?'':'s'):''):''; }
+  tog(); UNIT_WAIT.push(tog);
+  b.addEventListener('click',function(){ pick(b,{item:it});
+    if(!UNITS){ ul.hidden=false; ul.innerHTML='<div class="udet">Loading unit types…</div>'; UNIT_WAIT.push(function(){ fillUnits(ul,it.id); }); return; }
+    if(ul.hidden) fillUnits(ul,it.id); ul.hidden=!ul.hidden||!ul.childNodes.length; tog(); });
+  w.appendChild(b); w.appendChild(ul); return w;
+}
+// ---------- unit types under each property (from /api/sn-units) ----------
+var UNITS=null, UNIT_WAIT=[];
+function unitLabel(l){ return esc(l[0])+(l[1]?' · <b>'+l[1]+' sleeper</b>':'')+(l[3]>1?' <span class="subl">(×'+l[3]+')</span>':''); }
+function unitDetail(l){ var d=[]; d.push(l[1]?'Sleeps '+l[1]:'Sleeps: not given on Stock Network'); if(l[2]===0) d.push('studio'); else if(l[2]) d.push(l[2]+' bedroom'+(l[2]===1?'':'s'));
+  d.push(l[3]+' unit'+(l[3]===1?'':'s')+(l[4]&&l[4].length?': '+l[4].join(', '):'')); return d.join(' · '); }
+function fillUnits(ul,id){
+  var ls=(UNITS&&UNITS[id])||[]; ul.innerHTML='';
+  if(!ls.length){ ul.innerHTML='<div class="udet">No unit types listed on Stock Network.</div>'; return; }
+  ls.forEach(function(l){ var r=document.createElement('button'); r.type='button'; r.className='urow'; r.setAttribute('aria-expanded','false'); r.innerHTML=unitLabel(l);
+    var det=document.createElement('div'); det.className='udet'; det.hidden=true; det.textContent=unitDetail(l);
+    r.addEventListener('click',function(){ det.hidden=!det.hidden; r.setAttribute('aria-expanded',String(!det.hidden)); });
+    ul.appendChild(r); ul.appendChild(det); });
+}
+function loadUnits(){
+  fetch('/api/sn-units').then(function(r){ if(!r.ok) throw 0; return r.json(); }).catch(function(){ return fetch('sn-units.json').then(function(r){ return r.json(); }); })
+    .then(function(d){ UNITS=(d&&d.units)||{}; var w=UNIT_WAIT; UNIT_WAIT=[]; w.forEach(function(f){ try{ f(); }catch(e){} }); if(SEL&&SEL.members&&SEL.members.length===1&&SEL.members[0].kind==='property') update(false); })
+    .catch(function(){ UNITS={}; });
 }
 
 // ---------- map ----------
@@ -398,6 +431,9 @@ function card(near){
     h+='<div class="radius"><label for="rad">'+(SEL.region?'Region plus':'Within')+'</label><input type="range" id="radSlider" min="1" max="'+MAX_KM+'" step="1" value="'+R+'" aria-label="Distance in kilometres"><span id="radv">'+R+' km</span></div>';
     h+='<div class="near"><h3>'+near.length+' '+otherName+' '+(SEL.region?'in '+esc(SEL.label)+' or within '+R+' km of it':'within '+R+' km')+'</h3><div class="nlist" id="nlist"></div></div>';
   } else h+='<p class="hint">Select a region, city, suburb or single place to see the '+otherName+' around it.</p>';
+  var one=SEL.members.length===1&&SEL.members[0].kind==='property'?SEL.members[0]:null;
+  if(one){ var uls=UNITS?(UNITS[one.id]||[]):null;
+    h+='<div class="ucard"><h3>Unit types</h3>'+(uls===null?'<p class="hint">Loading…</p>':uls.length?'<ul>'+uls.map(function(l){ return '<li>'+unitLabel(l)+'<br><span class="subl">'+esc(unitDetail(l))+'</span></li>'; }).join('')+'</ul>':'<p class="hint">No unit types listed on Stock Network.</p>')+'</div>'; }
   $('card').innerHTML=h;
   if(canRadius){
     var s=$('radSlider'); s.addEventListener('input',function(){ $('rad').value=s.value; $('radv').textContent=s.value+' km'; clearTimeout(window._rt); window._rt=setTimeout(function(){ update(false); var n=$('radSlider'); if(n){ n.focus(); } },120); });
@@ -478,7 +514,7 @@ loadAll().then(function(){
   $('nP').textContent=PROPS.length.toLocaleString('en-ZA'); $('nA').textContent=ACTS.length.toLocaleString('en-ZA');
   var notLooked=ACTS.filter(function(a){return a.notLooked;}).length;
   if(notLooked){ $('status').hidden=false; $('status').textContent=notLooked+' activities are placed by their nearest property until the activity lookup runs'+(ADMIN?' (press Re-run lookup under Location tree).':' (admin: Location tree lookup page).'); }
-  drawRegions(); setTab('property');
+  drawRegions(); setTab('property'); loadUnits();
   var first=treeEl.querySelector('.row'); if(first) first.click();
 }).catch(function(){ $('status').textContent='Could not load the map data. Refresh the page to try again.'; });
 })();
