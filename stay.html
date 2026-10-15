@@ -49,6 +49,11 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
 .book{ position:sticky; top:76px; box-shadow:0 18px 50px rgba(14,47,68,.10); }
 .book h2{ font-size:20px; margin-bottom:4px; }
 .bkbusy{ display:none; margin-top:10px; font-weight:700; }
+/* The guest's details form, over the page */
+.book.asmodal{ position:fixed !important; inset:0; z-index:90; margin:0; border:0; border-radius:0; box-shadow:none; background:rgba(14,47,68,.6); overflow:auto; padding:16px; display:block !important; }
+.book.asmodal .bkm{ position:relative; background:#fff; max-width:640px; margin:24px auto 40px; border-radius:16px; padding:22px 20px; box-shadow:0 20px 60px rgba(0,0,0,.25); }
+.book.asmodal .bkform{ display:none; }
+.bkx{ position:absolute; top:10px; right:12px; width:40px; height:40px; border:2px solid var(--line); border-radius:50%; background:#fff; font-size:22px; line-height:1; cursor:pointer; }
 .f2{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:12px; }
 .fld{ display:flex; flex-direction:column; gap:4px; min-width:0; }
 .fld label{ font:700 11.5px 'Montserrat',sans-serif; text-transform:uppercase; letter-spacing:.06em; color:var(--teal-d); }
@@ -340,6 +345,7 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
       '<div class="fld"><label for="ch">Children</label><select id="ch">' + [0,1,2,3,4,5,6].map(function (n) { return '<option' + (n === S.children ? ' selected' : '') + '>' + n + '</option>'; }).join('') + '</select></div></div>' +
       '<button type="button" class="btn" style="width:100%;margin-top:14px" data-act="quote"' + (S.busy ? ' disabled' : '') + '>' + (S.busy === 'quote' ? 'Checking…' : 'Check availability') + '</button></div>' + (S.busy === 'quote' ? '<div class="bkbusy" role="status">Checking…</div>' : '');
     if (S.err) h += '<div class="err" role="alert">' + esc(S.err) + '</div>';
+    if (S.note) h += '<div class="muted" style="margin-top:10px" role="status">' + esc(S.note) + '</div>';
     if (S.quote && !S.pick) {
       var q = S.quote;
       h += '<div class="res" aria-live="polite"><b style="font-family:Montserrat,sans-serif">' + (q.results.length ? q.results.length + (q.results.length === 1 ? ' unit' : ' units') + ' free · ' : '') + nights(q.checkIn, q.checkOut) + ' nights</b>';
@@ -366,12 +372,15 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
         '<button type="button" class="btn t" style="width:100%;margin-top:14px" data-act="book"' + (S.busy ? ' disabled' : '') + '>' + (S.busy === 'book' ? 'Booking…' : (d.approveGuests ? 'Send booking request' : 'Confirm booking') + (r.total ? ' · ' + money(r.total) : '')) + '</button>' +
         '<p class="muted" style="margin-top:8px">' + (d.approveGuests ? 'This sends a booking request. ' + esc(d.name) + ' confirms it, then you get the payment details by email.' : 'You\'ll see how to pay straight after booking, and get it by email.' + (d.payMode !== 'eft' ? ' Online payments must be made within the payment time, or the booking is cancelled.' : '')) + '</p>';
     }
+    // The guest's details open as their own form over the page (like the hub's booking form), Jean 2026-10-15.
+    if (S.pick) h = '<div class="bkm" role="dialog" aria-modal="true" aria-label="Your booking"><button type="button" class="bkx" data-act="unpick" aria-label="Close">×</button><h2>Your booking</h2>' +
+      h.replace(/^<h2>Book your stay<\/h2>/, '') + '</div>';
     return h;
   }
   // Phones: when the calendar is on the page, its date picker and the bottom bar do the booking,
   // so the Book your stay form is hidden; the card only shows for results, errors and the guest form.
-  function bookCls() { return 'card book' + (S.d && S.d.showCalendar ? ' oncal' : '') + (S.busy || S.err || S.quote || S.pick || S.booked ? '' : ' idle'); }
-  function drawBook() { var el = document.getElementById('book'); if (el) { el.className = bookCls(); el.innerHTML = bookHtml(); } drawCalPick(); }
+  function bookCls() { return 'card book' + (S.d && S.d.showCalendar ? ' oncal' : '') + (S.busy || S.err || S.quote || S.pick || S.booked ? '' : ' idle') + (S.pick ? ' asmodal' : ''); }
+  function drawBook() { var el = document.getElementById('book'); if (el) { el.className = bookCls(); el.innerHTML = bookHtml(); } document.body.style.overflow = S.pick ? 'hidden' : ''; drawCalPick(); }
   function drawCal() {
     var el = document.getElementById('cal'); if (!el) return;
     var d = S.d, m = S.month, y = +m.slice(0, 4), mo = +m.slice(5, 7) - 1, data = S.monthData[m];
@@ -503,6 +512,7 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
     if (e.target.id === 'cpi') { var o = document.getElementById('cpo'); if (o && (!o.value || o.value <= e.target.value)) o.value = add(e.target.value, Math.max(1, S.d.minStay || 1)); }
   });
   document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && S.pick && !S.busy) { S.pick = null; drawBook(); return; }
     if (S.lb < 0) return;
     if (e.key === 'Escape') { closeLb(); } else if (e.key === 'ArrowRight') { showLb(S.lb + 1); } else if (e.key === 'ArrowLeft') { showLb(S.lb - 1); }
   });
@@ -548,13 +558,20 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
       S.busy = 'quote'; drawBook();
       return post({ action: 'quote', checkIn: S.ci, checkOut: S.co }).then(function (r) {
         S.busy = false; if (!r.ok) { S.err = r.error; S.quote = null; } else S.quote = r;
+        var fromLink = S.autoPick;
+        // From a link whose stay is shorter than the minimum: lengthen it to the minimum and check again.
+        if (fromLink && S.quote && S.quote.tooShort && S.quote.minStay) {
+          S.co = add(S.ci, S.quote.minStay); S.note = 'The minimum stay is ' + S.quote.minStay + ' nights, so check-out is ' + nice(S.co) + '. Change the dates if you like.';
+          S.quote = null; drawCal(); drawBook(); var qb2 = document.querySelector('#book [data-act="quote"]'); if (qb2) qb2.click(); return;
+        }
         // From a hook or flyer link: with one unit free (or the unit the link names) go straight to the details form.
-        if (S.autoPick && S.quote && !S.quote.tooShort) {
+        if (fromLink && S.quote) {
           var res = S.quote.results || [], want = S.linkUnit && res.find(function (x) { return x.unit.toLowerCase() === S.linkUnit.toLowerCase(); });
           if (want || res.length === 1) S.pick = want || res[0];
         }
         S.autoPick = false; drawBook();
-        if (S.pick) { var bk2 = document.getElementById('book'); if (bk2) bk2.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+        // From a link, always land on the result: the details form, the units to pick from, or why nothing is free.
+        if (fromLink) { var bk2 = document.getElementById('book'); if (bk2) bk2.scrollIntoView({ behavior: 'smooth', block: 'start' }); var gf = S.pick && document.getElementById('gf'); if (gf) setTimeout(function () { gf.focus({ preventScroll: true }); }, 400); }
       }).catch(function () { S.busy = false; S.err = 'Couldn\'t check right now. Try again.'; drawBook(); });
     }
     if (a === 'pick') { S.pick = S.quote.results.find(function (r) { return r.unit === t.getAttribute('data-u'); }); drawBook(); var f = document.getElementById('gf'); if (f) f.focus(); return; }
