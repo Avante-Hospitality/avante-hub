@@ -918,10 +918,20 @@
       p.opts.destination = town;
       return AvanteBooking.build(p.siteId, p.opts);
     }
+    // A property's own front store (/stay/…): the offer's dates go with it, so
+    // the store opens on them and goes straight to booking (Jean, 2026-10-15).
+    function withDates(url, d){
+      try{
+        var u = new URL(url);
+        if(!/^\/stay\//.test(u.pathname) || !d || !d.checkIn || !d.checkOut || u.searchParams.get('checkin')) return url;
+        u.searchParams.set('checkin', d.checkIn); u.searchParams.set('checkout', d.checkOut); if(!u.hash) u.hash = 'book';
+        return u.toString();
+      }catch(e){ return url; }
+    }
     function offerActions(r, info){
       var h = '';
       if(isSafeUrl(r.data.booking)){
-        h += '<a class="btn btn-book" ' + bookAttrs(withPlace(r.data.booking, info.place)) + ' data-book>' + (info.dates ? 'Book these dates' : 'Check availability') + '</a>';
+        h += '<a class="btn btn-book" ' + bookAttrs(withDates(withPlace(r.data.booking, info.place), r.data)) + ' data-book>' + (info.dates ? 'Book these dates' : 'Check availability') + '</a>';
       }
       if(isSafeUrl(r.data.landing)){
         h += '<a class="btn btn-quiet" href="' + escapeHtml(r.data.landing) + '" data-details>Full details</a>';

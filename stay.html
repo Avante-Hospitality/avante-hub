@@ -247,6 +247,7 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
       S.d = d; S.km = d.nearbyKm;
       // A Book link from a hook or flyer (?checkin=&checkout=, Jean 2026-10-15): open on those dates.
       var qp = new URLSearchParams(location.search), qi = qp.get('checkin') || '', qo = qp.get('checkout') || '', fromLink = false;
+      S.linkUnit = qp.get('unit') || '';
       if (!S.ci && /^\d{4}-\d{2}-\d{2}$/.test(qi) && /^\d{4}-\d{2}-\d{2}$/.test(qo) && qo > qi && qi >= d.firstBookable) { S.ci = qi; S.co = qo; S.month = qi.slice(0, 7); fromLink = true; }
       if (!S.ci) { S.ci = d.firstBookable; S.co = add(d.firstBookable, Math.max(1, d.minStay || 1)); }
       if (!S.month) S.month = d.firstBookable.slice(0, 7);
@@ -254,6 +255,7 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
       if (CFG.mode === 'store') { S.offers = (d.offers || []).filter(function (o) { return o.booking || o.landing; }); loadMonth(); }
       // Straight to the booking: with dates, check them (the free units show, then the guest books and pays as usual).
       if (CFG.mode === 'store' && location.hash === '#book') {
+        S.autoPick = fromLink; // one unit free (or the link's unit): straight to the guest's details
         var go = function () { var t = document.querySelector(fromLink ? '[data-act="calCheck"],[data-act="quote"]' : '[data-act="toBook"]'); if (t) t.click(); };
         setTimeout(go, 300);
       }
@@ -354,6 +356,8 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
         '<div class="f2"><div class="fld"><label for="gf">First name</label><input id="gf" autocomplete="given-name"></div><div class="fld"><label for="gl">Last name</label><input id="gl" autocomplete="family-name"></div></div>' +
         '<div class="fld" style="margin-top:10px"><label for="ge">Email</label><input id="ge" type="email" autocomplete="email"></div>' +
         '<div class="fld" style="margin-top:10px"><label for="gc">Cellphone</label><input id="gc" type="tel" autocomplete="tel"></div>' +
+        '<div class="f2"><div class="fld"><label for="pad">Adults</label><select id="pad">' + [1,2,3,4,5,6,7,8,9,10].map(function (n) { return '<option' + (n === S.adults ? ' selected' : '') + '>' + n + '</option>'; }).join('') + '</select></div>' +
+        '<div class="fld"><label for="pch">Children</label><select id="pch">' + [0,1,2,3,4,5,6].map(function (n) { return '<option' + (n === S.children ? ' selected' : '') + '>' + n + '</option>'; }).join('') + '</select></div></div>' +
         '<div class="fld" style="margin-top:10px"><label for="gn">Anything we should know? (optional)</label><textarea id="gn" rows="2"></textarea></div>' +
         (d.payMode === 'both' && !d.approveGuests ? '<fieldset class="fld" style="margin-top:10px;border:none;padding:0"><legend style="font-weight:700;margin-bottom:6px">How will you pay?</legend>' +
           '<label style="display:flex;gap:8px;align-items:center;min-height:40px"><input type="radio" name="payby" value="gateway"' + (S.payBy !== 'eft' ? ' checked' : '') + '> Pay now online (card or Instant EFT)</label>' +
@@ -542,7 +546,16 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
       syncForm(); S.err = ''; S.pick = null;
       if (!S.ci || !S.co || S.co <= S.ci) { S.err = 'Choose a check-out after the check-in.'; return drawBook(); }
       S.busy = 'quote'; drawBook();
-      return post({ action: 'quote', checkIn: S.ci, checkOut: S.co }).then(function (r) { S.busy = false; if (!r.ok) { S.err = r.error; S.quote = null; } else S.quote = r; drawBook(); }).catch(function () { S.busy = false; S.err = 'Couldn\'t check right now. Try again.'; drawBook(); });
+      return post({ action: 'quote', checkIn: S.ci, checkOut: S.co }).then(function (r) {
+        S.busy = false; if (!r.ok) { S.err = r.error; S.quote = null; } else S.quote = r;
+        // From a hook or flyer link: with one unit free (or the unit the link names) go straight to the details form.
+        if (S.autoPick && S.quote && !S.quote.tooShort) {
+          var res = S.quote.results || [], want = S.linkUnit && res.find(function (x) { return x.unit.toLowerCase() === S.linkUnit.toLowerCase(); });
+          if (want || res.length === 1) S.pick = want || res[0];
+        }
+        S.autoPick = false; drawBook();
+        if (S.pick) { var bk2 = document.getElementById('book'); if (bk2) bk2.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+      }).catch(function () { S.busy = false; S.err = 'Couldn\'t check right now. Try again.'; drawBook(); });
     }
     if (a === 'pick') { S.pick = S.quote.results.find(function (r) { return r.unit === t.getAttribute('data-u'); }); drawBook(); var f = document.getElementById('gf'); if (f) f.focus(); return; }
     if (a === 'unpick') { S.pick = null; return drawBook(); }
@@ -553,6 +566,7 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
       else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(g.email)) S.err = 'Enter a valid email address.';
       else if (g.cellphone.replace(/\D/g, '').length < 9) S.err = 'Enter your cellphone number.';
       if (S.err) { var keep = { gf: val('gf'), gl: val('gl'), ge: val('ge'), gc: val('gc'), gn: val('gn') }; drawBook(); Object.keys(keep).forEach(function (k) { var el = document.getElementById(k); if (el) el.value = keep[k]; }); return; }
+      if (document.getElementById('pad')) { S.adults = +val('pad') || S.adults; S.children = +val('pch') || 0; }
       S.busy = 'book'; t.disabled = true; t.textContent = 'Booking…';
       return post({ action: 'book', checkIn: S.quote.checkIn, checkOut: S.quote.checkOut, unit: S.pick.unit, guest: g, adults: S.adults, children: S.children, notes: val('gn'), website: val('website'), payBy: (document.querySelector('input[name="payby"]:checked') || {}).value }).then(function (r) {
         S.busy = false;
