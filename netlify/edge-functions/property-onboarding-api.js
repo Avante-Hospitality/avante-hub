@@ -1,5 +1,13 @@
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
+// v10 for the Site Nr register only: v8 ignores { onlyIfNew }, which the
+// register needs so two requests can't take the same number.
+import { getStore as getStoreV10 } from "https://esm.sh/@netlify/blobs@10?bundle";
 import { emailList, badEmails, emailText, recipients } from "./lib/emails.js";
+import { sendEmail } from "./lib/send-email.js";
+// SheetJS from its own CDN (the build SheetJS recommends for Deno).
+import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
+import { SITE_REGISTER_STORE, SITE_STATUSES, DEFAULT_SN_SETUP_EMAILS, newEntry, reserveNextSiteNr, reserveSiteNr, getSiteNr, saveSiteNr,
+  listSiteNrs, nextFreeSiteNr, findOpenRequest, requestSheetBase64, sheetFileName, setupEmail, confirmationEmail } from "./lib/sn-site-register.js";
 import { readListingScreenshots } from "./lib/listing-reader.js";
 import { HOOKS_URL, makeHooksTicket } from "./lib/hooks-ticket.js";
 import { readResortInfo, copySnPhotos } from "./lib/sn-resort-info.js";
@@ -438,32 +446,67 @@ async function verifyAdminToken(token) {
   return true;
 }
 
+// Email failures never break the listing submit/status flow.
 async function sendNotificationEmail(to, subject, html) {
-  try {
-    const apiKey = Netlify.env.get("RESEND_API_KEY");
-    if (!apiKey || !emailList(to).length) return;
-    await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        authorization: "Bearer " + apiKey,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        from: "Avante Travel <bookings@go.avantetravel.co.za>",
-        to: emailList(to, 20),
-        subject: subject,
-        html: html,
-      }),
-    });
-  } catch (e) {
-    // Email failures should never break the listing submit/status flow.
-  }
+  await sendEmail({ to, subject, html });
 }
 
 async function getNotificationEmail() {
+  return (await getSettings()).notificationEmail || "";
+}
+
+async function getSettings() {
+  return (await getStore({ name: "property-settings", consistency: "strong" }).get("config", { type: "json" }).catch(() => null)) || {};
+}
+// Merges into the saved settings, so saving one setting keeps the others.
+async function saveSettings(patch) {
   const settingsStore = getStore({ name: "property-settings", consistency: "strong" });
-  const settings = await settingsStore.get("config", { type: "json" });
-  return (settings && settings.notificationEmail) || "";
+  // Read without hiding errors: saving on top of a failed read would wipe the other settings.
+  const current = (await settingsStore.get("config", { type: "json" })) || {};
+  await settingsStore.setJSON("config", Object.assign(current, patch));
+}
+
+// ---------- Stock Network set-up (Site Nr register, Jean 2026-10-15) ----------
+const siteRegister = () => getStoreV10({ name: SITE_REGISTER_STORE, consistency: "strong" });
+async function getSnSetupEmails() {
+  return (await getSettings()).snSetupEmails || DEFAULT_SN_SETUP_EMAILS;
+}
+// Emails the Request_pull_area sheet for one Site Nr and logs the send on the
+// register entry (failed ones too). `to` overrides the saved addresses.
+async function sendSnSetupSheet(entry, by, to) {
+  const recipientsTo = emailText(to || (await getSnSetupEmails()), 20);
+  const filename = sheetFileName(entry);
+  const { subject, html } = setupEmail(entry);
+  let sent;
+  try {
+    sent = await sendEmail({ to: recipientsTo, subject, html, attachments: [{ filename, content: requestSheetBase64(XLSX, [entry]) }], replyTo: "admin@avantehospitality.co.za" });
+  } catch (e) {
+    sent = { ok: false, error: "Could not make the sheet: " + String((e && e.message) || e) };
+  }
+  const at = new Date().toISOString();
+  entry.sendLog = (Array.isArray(entry.sendLog) ? entry.sendLog : []).concat([{ at, by, to: recipientsTo, file: filename, ok: sent.ok, error: sent.ok ? undefined : sent.error }]).slice(-50);
+  if (sent.ok && entry.status === "Spare") entry.status = "Sent";
+  entry.updatedAt = at;
+  await saveSiteNr(siteRegister(), entry);
+  return entry;
+}
+// Area / District / Suburb for the sheet from the hub location tree, when
+// Google finds the property by its name (best effort: empty when the top
+// match isn't clearly the same property; admin can fill them in).
+async function guessSnLocation(name) {
+  try {
+    const placesKey = Deno.env.get("GOOGLE_PLACES_API_KEY") || "";
+    const p = await searchPlaceCandidates(name + ", South Africa", placesKey, 1);
+    const c = p && p.ok && p.candidates && p.candidates[0];
+    const words = (v) => String(v || "").toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, " ").trim();
+    if (!c || !words(c.name) || !(words(c.name).includes(words(name)) || words(name).includes(words(c.name)))) return {};
+    const place = await placeInTree(c.lat, c.lng);
+    if (!place) return {};
+    const f = treeFields(place);
+    return { area: f.area, district: f.district, suburb: f.suburb, place, lat: c.lat, lng: c.lng };
+  } catch (e) {
+    return {};
+  }
 }
 
 // Who gets the hub's emails about a listing (Jean, 2026-10-14): the owner side
@@ -674,19 +717,8 @@ export default async (request, context) => {
           (photosUrl ? '<p><b>Photos (' + photoCount + '):</b> <a href="' + esc(photosUrl) + '">View and download the photos</a><br><span style="color:#5b6b76">(one .zip with all of them is on that page)</span></p>' : "") +
           "<p>Avante Travel</p>";
         const replyTo = clean(body.replyTo, 200);
-        let ok = false, error = "", emailId = "";
-        const apiKey = Netlify.env.get("RESEND_API_KEY");
-        if (!apiKey) error = "Email isn't switched on (RESEND_API_KEY missing).";
-        else {
-          try {
-            const msg = { from: "Avante Travel <bookings@go.avantetravel.co.za>", to, subject, html, attachments: files };
-            if (emailList(replyTo).length) msg.reply_to = emailList(replyTo);
-            const r = await fetch("https://api.resend.com/emails", { method: "POST", headers: { authorization: "Bearer " + apiKey, "content-type": "application/json" }, body: JSON.stringify(msg) });
-            const d = await r.json().catch(() => ({}));
-            ok = r.ok; emailId = (d && d.id) || "";
-            if (!ok) error = (d && (d.message || d.error)) || ("The email service said " + r.status + ".");
-          } catch (e) { error = "Could not reach the email service: " + String((e && e.message) || e); }
-        }
+        const sent = await sendEmail({ to, subject, html, attachments: files, replyTo });
+        const ok = sent.ok, error = sent.error || "", emailId = sent.id || "";
         const entry = { at: new Date().toISOString(), to: to.join(", "), subject, files: files.map((f) => f.filename).concat(photosUrl ? ["Link to " + photoCount + " photos"] : []), siteNr, note, ok, error: error || undefined, emailId: emailId || undefined, markedSent: false };
         const before = { snSentSeasons: record.snSentSeasons || [] };
         if (ok && body.markSent) {
@@ -958,16 +990,22 @@ export default async (request, context) => {
     }
 
     if (action === "listingRequest") {
-      // The public "List your property" page (avante-channel-manager-listing.html,
-      // Jean 2026-10-13): a property on NightsBridge types its BBID; the hub
-      // finds it in its Stock Network list (External Resort Code) and builds
-      // the listing from Stock Network. It stays a request: the property gets
-      // no edit link until admin has checked it and sends one from Admin.
+      // The public "List your property" page (avante-channel-manager-listing.html).
+      // Jean (2026-10-15): every property is set up on Stock Network first.
+      //  - A NightsBridge BBID already in the hub's Stock Network list: the
+      //    property is on SN; nothing goes to SN.
+      //  - Otherwise: the hub gives it the next free Site Nr from its register
+      //    and emails SN's Request_pull_area sheet to the SN set-up addresses
+      //    (Admin > Site Nrs); the property gets a confirmation.
+      //  - Only if the property ticked "I also want to become an Avante
+      //    Property Affiliate" is a listing made, status Requested; it gets
+      //    no edit link until admin has checked it and sends one.
       if (await overDailyLimit("listingRequest", request, context)) return json({ error: "Too many requests from this connection today. Please email info@avantehospitality.co.za." }, 429);
       const contact = { name: clean(body.contactPerson, 120), phone: clean(body.phone, 200), email: clean(body.email, 600) };
       const propertyName = clean(body.propertyName, 200);
       const cm = ["NightsBridge", "eRes/NebulaCRS", "None yet"].includes(body.channelManager) ? body.channelManager : "";
       const bbid = clean(body.bbid, 40), eresRef = clean(body.eresRef, 60);
+      const wantsAffiliate = body.propertyAffiliate === true;
       if (!propertyName || !contact.name || !contact.phone || !contact.email || !cm) return json({ error: "Fill in every field." }, 400);
       if (badEmails(contact.email).length || !emailList(contact.email).length) return json({ error: "\"" + (badEmails(contact.email)[0] || contact.email) + "\" doesn't look like an email address. Separate several addresses with a comma." }, 400);
       if (body.acceptTerms !== true) return json({ error: "Accept the Terms & Conditions first." }, 400);
@@ -983,32 +1021,108 @@ export default async (request, context) => {
           already = all.find((r) => r.resortId && String(r.resortId).toLowerCase() === String(row.resortId).toLowerCase()) || null;
         }
       }
+
+      // Not on Stock Network yet: reserve the Site Nr and send the sheet.
+      let site = null, loc = {}, repeat = false;
+      if (!row) {
+        // Submitted before and not set up yet? Same Site Nr, nothing sent again.
+        site = await findOpenRequest(siteRegister(), { bbid, propertyName, email: emailText(contact.email) });
+        if (site) {
+          repeat = true;
+          if (wantsAffiliate && !site.propertyAffiliate) { site.propertyAffiliate = true; await saveSiteNr(siteRegister(), site); }
+        } else {
+          loc = await guessSnLocation(propertyName);
+          const entry = newEntry({ propertyName, bbid, channelManager: cm, eresRef, contactName: contact.name, phone: contact.phone, email: emailText(contact.email),
+            area: loc.area, district: loc.district, suburb: loc.suburb, propertyAffiliate: wantsAffiliate });
+          entry.siteNr = await reserveNextSiteNr(siteRegister(), entry);
+          site = await sendSnSetupSheet(entry, "List your property page");
+          const conf = confirmationEmail(site);
+          // At most 5 addresses: the confirmation goes to whatever was typed on a public page.
+          context.waitUntil(sendEmail({ to: emailList(contact.email, 5), subject: conf.subject, html: conf.html }));
+        }
+      }
+
       const extra = { requestContact: contact, contactName: contact.name, contactPhone: contact.phone, contactEmail: emailText(contact.email), notifyWho: "both",
         channelManager: cm, bbid, eresRef, requestedAt: new Date().toISOString() };
       let record = null;
-      if (row && !already) {
+      if (wantsAffiliate && row && !already) {
         record = await buildListingFromSn({ site: String(row.siteId || ""), resortId: row.resortId, resortName: row.name, aff: "", units: [], settings: { email: contact.email, phone: contact.phone }, channel: true, siteIdForListing: "" },
           row, { by: "property", status: "Requested", historyNote: "Listing request from the List your property page, BBID " + bbid + ", found on Stock Network", extra });
-      } else if (!already) {
+      } else if (wantsAffiliate && !already && !(site && site.listingId)) {
         const now = new Date().toISOString(), listingId = genListingId();
         record = Object.assign({ listingId, status: "Requested", dateSubmitted: now, dateUpdated: now }, submittedFields({ propertyName, email: contact.email, telephone: contact.phone, submittedBy: "Owner" }),
           { editToken: genToken(), agreementSigned: "Y", channelProperty: cm !== "None yet" ? "Y" : "", ratesFromChannel: cm !== "None yet" ? "Y" : "", commissionPct: cm !== "None yet" ? "4.95" : "",
-            needsTreePlace: "Y", commissionRate: "", listingDuration: "", agreementTerms: "", agreementStatus: "Not Sent", agreementToken: "", agreementSentAt: "", agreementRespondedAt: "" }, extra);
-        addHistory(record, "property", "Listing request from the List your property page (" + cm + (bbid ? ", BBID " + bbid + " not found in the Stock Network list" : eresRef ? ", eRes ref " + eresRef : "") + ")");
+            needsTreePlace: loc.place ? "" : "Y", commissionRate: "", listingDuration: "", agreementTerms: "", agreementStatus: "Not Sent", agreementToken: "", agreementSentAt: "", agreementRespondedAt: "",
+            siteNr: site ? String(site.siteNr) : "" }, extra);
+        if (loc.place) { record.latitude = String(loc.lat); record.longitude = String(loc.lng); await applyTreePlace(record, loc.place, false); }
+        addHistory(record, "property", "Listing request from the List your property page (" + cm + (bbid ? ", BBID " + bbid : eresRef ? ", eRes ref " + eresRef : "") +
+          (site ? "; Site Nr " + site.siteNr + " reserved" + (site.status === "Sent" ? ", sheet sent to Stock Network" : ", sheet NOT sent") : "") + ")");
       }
-      if (record) await store.setJSON(record.listingId, record);
+      if (record) {
+        await store.setJSON(record.listingId, record);
+        if (site) { site.listingId = record.listingId; await saveSiteNr(siteRegister(), site); }
+      }
+
       const notifyTo = await getNotificationEmail();
       if (notifyTo) {
-        context.waitUntil(sendNotificationEmail(notifyTo, "Listing request: " + propertyName + (bbid ? " (BBID " + bbid + ")" : ""),
+        context.waitUntil(sendNotificationEmail(notifyTo, "Listing request: " + propertyName + (bbid ? " (BBID " + bbid + ")" : "") + (site ? " — Site Nr " + site.siteNr : ""),
           "<p>A property asked to list on the <b>List your property</b> page.</p>" +
           "<p><b>Property:</b> " + escapeHtml(propertyName) + "<br><b>Contact:</b> " + escapeHtml(contact.name) + " · " + escapeHtml(contact.phone) + " · " + escapeHtml(contact.email) +
-          "<br><b>System:</b> " + escapeHtml(cm) + (bbid ? " · BBID " + escapeHtml(bbid) : "") + (eresRef ? " · eRes ref " + escapeHtml(eresRef) : "") + "</p>" +
-          (already ? "<p>It already has a listing (" + escapeHtml(already.listingId) + "); nothing new was made.</p>"
-            : row ? "<p>Found on Stock Network: <b>" + escapeHtml(row.name) + "</b>, Site Nr " + escapeHtml(row.siteId || "?") + ". Listing <b>" + escapeHtml(record.listingId) + "</b> was made from Stock Network.</p>"
-            : "<p>" + (cm === "NightsBridge" ? "That BBID wasn't found in the hub's Stock Network list. " : "") + "Listing <b>" + escapeHtml(record.listingId) + "</b> was made with these details only.</p>") +
-          "<p>Check it in Admin &gt; Property Listings, then tap <b>Email the edit link</b> so the property can complete it.</p>"));
+          "<br><b>System:</b> " + escapeHtml(cm) + (bbid ? " · BBID " + escapeHtml(bbid) : "") + (eresRef ? " · eRes ref " + escapeHtml(eresRef) : "") +
+          "<br><b>Property affiliate:</b> " + (wantsAffiliate ? "yes" : "no") + "</p>" +
+          (row ? "<p>Already on Stock Network: <b>" + escapeHtml(row.name) + "</b>. Nothing was sent to Stock Network.</p>"
+            : repeat ? "<p>Asked before: same Site Nr <b>" + escapeHtml(site.siteNr) + "</b> (" + escapeHtml(site.status) + "). Nothing was sent to Stock Network again.</p>"
+            : "<p>Site Nr <b>" + escapeHtml(site.siteNr) + "</b> reserved. " + (site.status === "Sent" ? "The Stock Network sheet was emailed to " + escapeHtml(site.sendLog[site.sendLog.length - 1].to) + "."
+              : "<b>The Stock Network sheet could NOT be sent</b> (" + escapeHtml(site.sendLog[site.sendLog.length - 1].error || "") + "). Send it again from Admin &gt; Site Nrs.") + "</p>") +
+          (already ? "<p>It already has a listing (" + escapeHtml(already.listingId) + "); no new listing was made.</p>"
+            : record ? "<p>Listing <b>" + escapeHtml(record.listingId) + "</b> was made, status Requested. Check it in Admin &gt; Property Listings, then tap <b>Email the edit link</b>.</p>"
+            : "<p>No listing was made (the property did not ask to be a property affiliate).</p>")));
       }
-      return json({ ok: true, found: !!row, name: row ? row.name : "", already: !!already });
+      return json({ ok: true, found: !!row, name: row ? row.name : "", already: !!already, siteNr: site ? site.siteNr : null, repeat, listing: !!(record || (site && site.listingId)) });
+    }
+
+    // ---------- Site Nr register (Admin > Site Nrs, Jean 2026-10-15) ----------
+    if (["siteNrList", "siteNrReserve", "siteNrUpdate", "siteNrSend", "snSetupSettings"].includes(action)) {
+      const denied = await requireAdmin();
+      if (denied) return denied;
+      const reg = siteRegister();
+      if (action === "siteNrList") {
+        const entries = await listSiteNrs(reg);
+        return json({ ok: true, entries, next: await nextFreeSiteNr(reg), emails: await getSnSetupEmails(), statuses: SITE_STATUSES });
+      }
+      if (action === "snSetupSettings") {
+        const emails = clean(body.emails, 600);
+        if (!emailList(emails).length || badEmails(emails).length) return json({ error: badEmails(emails).length ? "\"" + badEmails(emails)[0] + "\" doesn't look like an email address. Separate several with a comma." : "Type at least one email address." }, 400);
+        await saveSettings({ snSetupEmails: emailText(emails, 20) });
+        return json({ ok: true, emails: emailText(emails, 20) });
+      }
+      const fields = (b) => ({ propertyName: b.propertyName, bbid: b.bbid, channelManager: b.channelManager, contactName: b.contactName, phone: b.phone,
+        email: b.email, description: b.description, area: b.area, district: b.district, suburb: b.suburb, note: b.note });
+      if (action === "siteNrReserve") {
+        // By hand: the next free number, or one admin types (e.g. given out outside the hub).
+        const entry = newEntry(Object.assign(fields(body), { propertyName: clean(body.propertyName, 200) || "Spare" }));
+        try {
+          entry.siteNr = body.siteNr ? await reserveSiteNr(reg, body.siteNr, entry) : await reserveNextSiteNr(reg, entry);
+        } catch (e) { return json({ error: e.message }, 400); }
+        if (body.markSetUp === true) { entry.status = "Set up"; await saveSiteNr(reg, entry); }
+        return json({ ok: true, entry: await getSiteNr(reg, entry.siteNr) });
+      }
+      const entry = await getSiteNr(reg, body.siteNr);
+      if (!entry) return json({ error: "Site Nr " + clean(String(body.siteNr || ""), 12) + " isn't in the list." }, 404);
+      if (action === "siteNrUpdate") {
+        const f = fields(body);
+        for (const k of Object.keys(f)) if (typeof f[k] === "string") entry[k] = k === "description" || k === "note" ? clean(f[k], 1000) : clean(f[k], k === "email" ? 600 : 200).replace(/[\r\n\t]+/g, " ");
+        if (typeof body.email === "string" && badEmails(body.email).length) return json({ error: "\"" + badEmails(body.email)[0] + "\" doesn't look like an email address." }, 400);
+        if (SITE_STATUSES.includes(body.status)) entry.status = body.status;
+        entry.updatedAt = new Date().toISOString();
+        await saveSiteNr(reg, entry);
+        return json({ ok: true, entry });
+      }
+      if (action === "siteNrSend") {
+        const sent = await sendSnSetupSheet(entry, "Admin", clean(body.to, 600));
+        const last = sent.sendLog[sent.sendLog.length - 1];
+        return last.ok ? json({ ok: true, entry: sent }) : json({ error: "Not sent: " + last.error, entry: sent }, 502);
+      }
     }
 
     if (action === "existingProperties" || action === "createFromExisting") {
@@ -1164,19 +1278,15 @@ export default async (request, context) => {
       if (!emailList(to).length || badEmails(to).length) return json({ error: badEmails(to).length ? "\"" + badEmails(to)[0] + "\" doesn't look like an email address. Separate several with a comma." : "Type the email address." }, 400);
       if (!record.editToken) record.editToken = genToken();
       const editLink = new URL(request.url).origin + "/property-form.html?edit=" + encodeURIComponent(listingId) + "&key=" + encodeURIComponent(record.editToken);
-      const apiKey = Netlify.env.get("RESEND_API_KEY");
-      if (!apiKey) return json({ error: "Email isn't switched on (RESEND_API_KEY missing)." }, 500);
-      const r = await fetch("https://api.resend.com/emails", { method: "POST", headers: { authorization: "Bearer " + apiKey, "content-type": "application/json" },
-        body: JSON.stringify({ from: "Avante Travel <bookings@go.avantetravel.co.za>", to: emailList(to, 20), subject: "Please complete your Avante listing — " + (record.propertyName || ""),
-          html: "<p>Hello,</p><p>Avante Travel has a new, fuller listing form for <strong>" + escapeHtml(record.propertyName || "your property") + "</strong>. We filled in what we already have.</p>" +
+      const sent = await sendEmail({ to, subject: "Please complete your Avante listing — " + (record.propertyName || ""),
+        html: "<p>Hello,</p><p>Avante Travel has a new, fuller listing form for <strong>" + escapeHtml(record.propertyName || "your property") + "</strong>. We filled in what we already have.</p>" +
             "<p>Please open it, check everything and fill in what is missing (for example photos, amenities, policies and rates), then tap <b>Save changes</b> on the last step:<br><a href=\"" + editLink + "\">Edit my listing</a></p>" +
-            "<p>Keep this email: you can use the link again any time. Anyone with this link can edit the listing, so don't share it.</p><p>Avante Travel</p>" }) });
-      const d = await r.json().catch(() => ({}));
+            "<p>Keep this email: you can use the link again any time. Anyone with this link can edit the listing, so don't share it.</p><p>Avante Travel</p>" });
       const at = new Date().toISOString();
-      record.editLinkLog = (Array.isArray(record.editLinkLog) ? record.editLinkLog : []).concat([{ at, to, ok: r.ok, error: r.ok ? undefined : (d.message || ("status " + r.status)) }]).slice(-50);
-      record.history = (Array.isArray(record.history) ? record.history : []).concat([{ at, by: "admin", action: (r.ok ? "Edit link emailed to " : "Edit link email FAILED to ") + to }]).slice(-HISTORY_MAX);
+      record.editLinkLog = (Array.isArray(record.editLinkLog) ? record.editLinkLog : []).concat([{ at, to, ok: sent.ok, error: sent.ok ? undefined : sent.error }]).slice(-50);
+      record.history = (Array.isArray(record.history) ? record.history : []).concat([{ at, by: "admin", action: (sent.ok ? "Edit link emailed to " : "Edit link email FAILED to ") + to }]).slice(-HISTORY_MAX);
       await store.setJSON(listingId, record);
-      return r.ok ? json({ ok: true }) : json({ error: "Not sent: " + (d.message || ("the email service said " + r.status)) }, 502);
+      return sent.ok ? json({ ok: true }) : json({ error: "Not sent: " + sent.error }, 502);
     }
 
     if (action === "updateListing") {
@@ -1447,8 +1557,7 @@ if (action === "getSettings") {
 
       const notificationEmail = clean(body.notificationEmail, 600);
       if (badEmails(notificationEmail).length) return json({ ok: false, error: "\"" + badEmails(notificationEmail)[0] + "\" doesn't look like an email address. Separate several addresses with a comma." }, 400);
-      const settingsStore = getStore({ name: "property-settings", consistency: "strong" });
-      await settingsStore.setJSON("config", { notificationEmail: notificationEmail });
+      await saveSettings({ notificationEmail: notificationEmail });
       return json({ ok: true });
     }
 

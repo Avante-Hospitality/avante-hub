@@ -12,8 +12,13 @@
   1. (Done 2026-10-13) The form now sends to the hub (/api/property-onboarding,
      action "listingRequest") instead of Formspree. A NightsBridge property's
      BBID is looked up in the hub's Stock Network list (External Resort Code);
-     when found, its listing is built from Stock Network. Every request shows
-     in Admin > Property Listings and is emailed to the address set there.
+     when found, its listing is built from Stock Network. Every request is
+     emailed to the address set in Admin > Property Listings.
+     (2026-10-15) A property not yet on Stock Network gets the next Site Nr
+     from Admin > Site Nrs and SN's Request_pull_area sheet is emailed to the
+     SN set-up addresses there; the property gets a confirmation. A listing
+     (Requested) is made only when "I also want to become an Avante Property
+     Affiliate" is ticked. The terms box starts unticked.
 
   2. TERMS & CONDITIONS TEXT (search "PLACEHOLDER T&C TEXT" below):
      Replace the draft placeholder in the modal with the final wording.
@@ -121,9 +126,19 @@
             </div>
         </div>
 
+        <div class="relative flex items-start p-4 rounded-xl" style="border:2px solid var(--indigo); background:#EEF0FC">
+            <div class="flex h-6 items-center">
+                <input id="property-affiliate" name="property_affiliate" type="checkbox" class="form-checkbox h-5 w-5 rounded border-gray-300" style="accent-color:var(--indigo)">
+            </div>
+            <div class="ml-3 text-sm leading-6">
+                <label for="property-affiliate" class="font-semibold text-gray-900 cursor-pointer">I also want to become an Avante Property Affiliate</label>
+                <p class="text-gray-700">Your own booking page, promotions and guest reviews. Avante's commission on bookings you get this way is 4.95% + VAT. You can also do this later.</p>
+            </div>
+        </div>
+
         <div class="relative flex items-start p-4 rounded-xl border border-gray-200 bg-gray-50">
             <div class="flex h-6 items-center">
-                <input id="accept-terms" name="accept_terms" type="checkbox" checked required class="form-checkbox h-5 w-5 rounded border-gray-300" style="accent-color:var(--indigo)">
+                <input id="accept-terms" name="accept_terms" type="checkbox" required class="form-checkbox h-5 w-5 rounded border-gray-300" style="accent-color:var(--indigo)">
             </div>
             <div class="ml-3 text-sm leading-6">
                 <label for="accept-terms" class="font-medium text-gray-900 cursor-pointer">
@@ -143,7 +158,7 @@
     <div id="success-message" class="hidden opacity-0 mt-8 space-y-4">
         <div class="p-6 rounded-xl text-center space-y-2" style="background:#eef7f0; border:1px solid #b7ddc0; color:#1e4b2b">
             <h3 class="font-bold text-xl font-display">Thank you!</h3>
-            <p class="text-sm">Your details have been sent to our office. We'll upload your property to Avante shortly.</p>
+            <p class="text-sm">Your details have been sent to Avante.</p>
             <p id="found-note" class="text-sm hidden" style="margin-top:8px; font-weight:600"></p>
         </div>
         <div class="p-6 rounded-xl text-center space-y-3" style="background:#EEF0FC; border:1px solid #c9cff5">
@@ -243,7 +258,8 @@ document.addEventListener('DOMContentLoaded', function () {
             channelManager: channelManager,
             bbid: channelManager === 'NightsBridge' ? bbidInput.value : '',
             eresRef: channelManager === 'eRes/NebulaCRS' ? eresInput.value : '',
-            acceptTerms: document.getElementById('accept-terms').checked
+            acceptTerms: document.getElementById('accept-terms').checked,
+            propertyAffiliate: document.getElementById('property-affiliate').checked
         };
 
         submitBtn.disabled = true;
@@ -258,10 +274,22 @@ document.addEventListener('DOMContentLoaded', function () {
             const data = await response.json().catch(() => ({}));
             if (response.ok && data.ok) {
                 const found = document.getElementById('found-note');
-                if (data.found && found) {
-                    found.textContent = data.already
+                let note = '';
+                if (data.found) {
+                    note = data.already
                         ? 'We found ' + data.name + ' on Stock Network, and Avante already has its listing.'
-                        : 'We found ' + data.name + ' on Stock Network and filled in your listing from it. Avante will check it and email you a link to complete the last few details.';
+                        : data.listing
+                            ? 'We found ' + data.name + ' on Stock Network and filled in your listing from it. Avante will check it and email you a link to complete the last few details.'
+                            : 'We found ' + data.name + ' on Stock Network, so it is already set up there.';
+                } else if (data.siteNr && data.repeat) {
+                    note = 'You asked before, so nothing was sent again. Your Stock Network Site Nr is ' + data.siteNr + ' and Stock Network is setting your property up.' +
+                        (data.listing ? ' Once you are set up, Avante will email you a link to complete your Property Affiliate listing.' : '');
+                } else if (data.siteNr) {
+                    note = 'Your details have gone to Stock Network to set your property up. Your Stock Network Site Nr is ' + data.siteNr + '. We\'ve emailed you a copy.' +
+                        (data.listing ? ' Once you are set up, Avante will email you a link to complete your Property Affiliate listing.' : '');
+                }
+                if (note && found) {
+                    found.textContent = note;
                     found.classList.remove('hidden');
                 }
                 form.style.display = 'none';

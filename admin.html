@@ -787,6 +787,7 @@
       <button class="tab" data-panel="bookings">Bookings</button>
       <button class="tab" data-panel="whatsapp">WhatsApp Messaging</button>
       <button class="tab" data-panel="propertyListings">Property Listings</button>
+      <button class="tab" data-panel="siteNrs">Site Nrs</button>
       <button class="tab" data-panel="mapActivities">Map &amp; Activities</button>
       <button class="tab" data-panel="snCleanup">SN Cleanup</button>
       <button class="tab" data-panel="tutorial">How Payouts Work</button>
@@ -2213,6 +2214,48 @@
          use (suggestCoordinates, exportLocations) plus three wizard-only
          ones (snCleanupApply / snCleanupSaveRun / snCleanupCheck in
          map-api.js). Every existing Map & Activities tool is untouched. -->
+    <!-- ===================== SITE NRS (Jean, 2026-10-15) ===================== -->
+    <section class="panel" id="panel-siteNrs">
+      <div class="hero">
+        <h1>Site Nrs</h1>
+        <p>Every Stock Network Site Nr Avante gives out comes from this list, so no number is used twice. A property that asks to list on the "List your property" page and isn't on Stock Network yet gets the next free number, and Stock Network's sheet is emailed to the addresses below.</p>
+      </div>
+
+      <div class="card">
+        <div style="display:flex; flex-wrap:wrap; gap:14px; align-items:center; justify-content:space-between;">
+          <div style="font-size:15px;">Next free Site Nr: <b id="snrNext" style="font-size:20px; color:var(--teal-dark);">…</b></div>
+          <button class="btn-outline" id="snrRefresh" type="button" style="margin-top:0;">Refresh</button>
+        </div>
+        <div class="status" id="snrStatus"></div>
+        <div class="table-wrap" style="margin-top:14px;">
+          <table class="data-table">
+            <thead><tr><th>Site Nr</th><th>Property</th><th>BBID</th><th>Status</th><th>Sent to SN</th><th>Property affiliate</th><th>Actions</th></tr></thead>
+            <tbody id="snrBody"><tr><td colspan="7">Loading…</td></tr></tbody>
+          </table>
+        </div>
+        <div id="snrEdit" style="margin-top:16px;"></div>
+      </div>
+
+      <div class="card">
+        <h2 class="section-heading" style="margin-top:0;">Reserve a Site Nr by hand</h2>
+        <p class="hint">For a property you set up yourself, or a number Stock Network already used. Leave <b>Site Nr</b> empty to take the next free one.</p>
+        <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end;">
+          <div><label for="snrNewNr">Site Nr</label><input id="snrNewNr" inputmode="numeric" placeholder="next free" style="width:120px;"></div>
+          <div style="flex:1; min-width:220px;"><label for="snrNewName">Property name</label><input id="snrNewName" placeholder="Spare" style="width:100%;"></div>
+          <label style="display:flex; gap:6px; align-items:center; font-size:13px; text-transform:none; letter-spacing:normal;"><input type="checkbox" id="snrNewSetUp" style="width:auto;"> Already set up on SN</label>
+          <button class="primary" id="snrReserveBtn" type="button" style="margin-top:0;">Reserve</button>
+        </div>
+        <div class="status" id="snrReserveStatus"></div>
+      </div>
+
+      <div class="card">
+        <label for="snrEmails">Email Stock Network's set-up sheet to (separate several with commas)</label>
+        <input id="snrEmails" type="text" inputmode="email" placeholder="nb@stocknetwork.co.za, admin@avantehospitality.co.za, liason@avantehospitality.co.za">
+        <button class="primary" id="snrEmailsSave" type="button" style="margin-top:10px;">Save</button>
+        <div class="status" id="snrEmailsStatus"></div>
+      </div>
+    </section>
+
     <section class="panel" id="panel-snCleanup">
       <div class="hero">
         <h1>StockNetwork cleanup wizard</h1>
@@ -2636,10 +2679,11 @@
       return 'R' + n.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
 
+    // Safe in text and inside quoted attributes (value="…"), so a typed
+    // value can never close the attribute (Jean, 2026-10-15).
     function escapeHtml(s){
-      var d = document.createElement('div');
-      d.textContent = (s === undefined || s === null) ? '' : String(s);
-      return d.innerHTML;
+      return ((s === undefined || s === null) ? '' : String(s))
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
 
     // ---------- Per-channel revenue share helpers ----------
@@ -10616,6 +10660,87 @@
 <script>
   // The one "Open the hook builder" button above the hooks (Jean, 2026-10-08).
   document.getElementById('openHookBuilderTop').addEventListener('click', function(){ window.openHookBuilder(this); });
+</script>
+<script>
+  // Admin > Site Nrs: the Stock Network Site Nr register (Jean, 2026-10-15).
+  (function(){
+    var $ = function(id){ return document.getElementById(id); };
+    var entries = [];
+    function say(el, text){ el.textContent = text; el.className = 'status' + (text ? ' show' : ''); }
+    function when(iso){ try { return iso ? new Date(iso).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }) : '\u2014'; } catch(e){ return '\u2014'; } }
+    function lastSend(e){ var l = e.sendLog || []; return l.length ? l[l.length - 1] : null; }
+    function render(){
+      var body = $('snrBody');
+      if(!entries.length){ body.innerHTML = '<tr><td colspan="7">No Site Nrs given out by the hub yet.</td></tr>'; return; }
+      body.innerHTML = entries.map(function(e){
+        var ls = lastSend(e);
+        var sent = ls ? (ls.ok ? when(ls.at) : '<b style="color:#b42318">Failed ' + escapeHtml(when(ls.at)) + '</b>') : '\u2014';
+        return '<tr><td><b>' + escapeHtml(e.siteNr) + '</b></td><td>' + escapeHtml(e.propertyName || 'Spare') + '</td><td>' + escapeHtml(e.bbid || '') + '</td>' +
+          '<td>' + escapeHtml(e.status) + '</td><td>' + sent + '</td><td>' + (e.propertyAffiliate ? 'Yes' + (e.listingId ? ' (' + escapeHtml(e.listingId) + ')' : '') : 'No') + '</td>' +
+          '<td><button type="button" class="btn-outline" data-nr="' + escapeHtml(e.siteNr) + '" style="margin-top:0;">Open</button></td></tr>';
+      }).join('');
+    }
+    function load(){
+      say($('snrStatus'), 'Loading\u2026');
+      return propAdminPost('siteNrList').then(function(res){
+        var d = res.data || {};
+        if(!d.ok){ say($('snrStatus'), d.error || 'Could not load the list.'); return; }
+        entries = d.entries || []; $('snrNext').textContent = d.next; $('snrEmails').value = d.emails || '';
+        say($('snrStatus'), ''); render();
+      }).catch(function(){ say($('snrStatus'), 'Could not load the list.'); });
+    }
+    var F = [['propertyName','Name'],['bbid','BBID'],['contactName','Contact'],['phone','Phone No'],['email','Email (several: separate with commas)'],['description','Description'],['area','Area'],['district','District'],['suburb','Suburb'],['note','Note to Stock Network (in the email)']];
+    function openEntry(nr, message){
+      var e = entries.filter(function(x){ return String(x.siteNr) === String(nr); })[0]; if(!e) return;
+      var host = $('snrEdit');
+      host.innerHTML = '<div style="border:1.5px solid var(--line); border-radius:12px; padding:16px;">' +
+        '<h3 style="margin-top:0;">Site Nr ' + escapeHtml(e.siteNr) + '</h3>' +
+        '<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:10px;">' +
+        F.map(function(f){ return '<div><label for="snrF_' + f[0] + '">' + f[1] + '</label><input id="snrF_' + f[0] + '" value="' + escapeHtml(e[f[0]] || '') + '" style="width:100%;"></div>'; }).join('') +
+        '<div><label for="snrF_status">Status</label><select id="snrF_status" style="width:100%;">' + ['Spare','Sent','Set up'].map(function(s){ return '<option' + (s === e.status ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select></div>' +
+        '</div><p class="hint" style="margin:10px 0 0;">Rate on the sheet: 17.25. City2 is left out (Stock Network keeps its own).</p>' +
+        '<div style="display:flex; flex-wrap:wrap; gap:10px; margin-top:10px;"><button type="button" class="primary" id="snrSave" style="margin-top:0;">Save</button>' +
+        '<button type="button" class="btn-outline" id="snrSend" style="margin-top:0;">Save and send the sheet to Stock Network</button></div>' +
+        '<div class="status" id="snrEditStatus"></div>' +
+        '<h4 style="margin:14px 0 6px;">Emails sent</h4>' +
+        ((e.sendLog || []).length ? '<ul style="margin:0; padding-left:18px; font-size:13px;">' + e.sendLog.slice().reverse().map(function(l){
+          return '<li>' + escapeHtml(new Date(l.at).toLocaleString('en-ZA')) + ' \u00b7 ' + (l.ok ? 'sent' : '<b style="color:#b42318">FAILED: ' + escapeHtml(l.error || '') + '</b>') + ' to ' + escapeHtml(l.to) + ' \u00b7 ' + escapeHtml(l.file) + ' \u00b7 by ' + escapeHtml(l.by) + '</li>'; }).join('') + '</ul>' : '<p class="hint" style="margin:0;">Not sent yet.</p>') +
+        '</div>';
+      function values(){ var v = { siteNr: e.siteNr, status: $('snrF_status').value }; F.forEach(function(f){ v[f[0]] = $('snrF_' + f[0]).value.trim(); }); return v; }
+      function save(){ return propAdminPost('siteNrUpdate', values()).then(function(res){ var d = res.data || {}; if(!d.ok) throw new Error(d.error || 'Could not save.'); return d; }); }
+      $('snrSave').addEventListener('click', function(){
+        var st = $('snrEditStatus'); say(st, 'Saving\u2026');
+        save().then(function(){ return load(); }).then(function(){ openEntry(e.siteNr, 'Saved.'); }).catch(function(err){ say(st, err.message); });
+      });
+      $('snrSend').addEventListener('click', function(){
+        var st = $('snrEditStatus'), btn = this; btn.disabled = true; say(st, 'Sending\u2026');
+        save().then(function(){ return propAdminPost('siteNrSend', { siteNr: e.siteNr }); }).then(function(res){
+          var d = res.data || {}, msg = d.ok ? 'Sent \u2714' : (d.error || 'Not sent.');
+          return load().then(function(){ openEntry(e.siteNr, msg); });
+        }).catch(function(err){ say(st, err.message); }).then(function(){ btn.disabled = false; });
+      });
+      if(message) say($('snrEditStatus'), message);
+      host.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    $('snrBody').addEventListener('click', function(ev){ var b = ev.target.closest('button[data-nr]'); if(b) openEntry(b.getAttribute('data-nr')); });
+    $('snrRefresh').addEventListener('click', load);
+    $('snrReserveBtn').addEventListener('click', function(){
+      var st = $('snrReserveStatus'); say(st, 'Reserving\u2026');
+      propAdminPost('siteNrReserve', { siteNr: $('snrNewNr').value.trim(), propertyName: $('snrNewName').value.trim(), markSetUp: $('snrNewSetUp').checked }).then(function(res){
+        var d = res.data || {};
+        if(!d.ok){ say(st, d.error || 'Could not reserve.'); return; }
+        say(st, 'Site Nr ' + d.entry.siteNr + ' reserved.'); $('snrNewNr').value = ''; $('snrNewName').value = ''; $('snrNewSetUp').checked = false;
+        load();
+      }).catch(function(){ say(st, 'Could not reserve.'); });
+    });
+    $('snrEmailsSave').addEventListener('click', function(){
+      var st = $('snrEmailsStatus'); say(st, 'Saving\u2026');
+      propAdminPost('snSetupSettings', { emails: $('snrEmails').value.trim() }).then(function(res){
+        var d = res.data || {}; say(st, d.ok ? 'Saved.' : (d.error || 'Could not save.')); if(d.ok) $('snrEmails').value = d.emails;
+      }).catch(function(){ say(st, 'Could not save.'); });
+    });
+    var tab = document.querySelector('.tab[data-panel="siteNrs"]'); if(tab) tab.addEventListener('click', load);
+  })();
 </script>
   <script src="how-to-links.js" data-guide="how-to-admin.html" defer></script>
 </body>

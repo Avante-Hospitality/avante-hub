@@ -34,11 +34,12 @@
   <main class="ht-main">
     <h1>Hub admin, step by step</h1>
     <p class="ht-lead">For Avante Travel staff. Every admin tab, one small step at a time.</p>
-    <p class="ht-updated">Last updated: 14 October 2026</p>
+    <p class="ht-updated">Last updated: 15 October 2026</p>
 
     <div class="ht-card ht-new" aria-label="What's new">
       <h2>What's new</h2>
       <ul>
+        <li><time>15 Oct 2026</time> New tab <span class="tab">Site Nrs</span>: the hub gives out Stock Network Site Nrs (from 6023) and emails Stock Network's set-up sheet for a property that asks to list and isn't on Stock Network yet. The "List your property" page has a new tick box <b>I also want to become an Avante Property Affiliate</b>; only then is a listing made. See <a href="#siteNrs">Site Nrs</a>.</li>
         <li><time>14 Oct 2026</time> Every email box takes <b>several email addresses</b>, separated by a comma: affiliate <span class="field">Email (optional; several: separate with commas)</span>, the two "Notify these email addresses…" boxes, <span class="field">Email the edit link to (several: separate with commas)</span>, and the owner, contact and property emails on a listing. Each address gets the email, so you can add one that sets off other actions (for example WhatsApp group messages).</li>
         <li><time>14 Oct 2026</time> Listings have a <b>contact person for bookings and queries</b> (<span class="field">Contact person</span>, <span class="field">Contact phone</span>, <span class="field">Contact email (several: separate with commas)</span>) and <span class="field">Send Avante's emails about this listing to</span>: both, the owner only, or the contact person only. Status emails and the edit link follow that choice. See <a href="#propertyListings">Review a listing</a>.</li>
         <li><time>14 Oct 2026</time> Properties already on Stock Network: <b>Get the property</b> also reads Stock Network's property feed (property type, phone, email, links, check-in/out times). The listing shows <b>Not on Stock Network — please fill in:</b> with the missing boxes marked, and a <b>Pull again from Stock Network</b> button that only fills empty boxes. A property type you type once is remembered for every property of that Stock Network type.</li>
@@ -282,12 +283,13 @@
         <li>Set its real commission in Stock Network. The hub only shows 4.95% + VAT as the default.</li>
       </ol>
       <div class="tip">Untick <span class="field">Channel Property Affiliate</span> (or tick <span class="field">Property Affiliate</span>) and the property gets the full Property Affiliate screens again the next time it opens the hub.</div>
-      <h3>Requests from the "List your property" page (NightsBridge BBID)</h3>
+      <h3>Requests from the "List your property" page</h3>
       <ol class="steps">
-        <li>A property fills in the <b>List your property</b> page and types its <b>NightsBridge BBID Number</b>. You get an email: <b>Listing request: …</b>.</li>
-        <li>If the hub found the BBID in its Stock Network list (the <b>External Resort Code</b> column), the listing is already made from Stock Network. Otherwise it holds only what the property typed.</li>
+        <li>A property fills in the <b>List your property</b> page. You get an email: <b>Listing request: …</b>. It says whether the property is already on Stock Network, which Site Nr it got, and whether it ticked <b>Property Affiliate</b>.</li>
+        <li>Not on Stock Network yet? The hub has already given it the next Site Nr and emailed Stock Network's sheet. See <a href="#siteNrs">Site Nrs</a>.</li>
+        <li>A listing is made <b>only</b> when the property ticked <span class="field">I also want to become an Avante Property Affiliate</span>. If the hub found its BBID in its Stock Network list (the <b>External Resort Code</b> column), the listing is filled in from Stock Network.</li>
         <li>Tap <span class="tab">Property Listings</span> and <span class="btn g">View</span> on the request (status <b>Requested</b>). Check it.</li>
-        <li>Tap <span class="btn g">Email the edit link</span> so the property can complete it. It never gets the link before you've checked it.</li>
+        <li>Wait until Stock Network has set the site up and sent the Site ID. Then tap <span class="btn g">Email the edit link</span> so the property can complete it. It never gets the link before you've checked it.</li>
       </ol>
       <h3>Place names always come from the hub location tree</h3>
       <ol class="steps">
@@ -364,12 +366,47 @@
       <div class="tip">"Listed" can only be chosen after the agreement is accepted. To say no, set Status to Rejected and save. Every status change emails the people chosen in <b>Send Avante's emails about this listing to</b> (for a listing sent by an affiliate, "owner" means the affiliate).</div>
     </section>
 
+    <section id="siteNrs">
+      <h2>🔢 Site Nrs (Stock Network set-up)</h2>
+      <p class="what"><b>What it's for:</b> every property is set up on Stock Network first. Avante gives out the Site Nrs, and this list makes sure no number is used twice. The hub started at <b>6023</b>.</p>
+      <h3>What happens by itself</h3>
+      <ol class="steps">
+        <li>A property not yet on Stock Network fills in the <b>List your property</b> page.</li>
+        <li>The hub gives it the <b>next free Site Nr</b> (status <b>Spare</b>).</li>
+        <li>It makes Stock Network's <b>Request_pull_area</b> sheet: SiteID, BBID, Name, Contact, Phone No, Email, Description, Area, District, Rate (17.25), TripAdvisor Search Link (empty), Suburb. City2 is left out.</li>
+        <li>It emails the sheet to the addresses at the bottom of <span class="tab">Site Nrs</span>. The status changes to <b>Sent</b>.</li>
+        <li>The property gets an email with its Site Nr.</li>
+      </ol>
+      <div class="tip">Ticked Property Affiliate? The email asks Stock Network to set the channel property commission field to <b>4.95%</b> once the site is up. The sheet's Rate stays 17.25.</div>
+      <div class="tip">Area, District and Suburb come from the hub location tree when Google finds the property by its name. If not, they stay empty: fill them in and send again (below).</div>
+      <h3>Check or change a Site Nr, and send it again</h3>
+      <ol class="steps">
+        <li>Tap <span class="tab">Site Nrs</span>. The list shows the highest number first. <b>Failed</b> in <b>Sent to SN</b> means the email didn't go.</li>
+        <li>Tap <span class="btn g">Open</span> on the row.</li>
+        <li>Change what you need (for example <span class="field">Area</span>, <span class="field">District</span>, <span class="field">Suburb</span>, or a <span class="field">Note to Stock Network (in the email)</span>).</li>
+        <li>Tap <span class="btn">Save</span>, or <span class="btn g">Save and send the sheet to Stock Network</span> to email it again. Every email is listed under <b>Emails sent</b>.</li>
+        <li>Stock Network has created the site? Set <span class="field">Status</span> to <b>Set up</b> and tap <span class="btn">Save</span>.</li>
+      </ol>
+      <h3>Reserve a Site Nr by hand</h3>
+      <ol class="steps">
+        <li>Under <b>Reserve a Site Nr by hand</b>, leave <span class="field">Site Nr</span> empty for the next free one, or type the number (for example one Stock Network already used).</li>
+        <li>Type the <span class="field">Property name</span> (empty = <b>Spare</b>). Tick <span class="field">Already set up on SN</span> if it is.</li>
+        <li>Tap <span class="btn">Reserve</span>.</li>
+      </ol>
+      <div class="warn">Give out Site Nrs only from this list. A number handed out in Stock Network directly isn't known to the hub: reserve it here by hand straight away.</div>
+      <h3>Who gets the sheet</h3>
+      <ol class="steps">
+        <li>In <span class="field">Email Stock Network's set-up sheet to (separate several with commas)</span>, type the addresses. The default is nb@stocknetwork.co.za, admin@avantehospitality.co.za and liason@avantehospitality.co.za.</li>
+        <li>Tap <span class="btn">Save</span>.</li>
+      </ol>
+    </section>
+
     <section id="addNbProperty">
       <h2>🏨 Add a NightsBridge property (start to finish)</h2>
       <p class="what"><b>What it's for:</b> every step to bring a property that runs on NightsBridge into the hub, from the first contact to its first booking.</p>
       <h3>A. Get the property into the hub (pick one)</h3>
       <ol class="steps">
-        <li><b>The property starts it:</b> it opens the <b>List your property</b> page, taps <b>NightsBridge</b>, types its <span class="field">NightsBridge BBID Number</span> and taps <span class="btn">Submit</span>. You get an email: <b>Listing request: …</b>.</li>
+        <li><b>The property starts it:</b> it opens the <b>List your property</b> page, taps <b>NightsBridge</b>, types its <span class="field">NightsBridge BBID Number</span>, ticks <span class="field">I also want to become an Avante Property Affiliate</span> and taps <span class="btn">Submit</span>. You get an email: <b>Listing request: …</b>. Not on Stock Network yet? The hub gives it a Site Nr and emails Stock Network's sheet first (see <a href="#siteNrs">Site Nrs</a>).</li>
         <li><b>Or you start it:</b> tap <span class="tab">Property Listings</span>. Under <b>Properties already on Stock Network</b>, type the <span class="field">NightsBridge BBID</span> (or the <span class="field">Site Nr</span>), then tap <span class="btn">Get the property</span>. With a BBID the hub fetches the Site Nr and Site ID from Stock Network when it can.</li>
       </ol>
       <div class="tip">Either way the listing is filled in from Stock Network: description, unit types and sleeps, facilities and photos. No rates: they come from NightsBridge.</div>
