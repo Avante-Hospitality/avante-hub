@@ -245,10 +245,18 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
     return api(q).then(function (d) {
       if (!d.ok) { app.innerHTML = '<div class="center"><h1>This page isn\'t available</h1><p class="muted">The link may be wrong, or the property has switched its page off.</p></div>'; return; }
       S.d = d; S.km = d.nearbyKm;
+      // A Book link from a hook or flyer (?checkin=&checkout=, Jean 2026-10-15): open on those dates.
+      var qp = new URLSearchParams(location.search), qi = qp.get('checkin') || '', qo = qp.get('checkout') || '', fromLink = false;
+      if (!S.ci && /^\d{4}-\d{2}-\d{2}$/.test(qi) && /^\d{4}-\d{2}-\d{2}$/.test(qo) && qo > qi && qi >= d.firstBookable) { S.ci = qi; S.co = qo; S.month = qi.slice(0, 7); fromLink = true; }
       if (!S.ci) { S.ci = d.firstBookable; S.co = add(d.firstBookable, Math.max(1, d.minStay || 1)); }
       if (!S.month) S.month = d.firstBookable.slice(0, 7);
       render();
       if (CFG.mode === 'store') { S.offers = (d.offers || []).filter(function (o) { return o.booking || o.landing; }); loadMonth(); }
+      // Straight to the booking: with dates, check them (the free units show, then the guest books and pays as usual).
+      if (CFG.mode === 'store' && location.hash === '#book') {
+        var go = function () { var t = document.querySelector(fromLink ? '[data-act="calCheck"],[data-act="quote"]' : '[data-act="toBook"]'); if (t) t.click(); };
+        setTimeout(go, 300);
+      }
     }).catch(function () { app.innerHTML = '<div class="center"><h1>Couldn\'t load this page</h1><p class="muted">Check your connection and try again.</p></div>'; });
   }
   function loadMonth() {

@@ -256,6 +256,19 @@ export default async (request, context) => {
       );
     }
 
+    // The property this affiliate connected in Property Affiliate, with its
+    // front store (when switched on): its hooks book through that front store.
+    async function ownStore(a) {
+      try {
+        const pa = getStore({ name: "property-affiliate", consistency: "strong" });
+        const link = await pa.get("aff:" + a, { type: "json" });
+        const p = link && await pa.get("site:" + link.siteId, { type: "json" });
+        const fs = p && p.frontStore;
+        const sl = fs && (fs.slug || String(p.resortName || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""));
+        return p && p.resortId && fs && fs.on && sl ? [{ r: p.resortId, s: sl }] : [];
+      } catch (e) { return []; }
+    }
+
     if (action === "hooksTicket") {
       // A signed-in affiliate opening the hook builder — every affiliate,
       // unless admin switched it off for them or they're inactive.
@@ -265,7 +278,7 @@ export default async (request, context) => {
         return json({ ok: false, error: "The hook builder is switched off for your account. Ask Avante Travel to switch it on." }, 403);
       }
       try {
-        return json({ ok: true, url: await hooksLink({ sub: aff, name: (dirRecord && dirRecord.name) || aff, role: "affiliate", master: String((dirRecord && dirRecord.siteNr) || "").trim() === "36" }) });
+        return json({ ok: true, url: await hooksLink({ sub: aff, name: (dirRecord && dirRecord.name) || aff, role: "affiliate", master: String((dirRecord && dirRecord.siteNr) || "").trim() === "36", own: await ownStore(aff) }) });
       } catch (e) {
         return json({ ok: false, error: e.message || "The hook builder couldn't be opened." }, 500);
       }
