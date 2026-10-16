@@ -4,9 +4,8 @@
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
 import { emailList } from "./lib/emails.js";
 import { createCore, PAError } from "./lib/pa-core.js";
-import { fetchResortInfo } from "./lib/hook-source.js";
 import { createActivities } from "./lib/pa-activities.js";
-import { stayPayload } from "./lib/stay-payload.js";
+import { stayPayload, resortInfo } from "./lib/stay-payload.js";
 import { treeAreaList } from "./lib/tree-place.js";
 import { libraryPhotos, googlePhotos } from "./lib/act-photos.js";
 import { searchPlacePhotos } from "./lib/places-images.js";
@@ -139,13 +138,8 @@ export default async (request) => {
       case "markMessage": return json(Object.assign({ ok: true }, await core.markMessage(prop, body.ref, body.kind, body.state, body.text)));
       // Front store (/stay/<slug>): settings, photos, link, stats.
       case "frontStore": {
-        // Stock Network's photos for the photo picker (same cache stay-api.js uses).
-        const st = getStore({ name: "property-affiliate", consistency: "strong" });
-        let info = await st.get("fsinfo:" + prop.siteId, { type: "json" }).catch(() => null);
-        if (!info || Date.now() - (info.at || 0) > 24 * 3600 * 1000) {
-          const fresh = await fetchResortInfo(prop.resortId, prop.site).catch(() => null);
-          if (fresh) { info = { at: Date.now(), description: fresh.description || "", attractions: fresh.attractions || "", moreInfo: fresh.moreInfo || "", images: fresh.images || [] }; await st.setJSON("fsinfo:" + prop.siteId, info).catch(() => {}); }
-        }
+        // Stock Network's photos for the photo picker (same cache the front store uses).
+        const info = await resortInfo(getStore({ name: "property-affiliate", consistency: "strong" }), prop);
         return json(Object.assign({ ok: true, snPhotos: (info && info.images) || [], snDescription: (info && info.description) || "" }, await core.frontStoreView(prop)));
       }
       case "saveFrontStore": return json(Object.assign({ ok: true }, await core.saveFrontStore(prop, body.frontStore || {})));

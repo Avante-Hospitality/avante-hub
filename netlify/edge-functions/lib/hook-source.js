@@ -63,8 +63,13 @@ function extractGalleryImages(html) {
   const re = /<img[^>]+src=['"]([^'"]+)['"]/gi;
   let m;
   while ((m = re.exec(scope))) {
-    const url = m[1];
-    if (url && /^https?:\/\//i.test(url) && !urls.includes(url)) urls.push(url);
+    // Stock Network writes its photo addresses relative to its own site
+    // (/data/resort/<id>/…); make them full addresses (Jean, 2026-10-16:
+    // Silver Ranch's photos weren't filling in because of this).
+    let url = "";
+    try { url = new URL(m[1], RESORT_INFO_BASE).href; } catch (e) { continue; }
+    if (!/\/data\/resort\/|\/image\/\d+\/gallery\//i.test(url)) continue;
+    if (!urls.includes(url)) urls.push(url);
   }
   return urls;
 }

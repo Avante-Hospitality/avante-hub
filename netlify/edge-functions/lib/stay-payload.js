@@ -11,18 +11,24 @@ import { rememberedPhotos, fillActPhotos, mainActPhotos } from "./act-photos.js"
 
 const INFO_TTL_MS = 24 * 3600 * 1000;
 
+// Photos and description from Stock Network's resort info page, cached a day
+// per property (v2: photo addresses read correctly, 2026-10-16). Used by the
+// front store and its builder.
+export async function resortInfo(store, prop, later = (p) => p) {
+  let info = await store.get("fsinfo:" + prop.siteId, { type: "json" }).catch(() => null);
+  if (!info || info.v !== 2 || Date.now() - (info.at || 0) > INFO_TTL_MS) {
+    const fresh = await fetchResortInfo(prop.resortId, prop.site).catch(() => null);
+    if (fresh) { info = { v: 2, at: Date.now(), description: fresh.description || "", attractions: fresh.attractions || "", moreInfo: fresh.moreInfo || "", images: fresh.images || [] }; await later(store.setJSON("fsinfo:" + prop.siteId, info).catch(() => {})); }
+  }
+  return info || { description: "", attractions: "", moreInfo: "", images: [] };
+}
+
 export async function stayPayload(core, prop, opts) {
   const { store, origin } = opts, later = opts.later || ((p) => p);
   const page = core.publicFrontStore(prop);
   // The builder can try another place before saving it.
   if (opts.actPlace !== undefined) page.actPlace = opts.actPlace && opts.actPlace.t ? { p: String(opts.actPlace.p || "").slice(0, 80), t: String(opts.actPlace.t).slice(0, 80), s: String(opts.actPlace.s || "").slice(0, 80) } : null;
-  // Photos and description from Stock Network's resort info page (cached a day).
-  let info = await store.get("fsinfo:" + prop.siteId, { type: "json" }).catch(() => null);
-  if (!info || Date.now() - (info.at || 0) > INFO_TTL_MS) {
-    const fresh = await fetchResortInfo(prop.resortId, prop.site).catch(() => null);
-    if (fresh) { info = { at: Date.now(), description: fresh.description || "", attractions: fresh.attractions || "", moreInfo: fresh.moreInfo || "", images: fresh.images || [] }; later(store.setJSON("fsinfo:" + prop.siteId, info).catch(() => {})); }
-  }
-  info = info || { description: "", attractions: "", moreInfo: "", images: [] };
+  const info = await resortInfo(store, prop, later);
   const own = "fsphoto:" + prop.siteId + ":";
   const uploaded = (await store.list({ prefix: own })).blobs.filter((b) => !b.key.slice(own.length).startsWith("x-")).map((b) => "/api/stay?photo=" + encodeURIComponent(b.key.slice(8)));
   const photos = Array.isArray(page.photos) && page.photos.length ? page.photos : uploaded.concat(info.images || []).slice(0, 24);
