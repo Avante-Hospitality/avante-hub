@@ -257,7 +257,7 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
       if (!S.ci) { S.ci = d.firstBookable; S.co = add(d.firstBookable, Math.max(1, d.minStay || 1)); }
       if (!S.month) S.month = d.firstBookable.slice(0, 7);
       render();
-      if (CFG.mode === 'store') { S.offers = (d.offers || []).filter(function (o) { return o.booking || o.landing; }); loadMonth(); }
+      if (CFG.mode === 'store') { S.offers = (d.offers || []).filter(function (o) { return o.booking || o.landing; }); loadMonth(); dropBadPhotos(); }
       // Straight to the booking: with dates, check them (the free units show, then the guest books and pays as usual).
       if (CFG.mode === 'store' && location.hash === '#book') {
         S.autoPick = fromLink; // one unit free (or the link's unit): straight to the guest's details
@@ -265,6 +265,21 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
         setTimeout(go, 300);
       }
     }).catch(function () { app.innerHTML = '<div class="center"><h1>Couldn\'t load this page</h1><p class="muted">Check your connection and try again.</p></div>'; });
+  }
+  // A photo that doesn't load (or loads blank and tiny) is taken off the page, never shown empty.
+  function dropBadPhotos() {
+    var ph = (S.d.photos || []).slice(), left = ph.length, bad = [];
+    ph.forEach(function (u) {
+      var im = new Image();
+      im.onload = function () { if (im.naturalWidth < 200 || im.naturalHeight < 120) bad.push(u); if (!--left) done(); };
+      im.onerror = function () { bad.push(u); if (!--left) done(); };
+      im.src = u;
+    });
+    function done() {
+      if (!bad.length) return;
+      S.d.photos = (S.d.photos || []).filter(function (u) { return bad.indexOf(u) < 0; });
+      S.sl = 0; if (!S.quote && !S.pick && !S.busy) render();
+    }
   }
   function loadMonth() {
     var m = S.month; if (S.monthData[m] || !S.d.showCalendar) return;

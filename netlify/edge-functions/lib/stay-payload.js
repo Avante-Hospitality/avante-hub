@@ -11,14 +11,37 @@ import { rememberedPhotos, fillActPhotos, mainActPhotos } from "./act-photos.js"
 
 const INFO_TTL_MS = 24 * 3600 * 1000;
 
+// Only photos worth showing (Jean, 2026-10-16: a blank photo showed on The
+// Dunes' store): each must load as a picture, be more than a small thumbnail,
+// and not be the same picture as one already in the list.
+async function goodPhotos(urls) {
+  const out = [], seen = new Set(), list = urls.slice(0, 40);
+  const check = async (u) => {
+    try {
+      const c = new AbortController(), t = setTimeout(() => c.abort(), 6000);
+      const r = await fetch(u, { signal: c.signal }).finally(() => clearTimeout(t));
+      if (!r.ok || !/^image\//.test(r.headers.get("content-type") || "")) return null;
+      const buf = await r.arrayBuffer();
+      if (buf.byteLength < 15000) return null; // a thumbnail, too small for the page
+      const h = [...new Uint8Array(await crypto.subtle.digest("SHA-256", buf))].slice(0, 12).map((b) => b.toString(16).padStart(2, "0")).join("");
+      return h;
+    } catch (e) { return null; }
+  };
+  for (let i = 0; i < list.length; i += 6) {
+    const hs = await Promise.all(list.slice(i, i + 6).map(check));
+    hs.forEach((h, k) => { if (h && !seen.has(h)) { seen.add(h); out.push(list[i + k]); } });
+  }
+  return out;
+}
+
 // Photos and description from Stock Network's resort info page, cached a day
 // per property (v2: photo addresses read correctly, 2026-10-16). Used by the
 // front store and its builder.
 export async function resortInfo(store, prop, later = (p) => p) {
   let info = await store.get("fsinfo:" + prop.siteId, { type: "json" }).catch(() => null);
-  if (!info || info.v !== 2 || Date.now() - (info.at || 0) > INFO_TTL_MS) {
+  if (!info || info.v !== 3 || Date.now() - (info.at || 0) > INFO_TTL_MS) {
     const fresh = await fetchResortInfo(prop.resortId, prop.site).catch(() => null);
-    if (fresh) { info = { v: 2, at: Date.now(), description: fresh.description || "", attractions: fresh.attractions || "", moreInfo: fresh.moreInfo || "", images: fresh.images || [] }; await later(store.setJSON("fsinfo:" + prop.siteId, info).catch(() => {})); }
+    if (fresh) { info = { v: 3, at: Date.now(), description: fresh.description || "", attractions: fresh.attractions || "", moreInfo: fresh.moreInfo || "", images: await goodPhotos(fresh.images || []) }; await later(store.setJSON("fsinfo:" + prop.siteId, info).catch(() => {})); }
   }
   return info || { description: "", attractions: "", moreInfo: "", images: [] };
 }
