@@ -39,6 +39,7 @@
     <div class="ht-card ht-new" aria-label="What's new">
       <h2>What's new</h2>
       <ul>
+        <li><time>17 Oct 2026</time> <b>Not on a platform</b> on the List your property page: a listing is always made and the property gets its <b>Edit my listing</b> link straight away. Its Site Nr shows <b>Waiting for listing</b>. When the property's Ready check is all Done and it saves, the hub emails the sheet, property file, rates file and photos link to the Site Nrs addresses by itself (status <b>Sent</b>), and you get an email. See <a href="#siteNrs">Site Nrs</a>.</li>
         <li><time>17 Oct 2026</time> Site Nrs: every hour the hub looks on Stock Network for Site Nrs that were sent. When it finds one it sets it to <b>Set up</b>, makes the property's affiliate (number = its Site ID, not connected yet), links its listing and emails the property its hub login. You get a summary email. New button <span class="btn g">Check Stock Network now</span> runs the check straight away. See <a href="#siteNrs">Site Nrs</a>.</li>
         <li><time>17 Oct 2026</time> Property Listings: new box <span class="field">Stock Network ResortID</span>. Type the ResortID Stock Network gives for a new property, and the property can connect in its hub before Stock Network's own list shows it. A property signed in to the hub now sees its own listing under <b>More ▾ → Onboarding Form</b>, found by its Site ID or Site Nr.</li>
         <li><time>17 Oct 2026</time> Property Listings: the separate listing agreement is gone (no <b>Agreement</b> column, no <span class="btn">Send Agreement for Acceptance</span>, no Commission, Duration or Agreement Terms boxes). Every property accepts the one <b>Avante Hospitality Terms &amp; Conditions</b> when it lists, so you can set a checked listing to <b>Listed</b> straight away. Listing requests now show <b>Listed on now</b> (the channels the property is on). See <a href="#propertyListings">Property Listings</a>.</li>
@@ -374,8 +375,10 @@
       <ol class="steps">
         <li>A property not yet on Stock Network fills in the <b>List your property</b> page.</li>
         <li>The hub gives it the <b>next free Site Nr</b> (status <b>Spare</b>).</li>
+        <li>Picked <b>Not on a platform</b>? The status is <b>Waiting for listing</b> instead. A listing is made and the property gets its <b>Edit my listing</b> link. Nothing goes to Stock Network yet.</li>
+        <li>When that property's Ready check is all Done and it taps <span class="btn">Save changes</span>, the hub emails the sheet, the <b>property file</b>, the <b>rates file</b> and a <b>photos link</b> together, and you get an email <b>Listing complete, sent to Stock Network</b>. The status changes to <b>Sent</b>.</li>
         <li>It makes Stock Network's <b>Request_pull_area</b> sheet: SiteID, BBID, Name, Contact, Phone No, Email, Description, Area, District, Rate (17.25), TripAdvisor Search Link (empty), Suburb. City2 is left out.</li>
-        <li>It emails the sheet to the addresses at the bottom of <span class="tab">Site Nrs</span>. The status changes to <b>Sent</b>.</li>
+        <li>On NightsBridge or eRes: it emails the sheet to the addresses at the bottom of <span class="tab">Site Nrs</span> straight away. The status changes to <b>Sent</b>.</li>
         <li>The property gets an email with its Site Nr.</li>
         <li><b>Every hour</b> the hub looks on Stock Network for each <b>Sent</b> Site Nr (by Site Nr, or else by BBID).</li>
         <li>Found? The status changes to <b>Set up</b>.</li>

@@ -7,7 +7,7 @@ import { sendEmail } from "./lib/send-email.js";
 // SheetJS from its own CDN (the build SheetJS recommends for Deno).
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 import { SITE_REGISTER_STORE, SITE_STATUSES, DEFAULT_SN_SETUP_EMAILS, newEntry, reserveNextSiteNr, reserveSiteNr, getSiteNr, saveSiteNr,
-  listSiteNrs, nextFreeSiteNr, findOpenRequest, requestSheetBase64, sheetFileName, setupEmail, confirmationEmail, welcomeEmail } from "./lib/sn-site-register.js";
+  listSiteNrs, nextFreeSiteNr, findOpenRequest, requestSheetBase64, sheetFileName, setupEmail, confirmationEmail, welcomeEmail, WAITING_FOR_LISTING } from "./lib/sn-site-register.js";
 import { readListingScreenshots } from "./lib/listing-reader.js";
 import { HOOKS_URL, makeHooksTicket } from "./lib/hooks-ticket.js";
 import { isAdminToken } from "./lib/admin-session.js";
@@ -470,19 +470,68 @@ async function getSnSetupEmails() {
 }
 // Emails the Request_pull_area sheet for one Site Nr and logs the send on the
 // register entry (failed ones too). `to` overrides the saved addresses.
-async function sendSnSetupSheet(entry, by, to) {
+// The property's private "Edit my listing" link and the email that sends it.
+function editLinkEmail(record, origin) {
+  if (!record.editToken) record.editToken = genToken();
+  const link = origin + "/property-form.html?edit=" + encodeURIComponent(record.listingId) + "&key=" + encodeURIComponent(record.editToken);
+  return { link, subject: "Please complete your Avante listing — " + (record.propertyName || ""),
+    html: "<p>Hello,</p><p>Avante Travel has a new, fuller listing form for <strong>" + escapeHtml(record.propertyName || "your property") + "</strong>. We filled in what we already have.</p>" +
+      "<p>Please open it, check everything and fill in what is missing (for example photos, amenities, policies and rates), then tap <b>Save changes</b> on the last step:<br><a href=\"" + link + "\">Edit my listing</a></p>" +
+      "<p>Keep this email: you can use the link again any time. Anyone with this link can edit the listing, so don't share it.</p><p>Avante Travel</p>" };
+}
+// Email the edit link and keep a log of it on the listing (the caller saves the record).
+async function emailEditLink(record, to, origin, by) {
+  const m = editLinkEmail(record, origin);
+  const sent = await sendEmail({ to, subject: m.subject, html: m.html });
+  const at = new Date().toISOString(), toText = Array.isArray(to) ? to.join(", ") : to;
+  record.editLinkLog = (Array.isArray(record.editLinkLog) ? record.editLinkLog : []).concat([{ at, to: toText, ok: sent.ok, error: sent.ok ? undefined : sent.error }]).slice(-50);
+  record.history = (Array.isArray(record.history) ? record.history : []).concat([{ at, by, action: (sent.ok ? "Edit link emailed to " : "Edit link email FAILED to ") + toText }]).slice(-HISTORY_MAX);
+  return sent;
+}
+// A link to the listing's photos for Stock Network (a private page,
+// property-photos.js, opened with a random key kept on the listing), or "".
+function photosLinkFor(record, origin) {
+  const count = (record.images || []).filter((im) => im && im.key).length;
+  if (!count) return { url: "", count };
+  if (!record.photosToken) record.photosToken = [...crypto.getRandomValues(new Uint8Array(18))].map((x) => x.toString(16).padStart(2, "0")).join("");
+  return { url: origin + "/api/property-photos?l=" + encodeURIComponent(record.listingId) + "&k=" + record.photosToken, count };
+}
+// Files built in the browser (sn-export.js filesForEmail), checked: at most 6, base64, 15 MB in all.
+function cleanFiles(list) {
+  const files = (Array.isArray(list) ? list : []).slice(0, 6)
+    .map((f) => ({ filename: clean(f && f.filename, 150).replace(/[\\/:*?"<>|\r\n]/g, "_"), content: typeof (f && f.content) === "string" ? f.content.replace(/\s+/g, "") : "" }))
+    .filter((f) => f.filename && f.content && /^[A-Za-z0-9+/=]+$/.test(f.content));
+  const bytes = files.reduce((n, f) => n + Math.floor(f.content.length * 3 / 4), 0);
+  return { files, tooBig: bytes > 15 * 1024 * 1024 };
+}
+// Rates sent to Stock Network: kept, so later only new or changed ones are sent.
+function markRatesSent(record, at) {
+  record.snSentSeasons = (record.rateSeasons || []).map((r) => Object.assign({}, r));
+  record.snSentAt = at;
+}
+
+// The Site Nr entry still waiting for this listing to be complete, or null.
+async function waitingSiteOf(record) {
+  const e = record && record.siteNr ? await getSiteNr(siteRegister(), record.siteNr).catch(() => null) : null;
+  return e && e.status === WAITING_FOR_LISTING && e.listingId === record.listingId ? e : null;
+}
+
+// more: { files: [{ filename, content (base64) }], extraHtml } sent along with the sheet.
+async function sendSnSetupSheet(entry, by, to, more) {
+  more = more || {};
   const recipientsTo = emailText(to || (await getSnSetupEmails()), 20);
   const filename = sheetFileName(entry);
-  const { subject, html } = setupEmail(entry);
+  const { subject, html } = setupEmail(entry, more.extraHtml);
   let sent;
   try {
-    sent = await sendEmail({ to: recipientsTo, subject, html, attachments: [{ filename, content: requestSheetBase64(XLSX, [entry]) }], replyTo: "admin@avantehospitality.co.za" });
+    sent = await sendEmail({ to: recipientsTo, subject, html, attachments: [{ filename, content: requestSheetBase64(XLSX, [entry]) }].concat(more.files || []), replyTo: "admin@avantehospitality.co.za" });
   } catch (e) {
     sent = { ok: false, error: "Could not make the sheet: " + String((e && e.message) || e) };
   }
   const at = new Date().toISOString();
-  entry.sendLog = (Array.isArray(entry.sendLog) ? entry.sendLog : []).concat([{ at, by, to: recipientsTo, file: filename, ok: sent.ok, error: sent.ok ? undefined : sent.error }]).slice(-50);
-  if (sent.ok && entry.status === "Spare") entry.status = "Sent";
+  const file = [filename].concat((more.files || []).map((f) => f.filename)).join(", ");
+  entry.sendLog = (Array.isArray(entry.sendLog) ? entry.sendLog : []).concat([{ at, by, to: recipientsTo, file, ok: sent.ok, error: sent.ok ? undefined : sent.error }]).slice(-50);
+  if (sent.ok && (entry.status === "Spare" || entry.status === WAITING_FOR_LISTING)) entry.status = "Sent";
   entry.updatedAt = at;
   await saveSiteNr(siteRegister(), entry);
   return entry;
@@ -622,7 +671,7 @@ export default async (request, context) => {
       return json({ ok: true, listingId: listingId, editLink: editLink });
     }
 
-    if (action === "getForEdit" || action === "update" || action === "markSentToSN" || action === "emailSNFiles" || action === "libraryAdd" || action === "addPhotos" || action === "removePhoto") {
+    if (action === "getForEdit" || action === "update" || action === "sendForSetUp" || action === "markSentToSN" || action === "emailSNFiles" || action === "libraryAdd" || action === "addPhotos" || action === "removePhoto") {
       // Reopen a listing in the onboarding form: admin (token) or the
       // submitter with their private edit key.
       const listingId = clean(body.listingId, 20);
@@ -639,13 +688,45 @@ export default async (request, context) => {
         delete out.agreementToken;
         delete out.editToken;
         if (!isAdmin) { delete out.history; delete out.photosToken; }
-        return json({ ok: true, listing: out, asAdmin: isAdmin });
+        return json({ ok: true, listing: out, asAdmin: isAdmin, waitingForSetUp: !!(await waitingSiteOf(record)) });
+      }
+
+      if (action === "sendForSetUp") {
+        // Jean (2026-10-17): a property not on a channel manager completed its
+        // listing (Ready check all Done). The form sends the property and rates
+        // files it built (sn-export.js); the hub emails them with Stock
+        // Network's sheet and a link to the photos to the SN set-up addresses.
+        // The hourly check then picks the property up once it's set up.
+        const site = await waitingSiteOf(record);
+        if (!site) return json({ ok: true, already: true });
+        const { files, tooBig } = cleanFiles(body.files);
+        if (!files.length) return json({ error: "The property and rates files are missing. Tap Save changes again." }, 400);
+        if (tooBig) return json({ error: "The files are too big to email (over 15 MB)." }, 400);
+        // The sheet gets the listing's latest details.
+        Object.assign(site, { propertyName: record.propertyName || site.propertyName, area: record.area || site.area, district: record.district || site.district, suburb: record.suburb || site.suburb,
+          description: String(record.description || site.description || "").slice(0, 1000) });
+        const origin = new URL(request.url).origin, pl = photosLinkFor(record, origin);
+        const extraHtml = "<p><b>The listing is complete.</b> Also attached: " + files.map((f) => escapeHtml(f.filename)).join(", ") + ".</p>" +
+          (pl.url ? '<p><b>Photos (' + pl.count + '):</b> <a href="' + escapeHtml(pl.url) + '">View and download the photos</a> (one .zip with all of them is on that page)</p>' : "<p>No photos on the listing yet.</p>");
+        await sendSnSetupSheet(site, isAdmin ? "Admin, listing complete" : "Listing completed by the property", undefined, { files, extraHtml });
+        const last = site.sendLog[site.sendLog.length - 1], at = last.at;
+        if (last.ok) markRatesSent(record, at);
+        record.snEmailLog = (Array.isArray(record.snEmailLog) ? record.snEmailLog : []).concat([{ at, to: last.to, subject: "Set-up sheet and files (listing complete)", files: last.file.split(", ").concat(pl.url ? ["Link to " + pl.count + " photos"] : []),
+          siteNr: String(site.siteNr), ok: last.ok, error: last.error, markedSent: last.ok }]).slice(-200);
+        addHistory(record, isAdmin ? "admin" : "property", (last.ok ? "Listing complete: set-up sheet, files and photos link sent to Stock Network (Site Nr " : "Listing complete, but sending to Stock Network FAILED (Site Nr ") + site.siteNr + ")");
+        record.dateUpdated = at;
+        await store.setJSON(listingId, record);
+        const notifyTo = await getNotificationEmail();
+        if (notifyTo) context.waitUntil(sendNotificationEmail(notifyTo, (last.ok ? "Listing complete, sent to Stock Network: " : "Listing complete, NOT sent to Stock Network: ") + (record.propertyName || listingId),
+          "<p><b>" + escapeHtml(record.propertyName || "") + "</b> (listing " + escapeHtml(listingId) + ", Site Nr " + escapeHtml(site.siteNr) + ") completed its listing.</p>" +
+          (last.ok ? "<p>The sheet, " + files.map((f) => escapeHtml(f.filename)).join(", ") + (pl.url ? " and a photos link" : "") + " went to " + escapeHtml(last.to) + ". The hub picks the property up once Stock Network has set it up (hourly check).</p>"
+            : "<p><b>Sending failed</b> (" + escapeHtml(last.error || "") + "). Send it from Admin &gt; Property Listings (Email the files) and Admin &gt; Site Nrs.</p>")));
+        return last.ok ? json({ ok: true, siteNr: site.siteNr }) : json({ error: "Your listing is saved, but it couldn't be sent to Avante just now. Avante has been told and will send it." }, 502);
       }
 
       if (action === "markSentToSN") {
         const before = { snSentSeasons: record.snSentSeasons || [] };
-        record.snSentSeasons = (record.rateSeasons || []).map((r) => Object.assign({}, r));
-        record.snSentAt = new Date().toISOString();
+        markRatesSent(record, new Date().toISOString());
         record.dateUpdated = record.snSentAt;
         addHistory(record, "admin", "Rates marked as sent to Stock Network", before);
         await store.setJSON(listingId, record);
@@ -661,24 +742,15 @@ export default async (request, context) => {
         if (to.length > 5) return json({ error: "Send to 5 addresses at most." }, 400);
         const bad = to.filter((e) => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e) || e.length > 200);
         if (bad.length) return json({ error: "This email address doesn't look right: " + bad.join(", ") }, 400);
-        const files = (Array.isArray(body.files) ? body.files : []).slice(0, 6)
-          .map((f) => ({ filename: clean(f && f.filename, 150).replace(/[\\/:*?"<>|\r\n]/g, "_"), content: typeof (f && f.content) === "string" ? f.content.replace(/\s+/g, "") : "" }))
-          .filter((f) => f.filename && f.content && /^[A-Za-z0-9+/=]+$/.test(f.content));
+        const { files, tooBig } = cleanFiles(body.files);
         if (!files.length) return json({ error: "No files to send." }, 400);
-        const bytes = files.reduce((n, f) => n + Math.floor(f.content.length * 3 / 4), 0);
-        if (bytes > 15 * 1024 * 1024) return json({ error: "The files are too big to email (over 15 MB)." }, 400);
+        if (tooBig) return json({ error: "The files are too big to email (over 15 MB)." }, 400);
         const siteNr = clean(body.siteNr, 20) || record.siteNr || "";
         const note = clean(body.note, 2000);
         const esc = (v) => String(v == null ? "" : v).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-        // A link to the photos (Jean, 2026-10-13), so Stock Network can upload
-        // them: a private page on the hub (property-photos.js), opened with a
-        // random key kept on the listing.
-        const photoCount = (record.images || []).filter((im) => im && im.key).length;
-        let photosUrl = "";
-        if (body.photosLink && photoCount) {
-          if (!record.photosToken) record.photosToken = [...crypto.getRandomValues(new Uint8Array(18))].map((x) => x.toString(16).padStart(2, "0")).join("");
-          photosUrl = new URL(request.url).origin + "/api/property-photos?l=" + encodeURIComponent(listingId) + "&k=" + record.photosToken;
-        }
+        // A link to the photos (Jean, 2026-10-13), so Stock Network can upload them.
+        const pl = body.photosLink ? photosLinkFor(record, new URL(request.url).origin) : { url: "", count: 0 };
+        const photoCount = pl.count, photosUrl = pl.url;
         const subject = clean(body.subject, 200) || ((record.existingOnSN === "Y" ? "Updated property details for Stock Network: " : "New property for Stock Network: ") + (record.propertyName || "property") + (siteNr ? " (Site Nr " + siteNr + ")" : ""));
         const html = "<p>Hello,</p>" +
           (note ? "<p>" + esc(note).replace(/\n/g, "<br>") + "</p>" : "<p>Please find attached the Stock Network files for <b>" + esc(record.propertyName || "the property") + "</b>.</p>") +
@@ -692,11 +764,7 @@ export default async (request, context) => {
         const ok = sent.ok, error = sent.error || "", emailId = sent.id || "";
         const entry = { at: new Date().toISOString(), to: to.join(", "), subject, files: files.map((f) => f.filename).concat(photosUrl ? ["Link to " + photoCount + " photos"] : []), siteNr, note, ok, error: error || undefined, emailId: emailId || undefined, markedSent: false };
         const before = { snSentSeasons: record.snSentSeasons || [] };
-        if (ok && body.markSent) {
-          record.snSentSeasons = (record.rateSeasons || []).map((r) => Object.assign({}, r));
-          record.snSentAt = entry.at;
-          entry.markedSent = true;
-        }
+        if (ok && body.markSent) { markRatesSent(record, entry.at); entry.markedSent = true; }
         // The Site Nr the files were sent with is the allocated one: keep it.
         if (ok && siteNr && !record.siteNr) { before.siteNr = ""; record.siteNr = siteNr; }
         record.snEmailLog = (Array.isArray(record.snEmailLog) ? record.snEmailLog : []).concat([entry]).slice(-200);
@@ -987,12 +1055,19 @@ export default async (request, context) => {
       //  - Only if the property ticked "I also want to become an Avante
       //    Property Affiliate" is a listing made, status Requested; it gets
       //    no edit link until admin has checked it and sends one.
+      // Jean (2026-10-17), a property not on a channel manager ("Not on a
+      // platform"): a listing is always made and its completion link emailed
+      // straight away. Its Site Nr waits ("Waiting for listing"); nothing goes
+      // to Stock Network until the listing's Ready check is complete, then the
+      // hub sends the sheet, property file, rates file and photos link
+      // (action sendForSetUp).
       if (await overDailyLimit("listingRequest", request, context)) return json({ error: "Too many requests from this connection today. Please email info@avantehospitality.co.za." }, 429);
       const contact = { name: clean(body.contactPerson, 120), phone: clean(body.phone, 200), email: clean(body.email, 600) };
       const propertyName = clean(body.propertyName, 200);
       const cm = ["NightsBridge", "eRes/NebulaCRS", "None yet"].includes(body.channelManager) ? body.channelManager : "";
       const bbid = clean(body.bbid, 40), eresRef = clean(body.eresRef, 60);
-      const wantsAffiliate = body.propertyAffiliate === true;
+      const hosted = cm === "None yet";
+      const wantsAffiliate = body.propertyAffiliate === true || hosted;
       // Where the property is listed now (Jean, 2026-10-17): ticked on the page, "Other" with its name.
       const CHANNELS = ["None", "Booking.com", "Airbnb", "LekkeSlaap", "Other"];
       const channels = (Array.isArray(body.channels) ? body.channels : []).filter((c) => CHANNELS.includes(c));
@@ -1028,11 +1103,15 @@ export default async (request, context) => {
           loc = await guessSnLocation(propertyName);
           const entry = newEntry({ propertyName, bbid, channelManager: cm, eresRef, contactName: contact.name, phone: contact.phone, email: emailText(contact.email),
             area: loc.area, district: loc.district, suburb: loc.suburb, propertyAffiliate: wantsAffiliate, note: "Listed on now: " + listedOn });
+          if (hosted) entry.status = WAITING_FOR_LISTING;
           entry.siteNr = await reserveNextSiteNr(siteRegister(), entry);
-          site = await sendSnSetupSheet(entry, "List your property page");
-          const conf = confirmationEmail(site);
-          // At most 5 addresses: the confirmation goes to whatever was typed on a public page.
-          context.waitUntil(sendEmail({ to: emailList(contact.email, 5), subject: conf.subject, html: conf.html }));
+          if (hosted) site = entry;
+          else {
+            site = await sendSnSetupSheet(entry, "List your property page");
+            const conf = confirmationEmail(site);
+            // At most 5 addresses: the confirmation goes to whatever was typed on a public page.
+            context.waitUntil(sendEmail({ to: emailList(contact.email, 5), subject: conf.subject, html: conf.html }));
+          }
         }
       }
 
@@ -1050,11 +1129,20 @@ export default async (request, context) => {
             siteNr: site ? String(site.siteNr) : "" }, extra);
         if (loc.place) { record.latitude = String(loc.lat); record.longitude = String(loc.lng); await applyTreePlace(record, loc.place, false); }
         addHistory(record, "property", "Listing request from the List your property page (" + cm + (bbid ? ", BBID " + bbid : eresRef ? ", eRes ref " + eresRef : "") +
-          (site ? "; Site Nr " + site.siteNr + " reserved" + (site.status === "Sent" ? ", sheet sent to Stock Network" : ", sheet NOT sent") : "") + ")");
+          (site ? "; Site Nr " + site.siteNr + " reserved" + (site.status === "Sent" ? ", sheet sent to Stock Network" : site.status === WAITING_FOR_LISTING ? ", waiting for the listing to be complete" : ", sheet NOT sent") : "") + ")");
       }
       if (record) {
         await store.setJSON(record.listingId, record);
         if (site) { site.listingId = record.listingId; await saveSiteNr(siteRegister(), site); }
+      }
+      // Not on a platform: the completion link goes out straight away (also
+      // again when the property asks a second time). At most 5 addresses: it
+      // goes to whatever was typed on a public page.
+      let linkSent = false;
+      const linkRecord = hosted ? record || (site && site.listingId ? await store.get(site.listingId, { type: "json" }).catch(() => null) : null) : null;
+      if (linkRecord) {
+        linkSent = (await emailEditLink(linkRecord, emailList(contact.email, 5), new URL(request.url).origin, "property")).ok;
+        await store.setJSON(linkRecord.listingId, linkRecord);
       }
 
       const notifyTo = await getNotificationEmail();
@@ -1067,13 +1155,15 @@ export default async (request, context) => {
           "<br><b>Property affiliate:</b> " + (wantsAffiliate ? "yes" : "no") + "</p>" +
           (row ? "<p>Already on Stock Network: <b>" + escapeHtml(row.name) + "</b>. Nothing was sent to Stock Network.</p>"
             : repeat ? "<p>Asked before: same Site Nr <b>" + escapeHtml(site.siteNr) + "</b> (" + escapeHtml(site.status) + "). Nothing was sent to Stock Network again.</p>"
+            : site.status === WAITING_FOR_LISTING ? "<p>Site Nr <b>" + escapeHtml(site.siteNr) + "</b> reserved (" + WAITING_FOR_LISTING + "). Not on a platform, so nothing goes to Stock Network yet: when the property's listing is complete, the hub sends the sheet, property file, rates file and photos link by itself.</p>"
             : "<p>Site Nr <b>" + escapeHtml(site.siteNr) + "</b> reserved. " + (site.status === "Sent" ? "The Stock Network sheet was emailed to " + escapeHtml(site.sendLog[site.sendLog.length - 1].to) + "."
               : "<b>The Stock Network sheet could NOT be sent</b> (" + escapeHtml(site.sendLog[site.sendLog.length - 1].error || "") + "). Send it again from Admin &gt; Site Nrs.") + "</p>") +
           (already ? "<p>It already has a listing (" + escapeHtml(already.listingId) + "); no new listing was made.</p>"
+            : record && hosted ? "<p>Listing <b>" + escapeHtml(record.listingId) + "</b> was made, status Requested. " + (linkSent ? "The link to complete it was emailed to the property." : "<b>The link to complete it could NOT be emailed</b>: tap <b>Email the edit link</b> in Admin &gt; Property Listings.") + "</p>"
             : record ? "<p>Listing <b>" + escapeHtml(record.listingId) + "</b> was made, status Requested. Check it in Admin &gt; Property Listings, then tap <b>Email the edit link</b>.</p>"
             : "<p>No listing was made (the property did not ask to be a property affiliate).</p>")));
       }
-      return json({ ok: true, found: !!row, name: row ? row.name : "", already: !!already, siteNr: site ? site.siteNr : null, repeat, listing: !!(record || (site && site.listingId)) });
+      return json({ ok: true, found: !!row, name: row ? row.name : "", already: !!already, siteNr: site ? site.siteNr : null, repeat, listing: !!(record || (site && site.listingId)), linkSent });
     }
 
     // ---------- Site Nr register (Admin > Site Nrs, Jean 2026-10-15) ----------
@@ -1324,15 +1414,7 @@ export default async (request, context) => {
       if (!record) return json({ error: "not found" }, 404);
       const to = clean(body.to, 600);
       if (!emailList(to).length || badEmails(to).length) return json({ error: badEmails(to).length ? "\"" + badEmails(to)[0] + "\" doesn't look like an email address. Separate several with a comma." : "Type the email address." }, 400);
-      if (!record.editToken) record.editToken = genToken();
-      const editLink = new URL(request.url).origin + "/property-form.html?edit=" + encodeURIComponent(listingId) + "&key=" + encodeURIComponent(record.editToken);
-      const sent = await sendEmail({ to, subject: "Please complete your Avante listing — " + (record.propertyName || ""),
-        html: "<p>Hello,</p><p>Avante Travel has a new, fuller listing form for <strong>" + escapeHtml(record.propertyName || "your property") + "</strong>. We filled in what we already have.</p>" +
-            "<p>Please open it, check everything and fill in what is missing (for example photos, amenities, policies and rates), then tap <b>Save changes</b> on the last step:<br><a href=\"" + editLink + "\">Edit my listing</a></p>" +
-            "<p>Keep this email: you can use the link again any time. Anyone with this link can edit the listing, so don't share it.</p><p>Avante Travel</p>" });
-      const at = new Date().toISOString();
-      record.editLinkLog = (Array.isArray(record.editLinkLog) ? record.editLinkLog : []).concat([{ at, to, ok: sent.ok, error: sent.ok ? undefined : sent.error }]).slice(-50);
-      record.history = (Array.isArray(record.history) ? record.history : []).concat([{ at, by: "admin", action: (sent.ok ? "Edit link emailed to " : "Edit link email FAILED to ") + to }]).slice(-HISTORY_MAX);
+      const sent = await emailEditLink(record, to, new URL(request.url).origin, "admin");
       await store.setJSON(listingId, record);
       return sent.ok ? json({ ok: true }) : json({ error: "Not sent: " + sent.error }, 502);
     }

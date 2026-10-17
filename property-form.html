@@ -492,6 +492,7 @@
     </div>
     <div class="card">
       <h2 class="section-heading">Ready check</h2>
+      <p class="hint" id="setupNote" style="display:none">When everything below is <b>Done</b>, tap <b>Save changes</b>. Your listing then goes to Avante by itself to set your property up.</p>
       <ul class="checklist" id="checklist"></ul>
     </div>
     <div class="card">
@@ -1443,6 +1444,7 @@
       [!isAff || anyDoc('mandate'), 'Signed mandate (affiliates only)', 7],
       [!!$('depositText').value.trim(), 'Cancellation policy', 8]
     ];
+    READY_ALL = checks.every(function(c){ return c[0]; });
     $('checklist').innerHTML = checks.map(function(c){ return '<li><span class="pill ' + (c[0] ? 'ok' : 'todo') + '">' + (c[0] ? 'Done' : 'To do') + '</span><span>' + esc(c[1]) + (c[0] ? '' : ' — <button type="button" class="btn-link" data-go="' + c[2] + '">go to step ' + stepNo(c[2]) + '</button>') + '</span></li>'; }).join('');
     $('snHead').innerHTML = '<tr>' + SN_COLS.map(function(c){ return '<th>' + esc(c) + '</th>'; }).join('') + '</tr>';
     var rows = snRows();
@@ -1632,6 +1634,10 @@
     pRules:'houseRules', pAccess:'accessibility', pRating:'selfSupplierRating', pGrading:'tourismBoardGrading', pRatingLink:'ratingLink', pReviews:'channelReviews', pMoreInfo:'moreInfo', pAreaInfo:'areaInfo', pNotIncluded:'notIncluded',
     depositText:'depositPolicyText', depositPct:'depositPct', depositDays:'depositDays', childPolicy:'childPolicy', icalLink:'icalLink', channelLink:'channelListingLink', pLat:'latitude', pLng:'longitude' };
   var RATES_FROM_CHANNEL = false, EXISTING_ON_SN = false;
+  // A property not on a channel manager whose Site Nr waits for this listing
+  // (Jean, 2026-10-17): once the Ready check is all Done, saving sends the
+  // listing to Avante to be set up (sendForSetUp).
+  var WAITING_SETUP = false, READY_ALL = false;
   // In a complex, resort or estate (Jean, 2026-10-17): kind and name show only
   // after "Yes". The names already on the hub are suggested, so every property
   // in the same estate is spelled the same; picking one fills in its kind.
@@ -1736,6 +1742,8 @@
     api({ action: 'getForEdit', listingId: EDIT_ID, key: EDIT_KEY }).then(function(res){
       if(!res || !res.ok){ document.querySelector('header p').innerHTML = '<span style="color:#a3271d">' + esc((res && (res.error || res.message)) || 'Could not open the listing.') + '</span>'; return; }
       editAsAdmin = !!res.asAdmin;
+      WAITING_SETUP = !!res.waitingForSetUp;
+      $('setupNote').style.display = WAITING_SETUP ? '' : 'none';
       fillFromListing(res.listing);
       document.querySelector('header p').textContent = (res.listing.propertyName || '') + ' — status: ' + (res.listing.status || 'Requested') + '. Change anything in any step, then tap Save changes in step 8. A dated record of every change is kept.' + (editAsAdmin ? ' (Opened from Admin.)' : '');
       $('sigCard').style.display = 'none';
@@ -1746,6 +1754,18 @@
       goStep(editAsAdmin ? 1 : (res.listing.existingOnSN === 'Y' ? 8 : (RATES_FROM_CHANNEL ? 1 : 6)));
     });
   }
+  // The saved listing, its property and rates files (sn-export.js), to Avante.
+  function sendForSetUp(st){
+    st.textContent = 'Saved. Sending your listing to Avante…';
+    api({ action: 'getForEdit', listingId: EDIT_ID, key: EDIT_KEY }).then(function(res){
+      if(!res || !res.ok) throw new Error((res && (res.error || res.message)) || 'Could not read the listing back.');
+      var files = AvanteSNExport.filesForEmail(res.listing, res.listing.siteNr, { property: true, rates: 'all', format: 'xlsx' });
+      return api({ action: 'sendForSetUp', listingId: EDIT_ID, key: EDIT_KEY, files: files });
+    }).then(function(r){
+      if(r && r.ok){ WAITING_SETUP = false; $('setupNote').style.display = 'none'; st.textContent = 'Saved, and your listing has gone to Avante to set your property up. We\'ll email you when you\'re set up.'; st.className = 'status show ok'; }
+      else { st.textContent = 'Saved, but not sent to Avante yet: ' + ((r && (r.error || r.message)) || 'try Save changes again.'); st.className = 'status show err'; }
+    }).catch(function(e){ st.textContent = 'Saved, but not sent to Avante yet: ' + e.message + ' Tap Save changes again.'; st.className = 'status show err'; });
+  }
   $('saveEditBtn').addEventListener('click', function(){
     var btn = this, st = $('editStatus');
     var payload = buildPayload();
@@ -1754,7 +1774,10 @@
     btn.disabled = true; btn.textContent = 'Saving…';
     api(payload).then(function(res){
       btn.disabled = false; btn.textContent = 'Save changes';
-      if(res && res.ok){ unsaved = false; st.textContent = res.unchanged ? 'Nothing had changed.' : 'Saved. The change is on record with today\'s date.'; st.className = 'status show ok'; }
+      if(res && res.ok){
+        unsaved = false; st.textContent = res.unchanged ? 'Nothing had changed.' : 'Saved. The change is on record with today\'s date.'; st.className = 'status show ok';
+        if(WAITING_SETUP){ renderReview(); if(READY_ALL) sendForSetUp(st); else st.textContent += ' Finish the To do items in the Ready check and save again: then your listing goes to Avante to set your property up.'; }
+      }
       else { st.textContent = (res && (res.error || res.message)) || 'Could not save. Try again.'; st.className = 'status show err'; }
     });
   });

@@ -22,9 +22,13 @@ export const FIRST_SITE_NR = 6023;
 export const SN_SETUP_RATE = 17.25;
 export const DEFAULT_SN_SETUP_EMAILS = "nb@stocknetwork.co.za, admin@avantehospitality.co.za, liason@avantehospitality.co.za";
 export const REQUEST_COLS = ["SiteID", "BBID", "Name", "Contact", "Phone No", "Email", "Description", "Area", "District", "Rate", "TripAdvisor Search Link", "Suburb"];
-// Spare: reserved, sheet not sent yet or not answered. Sent: sheet emailed to
-// Stock Network. Set up: Stock Network has created the site.
-export const SITE_STATUSES = ["Spare", "Sent", "Set up"];
+// Spare: reserved, sheet not sent yet or not answered. Waiting for listing: a
+// property not on a channel manager, still completing its listing; the hub
+// sends everything by itself once the listing's Ready check is complete
+// (Jean, 2026-10-17). Sent: sheet emailed to Stock Network. Set up: Stock
+// Network has created the site.
+export const SITE_STATUSES = ["Spare", "Waiting for listing", "Sent", "Set up"];
+export const WAITING_FOR_LISTING = "Waiting for listing";
 
 const KEY_PREFIX = "nr:";
 const keyOf = (nr) => KEY_PREFIX + nr;
@@ -147,7 +151,8 @@ export function requestSheetBase64(XLSX, entries) {
 const esc = (v) => String(v == null ? "" : v).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
 // The email to Stock Network (and Avante) that goes with the sheet.
-export function setupEmail(e) {
+// extraHtml: more for Stock Network (e.g. the property and rates files attached).
+export function setupEmail(e, extraHtml) {
   const subject = "New property for Stock Network: " + e.propertyName + " (Site Nr " + e.siteNr + (e.bbid ? ", BBID " + e.bbid : "") + ")";
   const system = e.channelManager === "NightsBridge" ? "NightsBridge (BBID " + esc(e.bbid) + ")"
     : e.channelManager === "eRes/NebulaCRS" ? "eRes/NebulaCRS" + (e.eresRef ? " (ref " + esc(e.eresRef) + ")" : "")
@@ -160,6 +165,7 @@ export function setupEmail(e) {
       ? "<p><b>Property affiliate: yes.</b> Once the site is up, please set the channel property commission field to <b>4.95%</b>. The rate on the sheet is the standard " + SN_SETUP_RATE + ".</p>"
       : "<p>Property affiliate: no. Rate on the sheet: " + SN_SETUP_RATE + ".</p>") +
     (e.note ? "<p>" + esc(e.note).replace(/\n/g, "<br>") + "</p>" : "") +
+    (extraHtml || "") +
     "<p>Avante Travel</p>";
   return { subject, html };
 }

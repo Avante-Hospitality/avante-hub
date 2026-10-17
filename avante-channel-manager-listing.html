@@ -115,7 +115,7 @@
             </div>
 
             <div id="none-wrap" class="hidden-section mt-3 p-3 rounded-lg text-sm" style="background:#EEF0FC; color:var(--navy)">
-                No problem. Submit your details and our team will get your property set up and listed.
+                No problem. Submit your details and we'll email you a link to complete your listing (rooms, rates, photos). Once it's complete, our team gets your property set up and listed.
             </div>
             <div id="bbid-wrap" class="hidden-section mt-3">
                 <label for="bbid" class="block text-sm font-medium text-gray-700 mb-1">NightsBridge BBID Number</label>
@@ -143,7 +143,7 @@
             <p id="channels-error" class="hidden mt-2 text-sm text-red-600">Tick where your property is listed now, or tick None.</p>
         </fieldset>
 
-        <div class="relative flex items-start p-4 rounded-xl" style="border:2px solid var(--indigo); background:#EEF0FC">
+        <div id="affiliate-box" class="relative flex items-start p-4 rounded-xl" style="border:2px solid var(--indigo); background:#EEF0FC">
             <div class="flex h-6 items-center">
                 <input id="property-affiliate" name="property_affiliate" type="checkbox" class="form-checkbox h-5 w-5 rounded border-gray-300" style="accent-color:var(--indigo)">
             </div>
@@ -255,7 +255,10 @@ document.addEventListener('DOMContentLoaded', function () {
                 bbidInput.required = false;
                 bbidInput.value = '';
                 noneWrap.classList.add('hidden-section');
-            } else if (radio.value === 'None yet' && radio.checked) {
+            }
+            // Not on a platform: always a full Avante listing, so the tick box isn't needed (Jean, 2026-10-17).
+            if (radio.checked) document.getElementById('affiliate-box').style.display = radio.value === 'None yet' ? 'none' : '';
+            if (radio.value === 'None yet' && radio.checked) {
                 noneWrap.classList.remove('hidden-section');
                 bbidWrap.classList.add('hidden-section');
                 bbidInput.required = false;
@@ -309,6 +312,10 @@ document.addEventListener('DOMContentLoaded', function () {
                         : data.listing
                             ? 'We found ' + data.name + ' on Avante\'s booking system and filled in your listing from it. Avante will check it and email you a link to complete the last few details.'
                             : 'We found ' + data.name + ' on Avante\'s booking system, so it is already set up there.';
+                } else if (channelManager === 'None yet' && data.listing) {
+                    note = data.linkSent
+                        ? 'We\'ve emailed you a link to complete your listing (rooms, rates, photos and more). Once it\'s complete, it goes to Avante by itself and we set your property up. Your Avante Site Nr is ' + data.siteNr + '.'
+                        : 'Your listing is made, but we couldn\'t email you the link to complete it just now. Avante will send it to you. Your Avante Site Nr is ' + data.siteNr + '.';
                 } else if (data.siteNr && data.repeat) {
                     note = 'You asked before, so nothing was sent again. Your Avante Site Nr is ' + data.siteNr + ' and Avante is setting your property up.' +
                         (data.listing ? ' Once you are set up, Avante will email you a link to complete your Property Affiliate listing.' : '');
