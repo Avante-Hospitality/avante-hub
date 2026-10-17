@@ -11,6 +11,7 @@ import { SITE_REGISTER_STORE, SITE_STATUSES, DEFAULT_SN_SETUP_EMAILS, newEntry, 
 import { readListingScreenshots } from "./lib/listing-reader.js";
 import { HOOKS_URL, makeHooksTicket } from "./lib/hooks-ticket.js";
 import { isAdminToken } from "./lib/admin-session.js";
+import { isAffiliateSession } from "./lib/affiliate-session.js";
 import { readResortInfo, copySnPhotos } from "./lib/sn-resort-info.js";
 import { feedByBbid, feedRowByResort, fillFromFeed, typeNames, learnTypeName, typeCodeOf } from "./lib/sn-feed.js";
 import { forwardGeocode, reverseGeocode } from "./lib/geocode.js";
@@ -957,6 +958,23 @@ export default async (request, context) => {
       return json({ ok: true, listings: summaries });
     }
 
+    if (action === "myListing") {
+      // A property signed in to the hub opens its own listing in the onboarding
+      // form (Jean, 2026-10-17): the listing whose Site ID is its affiliate
+      // number, or whose Site Nr is the affiliate's Site Nr.
+      const aff = clean(body.aff, 100);
+      if (!aff || !(await isAffiliateSession(aff, clean(body.session, 100)))) return json({ error: "Please log in to the hub again." }, 401);
+      const profile = await getStore({ name: "affiliates-directory", consistency: "strong" }).get(aff, { type: "json" }).catch(() => null);
+      const siteNr = String((profile && profile.siteNr) || "").trim();
+      const all = (await Promise.all((await store.list()).blobs.map((b) => store.get(b.key, { type: "json" })))).filter(Boolean);
+      const mine = all.filter((r) => r.siteId === aff || r.affId === aff || r.paSiteId === aff || (siteNr && String(r.siteNr || "").trim() === siteNr))
+        .sort((a, b) => String(b.dateUpdated || "").localeCompare(String(a.dateUpdated || "")));
+      const r = mine[0];
+      if (!r) return json({ ok: true, listing: null });
+      if (!r.editToken) { r.editToken = genToken(); await store.setJSON(r.listingId, r); }
+      return json({ ok: true, listing: { listingId: r.listingId, key: r.editToken, propertyName: r.propertyName || "" } });
+    }
+
     if (action === "listingRequest") {
       // The public "List your property" page (avante-channel-manager-listing.html).
       // Jean (2026-10-15): every property is set up on Stock Network first.
@@ -1281,6 +1299,13 @@ export default async (request, context) => {
           record[field] = clean(body[field], EDITABLE_FIELD_MAX[field] || 500);
         }
       });
+      // The property's ResortID on Stock Network: admin types it when SN gives
+      // it, so the property can connect before SN's feed lists it (Jean, 2026-10-17).
+      if (typeof body.resortId === "string") {
+        const rid = body.resortId.trim().toLowerCase();
+        if (rid && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(rid)) return json({ error: "The ResortID should look like be3ac535-8795-4610-b2c8-4378191e4810." }, 400);
+        record.resortId = rid;
+      }
       if (typeof body.paymentGatewayInUse === "string") {
         record.paymentGatewayInUse = body.paymentGatewayInUse === "Y" ? "Y" : "N";
       }

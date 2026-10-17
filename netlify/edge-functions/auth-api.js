@@ -9,8 +9,8 @@ import {
   LEADERBOARD_EXCLUDED_SITE_NRS,
 } from "./lib/booking-stats.js";
 import { hooksLink } from "./lib/hooks-ticket.js";
+import { DEFAULT_PASSWORD, sha256Hex } from "./lib/affiliate-session.js";
 
-const DEFAULT_PASSWORD = "0000";
 const RESET_LINK_MINUTES = 60;
 const RESET_MAX_PER_HOUR = 3;
 
@@ -39,12 +39,6 @@ async function sendResendEmail(to, subject, html) {
 // Only used here to shape a safe, read-only revenueShare object to hand
 // back to an affiliate viewing their own Account Details — never written.
 const CHANNEL_KEYS = ["accommodation", "flights", "activities", "car", "package"];
-
-async function sha256Hex(str) {
-  const data = new TextEncoder().encode(str);
-  const hashBuf = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(hashBuf)).map((b) => b.toString(16).padStart(2, "0")).join("");
-}
 
 function sanitizeChannelShare(raw, fallbackPct) {
   if (raw && typeof raw === "object") {

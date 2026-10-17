@@ -1762,6 +1762,18 @@
   renderChannelChips();
   goStep(1);
   if(editing) startEditMode();
+  else if(AFF) openOwnListing();
+  // Opened from the hub (?aff=): a signed-in property sees its own listing, not
+  // an empty form (Jean, 2026-10-17). No listing yet: the empty form, as before.
+  function openOwnListing(){
+    var session = ''; try { session = localStorage.getItem('avante-hub-session:' + AFF) || ''; } catch(e){}
+    if(!session) return;
+    api({ action: 'myListing', aff: AFF, session: session }).then(function(res){
+      if(!res || !res.ok || !res.listing) return;
+      EDIT_ID = res.listing.listingId; EDIT_KEY = res.listing.key; editing = true;
+      startEditMode();
+    });
+  }
 })();
 </script>
 

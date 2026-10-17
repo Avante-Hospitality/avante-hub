@@ -49,7 +49,8 @@ export default async (request) => {
     },
     sendEmail,
     // Stock Network's live property feed, for properties newer than the hub's resort list.
-    snFeed: { bySite: (nr, id) => feedBySite(nr, id), search: (q) => feedSearch(q) },
+    snFeed: { bySite: (nr, id) => feedBySite(nr, id), search: (q, max) => feedSearch(q, max) },
+    listingStore: getStore({ name: "property-listings", consistency: "strong" }),
   });
   try {
     const a = String(body.action || "");

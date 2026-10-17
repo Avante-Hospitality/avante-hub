@@ -49,7 +49,7 @@ export function waNumber(phone) { let d = String(phone || "").replace(/\D/g, "")
 // affiliates: { getAuth(aff) -> {passwordHash}|null, getProfile(aff) -> {name,email,phone}|null }
 // sendEmail(to, subject, html, { fromName, replyTo }?) -> Promise<boolean>
 // reviews: { baseUrl, secret, tenant } for the Avante Reviews app (review links in after-stay messages)
-export function createCore({ store, resortStore, encKey, now = () => new Date(), clientFactory = (c) => new SNClient(c), fetchImpl = (...a) => fetch(...a), baseUrl = "", affiliates = null, sendEmail = async () => false, reviews = null, snFeed = null }) {
+export function createCore({ store, resortStore, encKey, now = () => new Date(), clientFactory = (c) => new SNClient(c), fetchImpl = (...a) => fetch(...a), baseUrl = "", affiliates = null, sendEmail = async () => false, reviews = null, snFeed = null, listingStore = null }) {
   const today = () => now().toISOString().slice(0, 10);
   const getJSON = (k) => store.get(k, { type: "json" });
   const setJSON = (k, v) => store.setJSON(k, v);
@@ -60,23 +60,35 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     const rec = await resortStore.get("current", { type: "json" }).catch(() => null);
     return (rec && rec.resorts) || [];
   }
-  // The hub's resort list first; then Stock Network's own live feed (snFeed),
-  // which also has properties created after the list was loaded (Jean, 2026-10-16).
+  // The hub's resort list first; then Avante's own Property Listings (admin
+  // types a new property's ResortID there when Stock Network gives it); then
+  // Stock Network's live feed, which also has properties created after the
+  // list was loaded (Jean, 2026-10-16/17).
   async function findResortsForSite(siteNr, siteId) {
     const rows = await resortRows();
     const hit = rows.filter((r) => String(r.siteId || "").trim() === String(siteNr)).map((r) => ({ resortId: r.resortId, name: r.name }));
-    if (hit.length || !snFeed) return hit;
+    if (hit.length) return hit;
+    const listed = (await listingsForSite(siteNr).catch(() => [])).map((r) => ({ resortId: r.resortId, name: r.propertyName || "" }));
+    if (listed.length || !snFeed) return listed;
     return (await snFeed.bySite(siteNr, siteId).catch(() => [])).map((r) => ({ resortId: r.resortId, name: r.name }));
+  }
+  async function listingsForSite(siteNr) {
+    if (!listingStore || !String(siteNr || "").trim()) return [];
+    const all = await Promise.all((await listingStore.list()).blobs.map((b) => listingStore.get(b.key, { type: "json" }).catch(() => null)));
+    return all.filter((r) => r && r.resortId && String(r.siteNr || "").trim() === String(siteNr).trim());
   }
   // "Which property is this?" search: name or place, resort list plus the live feed, no duplicates.
   async function findResort(q) {
     q = cleanStr(q, 80).toLowerCase();
     if (q.length < 3) return { resorts: [] };
-    const has = (r) => [r.name, r.district, r.city, r.suburb].join(" ").toLowerCase().indexOf(q) > -1;
+    // Properties whose name matches come first, then those in a matching place.
+    const inName = (r) => String(r.name || "").toLowerCase().indexOf(q) > -1;
+    const inPlace = (r) => [r.district, r.city, r.suburb].join(" ").toLowerCase().indexOf(q) > -1;
     const seen = new Set(), out = [];
     const add = (r) => { const id = String(r.resortId || "").toLowerCase(); if (!id || seen.has(id) || out.length >= 12) return; seen.add(id); out.push({ resortId: r.resortId, name: r.name, district: r.district || r.city || "" }); };
-    (await resortRows()).filter(has).forEach(add);
-    if (snFeed && out.length < 12) (await snFeed.search(q).catch(() => [])).forEach(add);
+    const rows = await resortRows(), feed = snFeed ? await snFeed.search(q, 40).catch(() => []) : [];
+    rows.filter(inName).forEach(add); feed.filter(inName).forEach(add);
+    rows.filter(inPlace).forEach(add); feed.filter(inPlace).forEach(add);
     return { resorts: out };
   }
 
