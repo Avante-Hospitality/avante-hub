@@ -174,3 +174,23 @@ export function confirmationEmail(e) {
       "<p>Questions? Reply to this email or write to info@avantehospitality.co.za.</p><p>Avante Hospitality</p>",
   };
 }
+
+// To the property when Avante has set it up (Jean, 2026-10-17): its hub login.
+// The hub never emails a password: the property sets its own with
+// "Forgot your password?" on the login page. Properties never see Stock Network.
+export function welcomeEmail(e, affId, loginUrl) {
+  const channel = e.channelManager && e.channelManager !== "None yet";
+  return {
+    subject: "You're set up with Avante: " + e.propertyName,
+    html: "<p>Hello " + esc(e.contactName || "") + ",</p>" +
+      "<p><b>" + esc(e.propertyName) + "</b> is now set up with Avante (Avante Site Nr <b>" + esc(e.siteNr) + "</b>).</p>" +
+      (channel
+        ? "<p>Avante is now one of your channels. Your rates and availability keep coming from your channel manager; nothing changes there.</p>" +
+          "<p>Whenever you like, you can also use Avante's hub to promote your property with the hook builder, add activities to your promotions and earn extra income from them.</p>"
+        : "<p>You can now use Avante's hub for your calendar, bookings, guests, your own booking page and promotions.</p>") +
+      "<p><b>Your hub login</b><br>Affiliate number: <b>" + esc(affId) + "</b><br>" +
+      "Open <a href=\"" + esc(loginUrl) + "\">" + esc(loginUrl) + "</a> and tap <b>Forgot your password?</b> to choose your password.</p>" +
+      "<p>When you're ready to connect, Avante will send you your Avante login (username, client ID and client secret).</p>" +
+      "<p>Questions? Reply to this email or write to info@avantehospitality.co.za.</p><p>Avante Hospitality</p>",
+  };
+}

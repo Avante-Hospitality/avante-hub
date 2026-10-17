@@ -75,12 +75,14 @@ function compact(row) {
   }
   return out;
 }
-// Every property's full row, keyed by lower-case ResortID (refreshed every 6 hours).
-async function resortIndex(fetchImpl) {
+// Every property's full row, keyed by lower-case ResortID (refreshed every 6
+// hours, or now when fresh is set).
+async function resortIndex(fetchImpl, fresh) {
   const store = getStore({ name: "sn-feed", consistency: "strong" });
-  let idx = await store.get("resort-index", { type: "json" }).catch(() => null);
+  let idx = fresh ? null : await store.get("resort-index", { type: "json" }).catch(() => null);
   if (!idx || !idx.at || Date.now() - Date.parse(idx.at) > CACHE_MS) {
-    try { await store.delete("bbid-index").catch(() => {}); await loadIndex(fetchImpl); idx = await store.get("resort-index", { type: "json" }).catch(() => null); } catch (e) { /* use what we have */ }
+    try { await store.delete("bbid-index").catch(() => {}); await loadIndex(fetchImpl); idx = await store.get("resort-index", { type: "json" }).catch(() => null); }
+    catch (e) { if (fresh) throw e; /* else use what we have */ }
   }
   return (idx && idx.byResort) || {};
 }
@@ -106,6 +108,22 @@ export async function feedBySite(siteNr, siteId, fetchImpl = fetch) {
     if ((nr && s.siteNr === nr) || (id && s.siteId.toLowerCase() === id)) out.push({ resortId: rid, name: feedName(row), district: feedPlace(row) });
   }
   return out;
+}
+
+// Requests waiting for Stock Network (Jean, 2026-10-17): is the property set
+// up yet? Matched by the Site Nr Avante gave it, else by its NightsBridge BBID.
+// Reads Stock Network's list fresh (once per call, for all of them).
+// wanted: [{ siteNr, bbid }] -> same order: { resortId, name, siteNr, siteId, latitude, longitude } or null
+export async function findSetUps(wanted, fetchImpl = fetch) {
+  const rows = Object.entries(await resortIndex(fetchImpl, true));
+  return wanted.map(({ siteNr, bbid }) => {
+    const nr = String(siteNr || "").trim(), code = normBbid(bbid);
+    const hit = rows.find(([, row]) => nr && String(pickSite(siteFieldsOf(row)).siteNr) === nr) || rows.find(([, row]) => code && normBbid(row.resortCode) === code);
+    if (!hit) return null;
+    const [rid, row] = hit, site = pickSite(siteFieldsOf(row));
+    const num = (v) => (v === "" || v == null ? null : Number(v));
+    return { resortId: rid, name: feedName(row), siteNr: String(site.siteNr), siteId: site.siteId, latitude: num(row.latitude), longitude: num(row.longitude) };
+  });
 }
 
 // Properties whose name or place contains q (lower case). -> [{ resortId, name, district }]

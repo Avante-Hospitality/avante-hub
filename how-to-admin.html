@@ -39,6 +39,7 @@
     <div class="ht-card ht-new" aria-label="What's new">
       <h2>What's new</h2>
       <ul>
+        <li><time>17 Oct 2026</time> Site Nrs: every hour the hub looks on Stock Network for Site Nrs that were sent. When it finds one it sets it to <b>Set up</b>, makes the property's affiliate (number = its Site ID, not connected yet), links its listing and emails the property its hub login. You get a summary email. New button <span class="btn g">Check Stock Network now</span> runs the check straight away. See <a href="#siteNrs">Site Nrs</a>.</li>
         <li><time>17 Oct 2026</time> Property Listings: new box <span class="field">Stock Network ResortID</span>. Type the ResortID Stock Network gives for a new property, and the property can connect in its hub before Stock Network's own list shows it. A property signed in to the hub now sees its own listing under <b>More ▾ → Onboarding Form</b>, found by its Site ID or Site Nr.</li>
         <li><time>17 Oct 2026</time> Property Listings: the separate listing agreement is gone (no <b>Agreement</b> column, no <span class="btn">Send Agreement for Acceptance</span>, no Commission, Duration or Agreement Terms boxes). Every property accepts the one <b>Avante Hospitality Terms &amp; Conditions</b> when it lists, so you can set a checked listing to <b>Listed</b> straight away. Listing requests now show <b>Listed on now</b> (the channels the property is on). See <a href="#propertyListings">Property Listings</a>.</li>
         <li><time>15 Oct 2026</time> New tab <span class="tab">Site Nrs</span>: the hub gives out Stock Network Site Nrs (from 6023) and emails Stock Network's set-up sheet for a property that asks to list and isn't on Stock Network yet. The "List your property" page has a new tick box <b>I also want to become an Avante Property Affiliate</b>; only then is a listing made. See <a href="#siteNrs">Site Nrs</a>.</li>
@@ -376,7 +377,14 @@
         <li>It makes Stock Network's <b>Request_pull_area</b> sheet: SiteID, BBID, Name, Contact, Phone No, Email, Description, Area, District, Rate (17.25), TripAdvisor Search Link (empty), Suburb. City2 is left out.</li>
         <li>It emails the sheet to the addresses at the bottom of <span class="tab">Site Nrs</span>. The status changes to <b>Sent</b>.</li>
         <li>The property gets an email with its Site Nr.</li>
+        <li><b>Every hour</b> the hub looks on Stock Network for each <b>Sent</b> Site Nr (by Site Nr, or else by BBID).</li>
+        <li>Found? The status changes to <b>Set up</b>.</li>
+        <li>The hub makes the property's affiliate. Its affiliate number is the property's Site ID. It is <b>not connected</b> until the property enters its Avante login.</li>
+        <li>The property's listing (if it has one) gets its ResortID and Site ID.</li>
+        <li>The property gets an email <b>You're set up with Avante</b> with its affiliate number and the login link. It taps <b>Forgot your password?</b> to set a password.</li>
+        <li>You get an email listing what was set up.</li>
       </ol>
+      <div class="tip">Don't want to wait for the hour? Tap <span class="btn g">Check Stock Network now</span> at the top of <span class="tab">Site Nrs</span>. The answer shows under the button.</div>
       <div class="tip">Ticked Property Affiliate? The email asks Stock Network to set the channel property commission field to <b>4.95%</b> once the site is up. The sheet's Rate stays 17.25.</div>
       <div class="tip">Area, District and Suburb come from the hub location tree when Google finds the property by its name. If not, they stay empty: fill them in and send again (below).</div>
       <h3>Check or change a Site Nr, and send it again</h3>
@@ -385,7 +393,7 @@
         <li>Tap <span class="btn g">Open</span> on the row.</li>
         <li>Change what you need (for example <span class="field">Area</span>, <span class="field">District</span>, <span class="field">Suburb</span>, or a <span class="field">Note to Stock Network (in the email)</span>).</li>
         <li>Tap <span class="btn">Save</span>, or <span class="btn g">Save and send the sheet to Stock Network</span> to email it again. Every email is listed under <b>Emails sent</b>.</li>
-        <li>Stock Network has created the site? Set <span class="field">Status</span> to <b>Set up</b> and tap <span class="btn">Save</span>.</li>
+        <li>Stock Network has created the site but the hourly check can't find it? Set <span class="field">Status</span> to <b>Set up</b> and tap <span class="btn">Save</span>. (This doesn't make the affiliate or send the login email.)</li>
       </ol>
       <h3>Reserve a Site Nr by hand</h3>
       <ol class="steps">

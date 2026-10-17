@@ -7,13 +7,14 @@ import { sendEmail } from "./lib/send-email.js";
 // SheetJS from its own CDN (the build SheetJS recommends for Deno).
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 import { SITE_REGISTER_STORE, SITE_STATUSES, DEFAULT_SN_SETUP_EMAILS, newEntry, reserveNextSiteNr, reserveSiteNr, getSiteNr, saveSiteNr,
-  listSiteNrs, nextFreeSiteNr, findOpenRequest, requestSheetBase64, sheetFileName, setupEmail, confirmationEmail } from "./lib/sn-site-register.js";
+  listSiteNrs, nextFreeSiteNr, findOpenRequest, requestSheetBase64, sheetFileName, setupEmail, confirmationEmail, welcomeEmail } from "./lib/sn-site-register.js";
 import { readListingScreenshots } from "./lib/listing-reader.js";
 import { HOOKS_URL, makeHooksTicket } from "./lib/hooks-ticket.js";
 import { isAdminToken } from "./lib/admin-session.js";
 import { isAffiliateSession } from "./lib/affiliate-session.js";
+import { createPropertyAffiliate } from "./lib/affiliates.js";
 import { readResortInfo, copySnPhotos } from "./lib/sn-resort-info.js";
-import { feedByBbid, feedRowByResort, fillFromFeed, typeNames, learnTypeName, typeCodeOf } from "./lib/sn-feed.js";
+import { findSetUps, feedByBbid, feedRowByResort, fillFromFeed, typeNames, learnTypeName, typeCodeOf } from "./lib/sn-feed.js";
 import { forwardGeocode, reverseGeocode } from "./lib/geocode.js";
 import { searchPlacePhotos, searchPlaceCandidates } from "./lib/places-images.js";
 import { placeCoordinate, snFieldsFromPlace, placeText, PLACES_STORE, PROPERTY_KEY } from "./lib/tree.js";
@@ -1076,6 +1077,64 @@ export default async (request, context) => {
     }
 
     // ---------- Site Nr register (Admin > Site Nrs, Jean 2026-10-15) ----------
+    if (action === "checkWaitingSetUps") {
+      // Every hour (netlify/functions/sn-setup-check.mjs), or admin's "Check now"
+      // in Site Nrs (Jean, 2026-10-17): Site Nrs sent to Stock Network and not
+      // set up yet are looked for in Stock Network's list (by Site Nr, else BBID).
+      // Found: the Site Nr is marked Set up, the property's hub affiliate is
+      // made (number = Site ID; not connected until the property wants to use
+      // the hub), its listing is linked, the property gets its hub login and
+      // admin gets a summary.
+      const secret = Deno.env.get("PA_SYNC_SECRET") || "";
+      const bySchedule = !!secret && request.headers.get("x-pa-sync-secret") === secret;
+      if (!bySchedule) { const denied = await requireAdmin(); if (denied) return denied; }
+      const reg = siteRegister();
+      const waiting = (await listSiteNrs(reg)).filter((e) => e.status === "Sent");
+      if (!waiting.length) return json({ ok: true, waiting: 0, setUp: [] });
+      let found;
+      try { found = await findSetUps(waiting.map((e) => ({ siteNr: e.siteNr, bbid: e.bbid }))); }
+      catch (e) { return json({ error: "Could not read Stock Network's property list: " + String((e && e.message) || e) }, 502); }
+      const origin = new URL(request.url).origin, done = [];
+      for (let i = 0; i < waiting.length; i++) {
+        const e = waiting[i], f = found[i];
+        if (!f) continue;
+        const now = new Date().toISOString();
+        Object.assign(e, { status: "Set up", setUpAt: now, resortId: f.resortId, snSiteId: f.siteId, snName: f.name, updatedAt: now });
+        let affId = "", affNote = "";
+        if (f.siteId) {
+          const made = await createPropertyAffiliate({ affId: f.siteId, name: e.propertyName || f.name, email: e.email, phone: e.phone, siteNr: f.siteNr || e.siteNr,
+            type: e.channelManager && e.channelManager !== "None yet" ? "channel" : "property", note: "Made when Avante Site Nr " + e.siteNr + " was set up" });
+          affId = f.siteId; affNote = made.created ? "affiliate made" : "affiliate already there";
+        } else affNote = "no Site ID from Stock Network yet, so no affiliate";
+        if (e.listingId) {
+          const rec = await store.get(e.listingId, { type: "json" }).catch(() => null);
+          if (rec) {
+            const before = { resortId: rec.resortId || "", siteId: rec.siteId || "", affId: rec.affId || "" };
+            rec.resortId = rec.resortId || f.resortId; if (affId) { rec.siteId = rec.siteId || affId; rec.affId = rec.affId || affId; }
+            rec.siteNr = rec.siteNr || String(e.siteNr); rec.existingOnSN = "Y"; rec.dateUpdated = now;
+            addHistory(rec, "admin", "Set up on Stock Network (Site Nr " + e.siteNr + "), found by the hourly check", before);
+            await store.setJSON(e.listingId, rec);
+          }
+        }
+        if (affId && !e.welcomeSentAt && emailList(e.email).length) {
+          const w = welcomeEmail(e, affId, origin + "/login.html?aff=" + encodeURIComponent(affId));
+          const ok = await sendEmail({ to: emailList(e.email, 5), subject: w.subject, html: w.html }).catch(() => false);
+          if (ok) e.welcomeSentAt = now;
+        }
+        await saveSiteNr(reg, e);
+        done.push({ siteNr: e.siteNr, name: e.propertyName, resortId: f.resortId, affId, affNote, welcomed: !!e.welcomeSentAt, listingId: e.listingId || "" });
+      }
+      const notifyTo = done.length ? await getNotificationEmail() : "";
+      if (notifyTo) {
+        context.waitUntil(sendNotificationEmail(notifyTo, "Set up on Stock Network: " + done.map((d) => d.name).join(", ").slice(0, 150),
+          "<p>The hourly check found these properties on Stock Network:</p><ul>" + done.map((d) => "<li><b>" + escapeHtml(d.name) + "</b> — Site Nr " + escapeHtml(d.siteNr) +
+            ", ResortID " + escapeHtml(d.resortId) + (d.affId ? ", affiliate " + escapeHtml(d.affId) : "") + " (" + escapeHtml(d.affNote) + ")" +
+            (d.listingId ? ", listing " + escapeHtml(d.listingId) + " linked" : "") + (d.welcomed ? ", hub login emailed" : ", hub login NOT emailed") + "</li>").join("") +
+          "</ul><p>See Admin &gt; Site Nrs.</p>"));
+      }
+      return json({ ok: true, waiting: waiting.length, setUp: done });
+    }
+
     if (["siteNrList", "siteNrReserve", "siteNrUpdate", "siteNrSend", "snSetupSettings"].includes(action)) {
       const denied = await requireAdmin();
       if (denied) return denied;
@@ -1232,15 +1291,10 @@ export default async (request, context) => {
       if (!record) return json({ error: "not found" }, 404);
       const affId = clean(record.siteId, 100);
       if (!affId) return json({ error: "Type the Site ID (affiliate number) on the listing and tap Save Changes first." }, 400);
-      const dir = getStore({ name: "affiliates-directory", consistency: "strong" });
-      if (await dir.get(affId, { type: "json" })) return json({ error: "An affiliate with number " + affId + " already exists. Open it in Affiliates to check its type and Site Nr.", exists: true }, 409);
-      const now = new Date().toISOString();
-      const aff = { affId, name: record.propertyName || "", email: record.email || record.ownerEmail || "", siteNr: record.siteNr || "",
-        types: [record.channelProperty === "Y" ? "channel" : "property"], phone: record.telephone || "",
-        revenueShare: Object.fromEntries(["accommodation", "flights", "activities", "car", "package"].map((k) => [k, { type: "percent", value: 0 }])),
-        bank: { bankName: "", accountHolder: "", accountNumber: "", branchCode: "", accountType: "" }, notes: "Created from listing " + listingId,
-        status: "active", totalRevenue: 0, totalOwed: 0, totalPaid: 0, channelRevenue: {}, hooksAccess: true, createdAt: now, updatedAt: now };
-      await dir.setJSON(affId, aff);
+      const made = await createPropertyAffiliate({ affId, name: record.propertyName, email: record.email || record.ownerEmail, phone: record.telephone,
+        siteNr: record.siteNr, type: record.channelProperty === "Y" ? "channel" : "property", note: "Created from listing " + listingId });
+      if (!made.created) return json({ error: "An affiliate with number " + affId + " already exists. Open it in Affiliates to check its type and Site Nr.", exists: true }, 409);
+      const now = made.aff.createdAt, aff = made.aff;
       record.affId = affId; record.affiliateCreatedAt = now; record.dateUpdated = now;
       record.history = (Array.isArray(record.history) ? record.history : []).concat([{ at: now, by: "admin", action: "Affiliate " + affId + " created (" + aff.types[0] + ")" }]).slice(-HISTORY_MAX);
       await store.setJSON(listingId, record);

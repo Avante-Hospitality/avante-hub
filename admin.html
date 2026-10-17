@@ -2210,12 +2210,13 @@
       <div class="hero">
         <h1>Site Nrs</h1>
         <p>Every Stock Network Site Nr Avante gives out comes from this list, so no number is used twice. A property that asks to list on the "List your property" page and isn't on Stock Network yet gets the next free number, and Stock Network's sheet is emailed to the addresses below.</p>
+        <p>Every hour the hub looks on Stock Network for Site Nrs that were sent. When it finds one it marks it <b>Set up</b>, makes the property's affiliate (not connected yet), links its listing and emails the property its hub login.</p>
       </div>
 
       <div class="card">
         <div style="display:flex; flex-wrap:wrap; gap:14px; align-items:center; justify-content:space-between;">
           <div style="font-size:15px;">Next free Site Nr: <b id="snrNext" style="font-size:20px; color:var(--teal-dark);">…</b></div>
-          <button class="btn-outline" id="snrRefresh" type="button" style="margin-top:0;">Refresh</button>
+          <span><button class="btn-outline" id="snrCheck" type="button" style="margin-top:0;">Check Stock Network now</button> <button class="btn-outline" id="snrRefresh" type="button" style="margin-top:0;">Refresh</button></span>
         </div>
         <div class="status" id="snrStatus"></div>
         <div class="table-wrap" style="margin-top:14px;">
@@ -10654,6 +10655,19 @@
     }
     $('snrBody').addEventListener('click', function(ev){ var b = ev.target.closest('button[data-nr]'); if(b) openEntry(b.getAttribute('data-nr')); });
     $('snrRefresh').addEventListener('click', load);
+    // The hourly check, run now (netlify/functions/sn-setup-check.mjs runs it every hour).
+    $('snrCheck').addEventListener('click', function(){
+      var b = this; b.disabled = true; say($('snrStatus'), 'Looking on Stock Network\u2026 this can take a minute.');
+      propAdminPost('checkWaitingSetUps').then(function(res){
+        var d = res.data || {}; b.disabled = false;
+        if(!d.ok){ say($('snrStatus'), d.error || 'Could not check.'); return; }
+        var done = d.setUp || [];
+        var msg = !d.waiting ? 'No Site Nrs are waiting for Stock Network.' :
+          !done.length ? 'None of the ' + d.waiting + ' waiting Site Nrs are on Stock Network yet.' :
+          'Set up: ' + done.map(function(x){ return x.name + ' (' + x.siteNr + (x.affId ? ', affiliate ' + x.affId : '') + (x.welcomed ? ', login emailed' : ', login NOT emailed') + ')'; }).join('; ') + '.';
+        return load().then(function(){ say($('snrStatus'), msg); });
+      }).catch(function(){ b.disabled = false; say($('snrStatus'), 'Could not check.'); });
+    });
     $('snrReserveBtn').addEventListener('click', function(){
       var st = $('snrReserveStatus'); say(st, 'Reserving\u2026');
       propAdminPost('siteNrReserve', { siteNr: $('snrNewNr').value.trim(), propertyName: $('snrNewName').value.trim(), markSetUp: $('snrNewSetUp').checked }).then(function(res){
