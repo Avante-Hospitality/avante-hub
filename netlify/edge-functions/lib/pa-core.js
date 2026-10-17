@@ -1568,6 +1568,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
   async function slugOwner(sl) { const r = await getJSON("fslug:" + sl); return r ? r.siteId : null; }
   async function saveFrontStore(prop, body) {
     body = body || {};
+    if (prop.channel) throw new PAError("Channel properties don't have a front store. Promote your property with the Hook Builder.");
     const cur = fsSettings(prop), s = Object.assign({}, cur);
     const bool = (k) => { if (body[k] !== undefined) s[k] = !!body[k]; };
     ["on", "showPrices", "showCalendar", "showActivities", "showOffers"].forEach(bool);
@@ -1672,7 +1673,8 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     const prop = await getJSON("site:" + owner);
     if (!prop) return null;
     const s = fsSettings(prop);
-    return s.on && s.slug === slug(sl) ? prop : null;
+    // Channel properties have no front store (Jean, 2026-10-17).
+    return s.on && !prop.channel && s.slug === slug(sl) ? prop : null;
   }
   function fsFirstNight(prop) {
     const s = fsSettings(prop), fb = firstBookable(prop), notice = addDays(today(), s.minNoticeDays || 0);

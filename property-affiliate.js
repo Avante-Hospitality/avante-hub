@@ -109,7 +109,8 @@
   // search with the unit calendar right under it).
   // Channel Property Affiliate (Jean, 2026-10-13): on NightsBridge or another
   // channel manager, so it gets only what NightsBridge doesn't give it:
-  // Bookings (from the hub only), Activities, Front store and Reviews.
+  // Bookings (from the hub only), Activities and Reviews. No front store
+  // (Jean, 2026-10-17): to them Avante is a channel; they sell through hooks.
   function isCh() { return !!(S.prop && S.prop.channel); }
   // Contact person for bookings and queries, and who gets the hub's emails
   // about the property (Jean, 2026-10-14). Email boxes take several addresses.
@@ -124,7 +125,7 @@
       '</select></div></div><p class="pa-hint">Several email addresses? Separate them with a comma.</p></fieldset>';
   }
   function contactVals() { return { contactName: val('pa-cn').trim(), contactPhone: val('pa-cp').trim(), contactEmail: val('pa-ce').trim(), notifyWho: val('pa-nw') || 'both' }; }
-  var CH_TABS = ['book', 'acts', 'front', 'rev'];
+  var CH_TABS = ['book', 'acts', 'rev'];
   function tabsFor() { return isCh() ? TABS.filter(function (v) { return CH_TABS.indexOf(v[0]) > -1; }) : TABS; }
   function homeView() { return isCh() ? 'book' : 'avail'; }
   var TABS = [['avail', 'Calendar'], ['book', 'Bookings'], ['guests', 'Guests'], ['acts', 'Activities'], ['msgs', 'Communication'], ['front', 'Front store'], ['chan', 'Channels'], ['rev', 'Reviews']];
@@ -503,7 +504,7 @@
     if (isCh()) {
       var cs = S.prop.settings || {};
       h += '<section class="pa-card" aria-label="How it works"><p class="pa-h2">Bookings from the hub</p>' +
-        '<p class="pa-hint">This list shows only bookings that came through Avante: your front store, and your hook and booking links. They reach your NightsBridge (or other channel manager) through Avante, marked <b>Avante Hub booking</b>. Guests pay on Avante\'s secure payment page. Your rates, availability, other bookings and guest messages stay in your channel manager.</p>' +
+        '<p class="pa-hint">This list shows only bookings that came through Avante: your hook and booking links. They reach your NightsBridge (or other channel manager) through Avante, marked <b>Avante Hub booking</b>. Guests pay on Avante\'s secure payment page. Your rates, availability, other bookings and guest messages stay in your channel manager.</p>' +
         '<div class="pa-form" style="margin-top:10px"><div class="pa-field"><label class="pa-label" for="ch-email">Your email for new booking notices</label><input id="ch-email" type="text" inputmode="email" value="' + esc(cs.email || '') + '" placeholder="name@example.com, other@example.com"></div>' +
         '<div class="pa-field"><label class="pa-label" for="ch-phone">Phone</label><input id="ch-phone" type="tel" value="' + esc(cs.phone || '') + '"></div></div>' + contactBlock(cs) +
         '<div class="pa-row" style="margin-top:8px"><button type="button" class="pa-btn small" data-act="chSaveContact">Save</button></div></section>';
