@@ -75,15 +75,48 @@ function compact(row) {
   }
   return out;
 }
-// The property's full row from the feed (refreshed every 6 hours), or null.
-export async function feedRowByResort(resortId, fetchImpl = fetch) {
-  const id = String(resortId || "").trim().toLowerCase(); if (!id) return null;
+// Every property's full row, keyed by lower-case ResortID (refreshed every 6 hours).
+async function resortIndex(fetchImpl) {
   const store = getStore({ name: "sn-feed", consistency: "strong" });
   let idx = await store.get("resort-index", { type: "json" }).catch(() => null);
   if (!idx || !idx.at || Date.now() - Date.parse(idx.at) > CACHE_MS) {
     try { await store.delete("bbid-index").catch(() => {}); await loadIndex(fetchImpl); idx = await store.get("resort-index", { type: "json" }).catch(() => null); } catch (e) { /* use what we have */ }
   }
-  return (idx && idx.byResort && idx.byResort[id]) || null;
+  return (idx && idx.byResort) || {};
+}
+const feedName = (row) => String(row.name || row.resortName || row.ResortName || "").trim();
+const feedPlace = (row) => String(row.district || row.city || row.suburb || "").trim();
+
+// The property's full row from the feed, or null.
+export async function feedRowByResort(resortId, fetchImpl = fetch) {
+  const id = String(resortId || "").trim().toLowerCase(); if (!id) return null;
+  return (await resortIndex(fetchImpl))[id] || null;
+}
+
+// Properties on one Stock Network site, matched by its Site Nr or Site ID
+// (what a property's own login returns). Lets a property created on Stock
+// Network after the hub's resort list was loaded still connect (Jean, 2026-10-16).
+// -> [{ resortId, name, district }]
+export async function feedBySite(siteNr, siteId, fetchImpl = fetch) {
+  const nr = String(siteNr || "").trim(), id = String(siteId || "").trim().toLowerCase();
+  if (!nr && !id) return [];
+  const out = [];
+  for (const [rid, row] of Object.entries(await resortIndex(fetchImpl))) {
+    const s = pickSite(siteFieldsOf(row));
+    if ((nr && s.siteNr === nr) || (id && s.siteId.toLowerCase() === id)) out.push({ resortId: rid, name: feedName(row), district: feedPlace(row) });
+  }
+  return out;
+}
+
+// Properties whose name or place contains q (lower case). -> [{ resortId, name, district }]
+export async function feedSearch(q, max = 12, fetchImpl = fetch) {
+  const out = [];
+  for (const [rid, row] of Object.entries(await resortIndex(fetchImpl))) {
+    if ((feedName(row) + " " + feedPlace(row)).toLowerCase().indexOf(q) < 0) continue;
+    out.push({ resortId: rid, name: feedName(row), district: feedPlace(row) });
+    if (out.length >= max) break;
+  }
+  return out;
 }
 
 // Property type: the feed only has Stock Network's type code (a GUID); the

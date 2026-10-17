@@ -4,6 +4,7 @@
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
 import { emailList } from "./lib/emails.js";
 import { createCore, PAError } from "./lib/pa-core.js";
+import { feedBySite, feedSearch } from "./lib/sn-feed.js";
 import { createActivities } from "./lib/pa-activities.js";
 import { stayPayload, resortInfo } from "./lib/stay-payload.js";
 import { treeAreaList } from "./lib/tree-place.js";
@@ -47,6 +48,8 @@ export default async (request) => {
       getProfile: (aff) => getStore({ name: "affiliates-directory", consistency: "strong" }).get(aff, { type: "json" }),
     },
     sendEmail,
+    // Stock Network's live property feed, for properties newer than the hub's resort list.
+    snFeed: { bySite: (nr, id) => feedBySite(nr, id), search: (q) => feedSearch(q) },
   });
   try {
     const a = String(body.action || "");
@@ -56,6 +59,7 @@ export default async (request) => {
       return json({ ok: true, result: await core.runSync() });
     }
     if (a === "connect") return json(Object.assign({ ok: true }, await core.connect(body)));
+    if (a === "findResort") return json(Object.assign({ ok: true }, await core.findResort(body.q)));
     // Hub login: is this affiliate a property affiliate, and open its property on this device.
     if (a === "affStatus") return json(Object.assign({ ok: true }, await core.affStatus(body.aff)));
     if (a === "resume") return json(Object.assign({ ok: true }, await core.resume(body.aff, body.password)));

@@ -31,4 +31,4 @@ Shared files: `how-to.css` (look), `how-to.js` (contents list + search), `how-to
 
 ## Other standing rules
 - Ask Jean before uploading to GitHub or deploying (push / merge to main deploys via Netlify).
-- Commit as Jean (user.email jeanl1967@gmail.com).
+- Claude commits as Claude (user.name Claude, user.email noreply@anthropic.com) with Jean as co-author: "Co-Authored-By: Jean <jeanl1967@gmail.com>" (Jean, 2026-10-17).

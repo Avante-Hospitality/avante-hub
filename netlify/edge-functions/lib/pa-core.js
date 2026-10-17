@@ -49,17 +49,35 @@ export function waNumber(phone) { let d = String(phone || "").replace(/\D/g, "")
 // affiliates: { getAuth(aff) -> {passwordHash}|null, getProfile(aff) -> {name,email,phone}|null }
 // sendEmail(to, subject, html, { fromName, replyTo }?) -> Promise<boolean>
 // reviews: { baseUrl, secret, tenant } for the Avante Reviews app (review links in after-stay messages)
-export function createCore({ store, resortStore, encKey, now = () => new Date(), clientFactory = (c) => new SNClient(c), fetchImpl = (...a) => fetch(...a), baseUrl = "", affiliates = null, sendEmail = async () => false, reviews = null }) {
+export function createCore({ store, resortStore, encKey, now = () => new Date(), clientFactory = (c) => new SNClient(c), fetchImpl = (...a) => fetch(...a), baseUrl = "", affiliates = null, sendEmail = async () => false, reviews = null, snFeed = null }) {
   const today = () => now().toISOString().slice(0, 10);
   const getJSON = (k) => store.get(k, { type: "json" });
   const setJSON = (k, v) => store.setJSON(k, v);
 
   // ---------- properties & sessions ----------
-  async function findResortsForSite(siteNr) {
+  async function resortRows() {
     if (!resortStore) return [];
     const rec = await resortStore.get("current", { type: "json" }).catch(() => null);
-    const rows = (rec && rec.resorts) || [];
-    return rows.filter((r) => String(r.siteId || "").trim() === String(siteNr)).map((r) => ({ resortId: r.resortId, name: r.name }));
+    return (rec && rec.resorts) || [];
+  }
+  // The hub's resort list first; then Stock Network's own live feed (snFeed),
+  // which also has properties created after the list was loaded (Jean, 2026-10-16).
+  async function findResortsForSite(siteNr, siteId) {
+    const rows = await resortRows();
+    const hit = rows.filter((r) => String(r.siteId || "").trim() === String(siteNr)).map((r) => ({ resortId: r.resortId, name: r.name }));
+    if (hit.length || !snFeed) return hit;
+    return (await snFeed.bySite(siteNr, siteId).catch(() => [])).map((r) => ({ resortId: r.resortId, name: r.name }));
+  }
+  // "Which property is this?" search: name or place, resort list plus the live feed, no duplicates.
+  async function findResort(q) {
+    q = cleanStr(q, 80).toLowerCase();
+    if (q.length < 3) return { resorts: [] };
+    const has = (r) => [r.name, r.district, r.city, r.suburb].join(" ").toLowerCase().indexOf(q) > -1;
+    const seen = new Set(), out = [];
+    const add = (r) => { const id = String(r.resortId || "").toLowerCase(); if (!id || seen.has(id) || out.length >= 12) return; seen.add(id); out.push({ resortId: r.resortId, name: r.name, district: r.district || r.city || "" }); };
+    (await resortRows()).filter(has).forEach(add);
+    if (snFeed && out.length < 12) (await snFeed.search(q).catch(() => [])).forEach(add);
+    return { resorts: out };
   }
 
   async function connect({ username, clientID, clientSecret, aff, resortId }) {
@@ -71,7 +89,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
 
     let rid = cleanStr(resortId, 64);
     if (!rid) {
-      const matches = await findResortsForSite(tok.site);
+      const matches = await findResortsForSite(tok.site, tok.siteId);
       if (matches.length === 1) rid = matches[0].resortId;
       else return { needResort: true, site: tok.site, candidates: matches };
     }
@@ -1821,5 +1839,5 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
   }
   function notDemo(b) { if (b && b.demo) throw new PAError("This is a demo booking: it isn't on Stock Network, so it can't be changed, paid or cancelled.", 409); }
 
-  return { propertyTo, requestChannelHelp, prefetch, siteOfToken, newSession, decide, refreshStatuses, clientFor, connect, auth, disconnect, publicProperty, availability, search, book, cancel, cancelUnit, edit, find, saveSettings, channelsView, payInfo, markPaidEft, approvalInfo, approveCancel, affStatus, resume, seedDemo, clearDemo, isDemoSite, saveContact, checkIn, guests, messagesView, saveMessages, prepareMessage, markMessage, emailNow, inHouse, emailInHouse, firstBookable, fsSettings, saveFrontStore, frontStoreView, uploadFrontPhoto, removeFrontPhoto, frontPhoto, propertyBySlug, publicFrontStore, publicGuestInfo, guestKeyOk, publicOffers, publicAvailability, publicQuote, publicBook, fsStat, propertyReviewLink, remindMessages, icalFeed, runSync, syncProperty, channelEvents, addChannelEvent, snapshot, ensureWindow, resolveUnitNotice, findResortsForSite };
+  return { propertyTo, requestChannelHelp, prefetch, siteOfToken, newSession, decide, refreshStatuses, clientFor, connect, auth, disconnect, publicProperty, availability, search, book, cancel, cancelUnit, edit, find, saveSettings, channelsView, payInfo, markPaidEft, approvalInfo, approveCancel, affStatus, resume, seedDemo, clearDemo, isDemoSite, saveContact, checkIn, guests, messagesView, saveMessages, prepareMessage, markMessage, emailNow, inHouse, emailInHouse, firstBookable, fsSettings, saveFrontStore, frontStoreView, uploadFrontPhoto, removeFrontPhoto, frontPhoto, propertyBySlug, publicFrontStore, publicGuestInfo, guestKeyOk, publicOffers, publicAvailability, publicQuote, publicBook, fsStat, propertyReviewLink, remindMessages, icalFeed, runSync, syncProperty, channelEvents, addChannelEvent, snapshot, ensureWindow, resolveUnitNotice, findResortsForSite, findResort };
 }

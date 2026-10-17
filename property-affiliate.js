@@ -196,8 +196,8 @@
     if (c.needResort) {
       h += '<div style="margin-top:14px"><p class="pa-h2">Which property is this?</p>';
       if (c.candidates && c.candidates.length) h += c.candidates.map(function (r) { return '<button type="button" class="pa-btn ghost small" style="margin:0 8px 8px 0" data-act="pickResort" data-id="' + esc(r.resortId) + '">' + esc(r.name) + '</button>'; }).join('');
-      h += '<div class="pa-field" style="margin-top:8px"><label class="pa-label" for="pa-rs">Search by property name</label><input id="pa-rs" type="search" value="' + esc(c.q || '') + '" placeholder="e.g. The Dunes"></div>';
-      if (c.matches) h += '<div class="pa-results">' + (c.matches.length ? c.matches.map(function (r) { return '<div class="pa-result"><div class="grow"><b>' + esc(r.name) + '</b><div class="pa-hint">' + esc(r.district || r.town || '') + '</div></div><button type="button" class="pa-btn small" data-act="pickResort" data-id="' + esc(r.resortId) + '">This one</button></div>'; }).join('') : '<span class="pa-hint">No property with that name.</span>') + '</div>';
+      h += '<div class="pa-field" style="margin-top:8px"><label class="pa-label" for="pa-rs">Search by property name or town</label><input id="pa-rs" type="search" value="' + esc(c.q || '') + '" placeholder="e.g. The Dunes"></div>';
+      if (c.matches) h += '<div class="pa-results">' + (c.matches.length ? c.matches.map(function (r) { return '<div class="pa-result"><div class="grow"><b>' + esc(r.name) + '</b><div class="pa-hint">' + esc(r.district || r.town || '') + '</div></div><button type="button" class="pa-btn small" data-act="pickResort" data-id="' + esc(r.resortId) + '">This one</button></div>'; }).join('') : '<span class="pa-hint">No property with that name or town.</span>') + '</div>';
       h += '</div>';
     }
     h += '<div class="pa-row" style="margin-top:14px"><button type="button" class="pa-btn" data-act="connect"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'Connecting…' : 'Connect') + '</button></div></div>';
@@ -1540,12 +1540,15 @@
     }
     if (e.target.id === 'pa-rs') {
       var q = e.target.value.trim().toLowerCase(); S.connect.q = e.target.value; clearTimeout(findTimer);
+      var showMatches = function () { rememberConnect(); render(); var el = document.getElementById('pa-rs'); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } };
+      // Fewer than 3 letters: no result list, so an old "No property" never lingers.
+      if (q.length < 3) { if (S.connect.matches) { S.connect.matches = null; showMatches(); } return; }
       findTimer = setTimeout(function () {
-        if (q.length < 3) return;
-        fetch('/api/resorts').then(function (r) { return r.json(); }).then(function (d) {
-          S.connect.matches = ((d && d.resorts) || []).filter(function (r) { return String(r.name || '').toLowerCase().indexOf(q) >= 0; }).slice(0, 12);
-          rememberConnect(); render(); var el = document.getElementById('pa-rs'); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
-        });
+        // Searches name and place, in the hub's list and Stock Network's live feed.
+        api('findResort', { q: q }).then(function (d) {
+          if (String(S.connect.q || '').trim().toLowerCase() !== q) return;
+          S.connect.matches = d.resorts || []; showMatches();
+        }).catch(fail);
       }, 300);
     }
   });
