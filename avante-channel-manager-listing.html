@@ -20,8 +20,9 @@
      (Requested) is made only when "I also want to become an Avante Property
      Affiliate" is ticked. The terms box starts unticked.
 
-  2. TERMS & CONDITIONS TEXT (search "PLACEHOLDER T&C TEXT" below):
-     Replace the draft placeholder in the modal with the final wording.
+  2. (Done 2026-10-17) TERMS & CONDITIONS: the box shows the one Avante
+     terms page (terms-and-conditions.html?embed=1). It covers every kind of
+     property and the 4.95% rate; there is no separate listing agreement.
 
   3. This is intended to be the quick campaign-email link for the ~3,500+
      NightsBridge/eRes-NebulaCRS properties you're inviting to list. Its
@@ -63,12 +64,11 @@
 
     <header class="text-center mb-8">
         <img src="img/logo-full.png" alt="Avante Hospitality" style="height:64px; width:auto; margin:0 auto 18px;">
-        <span class="step-badge inline-block text-white text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full mb-4">NightsBridge &amp; eRes/NebulaCRS Properties</span>
+        <span class="step-badge inline-block text-white text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full mb-4">Every kind of property</span>
         <h1 class="text-3xl sm:text-4xl font-bold tracking-tight" style="color:var(--navy)">List Your Property with Avante Hospitality</h1>
         <p class="mt-3 text-base text-gray-600">
-            Your property already runs on a channel manager that Avante integrates with — so we only
-            need a few details to get you listed. No setup or rate-chart fields required; your existing
-            channel manager handles that.
+            Give us a few details and Avante gets your property listed. On NightsBridge or
+            eRes/NebulaCRS? Add your reference and we pick up the rest from there.
         </p>
         <p class="mt-2 text-sm text-gray-600">
             Learn more at <a href="http://www.avantehospitality.co.za" target="_blank" rel="noopener noreferrer" class="font-medium hover:underline" style="color:var(--indigo)">www.avantehospitality.co.za</a>.
@@ -109,12 +109,12 @@
                 </label>
                 <label class="flex items-center cursor-pointer">
                     <input type="radio" name="channel_manager" value="None yet" id="cm-none" class="form-radio h-4 w-4 channel-manager-radio" style="accent-color:var(--indigo)">
-                    <span class="ml-2 text-sm text-gray-800 font-medium">Not on a platform yet</span>
+                    <span class="ml-2 text-sm text-gray-800 font-medium">Not on a platform</span>
                 </label>
             </div>
 
             <div id="none-wrap" class="hidden-section mt-3 p-3 rounded-lg text-sm" style="background:#EEF0FC; color:var(--navy)">
-                No problem — submit your details below and our team will reach out to help get your property set up on a channel manager.
+                No problem. Submit your details and our team will get your property set up and listed.
             </div>
             <div id="bbid-wrap" class="hidden-section mt-3">
                 <label for="bbid" class="block text-sm font-medium text-gray-700 mb-1">NightsBridge BBID Number</label>
@@ -125,6 +125,22 @@
                 <input type="text" id="eres-ref" name="eres_reference" class="form-input w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm">
             </div>
         </div>
+
+        <fieldset id="channels-box">
+            <legend class="block text-sm font-medium text-gray-700 mb-2">Where is your property listed now? Tick all that apply.</legend>
+            <div class="flex flex-wrap gap-x-6 gap-y-2">
+                <label class="flex items-center cursor-pointer"><input type="checkbox" name="channels" value="None" class="form-checkbox h-4 w-4 rounded channel-check" style="accent-color:var(--indigo)"><span class="ml-2 text-sm text-gray-800 font-medium">None</span></label>
+                <label class="flex items-center cursor-pointer"><input type="checkbox" name="channels" value="Booking.com" class="form-checkbox h-4 w-4 rounded channel-check" style="accent-color:var(--indigo)"><span class="ml-2 text-sm text-gray-800 font-medium">Booking.com</span></label>
+                <label class="flex items-center cursor-pointer"><input type="checkbox" name="channels" value="Airbnb" class="form-checkbox h-4 w-4 rounded channel-check" style="accent-color:var(--indigo)"><span class="ml-2 text-sm text-gray-800 font-medium">Airbnb</span></label>
+                <label class="flex items-center cursor-pointer"><input type="checkbox" name="channels" value="LekkeSlaap" class="form-checkbox h-4 w-4 rounded channel-check" style="accent-color:var(--indigo)"><span class="ml-2 text-sm text-gray-800 font-medium">LekkeSlaap</span></label>
+                <label class="flex items-center cursor-pointer"><input type="checkbox" name="channels" value="Other" id="channel-other" class="form-checkbox h-4 w-4 rounded channel-check" style="accent-color:var(--indigo)"><span class="ml-2 text-sm text-gray-800 font-medium">Other</span></label>
+            </div>
+            <div id="channel-other-wrap" class="hidden-section mt-3">
+                <label for="channel-other-text" class="block text-sm font-medium text-gray-700 mb-1">Which other website or channel?</label>
+                <input type="text" id="channel-other-text" maxlength="200" class="form-input w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm" placeholder="e.g. TripAdvisor, SafariNow, our own website">
+            </div>
+            <p id="channels-error" class="hidden mt-2 text-sm text-red-600">Tick where your property is listed now, or tick None.</p>
+        </fieldset>
 
         <div class="relative flex items-start p-4 rounded-xl" style="border:2px solid var(--indigo); background:#EEF0FC">
             <div class="flex h-6 items-center">
@@ -173,20 +189,12 @@
 <div id="terms-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
     <div class="bg-white rounded-2xl shadow-xl max-w-2xl w-full max-h-[80vh] flex flex-col">
         <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-            <h3 class="text-xl font-semibold font-display" style="color:var(--navy)">Property Listing Terms &amp; Conditions</h3>
+            <h3 class="text-xl font-semibold font-display" style="color:var(--navy)">Avante Hospitality Terms &amp; Conditions</h3>
             <button type="button" id="close-terms" class="text-gray-400 hover:text-gray-600 text-2xl leading-none" aria-label="Close">&times;</button>
         </div>
-        <div class="px-6 py-4 overflow-y-auto text-sm text-gray-700 space-y-3">
-            <!-- PLACEHOLDER T&C TEXT — Jean to replace with the final, approved wording. -->
-            <p class="text-xs font-semibold uppercase tracking-wide accent">Draft placeholder — not final legal text</p>
-            <p>By listing your property with Avante Hospitality, you agree to make your availability and
-            rates accessible for booking through the Avante platform via your existing channel
-            manager, and authorise Avante Hospitality to activate and maintain this listing on your behalf
-            based on the details you submit here.</p>
-            <p>Commission, payout terms, and cancellation policies are governed by your separate Avante
-            Hospitality property agreement. This form confirms your intent to list and does not replace
-            that agreement.</p>
-            <p><em>[Final Terms &amp; Conditions text to be supplied by Avante Hospitality.]</em></p>
+        <div class="px-2 py-2 text-sm text-gray-700">
+            <!-- The one Avante terms page, for every kind of property (Jean, 2026-10-17). -->
+            <iframe src="terms-and-conditions.html?embed=1" title="Avante Hospitality Terms &amp; Conditions" loading="lazy" style="width:100%; height:60vh; border:0"></iframe>
         </div>
         <div class="px-6 py-4 border-t border-gray-200 text-right">
             <button type="button" id="acknowledge-terms" class="brand-btn text-white font-semibold py-2 px-6 rounded-lg">Close</button>
@@ -207,6 +215,21 @@ document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('open-terms').addEventListener('click', () => termsModal.classList.remove('hidden'));
     document.getElementById('close-terms').addEventListener('click', () => termsModal.classList.add('hidden'));
     document.getElementById('acknowledge-terms').addEventListener('click', () => termsModal.classList.add('hidden'));
+
+    // Where it is listed now: None can't go with a channel; Other asks which.
+    const channelChecks = Array.from(document.querySelectorAll('.channel-check'));
+    const otherWrap = document.getElementById('channel-other-wrap');
+    const otherText = document.getElementById('channel-other-text');
+    const channelsError = document.getElementById('channels-error');
+    channelChecks.forEach((cb) => cb.addEventListener('change', () => {
+        if (cb.checked && cb.value === 'None') channelChecks.forEach((o) => { if (o !== cb) o.checked = false; });
+        if (cb.checked && cb.value !== 'None') channelChecks.find((o) => o.value === 'None').checked = false;
+        const other = document.getElementById('channel-other').checked;
+        otherWrap.classList.toggle('hidden-section', !other);
+        otherText.required = other;
+        if (!other) otherText.value = '';
+        channelsError.classList.add('hidden');
+    }));
 
     // Channel manager toggle
     const bbidWrap = document.getElementById('bbid-wrap');
@@ -246,6 +269,8 @@ document.addEventListener('DOMContentLoaded', function () {
     form.addEventListener('submit', async function (event) {
         event.preventDefault();
         errorMessage.classList.add('hidden');
+        const channels = channelChecks.filter((cb) => cb.checked).map((cb) => cb.value);
+        if (!channels.length) { channelsError.classList.remove('hidden'); document.getElementById('channels-box').scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
 
         const propertyName = document.getElementById('property-name').value;
         const channelManager = document.querySelector('.channel-manager-radio:checked')?.value || '';
@@ -258,6 +283,8 @@ document.addEventListener('DOMContentLoaded', function () {
             channelManager: channelManager,
             bbid: channelManager === 'NightsBridge' ? bbidInput.value : '',
             eresRef: channelManager === 'eRes/NebulaCRS' ? eresInput.value : '',
+            channels: channels,
+            channelsOther: channels.includes('Other') ? otherText.value.trim() : '',
             acceptTerms: document.getElementById('accept-terms').checked,
             propertyAffiliate: document.getElementById('property-affiliate').checked
         };

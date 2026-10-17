@@ -1000,7 +1000,14 @@ export default async (request, context) => {
       const cm = ["NightsBridge", "eRes/NebulaCRS", "None yet"].includes(body.channelManager) ? body.channelManager : "";
       const bbid = clean(body.bbid, 40), eresRef = clean(body.eresRef, 60);
       const wantsAffiliate = body.propertyAffiliate === true;
+      // Where the property is listed now (Jean, 2026-10-17): ticked on the page, "Other" with its name.
+      const CHANNELS = ["None", "Booking.com", "Airbnb", "LekkeSlaap", "Other"];
+      const channels = (Array.isArray(body.channels) ? body.channels : []).filter((c) => CHANNELS.includes(c));
+      const channelsOther = clean(body.channelsOther, 200);
+      const listedOn = channels.map((c) => (c === "Other" && channelsOther ? "Other: " + channelsOther : c)).join(", ");
       if (!propertyName || !contact.name || !contact.phone || !contact.email || !cm) return json({ error: "Fill in every field." }, 400);
+      if (!channels.length) return json({ error: "Tick where your property is listed now, or tick None." }, 400);
+      if (channels.includes("Other") && !channelsOther) return json({ error: "Type which other website or channel your property is on." }, 400);
       if (badEmails(contact.email).length || !emailList(contact.email).length) return json({ error: "\"" + (badEmails(contact.email)[0] || contact.email) + "\" doesn't look like an email address. Separate several addresses with a comma." }, 400);
       if (body.acceptTerms !== true) return json({ error: "Accept the Terms & Conditions first." }, 400);
       if (cm === "NightsBridge" && !bbid) return json({ error: "Type your NightsBridge BBID number." }, 400);
@@ -1027,7 +1034,7 @@ export default async (request, context) => {
         } else {
           loc = await guessSnLocation(propertyName);
           const entry = newEntry({ propertyName, bbid, channelManager: cm, eresRef, contactName: contact.name, phone: contact.phone, email: emailText(contact.email),
-            area: loc.area, district: loc.district, suburb: loc.suburb, propertyAffiliate: wantsAffiliate });
+            area: loc.area, district: loc.district, suburb: loc.suburb, propertyAffiliate: wantsAffiliate, note: "Listed on now: " + listedOn });
           entry.siteNr = await reserveNextSiteNr(siteRegister(), entry);
           site = await sendSnSetupSheet(entry, "List your property page");
           const conf = confirmationEmail(site);
@@ -1037,7 +1044,7 @@ export default async (request, context) => {
       }
 
       const extra = { requestContact: contact, contactName: contact.name, contactPhone: contact.phone, contactEmail: emailText(contact.email), notifyWho: "both",
-        channelManager: cm, bbid, eresRef, requestedAt: new Date().toISOString() };
+        channelManager: cm, bbid, eresRef, listedOn, requestedAt: new Date().toISOString() };
       let record = null;
       if (wantsAffiliate && row && !already) {
         record = await buildListingFromSn({ site: String(row.siteId || ""), resortId: row.resortId, resortName: row.name, aff: "", units: [], settings: { email: contact.email, phone: contact.phone }, channel: true, siteIdForListing: "" },
@@ -1062,7 +1069,8 @@ export default async (request, context) => {
         context.waitUntil(sendNotificationEmail(notifyTo, "Listing request: " + propertyName + (bbid ? " (BBID " + bbid + ")" : "") + (site ? " — Site Nr " + site.siteNr : ""),
           "<p>A property asked to list on the <b>List your property</b> page.</p>" +
           "<p><b>Property:</b> " + escapeHtml(propertyName) + "<br><b>Contact:</b> " + escapeHtml(contact.name) + " · " + escapeHtml(contact.phone) + " · " + escapeHtml(contact.email) +
-          "<br><b>System:</b> " + escapeHtml(cm) + (bbid ? " · BBID " + escapeHtml(bbid) : "") + (eresRef ? " · eRes ref " + escapeHtml(eresRef) : "") +
+          "<br><b>System:</b> " + escapeHtml(cm === "None yet" ? "Not on a platform" : cm) + (bbid ? " · BBID " + escapeHtml(bbid) : "") + (eresRef ? " · eRes ref " + escapeHtml(eresRef) : "") +
+          "<br><b>Listed on now:</b> " + escapeHtml(listedOn) +
           "<br><b>Property affiliate:</b> " + (wantsAffiliate ? "yes" : "no") + "</p>" +
           (row ? "<p>Already on Stock Network: <b>" + escapeHtml(row.name) + "</b>. Nothing was sent to Stock Network.</p>"
             : repeat ? "<p>Asked before: same Site Nr <b>" + escapeHtml(site.siteNr) + "</b> (" + escapeHtml(site.status) + "). Nothing was sent to Stock Network again.</p>"

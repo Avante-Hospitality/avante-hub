@@ -193,12 +193,12 @@
   <!-- ============ STEP 1: START & SCREENSHOTS ============ -->
   <section class="step" data-step="1" data-title="Start">
     <h2 class="step-title">1. Start</h2>
-    <p class="step-lede">Read the agreement, say who is submitting, and — if the property is already on Airbnb, Booking.com or LekkeSlaap — paste screenshots of its listing. Add any Word, Excel (rates) or PDF documents the property has. The form fills itself in from them, and you check each step.</p>
+    <p class="step-lede">Read the terms, say who is submitting, and — if the property is already on Airbnb, Booking.com or LekkeSlaap — paste screenshots of its listing. Add any Word, Excel (rates) or PDF documents the property has. The form fills itself in from them, and you check each step.</p>
 
     <div class="card">
       <h2 class="section-heading">Before You Start</h2>
-      <p class="hint">Every listing is governed by the Short-Term Leisure Rental Listing &amp; Mandate Agreement. Please read it — you'll confirm you accept it in the last step.</p>
-      <button type="button" class="btn-secondary" id="viewTermsBtn">View Terms &amp; Mandate Agreement</button>
+      <p class="hint">Every listing is governed by the Avante Hospitality Terms &amp; Conditions. Please read them — you'll confirm you accept them in the last step.</p>
+      <button type="button" class="btn-secondary" id="viewTermsBtn">View Terms &amp; Conditions</button>
     </div>
 
     <div class="card">
@@ -499,8 +499,8 @@
       <div class="status" id="editStatus"></div>
     </div>
     <div class="card" id="sigCard">
-      <h2 class="section-heading">Signature &amp; Agreement</h2>
-      <p class="hint">By signing, you confirm you're either the registered Owner or a duly authorised Affiliate acting under a valid Mandate, and that you agree to the Terms &amp; Mandate Agreement.</p>
+      <h2 class="section-heading">Signature &amp; Terms</h2>
+      <p class="hint">By signing, you confirm you're either the registered Owner or a duly authorised Affiliate acting under a valid Mandate, and that you agree to the Avante Hospitality Terms &amp; Conditions.</p>
       <label for="sigName">Full name *</label>
       <input id="sigName">
       <div class="row">
@@ -520,7 +520,7 @@
       </div>
       <div class="agree-line">
         <input type="checkbox" id="agree">
-        <span>I have read, understood, and agree to be bound by the Terms &amp; Mandate Agreement. *</span>
+        <span>I have read, understood, and agree to be bound by the Avante Hospitality Terms &amp; Conditions. *</span>
       </div>
       <button class="btn-primary" id="submitBtn" style="margin-top:16px;">Submit Listing for Review</button>
       <div class="status" id="formStatus"></div>
@@ -536,10 +536,11 @@
 <div class="modal-overlay" id="termsModal">
   <div class="modal-box">
     <div class="modal-head">
-      <strong>Short-Term Leisure Rental Listing &amp; Mandate Agreement</strong>
+      <strong>Avante Hospitality Terms &amp; Conditions</strong>
       <button class="modal-close" id="termsCloseBtn">&times;</button>
     </div>
-    <div class="modal-body" id="termsBody"></div>
+    <!-- The one Avante terms page, for every kind of property (Jean, 2026-10-17). -->
+    <div class="modal-body" style="padding:0"><iframe src="terms-and-conditions.html?embed=1" title="Avante Hospitality Terms &amp; Conditions" loading="lazy" style="width:100%; height:65vh; border:0; display:block"></iframe></div>
   </div>
 </div>
 
@@ -574,9 +575,6 @@
   var netRate = function(rack){ return Math.round(rack * (1 - COMM_TOTAL/100)); };
 
   // ---------- Terms modal ----------
-  var TERMS_TEXT = "PROPERTY OWNER / MANDATE HOLDER — SHORT-TERM LEISURE RENTAL LISTING & MANDATE AGREEMENT\n\n(Binding agreement — sign electronically via this onboarding form)\n\nThis Agreement is entered into between the Platform (Avante Travel) and the person or entity identified above as the Owner and/or Affiliate (\"the Contracting Party\").\n\n1. Definitions — \"Property\" means the private residential property submitted for listing. \"Owner\" means the registered legal owner. \"Affiliate\" means any person submitting the Property who is not the Owner and who acts under a valid, signed Mandate from the Owner. \"Mandate\" means the written authority from the Owner to the Affiliate to market, list, and manage bookings on the Owner's behalf.\n\n2. Appointment — The Owner (or Affiliate acting under a valid Mandate) appoints the Platform on a non-exclusive basis to market and list the Property, and to facilitate bookings between the Owner/Affiliate and Guests. Where the Contracting Party is an Affiliate, the Affiliate warrants it holds a valid, current, signed Mandate authorising it to list and manage the Property and bind the Owner to the terms submitted in this form.\n\n3. Required Supporting Documents — Before a listing is activated, the Contracting Party must upload: a clear copy of the Owner's ID or passport; proof of ownership (title deed, rates account, levy statement, or equivalent issued within the last 3 months); proof of residence (municipal account, bank statement, or insurance account not older than 3 months); and, if submitted by an Affiliate, a signed Mandate/Power of Attorney from the Owner. The Platform may request further documentation at any time and may suspend or decline a listing pending verification. The Contracting Party warrants all documents are genuine and current, and indemnifies the Platform against loss arising from false or misleading documentation.\n\n4. Listing Information & Accuracy — The Contracting Party is responsible for the accuracy of all information submitted, including location, unit types, rates, images, amenities, and policies, and must promptly update the Platform of any material change. Images must be a true, current representation of the Property, and the Contracting Party warrants it holds the rights to use them.\n\n5. Rates, Deposits & Cancellation Policy — The rates, deposit percentage, deposit deadline, and cancellation/child policy submitted here form part of the binding terms shown to Guests, and are set and controlled by the Contracting Party, who is responsible for honouring confirmed bookings.\n\n6. Commission & Fees — The Platform is entitled to a commission of the total booking value for each confirmed booking, payable per the Platform's fee schedule provided separately.\n\n7. Owner & Affiliate Warranties — The Contracting Party warrants it is the registered Owner or holds a valid Mandate; the Property is free of any legal restriction prohibiting short-term rental; all rates, levies, and municipal accounts are up to date; the Property complies with health, safety, and fire-safety standards; and it has authority to enter into this Agreement.\n\n8. Guest Conduct, Access & Liability — The Contracting Party remains responsible for day-to-day management, maintenance, cleanliness, safety, and Guest check-in/out. The Platform is a marketing and booking facilitation service only and is not a party to, and accepts no liability from, the accommodation relationship, save where required by law.\n\n9. Insurance — The Contracting Party undertakes to maintain adequate public liability and property insurance for the duration of this Agreement.\n\n10. Term & Termination — This Agreement commences on signature and continues until terminated by either Party on 30 days' written notice, or immediately by the Platform for breach of clauses 3, 4, or 7, or failed verification.\n\n11. Indemnity — The Contracting Party indemnifies the Platform against any claim, loss, fine, or damage arising from breach of this Agreement, inaccurate listing information, or failure of the warranties in clause 7.\n\n12. Data Protection — Personal information submitted is processed and stored per the Protection of Personal Information Act 4 of 2013 (POPIA) and the Platform's Privacy Policy, solely to verify the listing and facilitate bookings.\n\n13. Governing Law & Disputes — Governed by the laws of the Republic of South Africa. Disputes will be resolved amicably where possible before arbitration or the courts.\n\n14. General — This Agreement, together with the information submitted in this form, constitutes the entire agreement regarding the listing of the Property. Electronic signature (typed name, ticked acceptance, and/or captured signature) submitted via this form is deemed a valid, binding signature under the Electronic Communications and Transactions Act 25 of 2002.\n\nBy ticking the agreement checkbox and submitting this form, the signatory confirms they have read, understood, and agree to be bound by this Agreement, and that they are either the registered Owner or a duly authorised Affiliate/legal representative acting under a valid Mandate.\n\nLegal note: this is a template starting point only, not reviewed by an attorney and not legal advice. Avante Travel has this Agreement reviewed and adapted by a South African attorney before relying on it.";
-  var termsBody = $('termsBody');
-  termsBody.innerHTML = TERMS_TEXT.split('\n\n').map(function(p){ return '<p>' + p.replace(/\n/g,'<br>') + '</p>'; }).join('');
   var termsModal = $('termsModal');
   $('viewTermsBtn').addEventListener('click', function(){ termsModal.classList.add('show'); });
   $('termsCloseBtn').addEventListener('click', function(){ termsModal.classList.remove('show'); });
@@ -1564,7 +1562,7 @@
     var agree = $('agree').checked;
 
     if(!propName || !ownerName || !agree){
-      statusEl.textContent = 'Please fill in the property name (step 4), owner name (step 2), and accept the Agreement before submitting.';
+      statusEl.textContent = 'Please fill in the property name (step 4), owner name (step 2), and accept the Terms & Conditions before submitting.';
       statusEl.className = 'status show err';
       return;
     }
