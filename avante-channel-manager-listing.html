@@ -305,15 +305,15 @@ document.addEventListener('DOMContentLoaded', function () {
                 let note = '';
                 if (data.found) {
                     note = data.already
-                        ? 'We found ' + data.name + ' on Stock Network, and Avante already has its listing.'
+                        ? 'We found ' + data.name + ' on Avante\'s booking system, and Avante already has its listing.'
                         : data.listing
-                            ? 'We found ' + data.name + ' on Stock Network and filled in your listing from it. Avante will check it and email you a link to complete the last few details.'
-                            : 'We found ' + data.name + ' on Stock Network, so it is already set up there.';
+                            ? 'We found ' + data.name + ' on Avante\'s booking system and filled in your listing from it. Avante will check it and email you a link to complete the last few details.'
+                            : 'We found ' + data.name + ' on Avante\'s booking system, so it is already set up there.';
                 } else if (data.siteNr && data.repeat) {
-                    note = 'You asked before, so nothing was sent again. Your Stock Network Site Nr is ' + data.siteNr + ' and Stock Network is setting your property up.' +
+                    note = 'You asked before, so nothing was sent again. Your Avante Site Nr is ' + data.siteNr + ' and Avante is setting your property up.' +
                         (data.listing ? ' Once you are set up, Avante will email you a link to complete your Property Affiliate listing.' : '');
                 } else if (data.siteNr) {
-                    note = 'Your details have gone to Stock Network to set your property up. Your Stock Network Site Nr is ' + data.siteNr + '. We\'ve emailed you a copy.' +
+                    note = 'Your details have gone to Avante to set your property up. Your Avante Site Nr is ' + data.siteNr + '. We\'ve emailed you a copy.' +
                         (data.listing ? ' Once you are set up, Avante will email you a link to complete your Property Affiliate listing.' : '');
                 }
                 if (note && found) {

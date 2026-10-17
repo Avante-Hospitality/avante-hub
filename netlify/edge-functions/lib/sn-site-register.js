@@ -169,8 +169,8 @@ export function confirmationEmail(e) {
   return {
     subject: "We've received your listing: " + e.propertyName,
     html: "<p>Hello " + esc(e.contactName || "") + ",</p>" +
-      "<p>Thank you. We've sent <b>" + esc(e.propertyName) + "</b>'s details to Stock Network to set it up. Your Stock Network Site Nr is <b>" + esc(e.siteNr) + "</b>.</p>" +
-      (e.propertyAffiliate ? "<p>You also asked to become an Avante Property Affiliate. Once Stock Network has set you up, we'll email you a link to complete your listing.</p>" : "") +
+      "<p>Thank you. We've sent <b>" + esc(e.propertyName) + "</b>'s details to Avante's booking system to set it up. Your Avante Site Nr is <b>" + esc(e.siteNr) + "</b>.</p>" +
+      (e.propertyAffiliate ? "<p>You also asked to become an Avante Property Affiliate. Once Avante has set you up, we'll email you a link to complete your listing.</p>" : "") +
       "<p>Questions? Reply to this email or write to info@avantehospitality.co.za.</p><p>Avante Hospitality</p>",
   };
 }

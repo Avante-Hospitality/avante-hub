@@ -62,7 +62,7 @@ export class SNClient {
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({ clientID: this.creds.clientID, clientSecret: this.creds.clientSecret, username: this.creds.username }),
     });
-    if (!res.ok) throw new SNError(res.status === 403 || res.status === 401 ? "Stock Network did not accept these credentials." : "Stock Network login failed (" + res.status + ").", res.status, await res.text().catch(() => ""));
+    if (!res.ok) throw new SNError(res.status === 403 || res.status === 401 ? "Avante's booking system did not accept this Avante login." : "Your Avante login failed (" + res.status + ").", res.status, await res.text().catch(() => ""));
     const d = await res.json();
     const exp = Number(d.expiresDT) || Date.parse(d.expiresDT) || 0;
     this.tok = { accessToken: d.accessToken, siteId: d.siteId, site: d.site, expires: exp };
@@ -155,7 +155,7 @@ export class SNClient {
 
   async createReservation({ items, guest, reference, notes, requestAndPay = false }) {
     const t = await this.token();
-    if (!guest || !String(guest.cellphone || "").trim()) throw new SNError("A cellphone number is required by Stock Network.", 400);
+    if (!guest || !String(guest.cellphone || "").trim()) throw new SNError("A cellphone number is required for the booking.", 400);
     const total = items.reduce((s, it) => s + (Number(it.amountIncl) || 0), 0);
     const body = {
       amountIncl: total, personID: null,
@@ -166,9 +166,9 @@ export class SNClient {
       membershipNo: null, preferredContactMethod: 0, discount: 0, isRequestAndPay: !!requestAndPay, siteID: t.siteId, items,
     };
     const r = await this.call("/api/1/request?CallerDetails.SiteID=" + encodeURIComponent(t.siteId), { body });
-    if (r.status !== 200 && r.status !== 201) throw new SNError("Stock Network did not create the booking (" + r.status + ").", r.status, r.data);
+    if (r.status !== 200 && r.status !== 201) throw new SNError("Avante's booking system did not create the booking (" + r.status + ").", r.status, r.data);
     const d = r.data || {};
-    if (d.status && d.status !== "Success") throw new SNError("Stock Network answered: " + d.status, r.status, d);
+    if (d.status && d.status !== "Success") throw new SNError("Avante's booking system answered: " + d.status, r.status, d);
     return {
       reservationId: d.reservationId, refNo: d.reservationRefNo, status: d.reservationStatus, total: d.totalAmountIncl,
       paymentUrl: d.paymentUrl || null, infoUrl: d.reservationInformationUrl || null, amountPaid: Number(d.amountPaid) || 0,
@@ -181,7 +181,7 @@ export class SNClient {
   async setStatus(reservationId, status, note) {
     const t = await this.token();
     const r = await this.call("/api/1/request/status/" + encodeURIComponent(reservationId) + "?CallerDetails.SiteID=" + encodeURIComponent(t.siteId), { method: "PUT", body: { status, note: String(note || "").slice(0, 300) } });
-    if (!r.ok) throw new SNError("Stock Network did not set the booking to " + status + " (" + r.status + ")" + snErrorText(r.data) + ".", r.status, r.data);
+    if (!r.ok) throw new SNError("Avante's booking system did not set the booking to " + status + " (" + r.status + ")" + snErrorText(r.data) + ".", r.status, r.data);
     return r.data || {};
   }
 
@@ -189,7 +189,7 @@ export class SNClient {
   async addPayment(reservationId, { type = "EFT", amount, reference = "", note = "" }) {
     const t = await this.token();
     const r = await this.call("/api/1/request/payment/" + encodeURIComponent(reservationId) + "?CallerDetails.SiteID=" + encodeURIComponent(t.siteId), { body: { type, amount: Number(amount) || 0, reference: String(reference).slice(0, 50), note: String(note).slice(0, 300) } });
-    if (!r.ok) throw new SNError("Stock Network did not record the payment (" + r.status + ")" + snErrorText(r.data) + ".", r.status, r.data);
+    if (!r.ok) throw new SNError("Avante's booking system did not record the payment (" + r.status + ")" + snErrorText(r.data) + ".", r.status, r.data);
     return r.data || {};
   }
 
@@ -221,14 +221,14 @@ export class SNClient {
   async cancelReservation(reservationId) {
     const t = await this.token();
     const r = await this.call("/api/1/request/cancel/" + encodeURIComponent(reservationId) + "?CallerDetails.SiteID=" + encodeURIComponent(t.siteId));
-    if (!r.ok || r.data === false) throw new SNError("Stock Network did not cancel the booking (" + r.status + ").", r.status, r.data);
+    if (!r.ok || r.data === false) throw new SNError("Avante's booking system did not cancel the booking (" + r.status + ").", r.status, r.data);
     return true;
   }
 
   async cancelDetail(detailId) {
     const t = await this.token();
     const r = await this.call("/api/1/request/canceldetail/" + encodeURIComponent(detailId) + "?CallerDetails.SiteID=" + encodeURIComponent(t.siteId), { method: "PUT" });
-    if (!r.ok || r.data === false) throw new SNError("Stock Network did not cancel that unit (" + r.status + ").", r.status, r.data);
+    if (!r.ok || r.data === false) throw new SNError("Avante's booking system did not cancel that unit (" + r.status + ").", r.status, r.data);
     return true;
   }
 }

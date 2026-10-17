@@ -247,7 +247,7 @@
         loadUnits().then(function (u) {
           if (selects[5].value !== id) return;
           var ls = u[id] || u[String(id).toLowerCase()] || []; usel.innerHTML = '';
-          option(usel, '', ls.length ? ls.length + (ls.length === 1 ? ' unit type' : ' unit types') : 'None listed on Stock Network');
+          option(usel, '', ls.length ? ls.length + (ls.length === 1 ? ' unit type' : ' unit types') : 'None listed with Avante');
           ls.forEach(function (l, k) { option(usel, String(k), unitLabel(l)); });
           usel.disabled = !ls.length; usel._lines = ls;
         });
@@ -275,7 +275,7 @@
   }
   function unitLabel(l) { return l[0] + (l[1] ? ' · ' + l[1] + ' sleeper' : '') + (l[3] > 1 ? ' (×' + l[3] + ')' : ''); }
   function unitDetail(l) {
-    var d = [l[1] ? 'Sleeps ' + l[1] : 'Sleeps: not given on Stock Network'];
+    var d = [l[1] ? 'Sleeps ' + l[1] : 'Sleeps: not given'];
     if (l[2] === 0) d.push('studio'); else if (l[2]) d.push(l[2] + (l[2] === 1 ? ' bedroom' : ' bedrooms'));
     d.push(l[3] + (l[3] === 1 ? ' unit' : ' units') + (l[4] && l[4].length ? ': ' + l[4].join(', ') : ''));
     return d.join(' · ');
@@ -295,7 +295,7 @@
       list.textContent = 'Loading…';
       loadUnits().then(function (u) {
         var ls = u[resortId] || u[String(resortId).toLowerCase()] || []; list.innerHTML = '';
-        if (!ls.length) { list.textContent = 'No unit types listed on Stock Network.'; return; }
+        if (!ls.length) { list.textContent = 'No unit types listed with Avante.'; return; }
         ls.forEach(function (l) {
           var d = document.createElement('div'); d.style.padding = '2px 0';
           var b = document.createElement('b'); b.textContent = unitLabel(l); d.appendChild(b);

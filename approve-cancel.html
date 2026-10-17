@@ -59,18 +59,18 @@
       '<br>Guest: ' + esc(d.guest) + '<br>Paid: ' + money(d.amountPaid || d.total) + (d.paidEft ? ' (EFT)' : '') + '</div>' +
       '<form id="f"><label for="pw">Your Avante hub password (affiliate ' + esc(d.aff) + ')</label>' +
       '<input id="pw" type="password" autocomplete="current-password" required>' +
-      '<button type="submit" id="go">Approve and cancel on Stock Network</button>' +
-      '<p class="warn">This cancels the booking on Stock Network. Any refund to the guest is handled outside the hub.</p><div id="msg"></div></form>' +
+      '<button type="submit" id="go">Approve and cancel</button>' +
+      '<p class="warn">This cancels the booking. Any refund to the guest is handled outside the hub.</p><div id="msg"></div></form>' +
       '<p class="muted" style="margin-top:14px">Link valid until ' + esc(new Date(d.expiresAt).toLocaleString()) + '. If you didn\'t expect this, close this page: nothing is cancelled.</p>';
     document.getElementById('f').addEventListener('submit', function(e){
       e.preventDefault();
       var btn = document.getElementById('go'), msg = document.getElementById('msg');
       btn.disabled = true; btn.textContent = 'Cancelling…'; msg.innerHTML = '';
       api('approveCancel', { password: document.getElementById('pw').value }).then(function(r){
-        if (r.ok) { app.innerHTML = '<h1>Cancellation approved</h1><div class="ok">Booking ' + esc(r.ref) + ' at ' + esc(r.resortName) + ' is now cancelled on Stock Network. The property has been notified.</div>'; return; }
-        btn.disabled = false; btn.textContent = 'Approve and cancel on Stock Network';
+        if (r.ok) { app.innerHTML = '<h1>Cancellation approved</h1><div class="ok">Booking ' + esc(r.ref) + ' at ' + esc(r.resortName) + ' is now cancelled. The property has been notified.</div>'; return; }
+        btn.disabled = false; btn.textContent = 'Approve and cancel';
         msg.innerHTML = '<div class="err">' + esc(r.error) + '</div>';
-      }).catch(function(){ btn.disabled = false; btn.textContent = 'Approve and cancel on Stock Network'; msg.innerHTML = '<div class="err">Connection problem. Try again.</div>'; });
+      }).catch(function(){ btn.disabled = false; btn.textContent = 'Approve and cancel'; msg.innerHTML = '<div class="err">Connection problem. Try again.</div>'; });
     });
   }).catch(function(){ fail('Connection problem. Reload the page to try again.'); });
 })();

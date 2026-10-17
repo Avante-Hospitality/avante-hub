@@ -94,10 +94,10 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
 
   async function connect({ username, clientID, clientSecret, aff, resortId }) {
     const creds = { username: cleanStr(username, 100), clientID: cleanStr(clientID, 100), clientSecret: cleanStr(clientSecret, 100) };
-    if (!creds.username || !creds.clientID || !creds.clientSecret) throw new PAError("Enter the Stock Network username, client ID and client secret.");
+    if (!creds.username || !creds.clientID || !creds.clientSecret) throw new PAError("Enter your Avante login: username, client ID and client secret.");
     const client = clientFactory(creds);
     let tok;
-    try { tok = await client.login(); } catch (e) { throw new PAError(e.message || "Stock Network login failed.", 401); }
+    try { tok = await client.login(); } catch (e) { throw new PAError(e.message || "Your Avante login failed.", 401); }
 
     let rid = cleanStr(resortId, 64);
     if (!rid) {
@@ -112,7 +112,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     for (const days of CONNECT_DAYS) {
       try { snap = await client.openStretches(rid, from0, addDays(from0, days)); readTo = addDays(from0, days); break; } catch (e) { lastErr = e; }
     }
-    if (!snap) throw new PAError("Stock Network couldn't read this property's availability. " + ((lastErr && lastErr.message) || ""), 502);
+    if (!snap) throw new PAError("Avante's booking system couldn't read this property's availability. " + ((lastErr && lastErr.message) || ""), 502);
     const units = Object.values(snap.units).map((u) => ({ name: u.name, size: u.size, roomId: u.roomId }));
     const prop = Object.assign({
       siteId: tok.siteId, site: tok.site, feedToken: randomToken(18), createdAt: now().toISOString(),
@@ -442,13 +442,13 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
       if (!prop.units.find((u) => u.name === it.unit)) throw new PAError("Unknown unit " + it.unit + ".");
       if (!(it.start < it.end)) throw new PAError("Check-out must be after check-in for " + it.unit + ".");
       const stock = await client.exactStock(prop.resortId, it.unit, it.start, it.end);
-      if (!stock) throw new PAError(it.unit + " is not open on Stock Network for " + it.start + " to " + it.end + ".", 409, { unavailable: it });
+      if (!stock) throw new PAError(it.unit + " is not open for " + it.start + " to " + it.end + ".", 409, { unavailable: it });
       snItems.push(client.buildItem(stock, { adults: it.adults || 2, children: it.children || 0, amount: amountFor ? amountFor(it, stock) : undefined }));
     }
     try {
       return await client.createReservation({ items: snItems, guest, reference, notes, requestAndPay });
     } catch (e) {
-      if (e instanceof SNError) throw new PAError(e.message + " If the nights now show as booked, Stock Network may still have taken the stock: check the back office.", 502, { sn: e.body });
+      if (e instanceof SNError) throw new PAError(e.message + " If the nights now show as booked, Avante's booking system may still have taken them: check the Avante back office.", 502, { sn: e.body });
       throw e;
     }
   }
@@ -466,7 +466,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
 
   function validGuest(g) {
     const guest = { first: cleanStr(g && g.first, 80), last: cleanStr(g && g.last, 80), email: cleanStr(g && g.email, 120), cellphone: cleanStr(g && g.cellphone, 30) };
-    if (!guest.cellphone) throw new PAError("A cellphone number is required by Stock Network.");
+    if (!guest.cellphone) throw new PAError("A cellphone number is required for the booking.");
     if (!guest.first && !guest.last) throw new PAError("Enter the guest's name.");
     guest.fullName = (guest.first + " " + guest.last).trim();
     return guest;
@@ -563,7 +563,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     if (!(b.approval && b.approval.state === "pending")) throw new PAError(b.ref + " isn't waiting for your approval.");
     const client = await clientFor(prop);
     await refreshPayment(client, b);
-    if (b.status === "Cancelled") { b.approval.state = "expired"; await saveBookings(prop, list); throw new PAError(b.ref + " was already cancelled on Stock Network (its request time ran out).", 409); }
+    if (b.status === "Cancelled") { b.approval.state = "expired"; await saveBookings(prop, list); throw new PAError(b.ref + " was already cancelled (its request time ran out).", 409); }
     const g = b.guest || {}, units = b.items.filter((i) => !i.cancelled).map((i) => i.unit + " " + i.start + " to " + i.end).join(", ");
     const fs = fsSettings(prop), replyTo = listOf(fs.email).length ? fs.email : propertyTo(prop);
     if (accept) {
@@ -660,7 +660,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     await setJSON(k, have);
   }
 
-  const PAID_LOCK_MSG = "This booking has been paid, so it can't be changed in the hub. The guest must contact the property; changes are made in Stock Network. To cancel it, use Request cancellation: the linked affiliate must approve.";
+  const PAID_LOCK_MSG = "This booking has been paid, so it can't be changed in the hub. The guest must contact the property; changes are made in Avante's booking system. To cancel it, use Request cancellation: the linked affiliate must approve.";
 
   async function book(prop, body, { approval = false } = {}) {
     const items = (Array.isArray(body.items) ? body.items : []).slice(0, 10).map((it) => ({ unit: cleanStr(it.unit, 60), start: cleanStr(it.start, 10), end: cleanStr(it.end, 10), adults: Math.max(1, Math.min(20, Number(it.adults) || Number(body.adults) || 2)), children: Math.max(0, Math.min(20, Number(it.children) || Number(body.children) || 0)) }));
@@ -679,7 +679,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
       notes: ["Avante Hub booking", source !== "Direct" ? "Booked through " + source : "", cleanStr(body.notes, 800)].filter(Boolean).join(" · ") });
     let status = res.status || "Request", statusError = null;
     if (!waitForApproval && payBy === "gateway") status = "Booked";
-    if (!waitForApproval && payBy === "eft") { const st = await holdBooked(client, res, "Booked by the Avante hub (pays by EFT or on arrival)"); if (st) status = st; else statusError = "Stock Network didn't accept Booked: it is still a Request, so its X-day rule can cancel it. Set it to Booked in Stock Network."; }
+    if (!waitForApproval && payBy === "eft") { const st = await holdBooked(client, res, "Booked by the Avante hub (pays by EFT or on arrival)"); if (st) status = st; else statusError = "Avante's booking system didn't accept Booked: it is still a Request, so it can be cancelled after a set number of days. Set it to Booked in Avante's booking system."; }
     const rec = { ref: "J" + res.refNo, reservationId: res.reservationId, status, origin: "hub", source, channelRef, payBy, statusError: statusError || undefined,
       approval: waitForApproval ? { state: "pending", at: now().toISOString() } : undefined,
       guest: { first: guest.first, last: guest.last, email: guest.email, cellphone: guest.cellphone },
@@ -715,7 +715,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
   // ---------- affiliate approval for cancelling paid bookings ----------
   async function requestCancellation(prop, list, b) {
     const aff = cleanStr(prop.aff, 40);
-    if (!aff || !affiliates) throw new PAError("This property isn't linked to an affiliate account, so a paid booking can't be cancelled from the hub. Cancel it in Stock Network.", 409);
+    if (!aff || !affiliates) throw new PAError("This property isn't linked to an affiliate account, so a paid booking can't be cancelled from the hub. Cancel it in Avante's booking system.", 409);
     const profile = (await affiliates.getProfile(aff)) || {};
     const token = randomToken(24);
     const exp = now().getTime() + APPROVAL_HOURS * 3600000;
@@ -772,7 +772,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     if (b.status !== "Cancelled") {
       const client = await clientFor(prop);
       try { await client.cancelReservation(b.reservationId); }
-      catch (e) { throw new PAError("Approved, but Stock Network didn't cancel the booking: " + (e.message || e) + " Cancel it in the Stock Network back office.", 502); }
+      catch (e) { throw new PAError("Approved, but Avante's booking system didn't cancel the booking: " + (e.message || e) + " Cancel it in the Avante back office.", 502); }
       b.status = "Cancelled"; b.cancelledAt = now().toISOString();
       await invalidate(prop, b.items);
     }
@@ -781,7 +781,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     a.used = true; a.usedAt = now().toISOString();
     await setJSON("appr:" + t, a);
     await saveBookings(prop, list);
-    if (propertyTo(prop)) await sendEmail(propertyTo(prop), "Booking " + b.ref + " cancelled (approved)", "<p>The affiliate approved the cancellation of paid booking <b>" + esc(b.ref) + "</b>. It is now cancelled on Stock Network. Any refund to the guest is handled outside the hub.</p>").catch(() => false);
+    if (propertyTo(prop)) await sendEmail(propertyTo(prop), "Booking " + b.ref + " cancelled (approved)", "<p>The affiliate approved the cancellation of paid booking <b>" + esc(b.ref) + "</b>. It is now cancelled. Any refund to the guest is handled outside the hub.</p>").catch(() => false);
     return { ref: b.ref, resortName: prop.resortName };
   }
 
@@ -792,7 +792,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     const it = live.find((x) => x.unit === cleanStr(unit, 60));
     if (!it) throw new PAError(unit + " is not on " + ref + ".");
     if (live.length === 1) return cancel(prop, ref);
-    if (!it.detailId) throw new PAError("Stock Network did not return a detail ID for " + unit + ", so it can't be removed on its own. Cancel and book again.");
+    if (!it.detailId) throw new PAError("Avante's booking system did not return a detail ID for " + unit + ", so it can't be removed on its own. Cancel and book again.");
     const client = await clientFor(prop);
     if (await refreshPayment(client, b)) await saveBookings(prop, list);
     if (isPaid(b)) throw new PAError(PAID_LOCK_MSG, 423);
@@ -815,7 +815,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     if (next.start !== old.start) checkBookable(prop, next.start);
     const client = await clientFor(prop);
     if (await refreshPayment(client, b)) await saveBookings(prop, list);
-    if (b.status === "Cancelled") throw new PAError(b.ref + " has been cancelled on Stock Network.", 409);
+    if (b.status === "Cancelled") throw new PAError(b.ref + " has been cancelled.", 409);
     if (isPaid(b)) throw new PAError(PAID_LOCK_MSG, 423);
     if (next.unit === old.unit && next.start === old.start && next.end === old.end) {
       b.guest = { first: guest.first, last: guest.last, email: guest.email, cellphone: guest.cellphone };
@@ -835,7 +835,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
         b.status = "Cancelled"; b.cancelledAt = now().toISOString();
         if (restored) list.push(Object.assign({}, b, { ref: "J" + restored.refNo, reservationId: restored.reservationId, status: restored.status || "Request", items: [Object.assign({}, old, { detailId: restored.details[0] && restored.details[0].detailId })], replaces: b.ref, createdAt: now().toISOString() }));
         await saveBookings(prop, list);
-        throw new PAError("The change failed: " + e.message + (restored ? " The original stay was booked again as J" + restored.refNo + "." : " The original booking was cancelled and could NOT be restored. Check Stock Network now."), 409);
+        throw new PAError("The change failed: " + e.message + (restored ? " The original stay was booked again as J" + restored.refNo + "." : " The original booking was cancelled and could NOT be restored. Check Avante's booking system now."), 409);
       }
     } else {
       res = await createOnSN(prop, client, [next], guest, { reference: b.channelRef, notes });
@@ -1029,7 +1029,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
       });
       // No payment on Stock Network for channel bookings: Booked straight away, so SN's request rule can't cancel them.
       const st = await holdBooked(client, res, label + " booking (paid on the channel)");
-      list.push({ ref: "J" + res.refNo, reservationId: res.reservationId, status: st || res.status || "Request", snStatus: st || res.status || "Request", statusError: st ? undefined : "Still a Request on Stock Network: set it to Booked there.", origin: "channel", channel: ev.channel, source: label, channelRef: ev.uid,
+      list.push({ ref: "J" + res.refNo, reservationId: res.reservationId, status: st || res.status || "Request", snStatus: st || res.status || "Request", statusError: st ? undefined : "Still a Request in Avante's booking system: set it to Booked there.", origin: "channel", channel: ev.channel, source: label, channelRef: ev.uid,
         guest: { first: label, last: "", email: listOf(s.email)[0] || "", cellphone: s.phone }, items: [{ unit: ev.unit, start: ev.start, end: ev.end, detailId: res.details[0] ? res.details[0].detailId : null }], total: res.total, createdAt: now().toISOString() });
       ev.status = "booked"; ev.ref = "J" + res.refNo; ev.error = null;
     } catch (e) {
@@ -1157,7 +1157,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     await saveBookings(prop, list);
     await setJSON("chan:" + prop.siteId, events);
     await invalidate(prop, [ev]);
-    if (ev.status !== "booked") throw new PAError(ev.error || "Could not add it to Stock Network.", 409);
+    if (ev.status !== "booked") throw new PAError(ev.error || "Could not add it to Avante.", 409);
     return { event: ev };
   }
 
@@ -1789,7 +1789,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
       const b0 = res.booking, st0 = prop.settings || {}, u0 = b0.items.map((i) => i.unit + " " + i.start + " to " + i.end).join(", ");
       await fsStat(prop, "bookings").catch(() => {});
       if (propertyTo(prop)) await sendEmail(propertyTo(prop), "Booking request to approve " + b0.ref + " · " + (prop.resortName || ""),
-        "<p>A guest asked to book on your Avante front store. Accept or decline it in the hub: Property Affiliate → Bookings.</p><p><b>" + esc(b0.ref) + "</b> · " + esc(u0) + "<br>Guest: " + esc(b0.guest.first + " " + b0.guest.last) + " · " + esc(b0.guest.cellphone) + " · " + esc(b0.guest.email) + (b0.total ? "<br>Total: R" + esc(Math.round(b0.total)) : "") + "</p><p>If you don't answer, Stock Network cancels the request after the number of days set in its back office.</p>").catch(() => false);
+        "<p>A guest asked to book on your Avante front store. Accept or decline it in the hub: Property Affiliate → Bookings.</p><p><b>" + esc(b0.ref) + "</b> · " + esc(u0) + "<br>Guest: " + esc(b0.guest.first + " " + b0.guest.last) + " · " + esc(b0.guest.cellphone) + " · " + esc(b0.guest.email) + (b0.total ? "<br>Total: R" + esc(Math.round(b0.total)) : "") + "</p><p>If you don't answer, Avante cancels the request after a set number of days.</p>").catch(() => false);
       await sendEmail(email, "Booking request " + b0.ref + " at " + (prop.resortName || ""),
         "<div style=\"font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.55;color:#1f2937;max-width:560px\"><p>Hi " + esc(b0.guest.first) + ",</p><p>Thank you. <b>" + esc(prop.resortName || "") + "</b> has your booking request <b>" + esc(b0.ref) + "</b> (" + esc(u0) + ") and will confirm it soon. You'll get the payment details as soon as it's accepted.</p></div>",
         { fromName: prop.resortName || "", replyTo: propertyTo(prop) }).catch(() => false);
@@ -1801,7 +1801,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     const st = prop.settings || {};
     if (propertyTo(prop)) await sendEmail(propertyTo(prop), "New front store booking " + b.ref + " · " + (prop.resortName || ""),
       "<p>A guest booked on your Avante front store.</p><p><b>" + esc(b.ref) + "</b> · " + esc(units2) + "<br>Guest: " + esc(b.guest.first + " " + b.guest.last) + " · " + esc(b.guest.cellphone) + " · " + esc(b.guest.email) +
-      (b.total ? "<br>Total: R" + esc(Math.round(b.total)) : "") + "</p><p>It's on Stock Network as " + esc(b.status) + " and in the hub under Property Affiliate → Bookings.</p>").catch(() => false);
+      (b.total ? "<br>Total: R" + esc(Math.round(b.total)) : "") + "</p><p>It's with Avante as " + esc(b.status) + " and in the hub under Property Affiliate → Bookings.</p>").catch(() => false);
     // Built from parts: only the payment gateway address becomes a link.
     const payLink = pay.gatewayUrl && isHttpsUrl(pay.gatewayUrl) ? "<p><a href=\"" + esc(pay.gatewayUrl) + "\" style=\"display:inline-block;background:#0DCDC2;color:#0e2f44;padding:12px 18px;border-radius:8px;text-decoration:none;font-weight:700\">Pay now</a></p>" : "";
     const bankHtml = pay.bank ? "<p><b>" + (payLink ? "Or pay by EFT" : "Please pay by EFT") + "</b><br>Bank: " + esc(pay.bank.bankName) + "<br>Account name: " + esc(pay.bank.accountHolder) + "<br>Account number: " + esc(pay.bank.accountNumber) + "<br>Branch code: " + esc(pay.bank.branchCode || "") + "<br>Reference: <b>" + esc(b.ref) + "</b>" + (pay.bank.note ? "<br>" + esc(pay.bank.note) : "") + "</p>" : "";
@@ -1849,7 +1849,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     await saveBookings(prop, keep);
     return { removed: list.length - keep.length };
   }
-  function notDemo(b) { if (b && b.demo) throw new PAError("This is a demo booking: it isn't on Stock Network, so it can't be changed, paid or cancelled.", 409); }
+  function notDemo(b) { if (b && b.demo) throw new PAError("This is a demo booking: it isn't in Avante's booking system, so it can't be changed, paid or cancelled.", 409); }
 
   return { propertyTo, requestChannelHelp, prefetch, siteOfToken, newSession, decide, refreshStatuses, clientFor, connect, auth, disconnect, publicProperty, availability, search, book, cancel, cancelUnit, edit, find, saveSettings, channelsView, payInfo, markPaidEft, approvalInfo, approveCancel, affStatus, resume, seedDemo, clearDemo, isDemoSite, saveContact, checkIn, guests, messagesView, saveMessages, prepareMessage, markMessage, emailNow, inHouse, emailInHouse, firstBookable, fsSettings, saveFrontStore, frontStoreView, uploadFrontPhoto, removeFrontPhoto, frontPhoto, propertyBySlug, publicFrontStore, publicGuestInfo, guestKeyOk, publicOffers, publicAvailability, publicQuote, publicBook, fsStat, propertyReviewLink, remindMessages, icalFeed, runSync, syncProperty, channelEvents, addChannelEvent, snapshot, ensureWindow, resolveUnitNotice, findResortsForSite, findResort };
 }

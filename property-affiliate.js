@@ -137,7 +137,7 @@
     // "How to" opens this screen's part of the property affiliate guide (how-to-property.html).
     var howTo = !connected ? 'how-to-property.html#connect' : S.view === 'onb' ? 'how-to.html#property' : isCh() ? 'how-to-property.html#channel' : 'how-to-property.html#' + ({ avail: 'avail', book: 'book', guests: 'guests', acts: 'acts', msgs: 'msgs', front: 'frontstore', chan: 'chan', rev: 'rev' }[S.view] || 'tabs');
     if (connected && isCh() && CH_TABS.indexOf(S.view) === -1 && S.view !== 'onb') S.view = 'book';
-    h += '<header class="pa-top"><span class="pa-kicker">' + (connected && isCh() ? 'Channel Property' : 'Property Affiliate') + '</span>' + (connected ? '<b class="pa-propname">' + esc(S.prop.resortName || 'Your property') + '</b><span class="pa-hint pa-top-meta">' + S.prop.units.length + ' units · SN site ' + esc(S.prop.site) +
+    h += '<header class="pa-top"><span class="pa-kicker">' + (connected && isCh() ? 'Channel Property' : 'Property Affiliate') + '</span>' + (connected ? '<b class="pa-propname">' + esc(S.prop.resortName || 'Your property') + '</b><span class="pa-hint pa-top-meta">' + S.prop.units.length + ' units · Site Nr ' + esc(S.prop.site) +
       (isCh() ? ' · Avante commission ' + esc(S.prop.commissionPct) + '% + VAT' : '') + '</span>' : '') +
       '<a class="pa-howto" href="' + howTo + '" target="_blank" rel="noopener" aria-label="How to use this screen (opens the guide in a new tab)">❓ How to</a></header>';
     var inMore = S.view === 'onb';
@@ -185,10 +185,10 @@
         '<p class="pa-hint">To open it on this device, enter your Avante hub password (the one you log in with).</p>' +
         '<div class="pa-row" style="margin-top:10px"><div class="pa-field"><label class="pa-label" for="pa-rp">Hub password</label><input id="pa-rp" type="password" autocomplete="current-password"></div>' +
         '<button type="button" class="pa-btn" data-act="resume"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'Opening…' : 'Open ' + esc(S.resume.resortName || 'property')) + '</button></div></div>' +
-        '<details class="pa-card pa-soft"><summary class="pa-h2" style="cursor:pointer">Connect a different Stock Network site</summary>';
+        '<details class="pa-card pa-soft"><summary class="pa-h2" style="cursor:pointer">Connect a different property</summary>';
     }
-    h += '<div class="pa-card"' + (S.resume ? ' style="margin:12px 0 0;box-shadow:none"' : '') + '><p class="pa-h2">Connect your Stock Network site</p>' +
-      '<p class="pa-hint">Use the API login for your property\'s own Stock Network site. The hub keeps it encrypted and uses it only to read your availability and to make, change and cancel bookings for you.</p>' +
+    h += '<div class="pa-card"' + (S.resume ? ' style="margin:12px 0 0;box-shadow:none"' : '') + '><p class="pa-h2">Connect to Avante</p>' +
+      '<p class="pa-hint">Use your Avante login: the username, client ID and client secret Avante gave you. The hub keeps it encrypted and uses it only to read your availability and to make, change and cancel bookings for you.</p>' +
       '<div class="pa-form" style="margin-top:10px">' +
       '<div class="pa-field"><label class="pa-label" for="pa-u">Username</label><input id="pa-u" type="text" autocomplete="off" value="' + esc(c.username || '') + '"></div>' +
       '<div class="pa-field"><label class="pa-label" for="pa-ci">Client ID</label><input id="pa-ci" type="text" autocomplete="off" value="' + esc(c.clientID || '') + '"></div>' +
@@ -212,7 +212,7 @@
   var BLOCK = { hub: 'bk-hub', sn: 'bk-sn', airbnb: 'bk-airbnb', bcom: 'bk-bcom', lekke: 'bk-lekke', pending: 'bk-warn', clash: 'bk-warn', na: 'bk-na', closed: 'bk-na' };
   function blockKey(st) { return st.ref ? 'ref:' + st.ref : st.s === 'pending' || st.s === 'clash' ? st.s + ':' + (st.ch || '') : st.s; }
   function viewAvail() {
-    if (!S.av) return '<div class="pa-card pa-hint">Loading availability from Stock Network…</div>';
+    if (!S.av) return '<div class="pa-card pa-hint">Loading availability from Avante…</div>';
     var units = S.av.units, days = each(S.from, add(S.from, WINDOW)), fb = firstBookable();
     var qIn = (S.searched && S.searched.ci) || (S.from < fb ? fb : S.from), qOut = (S.searched && S.searched.co) || add(qIn, Math.max(1, S.av.minStay || 1));
     var h = '';
@@ -231,7 +231,7 @@
         return '<div class="pa-result"><div class="grow"><b>' + esc(x.unit) + '</b> <span class="pa-hint">· ' + esc(x.size) + '</span><div class="pa-hint">' + (x.rate ? money(x.rate) + ' per night' : '') + (r.nights < r.minStay ? ' · below the ' + r.minStay + '-night minimum' : '') + '</div></div>' +
           '<span class="pa-price">' + money(x.total) + '</span><button type="button" class="pa-btn" data-act="selectResult" data-u="' + esc(x.unit) + '">Select</button></div>';
       }).join('');
-      if (!shown.length) h += '<span class="pa-err">No unit is open on Stock Network for all of those nights.</span>';
+      if (!shown.length) h += '<span class="pa-err">No unit is open for all of those nights.</span>';
       h += '</div>';
     }
     h += '</section>';
@@ -245,8 +245,8 @@
       '<button type="button" class="pa-btn small ghost" data-act="shift" data-n="' + WINDOW + '" aria-label="Next ' + WINDOW + ' days">›</button>' +
       (S.from !== startDate() ? '<button type="button" class="pa-btn small ghost" data-act="goStart">' + (startDate() === today() ? 'Today' : 'Start date') + '</button>' : '') + '</div>' +
       '<span class="pa-hint">' + (S.sel ? 'Check-in ' + nice(S.sel.start) + ' on ' + esc(S.sel.unit) + ': now tap the last night.' : 'Tap an open night for check-in, then the last night. Tap a booking to open it.') +
-      (S.busy ? ' · <b style="color:#08776f">Updating from Stock Network…</b>' : S.av.snapshotAt ? ' · Updated ' + new Date(S.av.snapshotAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '') + '</span></div>';
-    h += '<div class="pa-legend"><span><i class="lg-open"></i>Open</span><span><i class="lg-hub"></i>Hub booking</span><span><i class="lg-sn"></i>Booked on SN</span><span><i class="lg-airbnb"></i>Airbnb</span><span><i class="lg-bcom"></i>Booking.com</span><span><i class="lg-lekke"></i>LekkeSlaap</span><span><i class="lg-warn"></i>Channel booking not yet on SN</span><span><i class="lg-na"></i>Not on SN</span></div>';
+      (S.busy ? ' · <b style="color:#08776f">Updating from Avante…</b>' : S.av.snapshotAt ? ' · Updated ' + new Date(S.av.snapshotAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '') + '</span></div>';
+    h += '<div class="pa-legend"><span><i class="lg-open"></i>Open</span><span><i class="lg-hub"></i>Hub booking</span><span><i class="lg-sn"></i>Booked elsewhere</span><span><i class="lg-airbnb"></i>Airbnb</span><span><i class="lg-bcom"></i>Booking.com</span><span><i class="lg-lekke"></i>LekkeSlaap</span><span><i class="lg-warn"></i>Channel booking not yet with Avante</span><span><i class="lg-na"></i>Not with Avante</span></div>';
     h += '<div class="pa-grid-wrap"><div class="pa-grid pa-blocks' + (phone ? ' phone' : '') + '" style="grid-template-columns:' + cols + '"><div class="pa-label" style="align-self:end">Unit</div>';
     h += days.map(function (d) { var we = dow(d) === 'Fri' || dow(d) === 'Sat'; return '<div class="hd' + (we ? ' we' : '') + (d === today() ? ' today' : '') + '">' + (phone ? dow(d).slice(0, 2) : dow(d)) + '<b>' + dObj(d).getUTCDate() + '</b>' + (dObj(d).getUTCDate() === 1 || d === days[0] ? MON[dObj(d).getUTCMonth()] : '') + '</div>'; }).join('');
     var perNight = {}, totalOpen = 0, weekend = 0, weekendAll = 0;
@@ -268,7 +268,7 @@
         while (j < days.length) { var s2 = stateOf(u.name, days[j]); if (s2.s === 'open' && days[j] < fb) s2 = { s: 'closed' }; if (inCart(u.name, days[j]) || s2.s === 'open' || blockKey(s2) !== key) break; j++; }
         var span = j - i, cls = BLOCK[st.s] || 'bk-sn';
         var contL = i === 0 && st.ref && stateOf(u.name, add(d, -1)).ref === st.ref, contR = j === days.length && st.ref && stateOf(u.name, add(days[j - 1], 1)).ref === st.ref;
-        var text = st.ref ? (st.name || 'Guest') : st.s === 'sn' ? 'Booked on SN' : st.s === 'pending' ? (CH[st.ch] || 'Channel') + ' guest · not on SN yet' : st.s === 'clash' ? 'Clash · ' + (CH[st.ch] || 'channel') : st.s === 'closed' ? 'Not bookable yet' : 'Not on SN';
+        var text = st.ref ? (st.name || 'Guest') : st.s === 'sn' ? 'Booked elsewhere' : st.s === 'pending' ? (CH[st.ch] || 'Channel') + ' guest · not with Avante yet' : st.s === 'clash' ? 'Clash · ' + (CH[st.ch] || 'channel') : st.s === 'closed' ? 'Not bookable yet' : 'Not with Avante';
         var range = nice(d) + (span > 1 ? ' – ' + nice(days[j - 1]) : '');
         var style = ' style="grid-column:span ' + span + '"';
         var classes = 'pa-block ' + cls + (contL ? ' cont-l' : '') + (contR ? ' cont-r' : '');
@@ -280,7 +280,7 @@
     });
     days.forEach(function (d) { if (dow(d) === 'Fri' || dow(d) === 'Sat') weekendAll += units.length; });
     h += '<div class="pa-label" style="align-self:center;color:#0e2f44">Units open</div>' + days.map(function (d) { var n = perNight[d] || 0; return '<div style="text-align:center;font:700 13px Montserrat,sans-serif;color:' + (n ? '#0e2f44' : '#8a3a00') + '">' + n + '/' + units.length + '</div>'; }).join('');
-    h += '</div></div>' + (totalOpen ? '' : '<p class="pa-hint" style="margin-top:10px">Nothing open on Stock Network in these days. Use ›, or search your dates above.</p>') + '</section>';
+    h += '</div></div>' + (totalOpen ? '' : '<p class="pa-hint" style="margin-top:10px">Nothing open in these days. Use ›, or search your dates above.</p>') + '</section>';
     // cart
     if (S.cart.length) {
       var tot = S.cart.reduce(function (t, c) { return t + (priceOf(c.unit, c.start, c.end) || 0); }, 0);
@@ -339,16 +339,16 @@
     (S.channels.unitNotices || []).forEach(function (n) {
       var fresh = (S.channels.unitNotices || []).map(function (x) { return x.name; }), linked = S.channels.linkedUnits || [];
       var others = S.channels.units.map(function (u) { return u.name; }).filter(function (x) { return fresh.indexOf(x) < 0; }).sort(function (x, y) { return (linked.indexOf(y) >= 0) - (linked.indexOf(x) >= 0); });
-      h += '<section class="pa-card" style="border-color:#f5c98a;background:#fff4e5" aria-label="New unit"><p class="pa-h2" style="color:#6b3a00">New unit on Stock Network: ' + esc(n.name) + '</p>' +
-        '<p class="pa-hint" style="color:#6b3a00">If this is a unit that was renamed on Stock Network, move its channel links across so its calendars keep working (its old Avante links keep working too).</p>' +
+      h += '<section class="pa-card" style="border-color:#f5c98a;background:#fff4e5" aria-label="New unit"><p class="pa-h2" style="color:#6b3a00">New unit with Avante: ' + esc(n.name) + '</p>' +
+        '<p class="pa-hint" style="color:#6b3a00">If this is a unit that was renamed with Avante, move its channel links across so its calendars keep working (its old Avante links keep working too).</p>' +
         '<div class="pa-row" style="margin-top:8px">' + (others.length ? '<div class="pa-field" style="flex:1 1 200px"><label class="pa-label" for="pa-mv-' + esc(n.name) + '">Renamed from</label><select id="pa-mv-' + esc(n.name) + '">' + others.map(function (o) { return '<option>' + esc(o) + '</option>'; }).join('') + '</select></div>' +
         '<button type="button" class="pa-btn" data-act="unitMove" data-u="' + esc(n.name) + '">Move links to ' + esc(n.name) + '</button>' : '') +
         '<button type="button" class="pa-btn ghost" data-act="unitNew" data-u="' + esc(n.name) + '">It\'s a new unit</button></div></section>';
     });
     h += viewConnectChannels();
-    h += '<section class="pa-card" aria-label="Reservation settings"><p class="pa-h2">Reservation settings</p><p class="pa-hint">Used when the hub books another channel\'s reservation onto Stock Network (client name = the channel).</p><div class="pa-form" style="margin-top:10px">' +
-      '<div class="pa-field"><label class="pa-label" for="pa-se">Your email (and on SN reservations)</label><input id="pa-se" type="text" inputmode="email" value="' + esc(st.email || '') + '" placeholder="Your reservations inbox, another@example.com"></div>' +
-      '<div class="pa-field"><label class="pa-label" for="pa-sp">Phone on SN reservations (required)</label><input id="pa-sp" type="tel" value="' + esc(st.phone || '') + '"></div>' +
+    h += '<section class="pa-card" aria-label="Reservation settings"><p class="pa-h2">Reservation settings</p><p class="pa-hint">Used when the hub books another channel\'s reservation onto Avante\'s booking system (client name = the channel).</p><div class="pa-form" style="margin-top:10px">' +
+      '<div class="pa-field"><label class="pa-label" for="pa-se">Your email (and on Avante reservations)</label><input id="pa-se" type="text" inputmode="email" value="' + esc(st.email || '') + '" placeholder="Your reservations inbox, another@example.com"></div>' +
+      '<div class="pa-field"><label class="pa-label" for="pa-sp">Phone on Avante reservations (required)</label><input id="pa-sp" type="tel" value="' + esc(st.phone || '') + '"></div>' +
       '<div class="pa-field"><label class="pa-label" for="pa-sm">Minimum stay (nights)</label><input id="pa-sm" type="number" min="1" max="30" value="' + esc(st.minStay || 2) + '"></div></div>' + contactBlock(st) +
       (function () {
         var cs = st.calendarStart || {}, isDate = cs.mode === 'date';
@@ -358,8 +358,8 @@
           '<span style="display:block;margin-top:8px;max-width:220px"><input id="pa-cs-date" type="date" aria-label="Calendar start date" value="' + esc(cs.date || '') + '" min="' + today() + '"></span></span></label></fieldset>';
       })() +
       '<p class="pa-label" style="margin:14px 0 6px">Nightly channel price per unit (calendar links don\'t include prices)</p><div class="pa-form">' +
-      S.channels.units.map(function (u) { return '<div class="pa-field"><label class="pa-label" for="pa-pr-' + esc(u.name) + '" style="color:#0e2f44">' + esc(u.name) + '</label><input id="pa-pr-' + esc(u.name) + '" data-price="' + esc(u.name) + '" type="number" min="0" value="' + esc((st.prices || {})[u.name] || '') + '" placeholder="Uses the SN rate if empty"></div>'; }).join('') + '</div>' +
-      '<label class="pa-check" style="display:flex;align-items:center;gap:10px;margin-top:14px"><input id="pa-auto" type="checkbox"' + (st.autoBook ? ' checked' : '') + ' style="width:18px;height:18px">Book other channels\' reservations onto Stock Network automatically</label>' +
+      S.channels.units.map(function (u) { return '<div class="pa-field"><label class="pa-label" for="pa-pr-' + esc(u.name) + '" style="color:#0e2f44">' + esc(u.name) + '</label><input id="pa-pr-' + esc(u.name) + '" data-price="' + esc(u.name) + '" type="number" min="0" value="' + esc((st.prices || {})[u.name] || '') + '" placeholder="Uses the Avante rate if empty"></div>'; }).join('') + '</div>' +
+      '<label class="pa-check" style="display:flex;align-items:center;gap:10px;margin-top:14px"><input id="pa-auto" type="checkbox"' + (st.autoBook ? ' checked' : '') + ' style="width:18px;height:18px">Book other channels\' reservations onto Avante automatically</label>' +
       '<p class="pa-hint">Leave this off at first: new channel bookings then wait below for you to add them with one click, so you can check everything is right.</p>' +
       '<div class="pa-row" style="margin-top:12px"><button type="button" class="pa-btn" data-act="saveChannels">Save reservation settings</button></div></section>';
     var bk = S.channels.bank || {}, pm = st.payMode || 'both';
@@ -367,9 +367,9 @@
     h += '<section class="pa-card" aria-label="Guest payments"><p class="pa-h2">Guest payments</p><p class="pa-hint">How guests pay for bookings you make in the hub. Bookings from Airbnb, Booking.com and LekkeSlaap are paid on those channels.</p>' +
       '<fieldset class="pa-fieldset"><legend class="pa-label">How guests can pay</legend>' +
       pmOpt('both', 'Both (recommended)', 'Avante payment gateway link and EFT to your bank account.') +
-      pmOpt('gateway', 'Avante payment gateway only', 'The gateway sets the booking to Paid. Unpaid bookings are cancelled by Stock Network after its payment time.') +
-      pmOpt('eft', 'EFT to our bank account only', 'Bookings are Booked straight away. Tap Paid by EFT when the money is in: the hub records it on Stock Network, which sets Paid.') + '</fieldset>' +
-      '<label class="pa-check" style="display:flex;align-items:flex-start;gap:10px;margin-top:14px"><input id="pa-appr" type="checkbox"' + (st.approveGuests ? ' checked' : '') + ' style="width:18px;height:18px;margin-top:2px"><span><b>Approve each new front store guest</b><br><span class="pa-hint">Front store bookings wait as a Request until you tap Accept (Booked) or Decline (cancelled). If you don\'t answer, Stock Network cancels the request after the number of days set in its back office.</span></span></label>' +
+      pmOpt('gateway', 'Avante payment gateway only', 'The gateway sets the booking to Paid. Unpaid bookings are cancelled by Avante after the payment time.') +
+      pmOpt('eft', 'EFT to our bank account only', 'Bookings are Booked straight away. Tap Paid by EFT when the money is in: the hub records it with Avante, which sets Paid.') + '</fieldset>' +
+      '<label class="pa-check" style="display:flex;align-items:flex-start;gap:10px;margin-top:14px"><input id="pa-appr" type="checkbox"' + (st.approveGuests ? ' checked' : '') + ' style="width:18px;height:18px;margin-top:2px"><span><b>Approve each new front store guest</b><br><span class="pa-hint">Front store bookings wait as a Request until you tap Accept (Booked) or Decline (cancelled). If you don\'t answer, Avante cancels the request after a set number of days.</span></span></label>' +
       '<p class="pa-label" style="margin:16px 0 6px">Your bank account for EFT</p><div class="pa-form">' +
       '<div class="pa-field"><label class="pa-label" for="pa-bn" style="color:#0e2f44">Bank</label><input id="pa-bn" type="text" value="' + esc(bk.bankName || '') + '" placeholder="e.g. FNB"></div>' +
       '<div class="pa-field"><label class="pa-label" for="pa-bh" style="color:#0e2f44">Account holder</label><input id="pa-bh" type="text" value="' + esc(bk.accountHolder || '') + '"></div>' +
@@ -394,9 +394,9 @@
     });
     h += '<div class="pa-row" style="margin-top:16px"><button type="button" class="pa-btn" data-act="saveChannels">Save settings and links</button></div></section>';
     var ev = (S.events || []).filter(function (e) { return e.status !== 'booked'; });
-    h += '<section class="pa-card" aria-label="Channel bookings"><p class="pa-h2">Channel bookings not yet on Stock Network</p>' + (ev.length ? ev.map(function (e) {
+    h += '<section class="pa-card" aria-label="Channel bookings"><p class="pa-h2">Channel bookings not yet with Avante</p>' + (ev.length ? ev.map(function (e) {
       return '<div class="pa-result"><div class="grow"><b>' + esc(CH[e.channel]) + ' · ' + esc(e.unit) + '</b><div class="pa-hint">' + nice(e.start) + ' – ' + nice(e.end) + ' · ' + nw(nightsBetween(e.start, e.end)) + (e.summary ? ' · ' + esc(e.summary) : '') + '</div>' + (e.error ? '<div class="pa-err" style="margin-top:6px">' + esc(e.error) + '</div>' : '') + '</div>' +
-        (e.status === 'clash' ? '<span class="pa-pill" style="background:#ffe2bf;color:#6b3a00">Clash · sold on SN</span>' : '<button type="button" class="pa-btn small" data-act="addEvent" data-u="' + esc(e.unit) + '" data-c="' + esc(e.channel) + '" data-uid="' + esc(e.uid) + '">Add to Stock Network</button>') + '</div>';
+        (e.status === 'clash' ? '<span class="pa-pill" style="background:#ffe2bf;color:#6b3a00">Clash · already sold</span>' : '<button type="button" class="pa-btn small" data-act="addEvent" data-u="' + esc(e.unit) + '" data-c="' + esc(e.channel) + '" data-uid="' + esc(e.uid) + '">Add to Avante</button>') + '</div>';
     }).join('') : '<p class="pa-hint">None. New bookings from Airbnb, Booking.com and LekkeSlaap appear here within 15 minutes.</p>') + '</section>';
     return h;
   }
@@ -489,7 +489,7 @@
     var h = '<button type="button" class="pa-btn small" data-act="editBooking" data-ref="' + esc(b.ref) + '">Open</button>';
     if (b.approval && b.approval.state === 'pending') {
       h += '<button type="button" class="pa-btn small" data-act="decide" data-yes="1" data-ref="' + esc(b.ref) + '">Accept</button><button type="button" class="pa-btn small danger" data-act="decide" data-ref="' + esc(b.ref) + '">Decline</button>' +
-        '<span class="pa-hint" style="width:100%">Waiting for you to accept. Stock Network cancels it if not accepted in time.</span>';
+        '<span class="pa-hint" style="width:100%">Waiting for you to accept. Avante cancels it if not accepted in time.</span>';
     } else if (b.origin !== 'channel' && !b.locked && !b.demo) {
       h += '<button type="button" class="pa-btn small ghost" data-act="payLink" data-ref="' + esc(b.ref) + '">Payment link</button>';
       if (S.payMode !== 'gateway') h += '<button type="button" class="pa-btn small ghost" data-act="markPaid" data-type="EFT" data-ref="' + esc(b.ref) + '">Paid by EFT</button><button type="button" class="pa-btn small ghost" data-act="markPaid" data-type="Cash" data-ref="' + esc(b.ref) + '">Paid on arrival</button>';
@@ -503,7 +503,7 @@
     if (isCh()) {
       var cs = S.prop.settings || {};
       h += '<section class="pa-card" aria-label="How it works"><p class="pa-h2">Bookings from the hub</p>' +
-        '<p class="pa-hint">This list shows only bookings that came through Avante: your front store, and your hook and booking links. They reach your NightsBridge (or other channel manager) through Stock Network, marked <b>Avante Hub booking</b>. Guests pay on the Stock Network payment page. Your rates, availability, other bookings and guest messages stay in your channel manager.</p>' +
+        '<p class="pa-hint">This list shows only bookings that came through Avante: your front store, and your hook and booking links. They reach your NightsBridge (or other channel manager) through Avante, marked <b>Avante Hub booking</b>. Guests pay on Avante\'s secure payment page. Your rates, availability, other bookings and guest messages stay in your channel manager.</p>' +
         '<div class="pa-form" style="margin-top:10px"><div class="pa-field"><label class="pa-label" for="ch-email">Your email for new booking notices</label><input id="ch-email" type="text" inputmode="email" value="' + esc(cs.email || '') + '" placeholder="name@example.com, other@example.com"></div>' +
         '<div class="pa-field"><label class="pa-label" for="ch-phone">Phone</label><input id="ch-phone" type="tel" value="' + esc(cs.phone || '') + '"></div></div>' + contactBlock(cs) +
         '<div class="pa-row" style="margin-top:8px"><button type="button" class="pa-btn small" data-act="chSaveContact">Save</button></div></section>';
@@ -525,8 +525,8 @@
           '<td>' + statusPill(b) + '</td><td>' + payPill(b) + '</td><td>' + bookingActions(b) + '</td></tr>';
       }).join('') + '</tbody></table></div>';
     }
-    h += '<p class="pa-hint">Open a booking to add or change the guest\'s details (also on paid and channel bookings) and to send WhatsApp messages and emails. Paid bookings can\'t be changed in the hub, and cancelling them needs the linked affiliate\'s approval. Stock Network bookings made outside the hub show on the Calendar as Booked on SN; manage those in Stock Network.</p></section>';
-    if (S.prop.demoAllowed) h += '<section class="pa-card pa-soft" aria-label="Demo bookings"><p class="pa-h2">Demo bookings (Property Testing only)</p><p class="pa-hint">Six example bookings with guest details, plus example welcome and after-stay messages switched on, to show how the hub works. They stay in the hub: they are never sent to Stock Network or to your channel calendars.</p>' +
+    h += '<p class="pa-hint">Open a booking to add or change the guest\'s details (also on paid and channel bookings) and to send WhatsApp messages and emails. Paid bookings can\'t be changed in the hub, and cancelling them needs the linked affiliate\'s approval. Bookings made outside the hub show on the Calendar as Booked elsewhere; manage those in Avante\'s booking system.</p></section>';
+    if (S.prop.demoAllowed) h += '<section class="pa-card pa-soft" aria-label="Demo bookings"><p class="pa-h2">Demo bookings (Property Testing only)</p><p class="pa-hint">Six example bookings with guest details, plus example welcome and after-stay messages switched on, to show how the hub works. They stay in the hub: they are never sent to Avante\'s booking system or to your channel calendars.</p>' +
       '<div class="pa-actions" style="margin-top:10px"><button type="button" class="pa-btn" data-act="seedDemo">Load demo bookings</button><button type="button" class="pa-btn ghost" data-act="clearDemo">Remove demo bookings</button></div></section>';
     return h;
   }
@@ -695,7 +695,7 @@
       '<div class="pa-actions"><button type="button" class="pa-btn" data-act="saveContact">Save guest details</button>' +
       (c.cell ? '<a class="pa-btn ghost" style="display:inline-flex;align-items:center;text-decoration:none" href="tel:' + esc(String(c.cell).replace(/\s/g, '')) + '">Call</a>' : '') +
       (wa ? '<a class="pa-btn ghost" style="display:inline-flex;align-items:center;text-decoration:none" href="https://wa.me/' + wa + '" target="_blank" rel="noopener">WhatsApp</a>' : '') + '</div>' +
-      '<p class="pa-hint">Kept in the hub for your records' + (b.origin === 'channel' ? '; on Stock Network this booking stays under ' + esc(b.source) : '; Stock Network keeps the details it was booked with') + '.</p>';
+      '<p class="pa-hint">Kept in the hub for your records' + (b.origin === 'channel' ? '; in Avante\'s booking system this booking stays under ' + esc(b.source) : '; Avante\'s booking system keeps the details it was booked with') + '.</p>';
     return h;
   }
   function viewMsgSection(b) {
@@ -837,7 +837,7 @@
       '<p class="pa-hint">Empty = your property name. Short and specific works best: what guests get, where.</p>' +
       '<div class="pa-field" style="margin-top:10px"><label class="pa-label" for="fs-welcome">Line under the headline</label><input id="fs-welcome" type="text" maxlength="160" value="' + esc(st.welcome) + '" placeholder="e.g. Self-catering cottages 10 minutes from the dam"></div>' +
       '<div class="pa-field" style="margin-top:10px"><label class="pa-label" for="fs-pricefrom">Price badge</label><input id="fs-pricefrom" type="text" maxlength="40" value="' + esc(st.priceFrom) + '" placeholder="' + esc(auto || 'Switch on prices in step 7') + '"></div>' +
-      '<p class="pa-hint">Empty = your lowest price a night from ' + (isCh() ? 'Stock Network' : 'Reservation settings') + (auto ? ' (' + esc(auto) + ')' : '') + '. Only shows when prices are switched on.</p>' +
+      '<p class="pa-hint">Empty = your lowest price a night from ' + (isCh() ? 'Avante' : 'Reservation settings') + (auto ? ' (' + esc(auto) + ')' : '') + '. Only shows when prices are switched on.</p>' +
       '<fieldset class="pa-fieldset" style="margin-top:10px"><legend class="pa-label">Google rating badge (optional)</legend><div class="pa-form">' +
       '<div class="pa-field"><label class="pa-label" for="fs-rv">Stars (0 to 5)</label><input id="fs-rv" type="text" inputmode="decimal" maxlength="3" value="' + esc(st.ratingValue) + '" placeholder="e.g. 4.6"></div>' +
       '<div class="pa-field"><label class="pa-label" for="fs-rc">Number of reviews</label><input id="fs-rc" type="text" inputmode="numeric" maxlength="12" value="' + esc(st.ratingCount) + '" placeholder="e.g. 212"></div></div>' +
@@ -853,9 +853,9 @@
         (mine ? '<button type="button" class="pa-btn small danger" data-act="fsDel" data-u="' + esc(u) + '" aria-label="Delete photo">✕</button>' : '') + '</div></div>';
     }).join('') + '</div>' : '<p class="pa-hint">No photos yet. Upload some, or find some on Google below.</p>';
     h += fsStep('photos', ++n, 'Photos', shown.length + ' photo' + (shown.length === 1 ? '' : 's') + ' showing',
-      '<p class="pa-hint" style="margin:0">' + (ph.chosen ? 'Your own choice and order.' : 'Automatic: your uploaded photos, then Stock Network\'s.') + ' The first photo is the big one at the top (★ Cover). The next five make the photo block under it.</p>' +
+      '<p class="pa-hint" style="margin:0">' + (ph.chosen ? 'Your own choice and order.' : 'Automatic: your uploaded photos, then Avante\'s.') + ' The first photo is the big one at the top (★ Cover). The next five make the photo block under it.</p>' +
       '<div class="pa-actions" style="margin-top:8px"><button type="button" class="pa-btn small" data-act="fsUpload">Upload photo</button><input type="file" id="fs-file" accept="image/jpeg,image/png,image/webp" style="display:none">' + (ph.chosen ? '<button type="button" class="pa-btn small ghost" data-act="fsAuto">Back to automatic</button>' : '') + '</div>' + ph3 +
-      '<p class="pa-label" style="margin:14px 0 4px"><label for="fs-plink">Add a photo by link</label></p><div class="pa-copy"><input type="url" id="fs-plink" placeholder="https://… (one or more links, e.g. from Stock Network)"><button type="button" class="pa-btn small" data-act="fsLink">Add photo</button></div>' +
+      '<p class="pa-label" style="margin:14px 0 4px"><label for="fs-plink">Add a photo by link</label></p><div class="pa-copy"><input type="url" id="fs-plink" placeholder="https://… (one or more links, e.g. from your Avante listing)"><button type="button" class="pa-btn small" data-act="fsLink">Add photo</button></div>' +
       '<p class="pa-hint" style="margin:4px 0 0">Paste the link of a photo that is already online (it starts with https://). Several links? Put a space between them.</p>' +
       '<p class="pa-label" style="margin:14px 0 4px">Find photos on Google</p>' + fsGoogleBox('gallery', (S.prop.resortName || '') + ' ' + fsPlace()));
     // 4 highlights
@@ -866,10 +866,10 @@
     // 5 units
     var ui = st.unitInfo || {}, hidU = st.hiddenUnits || [];
     h += fsStep('units', ++n, 'Your units', (F.units.length - hidU.length) + ' of ' + F.units.length + ' showing',
-      '<p class="pa-hint" style="margin:0">' + (isCh() ? 'Each unit gets a card with a photo, sleeps and beds. Guests see the Stock Network price when they choose their dates.' : 'Each unit gets a card with a photo, sleeps, beds and its price a night (from Reservation settings).') + '</p>' + F.units.map(function (u, ix) {
+      '<p class="pa-hint" style="margin:0">' + (isCh() ? 'Each unit gets a card with a photo, sleeps and beds. Guests see the Avante price when they choose their dates.' : 'Each unit gets a card with a photo, sleeps, beds and its price a night (from Reservation settings).') + '</p>' + F.units.map(function (u, ix) {
         var x = ui[u.name] || {}, off = hidU.indexOf(u.name) >= 0;
         return '<div class="fs-unit' + (off ? ' off' : '') + '"><label class="pa-check"><input type="checkbox" data-fsunit="' + esc(u.name) + '"' + (off ? '' : ' checked') + '> <b>' + esc(u.name) + '</b>' + (u.size ? ' <span class="pa-hint">· ' + esc(u.size) + '</span>' : '') + '</label>' +
-          '<p class="pa-hint" style="margin:2px 0 6px">' + (u.price > 0 ? 'Price: ' + money(u.price) + ' a night' + (st.showPrices ? '' : ' (prices are switched off in step 7)') : (isCh() ? 'Price: shown from Stock Network when guests choose dates.' : 'No price yet: add it in Channels → Reservation settings.')) + '</p>' +
+          '<p class="pa-hint" style="margin:2px 0 6px">' + (u.price > 0 ? 'Price: ' + money(u.price) + ' a night' + (st.showPrices ? '' : ' (prices are switched off in step 7)') : (isCh() ? 'Price: the Avante price, shown when guests choose dates.' : 'No price yet: add it in Channels → Reservation settings.')) + '</p>' +
           '<div class="pa-form"><div class="pa-field"><label class="pa-label" for="fs-ub-' + ix + '">Beds</label><input id="fs-ub-' + ix + '" type="text" maxlength="80" data-fsui="' + esc(u.name) + '|beds" value="' + esc(x.beds) + '" placeholder="e.g. 1 queen, 2 singles"></div>' +
           '<div class="pa-field"><label class="pa-label" for="fs-ux-' + ix + '">One line about it</label><input id="fs-ux-' + ix + '" type="text" maxlength="300" data-fsui="' + esc(u.name) + '|blurb" value="' + esc(x.blurb) + '" placeholder="e.g. Private braai and dam views"></div></div>' +
           '<p class="pa-label" style="margin:8px 0 4px">Photo for this unit' + (x.photo ? '' : ' <span class="pa-hint" style="text-transform:none;letter-spacing:0">(none chosen: a gallery photo is used)</span>') + '</p>' +
@@ -922,10 +922,10 @@
       [['fs-prices', 'showPrices', 'Prices'], ['fs-cal', 'showCalendar', 'Availability calendar'], ['fs-offers', 'showOffers', 'Your special offers (hooks you manage yourself)']].map(function (x) {
         return '<label class="pa-check"><input type="checkbox" id="' + x[0] + '"' + (st[x[1]] ? ' checked' : '') + '> ' + x[2] + '</label>'; }).join('') + '</div>' +
       '<div class="pa-field" style="margin-top:10px;max-width:240px"><label class="pa-label" for="fs-notice">Book at least … days ahead</label><input id="fs-notice" type="number" min="0" max="30" value="' + esc(st.minNoticeDays || 0) + '"></div>' +
-      '<p class="pa-hint">0 days ahead means guests can book for tonight. ' + (isCh() ? 'Your minimum stay and other rules come from your channel manager through Stock Network.' : 'Your minimum stay and calendar start date (Channels) also apply.') + '</p>');
+      '<p class="pa-hint">0 days ahead means guests can book for tonight. ' + (isCh() ? 'Your minimum stay and other rules come from your channel manager through Avante.' : 'Your minimum stay and calendar start date (Channels) also apply.') + '</p>');
     // 8 words + contact
     h += fsStep('words', ++n, 'Words and contact details', '',
-      '<div class="pa-field"><label class="pa-label" for="fs-desc">About the property</label><textarea id="fs-desc" rows="6" placeholder="' + esc(F.snDescription ? 'Empty = your Stock Network description is used' : 'Tell guests about your property') + '">' + esc(st.description) + '</textarea></div>' +
+      '<div class="pa-field"><label class="pa-label" for="fs-desc">About the property</label><textarea id="fs-desc" rows="6" placeholder="' + esc(F.snDescription ? 'Empty = your Avante description is used' : 'Tell guests about your property') + '">' + esc(st.description) + '</textarea></div>' +
       '<div class="pa-form" style="margin-top:10px"><div class="pa-field"><label class="pa-label" for="fs-phone">Phone</label><input id="fs-phone" type="tel" value="' + esc(st.phone) + '" placeholder="' + esc(F.propertyPhone || '') + '"></div>' +
       '<div class="pa-field"><label class="pa-label" for="fs-wa">WhatsApp number</label><input id="fs-wa" type="tel" value="' + esc(st.whatsapp) + '" placeholder="Empty = the phone number"></div>' +
       '<div class="pa-field"><label class="pa-label" for="fs-email">Email</label><input id="fs-email" type="text" inputmode="email" value="' + esc(st.email) + '" placeholder="' + esc(F.propertyEmail || 'name@example.com, other@example.com') + '"></div></div>' +
@@ -1152,7 +1152,7 @@
     if (!pay) return '';
     S.payMsg = pay.message;
     var h = '<div class="pa-pay"><p class="pa-label" style="margin:0">Payment</p>';
-    if (pay.noMethod) return h + '<p class="pa-err">' + (isCh() ? 'Stock Network didn\'t send a payment link for this booking. Ask Avante Travel to check it.' : 'No payment method is set up. Add your bank details or allow the payment gateway in Channels → Guest payments.') + '</p></div>';
+    if (pay.noMethod) return h + '<p class="pa-err">' + (isCh() ? 'Avante\'s booking system didn\'t send a payment link for this booking. Ask Avante Travel to check it.' : 'No payment method is set up. Add your bank details or allow the payment gateway in Channels → Guest payments.') + '</p></div>';
     if (pay.gatewayUrl) h += '<div class="pa-actions"><button type="button" class="pa-btn teal" data-act="openPay" data-ref="' + esc(pay.ref || '') + '" data-url="' + esc(pay.gatewayUrl) + '">Pay now</button><button type="button" class="pa-btn small ghost" data-act="copy" data-text="' + esc(pay.gatewayUrl) + '">Copy payment link</button></div>';
     if (pay.bank) h += '<div class="pa-bankbox"><b>EFT</b><br>' + esc(pay.bank.bankName) + ' · ' + esc(pay.bank.accountHolder) + '<br>Account ' + esc(pay.bank.accountNumber) + ' · Branch ' + esc(pay.bank.branchCode || '') + (pay.bank.accountType ? ' · ' + esc(pay.bank.accountType) : '') + '</div>';
     h += '<p class="pa-label" style="margin:6px 0 0">Send to the guest</p><div class="pa-actions">' +
@@ -1202,11 +1202,11 @@
     }
     if (m.type === 'paying') {
       var st = m.state;
-      return h + hdr('Payment for ' + m.ref, 'Secure payment page on Stock Network') + '<div class="body">' +
+      return h + hdr('Payment for ' + m.ref, 'Avante\'s secure payment page') + '<div class="body">' +
         (m.blocked ? '<p style="margin:0;font-size:14px;line-height:1.55">Your browser blocked the payment window. Open it here:</p>' :
           '<p style="margin:0;font-size:14px;line-height:1.55">The payment page is open in its own window. Complete the payment there, including any bank or Instant EFT steps. When that window closes, the hub checks the payment.</p>') +
-        (st === 'checking' ? '<p class="pa-hint">Checking the payment on Stock Network…</p>' : '') +
-        (st === 'unpaid' ? '<div class="pa-lock">Stock Network doesn\'t show this booking as paid yet. If the payment has just gone through, wait a minute and check again.</div>' : '') +
+        (st === 'checking' ? '<p class="pa-hint">Checking the payment with Avante…</p>' : '') +
+        (st === 'unpaid' ? '<div class="pa-lock">Avante\'s booking system doesn\'t show this booking as paid yet. If the payment has just gone through, wait a minute and check again.</div>' : '') +
         '<div class="pa-actions"><a class="pa-btn teal" style="display:inline-flex;align-items:center;text-decoration:none" href="' + esc(m.url) + '" target="avante-pay" rel="noopener" data-act="reopenPay">' + (m.blocked ? 'Open payment page' : 'Open payment page again') + '</a>' +
         '<button type="button" class="pa-btn" data-act="checkPay"' + (st === 'checking' ? ' disabled' : '') + '>Check payment now</button>' +
         '<button type="button" class="pa-btn ghost" data-act="close">Close</button></div></div></div></div>';
@@ -1222,7 +1222,7 @@
     if (m.type === 'find') {
       h += hdr('Find a Booking') + '<div class="body"><div class="pa-field"><label class="pa-label" for="pa-fq">Reference, guest name, unit or channel</label><input id="pa-fq" type="search" value="' + esc(S.findQ) + '" placeholder="e.g. J111672, Airbnb, FV10"></div>';
       h += (S.found || []).filter(function (b) { return b.status !== 'Cancelled'; }).map(function (b) { return '<div class="pa-result"><div class="grow"><b>' + esc(b.ref) + ' · ' + esc(b.items.filter(function (i) { return !i.cancelled; }).map(function (i) { return i.unit; }).join(', ')) + '</b><div class="pa-hint">' + esc(b.origin === 'channel' ? b.source : ((b.guest && (b.guest.first + ' ' + b.guest.last)) || '')) + ' · ' + b.items.filter(function (i) { return !i.cancelled; }).map(function (i) { return short(i.start) + ' – ' + short(i.end); }).join(', ') + '</div></div><button type="button" class="pa-btn small" data-act="editBooking" data-ref="' + esc(b.ref) + '">Edit</button></div>'; }).join('') || '<p class="pa-hint">No active booking matches.</p>';
-      return h + '<p class="pa-hint">Stock Network can\'t edit a booking. Changing the unit or dates cancels it on SN and makes a new booking with a new reference.</p></div></div></div>';
+      return h + '<p class="pa-hint">Avante\'s booking system can\'t edit a booking. Changing the unit or dates cancels it and makes a new booking with a new reference.</p></div></div></div>';
     }
     var editing = m.type === 'edit', b = S.edit, live = editing ? b.items.filter(function (i) { return !i.cancelled; }) : null, segHtml = '';
     if (editing) {
@@ -1233,7 +1233,7 @@
       if (tab !== 'stay' || b.demo || b.status === 'Cancelled') {
         var bodyHtml = tab === 'guest' ? viewGuestSection(b) : tab === 'msgs' ? viewMsgSection(b)
           : '<div class="pa-items">' + live.map(function (it) { return '<div class="pa-item"><b style="flex:1 1 140px;color:#0e2f44">' + esc(it.unit) + '</b><span style="flex:1 1 170px;font-size:13px">' + short(it.start) + ' – ' + short(it.end) + ' · ' + nw(nightsBetween(it.start, it.end)) + '</span></div>'; }).join('') + '<div class="pa-row" style="justify-content:space-between"><span class="pa-label">' + esc(b.status) + '</span><b>' + money(b.total) + '</b></div></div>' +
-            '<p class="pa-hint">' + (b.demo ? 'Demo booking: it isn\'t on Stock Network, so it can\'t be changed, paid or cancelled. Remove demo bookings from the Bookings tab.' : 'This booking was cancelled.') + '</p>';
+            '<p class="pa-hint">' + (b.demo ? 'Demo booking: it isn\'t in Avante\'s booking system, so it can\'t be changed, paid or cancelled. Remove demo bookings from the Bookings tab.' : 'This booking was cancelled.') + '</p>';
         // Cancel is on every section of the booking (paid bookings: request cancellation).
         var cancelBtn = !b.demo && b.status !== 'Cancelled' ? '<button type="button" class="pa-btn danger" data-act="cancelBooking"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'Working…' : b.locked ? 'Request cancellation' : 'Cancel this booking') + '</button>' : '';
         return h + hdr('Booking ' + b.ref, sub) + '<div class="body">' + segHtml + bodyHtml + '<div class="pa-row pa-dlgfoot">' + cancelBtn + '<button type="button" class="pa-btn ghost" data-act="close">Close</button></div></div></div></div>';
@@ -1243,13 +1243,13 @@
       h += hdr('Booking ' + b.ref + ' · ' + (PAY_PILL[b.payState] || PAY_PILL.paid)[2]);
       h += '<div class="body">' + segHtml + '<div class="pa-items">' + live.map(function (it) { return '<div class="pa-item"><b style="flex:1 1 140px;color:#0e2f44">' + esc(it.unit) + '</b><span style="flex:1 1 170px;font-size:13px">' + short(it.start) + ' – ' + short(it.end) + ' · ' + nw(nightsBetween(it.start, it.end)) + '</span></div>'; }).join('') +
         '<div class="pa-row" style="justify-content:space-between"><span class="pa-label">' + esc(whoOf(b)) + '</span><b>' + money(b.total) + '</b></div></div>' +
-        '<div class="pa-lock"><b>Paid: locked</b><br>This booking can\'t be changed in the hub. The guest must contact the property, and changes are made in Stock Network. To cancel it, request cancellation: the affiliate linked to this property approves it with their hub password.</div>' +
+        '<div class="pa-lock"><b>Paid: locked</b><br>This booking can\'t be changed in the hub. The guest must contact the property, and changes are made in Avante\'s booking system. To cancel it, request cancellation: the affiliate linked to this property approves it with their hub password.</div>' +
         (b.cancelRequest ? '<p class="pa-hint">Cancellation already requested ' + esc(new Date(b.cancelRequest.at).toLocaleString()) + '. Requesting again sends a new link.</p>' : '') +
         '<div class="pa-row"><button type="button" class="pa-btn danger" data-act="cancelBooking"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'Sending…' : 'Request cancellation') + '</button><button type="button" class="pa-btn ghost" data-act="close">Close</button></div></div></div></div>';
       return h;
     }
     var items = editing ? live : S.cart, total = 0, short2 = false, g = editing ? (b.guest || {}) : {};
-    h += hdr(editing ? 'Edit booking ' + b.ref : (S.cart.length > 1 ? 'New booking · ' + S.cart.length + ' units' : 'New booking on Stock Network'));
+    h += hdr(editing ? 'Edit booking ' + b.ref : (S.cart.length > 1 ? 'New booking · ' + S.cart.length + ' units' : 'New booking'));
     h += '<div class="body">' + segHtml + '<div class="pa-items">' + items.map(function (it, i) {
       var p = priceOf(it.unit, it.start, it.end); total += p || 0; if (nightsBetween(it.start, it.end) < (S.av ? S.av.minStay : 2)) short2 = true;
       var rm = editing ? (live.length > 1 ? '<button type="button" class="pa-btn small danger" data-act="removeUnit" data-u="' + esc(it.unit) + '">Remove unit</button>' : '') : (S.cart.length > 1 ? '<button type="button" class="pa-btn small danger" data-act="uncart" data-i="' + i + '">Remove</button>' : '');
@@ -1268,12 +1268,12 @@
       h += '</div>';
       if (!editing) h += '<div class="pa-field"><label class="pa-label" for="pa-gn">Notes</label><textarea id="pa-gn" rows="2"></textarea></div>';
       if (!editing && ((S.prop.settings || {}).payMode || 'both') === 'both') h += '<fieldset class="pa-fieldset"><legend class="pa-label">Guest pays by</legend><label class="pa-check pa-radio"><input type="radio" name="pa-payby" value="eft" checked><span><b>EFT or on arrival</b><br><span class="pa-hint">Booked straight away. You record the payment when it arrives.</span></span></label>' +
-        '<label class="pa-check pa-radio"><input type="radio" name="pa-payby" value="gateway"><span><b>Payment gateway (pay now)</b><br><span class="pa-hint">Booked; Stock Network cancels it if the guest doesn\'t pay within its payment time.</span></span></label></fieldset>';
+        '<label class="pa-check pa-radio"><input type="radio" name="pa-payby" value="gateway"><span><b>Payment gateway (pay now)</b><br><span class="pa-hint">Booked; Avante cancels it if the guest doesn\'t pay within the payment time.</span></span></label></fieldset>';
     }
-    h += '<p class="pa-hint">' + (editing ? (live.length === 1 ? 'Saving a new unit or new dates cancels ' + b.ref + ' on Stock Network and makes a new booking with a new reference.' : 'Removing a unit cancels only that unit on Stock Network; the booking keeps its reference. To change dates, cancel and book again.') : (items.length > 1 ? 'All units go on one Stock Network reservation with one reference, as Booked.' : 'Created on Stock Network as Booked, then blocked on your other channels within 15 minutes.')) + '</p>';
+    h += '<p class="pa-hint">' + (editing ? (live.length === 1 ? 'Saving a new unit or new dates cancels ' + b.ref + ' and makes a new booking with a new reference.' : 'Removing a unit cancels only that unit; the booking keeps its reference. To change dates, cancel and book again.') : (items.length > 1 ? 'All units go on one Avante reservation with one reference, as Booked.' : 'Created with Avante as Booked, then blocked on your other channels within 15 minutes.')) + '</p>';
     if (editing && b.origin !== 'channel') h += '<div class="pa-row"><button type="button" class="pa-btn small ghost" data-act="payLink" data-ref="' + esc(b.ref) + '">Payment link</button></div>';
     h += '<div class="pa-row">' + (editing ? (live.length === 1 ? '<button type="button" class="pa-btn" data-act="saveEdit"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'Saving…' : 'Save changes') + '</button>' : '') + '<button type="button" class="pa-btn danger" data-act="cancelBooking">Cancel this booking</button>'
-      : '<button type="button" class="pa-btn" data-act="confirmBook"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'Booking…' : (items.length > 1 ? 'Book ' + items.length + ' units on Stock Network' : 'Make booking on Stock Network')) + '</button>') + '<button type="button" class="pa-btn ghost" data-act="close">Close</button></div>';
+      : '<button type="button" class="pa-btn" data-act="confirmBook"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'Booking…' : (items.length > 1 ? 'Book ' + items.length + ' units' : 'Make booking')) + '</button>') + '<button type="button" class="pa-btn ghost" data-act="close">Close</button></div>';
     return h + '</div></div></div>';
   }
 
@@ -1517,7 +1517,7 @@
     api('payInfo', { ref: m.ref }).then(function (d) {
       if (!S.modal || S.modal.type !== 'paying') return;
       S.bookings = null; staleAll();
-      if (d.booking.locked) { clearInterval(payTimer); S.modal = { done: { title: d.booking.ref + ' is paid', text: 'Stock Network shows ' + money(d.booking.amountPaid || d.booking.total) + ' paid. The booking is now locked: changes go through the property.' } }; render(); if (S.view === 'book') setView('book'); return; }
+      if (d.booking.locked) { clearInterval(payTimer); S.modal = { done: { title: d.booking.ref + ' is paid', text: 'Avante shows ' + money(d.booking.amountPaid || d.booking.total) + ' paid. The booking is now locked: changes go through the property.' } }; render(); if (S.view === 'book') setView('book'); return; }
       S.modal.state = 'unpaid'; render();
     }).catch(function (e) { if (S.modal && S.modal.type === 'paying') { S.modal.state = null; S.err = e.message; render(); } });
   }
@@ -1679,7 +1679,7 @@
     if (a === 'payLink') {
       t.textContent = 'Loading…';
       return api('payInfo', { ref: t.dataset.ref }).then(function (d) {
-        if (d.booking.locked) { S.modal = { done: { title: d.booking.ref + ' is paid', text: 'Stock Network shows this booking as paid, so no payment link is needed.' } }; S.bookings = null; setView(S.view); return; }
+        if (d.booking.locked) { S.modal = { done: { title: d.booking.ref + ' is paid', text: 'Avante shows this booking as paid, so no payment link is needed.' } }; S.bookings = null; setView(S.view); return; }
         S.modal = { done: { title: 'Payment for ' + d.booking.ref, text: d.booking.items.filter(function (i) { return !i.cancelled; }).map(function (i) { return i.unit + ' ' + short(i.start) + ' – ' + short(i.end); }).join(', ') + ' · ' + money(d.booking.total), pay: Object.assign({ ref: d.booking.ref }, d.pay) } }; render();
       }).catch(fail);
     }
@@ -1690,16 +1690,16 @@
     }
     if (a === 'markPaid') {
       var how = t.dataset.type === 'Cash' ? 'on arrival (cash or card)' : 'by EFT';
-      if (!confirm('Record ' + t.dataset.ref + ' as paid ' + how + '?\n\nOnly do this once you have the money. The hub records the payment on Stock Network, which sets the booking to Paid. A paid booking is locked: it can\'t be changed in the hub, and cancelling needs approval.')) return;
+      if (!confirm('Record ' + t.dataset.ref + ' as paid ' + how + '?\n\nOnly do this once you have the money. The hub records the payment with Avante, which sets the booking to Paid. A paid booking is locked: it can\'t be changed in the hub, and cancelling needs approval.')) return;
       t.textContent = 'Saving…';
-      return api('markPaid', { ref: t.dataset.ref, type: t.dataset.type || 'EFT' }).then(function (d) { S.msg = t.dataset.ref + ' recorded as paid ' + how + '. Stock Network now shows ' + (d.booking.snStatus || d.booking.status) + '.'; return api('find', { q: S.findQ }).then(function (d2) { S.bookings = d2.bookings; S.payMode = d2.payMode; render(); }); }).catch(fail);
+      return api('markPaid', { ref: t.dataset.ref, type: t.dataset.type || 'EFT' }).then(function (d) { S.msg = t.dataset.ref + ' recorded as paid ' + how + '. Avante now shows ' + (d.booking.snStatus || d.booking.status) + '.'; return api('find', { q: S.findQ }).then(function (d2) { S.bookings = d2.bookings; S.payMode = d2.payMode; render(); }); }).catch(fail);
     }
     if (a === 'decide') {
       var yes = !!t.dataset.yes, why = '';
-      if (yes) { if (!confirm('Accept ' + t.dataset.ref + '? It becomes Booked on Stock Network and the guest gets the payment details by email.')) return; }
-      else { why = prompt('Decline ' + t.dataset.ref + '? It is cancelled on Stock Network and the guest gets a polite email.\n\nOptional short reason for the guest:', ''); if (why === null) return; }
+      if (yes) { if (!confirm('Accept ' + t.dataset.ref + '? It becomes Booked and the guest gets the payment details by email.')) return; }
+      else { why = prompt('Decline ' + t.dataset.ref + '? It is cancelled and the guest gets a polite email.\n\nOptional short reason for the guest:', ''); if (why === null) return; }
       t.textContent = yes ? 'Accepting…' : 'Declining…';
-      return api('decide', { ref: t.dataset.ref, accept: yes, reason: why }).then(function (d) { S.msg = t.dataset.ref + (yes ? ' accepted: Booked on Stock Network. The guest was emailed the payment details.' : ' declined and cancelled. The guest was emailed.'); return api('find', { q: S.findQ }).then(function (d2) { S.bookings = d2.bookings; S.payMode = d2.payMode; render(); }); }).catch(fail);
+      return api('decide', { ref: t.dataset.ref, accept: yes, reason: why }).then(function (d) { S.msg = t.dataset.ref + (yes ? ' accepted: Booked. The guest was emailed the payment details.' : ' declined and cancelled. The guest was emailed.'); return api('find', { q: S.findQ }).then(function (d2) { S.bookings = d2.bookings; S.payMode = d2.payMode; render(); }); }).catch(fail);
     }
     if (a === 'shift') { var nf = add(S.from, +t.dataset.n); if (nf < today()) nf = today(); return loadAvailability(nf); }
     if (a === 'search') {
@@ -1733,7 +1733,7 @@
       if (!bookBody.guest.cellphone.trim()) { var gc = document.getElementById('pa-gc'); if (gc) { gc.focus(); gc.setAttribute('aria-invalid', 'true'); } return; }
       busy(true); render();
       return api('book', bookBody)
-        .then(function (d) { var b = d.booking; afterChange({ title: 'Booking ' + b.ref + ' created', text: b.items.map(function (i) { return i.unit + ' ' + short(i.start) + ' – ' + short(i.end); }).join(', ') + ' · ' + money(b.total) + '. Status ' + b.status + ' on Stock Network. Your other channels are blocked within 15 minutes.', pay: d.pay && Object.assign({ ref: b.ref }, d.pay) }); })
+        .then(function (d) { var b = d.booking; afterChange({ title: 'Booking ' + b.ref + ' created', text: b.items.map(function (i) { return i.unit + ' ' + short(i.start) + ' – ' + short(i.end); }).join(', ') + ' · ' + money(b.total) + '. Status ' + b.status + ' with Avante. Your other channels are blocked within 15 minutes.', pay: d.pay && Object.assign({ ref: b.ref }, d.pay) }); })
         .catch(function (err) { S.busy = false; S.err = err.message; S.modal = null; render(); });
     }
     if (a === 'openFind') { S.modal = { type: 'find' }; return api('find', { q: S.findQ }).then(function (d) { S.found = d.bookings; render(); }).catch(fail); }
@@ -1745,21 +1745,21 @@
       var editBody = { ref: S.edit.ref, change: { unit: val('pa-eu'), start: val('pa-ei'), end: val('pa-eo') } };
       busy(true); render();
       return api('edit', editBody)
-        .then(function (d) { afterChange(d.booking && d.replaced ? { title: 'Booking ' + d.booking.ref + ' created', text: d.replaced + ' was cancelled on Stock Network and replaced by ' + d.booking.ref + ' · ' + money(d.booking.total) + '. Send the guest the new payment link.', pay: d.pay && Object.assign({ ref: d.booking.ref }, d.pay) } : { title: 'Details updated', text: 'The unit and dates are unchanged, so ' + S.edit.ref + ' stays as it is on Stock Network.' }); })
+        .then(function (d) { afterChange(d.booking && d.replaced ? { title: 'Booking ' + d.booking.ref + ' created', text: d.replaced + ' was cancelled and replaced by ' + d.booking.ref + ' · ' + money(d.booking.total) + '. Send the guest the new payment link.', pay: d.pay && Object.assign({ ref: d.booking.ref }, d.pay) } : { title: 'Details updated', text: 'The unit and dates are unchanged, so ' + S.edit.ref + ' stays as it is.' }); })
         .catch(function (err) { S.busy = false; S.err = err.message; S.modal = null; staleAll(); render(); loadAvailability(S.from); });
     }
     if (a === 'removeUnit') {
       if (!confirm('Cancel ' + t.dataset.u + ' on ' + S.edit.ref + '? The other units stay booked.')) return;
       busy(true); render();
-      return api('cancelUnit', { ref: S.edit.ref, unit: t.dataset.u }).then(function () { afterChange({ title: t.dataset.u + ' removed from ' + S.edit.ref, text: 'Only ' + t.dataset.u + ' was cancelled on Stock Network. The booking keeps its other units and its reference.' }); }).catch(fail);
+      return api('cancelUnit', { ref: S.edit.ref, unit: t.dataset.u }).then(function () { afterChange({ title: t.dataset.u + ' removed from ' + S.edit.ref, text: 'Only ' + t.dataset.u + ' was cancelled. The booking keeps its other units and its reference.' }); }).catch(fail);
     }
     if (a === 'cancelBooking') {
       var locked = S.edit.locked;
-      if (!confirm(locked ? 'Request cancellation of PAID booking ' + S.edit.ref + '?\n\nThe affiliate linked to this property gets a link by email (and WhatsApp if you send it) and must approve with their hub password. Refunds are handled outside the hub.' : 'Cancel ' + S.edit.ref + ' on Stock Network?')) return;
+      if (!confirm(locked ? 'Request cancellation of PAID booking ' + S.edit.ref + '?\n\nThe affiliate linked to this property gets a link by email (and WhatsApp if you send it) and must approve with their hub password. Refunds are handled outside the hub.' : 'Cancel ' + S.edit.ref + '?')) return;
       busy(true); render();
       return api('cancel', { ref: S.edit.ref }).then(function (d) {
-        if (d.needsApproval) { S.busy = false; S.bookings = null; S.modal = { done: { title: 'Approval requested for ' + S.edit.ref, text: 'This booking is paid, so it is NOT cancelled yet. It will be cancelled on Stock Network as soon as the affiliate approves.', approval: d.approval } }; S.edit = null; render(); return; }
-        afterChange({ title: 'Booking ' + S.edit.ref + ' cancelled', text: d.alreadyCancelled ? 'It had already been cancelled in Stock Network.' : 'Cancelled on Stock Network. The nights are open again and your other channels are unblocked within 15 minutes.' });
+        if (d.needsApproval) { S.busy = false; S.bookings = null; S.modal = { done: { title: 'Approval requested for ' + S.edit.ref, text: 'This booking is paid, so it is NOT cancelled yet. It will be cancelled as soon as the affiliate approves.', approval: d.approval } }; S.edit = null; render(); return; }
+        afterChange({ title: 'Booking ' + S.edit.ref + ' cancelled', text: d.alreadyCancelled ? 'It had already been cancelled.' : 'Cancelled. The nights are open again and your other channels are unblocked within 15 minutes.' });
       }).catch(function (err) { S.busy = false; S.err = err.message; S.modal = null; render(); });
     }
     if (a === 'toLinks') { var lk = document.getElementById('pa-chlinks'); if (lk) lk.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
@@ -1978,7 +1978,7 @@
     }
     if (a === 'addEvent') {
       t.textContent = 'Adding…';
-      return api('addChannelEvent', { unit: t.dataset.u, channel: t.dataset.c, uid: t.dataset.uid }).then(function (d) { return api('channelEvents').then(function (r) { S.events = r.events; staleAll(); S.msg = 'Added to Stock Network as ' + d.event.ref + '.'; render(); }); }).catch(fail);
+      return api('addChannelEvent', { unit: t.dataset.u, channel: t.dataset.c, uid: t.dataset.uid }).then(function (d) { return api('channelEvents').then(function (r) { S.events = r.events; staleAll(); S.msg = 'Added to Avante as ' + d.event.ref + '.'; render(); }); }).catch(fail);
     }
   });
 

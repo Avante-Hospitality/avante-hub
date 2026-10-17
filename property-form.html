@@ -313,7 +313,7 @@
         <div><label for="pComplex">Its name</label><input id="pComplex" list="estateList" autocomplete="off" placeholder="Start typing — pick it if it's in the list"><datalist id="estateList"></datalist>
           <div class="hint" id="estateHint">Pick the name from the list when it's there, so every property in the same estate is spelled the same.</div></div>
       </div>
-      <details class="more"><summary>Stock Network location fields</summary>
+      <details class="more"><summary>Avante location fields</summary>
         <div class="row">
           <div><label for="pArea">Area</label><input id="pArea" placeholder="e.g. Cape - Garden Route"></div>
           <div><label for="pDistrict">District</label><input id="pDistrict"></div>
@@ -322,9 +322,9 @@
       </details>
     </div>
     <div class="card">
-      <h2 class="section-heading">Stock Network</h2>
+      <h2 class="section-heading">Avante booking system</h2>
       <div class="row">
-        <div><label for="pSiteNr">StockNetwork Site Nr</label><input id="pSiteNr" placeholder="e.g. 5980"><small class="hint" style="display:block;margin:4px 0 0">Leave blank if the property isn't on Stock Network yet — Avante fills it in.</small></div>
+        <div><label for="pSiteNr">Avante Site Nr</label><input id="pSiteNr" placeholder="e.g. 5980"><small class="hint" style="display:block;margin:4px 0 0">Leave blank if the property isn't on Avante's booking system yet — Avante fills it in.</small></div>
         <div><label for="pSiteId">Site ID (affiliate number) — comes later</label><input id="pSiteId" placeholder="e.g. 6de763dc-ea92-45a9-9842-054a51711071"><small class="hint" style="display:block;margin:4px 0 0" id="siteIdHint">Filled in from the hub link you opened this form with.</small></div>
       </div>
     </div>
@@ -450,8 +450,8 @@
   <!-- ============ STEP 7: CALENDAR & RATES (id 6) ============ -->
   <section class="step" data-step="6" data-title="Calendar &amp; rates">
     <h2 class="step-title">7. Calendar &amp; rates</h2>
-    <div class="card rates-note"><p class="note info" style="margin:0"><b>Nothing to fill in here.</b> Your rates and availability come from your channel manager (for example NightsBridge) through Stock Network, so they stay there. Go on to step 8.</p></div>
-    <p class="step-lede">Tap a first night and a last night, type the <b>rack rate</b> (the public price per night) and minimum stay, and tap <b>Apply rate</b>. Block nights that are already booked. Avante works out the Stock Network rate for you.</p>
+    <div class="card rates-note"><p class="note info" style="margin:0"><b>Nothing to fill in here.</b> Your rates and availability come from your channel manager (for example NightsBridge) through Avante, so they stay there. Go on to step 8.</p></div>
+    <p class="step-lede">Tap a first night and a last night, type the <b>rack rate</b> (the public price per night) and minimum stay, and tap <b>Apply rate</b>. Block nights that are already booked. Avante works out the rest for you.</p>
     <div data-shots="6"></div>
     <div class="card">
       <div class="row">
@@ -464,7 +464,7 @@
       <div class="months" id="months"></div>
       <div class="legend"><span>Rate set</span><span class="u">Open, no rate</span><span class="b">Booked / blocked</span><span class="s">Selected</span><span class="c">= price seen on the other channel</span><span class="p">Past (kept on record)</span></div>
       <h3 class="section-heading" style="margin-top:18px; font-size:15px;">Seasons</h3>
-      <div class="scroll"><table><thead><tr><th>Unit</th><th>From</th><th>To</th><th class="num">Nights</th><th class="num">Min stay</th><th class="num">Rack (R)</th><th class="num">SN rate (R)</th></tr></thead><tbody id="seasonRows"></tbody></table></div>
+      <div class="scroll"><table><thead><tr><th>Unit</th><th>From</th><th>To</th><th class="num">Nights</th><th class="num">Min stay</th><th class="num">Rack (R)</th><th class="num">Avante rate (R)</th></tr></thead><tbody id="seasonRows"></tbody></table></div>
       <div id="seasonNote"></div>
     </div>
   </section>
@@ -495,12 +495,12 @@
       <ul class="checklist" id="checklist"></ul>
     </div>
     <div class="card">
-      <h2 class="section-heading">Stock Network stock file</h2>
-      <p class="hint">What Avante will load into Stock Network, in Stock Network's upload format (one row per season and unit type).</p>
+      <h2 class="section-heading">Avante stock file</h2>
+      <p class="hint">What Avante will load into its booking system, in the upload format (one row per season and unit type).</p>
       <div class="scroll"><table class="sn"><thead id="snHead"></thead><tbody id="snBody"></tbody></table></div>
       <div class="btns"><button type="button" class="btn-secondary btn-sm" id="copySnBtn">Copy rows for Excel</button><span class="hint" id="copySnStatus" style="margin:0"></span></div>
-      <h3 class="section-heading" style="margin-top:16px; font-size:15px;">Download for Stock Network</h3>
-      <p class="hint">The <b>property file</b> has the property, every unit type with how many units and how many it sleeps, and the rates. The <b>rates file</b> is the calendar in Stock Network's stock upload format. They can be downloaded once the <b>StockNetwork Site Nr</b> (step 3) has been allocated. The Site ID isn't needed for them.</p>
+      <h3 class="section-heading" style="margin-top:16px; font-size:15px;">Download for Avante</h3>
+      <p class="hint">The <b>property file</b> has the property, every unit type with how many units and how many it sleeps, and the rates. The <b>rates file</b> is the calendar in Avante's stock upload format. They can be downloaded once the <b>Avante Site Nr</b> (step 3) has been allocated. The Site ID isn't needed for them.</p>
       <div class="btns"><button type="button" class="btn-navy btn-sm" data-dl="property">Property file (.xlsx)</button><button type="button" class="btn-secondary btn-sm" data-dl="stockx">Rates file (.xlsx)</button><button type="button" class="btn-secondary btn-sm" data-dl="stockc">Rates file (.csv)</button><span class="hint" id="dlStatus" style="margin:0"></span></div>
     </div>
     <div class="card" id="editSaveCard" style="display:none">
@@ -659,7 +659,7 @@
 
   // ---------- Site ID (= affiliate number) ----------
   if(AFF){ $('pSiteId').value = AFF; $('pSiteId').readOnly = true; }
-  else { $('siteIdHint').textContent = 'Leave empty for a new property. Stock Network gives the Site ID only after the Site Nr is allocated; Avante adds it when the property goes live on the hub.'; }
+  else { $('siteIdHint').textContent = 'Leave empty for a new property. Avante gives the Site ID only after the Site Nr is allocated; Avante adds it when the property goes live on the hub.'; }
 
   // ---------- Amenities ----------
   var AMENITY_DATA = {
@@ -1281,7 +1281,7 @@
   var BLOCKED = {};   // 'YYYY-MM-DD' -> true (booked on another channel / blocked)
   var selA = null, selB = null, lastRack = '', lastMin = 2;
   var MONTHS_SHOWN = 6, monthOffset = 0, MIN_OFFSET = -12, MAX_OFFSET = 24 - MONTHS_SHOWN; // 12 months back (record) to 24 months ahead
-  $('commNote').innerHTML = '<b>Rack rate in, Stock Network rate out.</b> Avante\'s commission is ' + COMMISSION + '% plus VAT on it (' + COMM_TOTAL + '% in total), so the SN rate is the rack rate less ' + COMM_TOTAL + '%, rounded to the rand.';
+  $('commNote').innerHTML = '<b>Rack rate in, Avante rate out.</b> Avante\'s commission is ' + COMMISSION + '% plus VAT on it (' + COMM_TOTAL + '% in total), so the Avante rate is the rack rate less ' + COMM_TOTAL + '%, rounded to the rand.';
   function calUnit(){ return $('calUnit').value; }
   function eachDay(a, b, fn){ var d = new Date(a + 'T00:00:00'), e = new Date(b + 'T00:00:00'); while(d <= e){ fn(isoLocal(d)); d.setDate(d.getDate() + 1); } }
   function selRange(){ if(!selA || !selB) return null; var a = selA < selB ? selA : selB, b = selA < selB ? selB : selA, n = 0; eachDay(a, b, function(){ n++; }); return [a, b, n]; }
@@ -1298,7 +1298,7 @@
       ? '<span><b>' + fmtL(sel[0]) + ' – ' + fmtL(sel[1]) + '</b> · ' + sel[2] + ' night' + (sel[2] === 1 ? '' : 's') + '</span>' +
         '<label>Rack rate (R) <input id="selRack" type="number" inputmode="numeric" value="' + esc(lastRack) + '"></label>' +
         '<label>Min stay <input id="selMin" type="number" inputmode="numeric" style="width:70px" value="' + esc(lastMin) + '"></label>' +
-        '<span id="selNet" style="font-weight:700;color:var(--indigo)">' + (lastRack ? 'SN rate R' + netRate(+lastRack).toLocaleString('en-ZA') : '') + '</span>' +
+        '<span id="selNet" style="font-weight:700;color:var(--indigo)">' + (lastRack ? 'Avante rate R' + netRate(+lastRack).toLocaleString('en-ZA') : '') + '</span>' +
         '<span class="btns" style="margin:0"><button type="button" class="btn-navy btn-sm" data-cal="apply">Apply rate</button>' +
         (chIn ? '<button type="button" class="btn-orange btn-sm" data-cal="usech">Use ' + esc(channel || 'channel') + ' price (' + chIn + ' nights)</button>' : '') +
         '<button type="button" class="btn-secondary btn-sm" data-cal="clear">Clear rate</button><button type="button" class="btn-secondary btn-sm" data-cal="block">Block</button><button type="button" class="btn-secondary btn-sm" data-cal="open">Open</button><button type="button" class="btn-secondary btn-sm" data-cal="cancel">Cancel</button></span>'
@@ -1331,7 +1331,7 @@
     renderCalendar();
   });
   $('selBar').addEventListener('input', function(e){
-    if(e.target.id === 'selRack'){ lastRack = e.target.value; $('selNet').textContent = +lastRack ? 'SN rate R' + netRate(+lastRack).toLocaleString('en-ZA') : ''; }
+    if(e.target.id === 'selRack'){ lastRack = e.target.value; $('selNet').textContent = +lastRack ? 'Avante rate R' + netRate(+lastRack).toLocaleString('en-ZA') : ''; }
     if(e.target.id === 'selMin') lastMin = e.target.value;
   });
   $('selBar').addEventListener('click', function(e){
@@ -1439,7 +1439,7 @@
       [amenCount > 0, 'Amenities ticked (' + amenCount + ')', 5],
       [RATES_FROM_CHANNEL || s.length > 0, RATES_FROM_CHANNEL ? 'Rates come from your channel manager' : 'Rates set on the calendar (' + s.length + ' season' + (s.length === 1 ? '' : 's') + ')', 6],
       [uploadedImages.length > 0, 'Photos (' + uploadedImages.length + ')', 7],
-      [EXISTING_ON_SN || (anyDoc('id-document') && anyDoc('proof-of-ownership') && anyDoc('proof-of-residence')), EXISTING_ON_SN ? 'Documents (done when you joined Stock Network)' : 'ID, proof of ownership and proof of residence', 7],
+      [EXISTING_ON_SN || (anyDoc('id-document') && anyDoc('proof-of-ownership') && anyDoc('proof-of-residence')), EXISTING_ON_SN ? 'Documents (done when you joined Avante)' : 'ID, proof of ownership and proof of residence', 7],
       [!isAff || anyDoc('mandate'), 'Signed mandate (affiliates only)', 7],
       [!!$('depositText').value.trim(), 'Cancellation policy', 8]
     ];
