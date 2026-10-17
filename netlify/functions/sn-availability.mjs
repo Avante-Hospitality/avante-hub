@@ -88,6 +88,42 @@ async function probe(id, checkIn, checkOut, lat, lng) {
   return out;
 }
 
+// Field check (Jean, 2026-10-17): what Stock Network's other read calls send
+// back for one property, as a list of field paths with a short sample each —
+// version 2 search (which can filter on amenities, activities, experiences),
+// the paged search, and resort info by area. Read-only, no values longer than
+// 80 characters, no login details.
+function fieldMap(v, path, out) {
+  if (Object.keys(out).length >= 400) return out;
+  if (Array.isArray(v)) { out[path + "[]"] = "(" + v.length + " items)"; v.slice(0, 2).forEach((x) => fieldMap(x, path + "[]", out)); return out; }
+  if (v && typeof v === "object") { for (const [k, x] of Object.entries(v)) fieldMap(x, path ? path + "." + k : k, out); return out; }
+  if (!(path in out)) out[path] = String(v).slice(0, 80);
+  return out;
+}
+async function snCall(path, body) {
+  const t = await token();
+  const r = await fetch(BASE + path.replace("{site}", encodeURIComponent(t.siteId)), {
+    method: body ? "POST" : "GET", headers: { authorization: "Bearer " + t.accessToken, "content-type": "application/json", accept: "application/json" },
+    body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(25000) });
+  const text = await r.text();
+  let d = null; try { d = JSON.parse(text); } catch (e) {}
+  return { http: r.status, fields: d ? fieldMap(d, "", {}) : { text: text.slice(0, 300) } };
+}
+async function fieldCheck(id, area, checkIn, checkOut) {
+  const body = { checkInDate: checkIn, checkOutDate: checkOut, resortID: id,
+    geocoordinates: { latitude: 0, longitude: 0, withInKmRadius: 0 }, pricing: { minPrice: 0, maxPrice: 100000000 },
+    region: { name: "" }, ignoreLocationData: true, groupStockToMatchDates: false, extendDatesIfNoMatchFound: false,
+    amenities: [], activities: [], experiences: [] };
+  const q = "?Offset=1&Limit=5&Date_From=" + checkIn + "&Date_To=" + checkOut + "&CallerDetails.SiteID={site}";
+  const out = {};
+  for (const [name, path, b] of [["v2search", "/api/2/search" + q, body], ["v1paged", "/api/1/search/paged" + q, body],
+    ["resortinfo", "/api/1/search/resortinfo/" + encodeURIComponent(area || ""), null]]) {
+    if (name === "resortinfo" && !area) continue;
+    try { out[name] = await snCall(path, b); } catch (e) { out[name] = { error: String(e.message || e) }; }
+  }
+  return out;
+}
+
 export default async (req) => {
   if (req.method !== "POST") return json({ ok: false, error: "Use POST." }, 405);
   const configured = !!(process.env.STOCKNETWORK_USERNAME && process.env.STOCKNETWORK_CLIENT_ID && process.env.STOCKNETWORK_CLIENT_SECRET);
@@ -96,6 +132,7 @@ export default async (req) => {
   if (!configured) return json({ ok: true, configured: false, results: {} });
   const ids = [...new Set((Array.isArray(b.ids) ? b.ids : []).map((x) => String(x).toLowerCase()).filter((x) => GUID.test(x)))].slice(0, 60);
   if (!ISO.test(b.checkIn || "") || !ISO.test(b.checkOut || "") || b.checkOut <= b.checkIn) return json({ ok: false, error: "Pick a check-in and check-out date." }, 400);
+  if (b.op === "fields" && ids.length === 1) return json({ ok: true, fields: await fieldCheck(ids[0], String(b.area || "").slice(0, 80), b.checkIn, b.checkOut) });
   if (b.probe === true && ids.length === 1) return json({ ok: true, probe: await probe(ids[0], b.checkIn, b.checkOut, Number(b.lat), Number(b.lng)) });
   const results = {}; let i = 0;
   const worker = async () => { while (i < ids.length) { const id = ids[i++];
