@@ -370,10 +370,10 @@ export default async (request, context) => {
   // a manually-uploaded one does, since toActivityPin() reads both kinds
   // of photoKeys identically via /api/property-file?key=...
   const activityPhotoFilesStore = getStore({ name: "property-listing-files", consistency: "strong" });
-  // StockNetwork resort rows the nightly sync couldn't match to an existing
-  // hub property — written by resorts-api.js's handleApiSync, read by
+  // Properties the nightly sync added from Stock Network, and the ResortIDs
+  // admin removed — written by resorts-api.js's handleApiSync, read by
   // listPendingNewStockNetworkProperties/dismissPendingNewStockNetworkProperty
-  // below (new-properties-flagging, 2026-10-03).
+  // below (Jean, 2026-10-17: the sync adds new properties itself).
   const pendingNewStore = getStore({ name: "resort-pending-new", consistency: "strong" });
 
   try {
@@ -774,34 +774,31 @@ export default async (request, context) => {
     }
 
     if (action === "listPendingNewStockNetworkProperties") {
-      // Backs the "New StockNetwork properties" card (new-properties-
-      // flagging, 2026-10-03, Jean's request) — the list resorts-api.js's
-      // handleApiSync saves of StockNetwork resort rows the nightly sync
-      // couldn't match to anything already in the hub. Purely informational:
-      // nothing here is in the hub's own resort list or on the map until
-      // Jean reviews it and re-uploads via the existing "StockNetwork resort
-      // list (upload CSV)" flow above — per hub-is-master-for-location, a
-      // property is never auto-added.
+      // Admin's "Added from Stock Network" card: what the nightly sync added, newest first.
       const pending = (await pendingNewStore.get("current", { type: "json" })) || {};
-      const items = Array.isArray(pending.items) ? pending.items : [];
-      return json({ ok: true, items, totalUnmatched: pending.totalUnmatched || 0, truncated: !!pending.truncated, updatedAt: pending.updatedAt || null });
+      const items = (Array.isArray(pending.items) ? pending.items : []).filter((it) => it && it.addedAt);
+      return json({ ok: true, items, lastRun: pending.lastRun || null, updatedAt: pending.updatedAt || null });
     }
 
     if (action === "dismissPendingNewStockNetworkProperty") {
-      // Drops one StockNetwork resortId out of the "New StockNetwork
-      // properties" list for good (e.g. a property Avante doesn't carry) —
-      // without this, since the list is a full replace every sync, an
-      // unmatched row Jean never imports would otherwise resurface every
-      // single day forever. Does not touch anything in the hub itself.
+      // "Remove from hub": takes a property the sync added out of the resort
+      // list (e.g. one Avante doesn't carry) and stops the sync adding it again.
       const resortId = String(body.resortId || "").trim();
       if (!resortId) return json({ error: "Missing resortId." }, 400);
+      const k = resortId.toLowerCase();
       const pending = (await pendingNewStore.get("current", { type: "json" })) || {};
-      const items = Array.isArray(pending.items) ? pending.items : [];
+      const items = (Array.isArray(pending.items) ? pending.items : []).filter((it) => String(it.resortId || "").toLowerCase() !== k);
       const dismissedIds = Array.isArray(pending.dismissedIds) ? pending.dismissedIds : [];
-      if (!dismissedIds.includes(resortId)) dismissedIds.push(resortId);
-      const keptItems = items.filter((it) => it.resortId !== resortId);
-      await pendingNewStore.setJSON("current", Object.assign({}, pending, { items: keptItems, dismissedIds }));
-      return json({ ok: true, remaining: keptItems.length });
+      if (!dismissedIds.some((x) => String(x).toLowerCase() === k)) dismissedIds.push(resortId);
+      await pendingNewStore.setJSON("current", Object.assign({}, pending, { items, dismissedIds }));
+      const rec = await resortListStore.get("current", { type: "json" });
+      let removed = 0;
+      if (rec && Array.isArray(rec.resorts)) {
+        const kept = rec.resorts.filter((r) => String((r && r.resortId) || "").toLowerCase() !== k);
+        removed = rec.resorts.length - kept.length;
+        if (removed) await resortListStore.setJSON("current", Object.assign({}, rec, { resorts: kept, updatedAt: new Date().toISOString() }));
+      }
+      return json({ ok: true, removed, remaining: items.length });
     }
 
     if (action === "flagStockNetworkFieldFix") {

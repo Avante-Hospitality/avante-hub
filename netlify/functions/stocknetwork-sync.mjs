@@ -9,30 +9,12 @@
 // (see reviewapp/render.yaml) so reviewapp always pulls a same-day-fresh
 // property list.
 //
-// 2026-09-29 rewrite: previously this converted the API's rows into the same
-// 8-column CSV shape the manual upload produces, then POSTed that as CSV
-// text to /api/resorts -- lossy, since the API actually returns a much
-// richer field set (Country, Area, District, Suburb, City, City2, State,
-// ratings, resort code) than that 8-column shape kept. Per Jean's explicit
-// instruction (2026-09-29): the API's fields should land in the hub as their
-// own new raw fields, without ever touching the hub's own Zone/Town/Suburb
-// tree (the hub is the master there -- driven purely by coordinate
-// geocoding). Now posts the RAW API rows as JSON to the same /api/resorts
-// endpoint, which resorts-api.js's new handleApiSync() routes to distinctly
-// from a CSV upload (by Content-Type) -- it only UPDATES informational
-// fields on properties that already exist in the hub (matched by
-// StockNetwork's own ResortID), never creates a new resort-list row. A
-// brand-new StockNetwork property only appears in the hub once a manual CSV
-// upload (admin.html's existing "Choose file" flow) creates the row -- this
-// nightly sync then keeps its informational fields current from there on.
-//
-// You can still use the manual CSV upload in admin.html any time -- this
-// doesn't replace it. A CSV upload is still the only way to bring in
-// brand-new properties, SiteID, and the amenity/policy columns the API
-// doesn't return at all (WiFi, Parking, Pet Allowance, Allow Same Day
-// Booking, Smoking Allowed, Checkin/Checkout Time, and the human-readable
-// Property Type text) -- see resorts-api.js's parseResortsFromCsv for the
-// full list.
+// Posts the RAW API rows as JSON to /api/resorts (resorts-api.js
+// handleApiSync). Stock Network's own fields are refreshed on properties the
+// hub has (matched by ResortID); properties the hub doesn't have yet are added
+// (Jean, 2026-10-17, which replaced the old CSV upload). The hub's location
+// tree stays the master for where a property is (Jean, 2026-09-29): Stock
+// Network's coordinate is only taken for a property's first pin.
 //
 // Manual test: hit this function's own URL with
 // ?secret=<STOCKNETWORK_DIAG_SECRET> to run it on demand instead of
@@ -123,12 +105,11 @@ export default async (request) => {
     matchedProperties: importResult.matchedProperties,
     matchedRows: importResult.matchedRows,
     unmatchedApiRows: importResult.unmatchedApiRows,
-    // new-properties-flagging (2026-10-03): of the unmatched rows above, how
-    // many are now saved for admin.html's "New StockNetwork properties" card
-    // to show — see resorts-api.js's handleApiSync for where this list is
-    // built and dismissPendingNewStockNetworkProperty for how one drops out
-    // of it for good without ever being imported.
-    newPropertiesPending: importResult.newPropertiesPending,
+    // Jean (2026-10-17): unmatched rows are now added to the hub (admin's
+    // "Added from Stock Network"), except ones with no name or ones admin removed.
+    addedProperties: importResult.addedProperties,
+    skippedNoName: importResult.skippedNoName,
+    skippedRemoved: importResult.skippedRemoved,
     coordinatesChanged: importResult.coordinatesChanged,
     // Name check of just-changed coordinates (resorts-api.js), and the
     // properties placed in the location tree this run.

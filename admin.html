@@ -1393,8 +1393,8 @@
             <option value="map-jump-find-fix-coords">Find &amp; fix missing coordinates</option>
           </optgroup>
           <optgroup label="StockNetwork sync">
-            <option value="map-jump-sn-resort-list">StockNetwork resort list (upload CSV)</option>
-            <option value="map-jump-new-sn-properties">New StockNetwork properties</option>
+            <option value="map-jump-sn-resort-list">StockNetwork resort list</option>
+            <option value="map-jump-new-sn-properties">Added from Stock Network</option>
             <option value="map-jump-sn-review">StockNetwork location review</option>
             <option value="map-jump-corrected-file">Corrected StockNetwork file</option>
             <option value="map-jump-bulk-fill-csv">Bulk-fill property coordinates from CSV</option>
@@ -1499,10 +1499,6 @@
         <p style="margin-top:0;">A holistic view of what still needs attention across Map &amp; Activities — every number below is live. Click a tile to jump straight to it.</p>
         <div class="status" id="mapOverviewStatus"></div>
         <div class="stat-grid" id="mapOverviewGrid" style="display:none;">
-          <button type="button" class="stat-card" id="mapOverviewNewSn" style="cursor:pointer; text-align:left; font:inherit; width:100%; margin:0; border-width:1.5px; border-style:solid;">
-            <div class="num">0</div>
-            <div class="lbl">New StockNetwork properties</div>
-          </button>
           <button type="button" class="stat-card" id="mapOverviewMissingCoords" style="cursor:pointer; text-align:left; font:inherit; width:100%; margin:0; border-width:1.5px; border-style:solid;">
             <div class="num">0</div>
             <div class="lbl">Missing coordinates</div>
@@ -1886,26 +1882,20 @@
 
       <div class="card map-jump-target" id="map-jump-sn-resort-list" style="margin-top:20px;">
         <h3 style="margin-top:0;">StockNetwork resort list</h3>
-        <p style="margin-top:0;">The full StockNetwork inventory (used by the Accommodation Link Builder in the Hub too). The town/city column can be named <code>District</code>, <code>Town</code>, or <code>City</code> — any of those is picked up automatically. Also optional, if your export has them: <code>Suburb</code> (or <code>Area</code>) for suburb-level detail, <code>Zone</code>/<code>Province</code>/<code>State</code> for a more exact area than we can guess from the town name alone, and <code>Latitude</code>/<code>Longitude</code> to get resorts pinned on the map. Re-upload any time your export changes — everything else about how this list is used stays the same.</p>
-        <div class="btn-row" style="margin-top:0;">
-          <button class="btn-outline" id="resortListUploadBtn">Upload resort list CSV</button>
-          <input type="file" id="resortListFileInput" accept=".csv" style="display:none;">
-        </div>
-        <div class="status" id="resortListUploadStatus"></div>
+        <p style="margin-top:0;">The full StockNetwork inventory (used by the Accommodation Link Builder in the Hub too). It is updated every night from Stock Network: new properties are added (see <b>Added from Stock Network</b> below) and Stock Network's own fields are refreshed. Where a property sits (country, province, region, town, suburb) always comes from its pin and the hub location tree, never from Stock Network. There is no file to upload any more.</p>
         <p id="resortListStatusText" style="margin:10px 0 0; font-size:13px; color:var(--muted);"></p>
       </div>
 
       <div class="card map-jump-target" id="map-jump-new-sn-properties" style="margin-top:20px;">
-        <h3 style="margin-top:0;">New StockNetwork properties</h3>
-        <p style="margin-top:0;">The nightly StockNetwork sync only updates properties already in your hub — it can never add one on its own. Anything StockNetwork has that your hub doesn't shows up here instead, so nothing new is ever added without you reviewing it first. Download the CSV below (pre-filled with what StockNetwork sent) and upload it through "StockNetwork resort list" above whenever you're ready to bring one in — it'll then get coordinates checked and placed in the location tree the same way as everything else. "Dismiss" removes one from this list for good if it's not one you carry, without importing it.</p>
+        <h3 style="margin-top:0;">Added from Stock Network</h3>
+        <p style="margin-top:0;">Every night the hub adds the Stock Network properties it doesn't have yet. They get their coordinates checked and are placed in the location tree like every other property. Newest first. <b>Remove from hub</b> takes one out (for example a property Avante doesn't carry) and the nightly sync won't add it again.</p>
         <div class="btn-row" style="margin-top:0;">
           <button class="btn-outline" id="newSnPropsLoadBtn">Refresh list</button>
-          <button class="btn-outline" id="newSnPropsDownloadBtn" style="display:none;">Download CSV (ready to re-upload)</button>
         </div>
         <div class="status" id="newSnPropsStatus"></div>
         <div class="table-wrap" id="newSnPropsTableWrap" style="display:none; margin-top:12px;">
           <table class="data-table">
-            <thead><tr><th>Property</th><th>ResortID</th><th>SiteID</th><th>Country / Area / City</th><th>Coordinates</th><th></th></tr></thead>
+            <thead><tr><th>Property</th><th>ResortID</th><th>SiteID</th><th>Country / Area / City</th><th>Coordinates</th><th>Added</th><th></th></tr></thead>
             <tbody id="newSnPropsTableBody"></tbody>
           </table>
         </div>
@@ -8627,103 +8617,60 @@
         window.refreshSnFieldFixList = load;
       })();
 
-      // ---- New StockNetwork properties ----
-      // Lists StockNetwork resort rows the nightly sync couldn't match to
-      // anything already in the hub (new-properties-flagging, 2026-10-03,
-      // Jean's request) — see listPendingNewStockNetworkProperties in
-      // map-api.js for how this list is built and why. The CSV this
-      // downloads is pre-filled in the exact column shape "StockNetwork
-      // resort list (upload CSV)" above already reads. Its place in the
-      // location tree comes from its pin once it is in the hub. Nothing here
-      // is on the map or in the hub until that CSV is uploaded.
+      // ---- Added from Stock Network ----
+      // What the nightly sync added (resorts-api.js handleApiSync, Jean
+      // 2026-10-17), newest first; "Remove from hub" takes one out for good
+      // (dismissPendingNewStockNetworkProperty in map-api.js).
       (function(){
         var loadBtn = document.getElementById('newSnPropsLoadBtn');
-        var downloadBtn = document.getElementById('newSnPropsDownloadBtn');
         var statusEl = document.getElementById('newSnPropsStatus');
         var tableWrap = document.getElementById('newSnPropsTableWrap');
         var tbody = document.getElementById('newSnPropsTableBody');
         if(!loadBtn || !tbody) return;
 
-        var currentItems = [];
-
         function setStatus(t, isError){ statusEl.textContent = t; statusEl.className = 'status show' + (isError ? '' : ' ok'); }
+        function day(iso){ try { return new Date(iso).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }); } catch(e){ return ''; } }
 
-        function csvCell(v){
-          v = (v === null || v === undefined) ? '' : String(v);
-          return /[",\r\n]|^\s|\s$/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
-        }
-
-        function downloadNewSnPropsCsv(){
-          if(!currentItems.length) return;
-          var rows = [['Resort','District','Suburb','Country','Area','City','City2','State','SiteID','ResortID','Latitude','Longitude']];
-          currentItems.forEach(function(it){
-            rows.push([it.name, it.district, it.suburb, it.snCountry, it.area, it.city, it.city2, it.state, it.siteId, it.resortId, it.latitude != null ? it.latitude : '', it.longitude != null ? it.longitude : '']);
-          });
-          var text = '﻿' + rows.map(function(r){ return r.map(csvCell).join(','); }).join('\r\n') + '\r\n';
-          var blob = new Blob([text], { type: 'text/csv;charset=utf-8' });
-          var a = document.createElement('a');
-          a.href = URL.createObjectURL(blob);
-          a.download = 'new-stocknetwork-properties-' + new Date().toISOString().slice(0, 10) + '.csv';
-          document.body.appendChild(a); a.click();
-          setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 1000);
-          if (typeof showStepResultModal === 'function') {
-            showStepResultModal({
-              title: 'New StockNetwork properties — downloaded',
-              message: 'Have a look through this CSV, then upload it via “StockNetwork resort list” above whenever you’re ready to bring any of these ' + currentItems.length + ' propert' + (currentItems.length === 1 ? 'y' : 'ies') + ' in. Nothing changes in the hub until you do — and once in, it’ll need coordinates checked and placing in the location tree like any other property.',
-              nextId: 'map-jump-sn-resort-list',
-              nextLabel: 'StockNetwork resort list (upload CSV)'
-            });
-          }
-        }
-
-        function renderNewSnPropRow(item){
+        function renderRow(item){
           var tr = document.createElement('tr');
-          var hint = [item.snCountry, item.area, item.city].filter(function(x){ return x; }).join(' / ') || '—';
-          var coords = (item.latitude != null && item.longitude != null) ? (item.latitude.toFixed(5) + ', ' + item.longitude.toFixed(5)) : '—';
+          var hint = [item.snCountry, item.area, item.city].filter(function(x){ return x; }).join(' / ') || '\u2014';
+          var coords = (item.latitude != null && item.longitude != null) ? (item.latitude.toFixed(5) + ', ' + item.longitude.toFixed(5)) : '\u2014';
           tr.innerHTML =
-            '<td>' + escapeHtml(item.name || '(name unavailable — see ResortID)') + '</td>' +
-            '<td>' + escapeHtml(item.resortId || '—') + '</td>' +
-            '<td>' + escapeHtml(item.siteId || '—') + '</td>' +
+            '<td>' + escapeHtml(item.name || '') + '</td>' +
+            '<td>' + escapeHtml(item.resortId || '\u2014') + '</td>' +
+            '<td>' + escapeHtml(item.siteId || '\u2014') + '</td>' +
             '<td>' + escapeHtml(hint) + '</td>' +
             '<td style="font-size:11px; color:var(--muted);">' + escapeHtml(coords) + '</td>' +
-            '<td><button type="button" class="btn-outline btn-small" data-act="dismiss">Dismiss</button></td>';
+            '<td>' + escapeHtml(day(item.addedAt)) + '</td>' +
+            '<td><button type="button" class="btn-outline btn-small" data-act="remove">Remove from hub</button></td>';
           tbody.appendChild(tr);
-          tr.querySelector('[data-act="dismiss"]').addEventListener('click', function(){
-            if(!confirm('Dismiss "' + (item.name || item.resortId) + '"? It won’t be suggested again unless StockNetwork sends it with a different ResortID.')) return;
-            var btn = tr.querySelector('[data-act="dismiss"]');
+          tr.querySelector('[data-act="remove"]').addEventListener('click', function(){
+            if(!confirm('Remove "' + (item.name || item.resortId) + '" from the hub? The nightly sync won\u2019t add it again.')) return;
+            var btn = this;
             btn.disabled = true;
             mapAdminPost('dismissPendingNewStockNetworkProperty', { resortId: item.resortId }).then(function(res){
               if(res.data && res.data.ok){ tr.remove(); if(typeof window.refreshMapOverview === 'function') window.refreshMapOverview(); }
-              else { btn.disabled = false; alert((res.data && res.data.error) || 'Could not dismiss.'); }
+              else { btn.disabled = false; alert((res.data && res.data.error) || 'Could not remove it.'); }
             }).catch(function(){ btn.disabled = false; alert('Request failed.'); });
           });
         }
 
         function load(){
           loadBtn.disabled = true;
-          setStatus('Checking for new StockNetwork properties…');
+          setStatus('Loading\u2026');
           mapAdminPost('listPendingNewStockNetworkProperties', {}).then(function(res){
             loadBtn.disabled = false;
             if(!(res.data && res.data.ok)){ setStatus((res.data && res.data.error) || 'Could not load the list.', true); return; }
-            currentItems = res.data.items || [];
+            var items = res.data.items || [], last = res.data.lastRun;
             tbody.innerHTML = '';
-            if(!currentItems.length){
-              setStatus(res.data.updatedAt ? 'Nothing new — every StockNetwork property matches one already in your hub.' : 'No sync has run yet, or nothing to show.');
-              tableWrap.style.display = 'none';
-              downloadBtn.style.display = 'none';
-              return;
-            }
-            currentItems.forEach(renderNewSnPropRow);
-            tableWrap.style.display = 'block';
-            downloadBtn.style.display = '';
-            var msg = currentItems.length + ' propert' + (currentItems.length === 1 ? 'y' : 'ies') + ' from StockNetwork ' + (currentItems.length === 1 ? 'isn’t' : 'aren’t') + ' in your hub yet.';
-            if(res.data.truncated) msg += ' Showing the first ' + currentItems.length + ' of ' + res.data.totalUnmatched + ' — import some of these and refresh to see more.';
-            setStatus(msg);
+            items.forEach(renderRow);
+            tableWrap.style.display = items.length ? 'block' : 'none';
+            setStatus(last ? 'Last night\u2019s sync (' + day(last.at) + ') added ' + last.added + ' propert' + (last.added === 1 ? 'y' : 'ies') + '.' +
+              (last.skippedNoName ? ' ' + last.skippedNoName + ' had no name from Stock Network, so weren\u2019t added.' : '') : 'The nightly sync hasn\u2019t added anything yet.');
           }).catch(function(){ loadBtn.disabled = false; setStatus('Request failed.', true); });
         }
 
         loadBtn.addEventListener('click', load);
-        downloadBtn.addEventListener('click', downloadNewSnPropsCsv);
       })();
 
       // ---- Corrected StockNetwork file (location columns from the location tree) ----
@@ -9345,17 +9292,14 @@
         var noZoneTotal = window.__adminTreeWaiting || 0;
 
         Promise.all([
-          mapAdminPost('listPendingNewStockNetworkProperties', {}).catch(function(){ return null; }),
           mapAdminPost('stocknetworkReview', { offset: 0, limit: 1 }).catch(function(){ return null; }),
           mapAdminPost('listFlaggedInactiveProperties', {}).catch(function(){ return null; }),
           mapAdminPost('listStockNetworkFieldFixes', {}).catch(function(){ return null; })
         ]).then(function(results){
-          var newSn = results[0] && results[0].data && results[0].data.ok ? results[0].data.items.length : 0;
-          var snReview = results[1] && results[1].data && results[1].data.ok ? (results[1].data.totalFlagged || 0) : 0;
-          var inactive = results[2] && results[2].data && results[2].data.ok ? results[2].data.items.length : 0;
-          var fieldFix = results[3] && results[3].data && results[3].data.ok ? results[3].data.items.length : 0;
+          var snReview = results[0] && results[0].data && results[0].data.ok ? (results[0].data.totalFlagged || 0) : 0;
+          var inactive = results[1] && results[1].data && results[1].data.ok ? results[1].data.items.length : 0;
+          var fieldFix = results[2] && results[2].data && results[2].data.ok ? results[2].data.items.length : 0;
 
-          setOverviewTile('mapOverviewNewSn', newSn);
           setOverviewTile('mapOverviewMissingCoords', missingCoordsTotal);
           noZoneTotal = window.__adminTreeWaiting || 0; // the tree count may have arrived meanwhile
           setOverviewTile('mapOverviewNoZone', noZoneTotal);
@@ -9365,7 +9309,7 @@
 
           statusEl.textContent = '';
           statusEl.className = 'status';
-          var total = newSn + missingCoordsTotal + noZoneTotal + snReview + inactive + fieldFix;
+          var total = missingCoordsTotal + noZoneTotal + snReview + inactive + fieldFix;
           gridEl.style.display = total === 0 ? 'none' : '';
           allClearEl.style.display = total === 0 ? 'block' : 'none';
         }).catch(function(){
@@ -9383,7 +9327,6 @@
 
       (function(){
         var tileTargets = {
-          mapOverviewNewSn: 'map-jump-new-sn-properties',
           mapOverviewMissingCoords: 'map-jump-master',
           mapOverviewNoZone: 'map-jump-tree',
           mapOverviewSnReview: 'map-jump-sn-review',
@@ -9466,52 +9409,13 @@
         var el = document.getElementById('resortListStatusText');
         if(!stats){ el.textContent = ''; return; }
         if(!stats.total){
-          el.textContent = 'No resort list uploaded yet.';
+          el.textContent = 'The resort list is empty: the nightly sync fills it.';
           return;
         }
         var updated = stats.updatedAt ? new Date(stats.updatedAt).toLocaleDateString() : '';
         el.textContent = stats.withCoordinates + ' of ' + stats.total + ' resorts have coordinates and are pinned on the map' +
           (updated ? ' \u2014 list last updated ' + updated + '.' : '.');
       }
-
-      var resortUploadBtn = document.getElementById('resortListUploadBtn');
-      var resortFileInput = document.getElementById('resortListFileInput');
-      var resortUploadStatusEl = document.getElementById('resortListUploadStatus');
-      resortUploadBtn.addEventListener('click', function(){ resortFileInput.click(); });
-      resortFileInput.addEventListener('change', function(){
-        var file = resortFileInput.files && resortFileInput.files[0];
-        resortFileInput.value = '';
-        if(!file) return;
-        resortUploadBtn.disabled = true;
-        resortUploadBtn.textContent = 'Uploading\u2026';
-        resortUploadStatusEl.textContent = '';
-        resortUploadStatusEl.className = 'status';
-        file.text().then(function(csvText){
-          var adminTok = ''; try{ adminTok = sessionStorage.getItem('avante-admin-token') || ''; }catch(e){}
-          return fetch('/api/resorts', {
-            method: 'POST',
-            headers: { 'content-type': 'text/csv', 'x-admin-token': adminTok },
-            body: csvText
-          });
-        }).then(function(r){ return r.json().then(function(data){ return { status: r.status, data: data }; }); })
-          .then(function(res){
-            resortUploadBtn.disabled = false;
-            resortUploadBtn.textContent = 'Upload resort list CSV';
-            if(res.data && res.data.ok){
-              resortUploadStatusEl.textContent = 'Resort list updated (' + res.data.count + ' resorts). New and moved properties are placed in the location tree; press Re-run lookup under Location tree to place any that are left.';
-              resortUploadStatusEl.className = 'status show';
-              loadActivities();
-            } else {
-              resortUploadStatusEl.textContent = (res.data && res.data.error) || 'Could not update the resort list.';
-              resortUploadStatusEl.className = 'status show';
-            }
-          }).catch(function(){
-            resortUploadBtn.disabled = false;
-            resortUploadBtn.textContent = 'Upload resort list CSV';
-            resortUploadStatusEl.textContent = 'Could not update the resort list.';
-            resortUploadStatusEl.className = 'status show';
-          });
-      });
 
       function downloadCsv(filename, cols, exampleRow){
         var lines = [cols.join(',')];

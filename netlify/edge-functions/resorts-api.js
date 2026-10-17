@@ -1,5 +1,4 @@
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
-import { mergeResorts } from "./lib/resort-key.js";
 import { placeResortBacklog, PLACES_STORE } from "./lib/tree.js";
 // When StockNetwork sends a new coordinate, the property's own NAME is
 // checked against the new pin (checkNameAgainstCoordinate), so a plainly
@@ -7,191 +6,18 @@ import { placeResortBacklog, PLACES_STORE } from "./lib/tree.js";
 // in the location tree is set by placeTreeBacklog (lib/tree.js).
 import { checkNameAgainstCoordinate } from "./lib/name-check.js";
 import { estatesMap, estateNames, ESTATE_TYPES } from "./lib/estates.js";
+import { pickSite, siteFieldsOf } from "./lib/sn-feed.js";
 
-// Minimal CSV field-splitter (handles quoted fields, embedded commas, and
-// "" escaped quotes) — we only need the first column (the resort name), but
-// we parse the whole line properly so a quoted name containing a comma still
-// works correctly.
-function parseCsvLine(line) {
-  const result = [];
-  let cur = "";
-  let inQuotes = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (inQuotes) {
-      if (ch === '"') {
-        if (line[i + 1] === '"') { cur += '"'; i++; }
-        else { inQuotes = false; }
-      } else {
-        cur += ch;
-      }
-    } else {
-      if (ch === '"') { inQuotes = true; }
-      else if (ch === ",") { result.push(cur); cur = ""; }
-      else { cur += ch; }
-    }
-  }
-  result.push(cur);
-  return result;
-}
-
-// Parses the resort master CSV into { name, district, suburb,
-// siteId, resortId, latitude, longitude, ...rawFields } per row. Every field
-// is looked up by header name so the parser doesn't break if StockNetwork
-// reorders columns; siteId/resortId fall back to the last two columns (their
-// known position) if the headers aren't found by name. The "town" field
-// accepts a few different header spellings, since different StockNetwork
-// exports have called this column District, Town, or City — first one found
-// wins. suburb/area and zone/province are all optional finer-grained
-// columns: present on some exports, absent on others, and only used (by
-// map-api.js's location-discovery feature) when they're there — a row
-// missing any of them just gets "" for that field and every existing
-// caller of this file keeps working exactly as before. Latitude/Longitude
-// are likewise optional. Rows are kept even if they share a name with
-// another row — different physical properties can share a name, and each
-// needs its own SiteID/ResortID for the Resort Info Link to work. Only
-// exact duplicate rows (same name + siteId + resortId) are collapsed.
-//
-// 2026-09-29: extended to also capture StockNetwork's full real export
-// columns (confirmed against Jean's actual "Resort Information" download —
-// 24 columns: Resort, District, Area, Country, Latitude, Longitude, Supplier
-// Rating, Tourism Board Rating, Property Type, External Resort Code, WiFi,
-// WiFi Cost, Parking, Pet Allowance, Allow Same Day Booking, Smoking
-// Allowed, Checkin Time, Checkout Time, Suburb, City, City2, State, SiteID,
-// ResortID) as their own raw fields, per Jean's explicit instruction: these
-// land in the hub as new informational fields, not currently used elsewhere,
-// but no longer silently discarded. `snCountry` is deliberately NOT named
-// `country` — `country` already means something different on a resort row
-// (the hub's own geocoding-computed country, see lib/resort-key.js's
-// LOCATION_TAG_FIELDS) and must never be overwritten by this raw import
-// value. `district`/`suburb` keep their existing names (already raw,
-// already used for zoneHint/backfill purposes) — `area`/`city`/`city2`/
-// `state` are new. None of these raw fields are used to derive the hub's
-// own Zone/Town/Suburb tree — that stays purely coordinate-geocoded, per
-// Jean's explicit "the hub is the master" instruction (2026-09-29).
-function parseResortsFromCsv(text) {
-  const lines = text.split(/\r\n|\r|\n/).filter((l) => l.trim().length > 0);
-  if (lines.length === 0) return [];
-
-  const header = parseCsvLine(lines[0]).map((h) => h.trim().toLowerCase());
-  const findCol = (names) => {
-    for (const name of names) {
-      const idx = header.findIndex((h) => h === name);
-      if (idx > -1) return idx;
-    }
-    return -1;
-  };
-
-  let nameIdx = findCol(["resort"]);
-  const districtIdx = findCol(["district", "town", "town/city", "city"]);
-  const suburbIdx = findCol(["suburb", "area"]);
-  let siteIdIdx = findCol(["siteid"]);
-  let resortIdIdx = findCol(["resortid"]);
-  const latIdx = findCol(["latitude"]);
-  const lngIdx = findCol(["longitude"]);
-  if (nameIdx === -1) nameIdx = 0;
-  if (resortIdIdx === -1) resortIdIdx = header.length - 1;
-  if (siteIdIdx === -1) siteIdIdx = header.length - 2;
-
-  // New raw passthrough columns — StockNetwork's real export header names,
-  // matched exactly (case-insensitive). Every one is optional: a CSV that
-  // doesn't have a given column just gets "" for that field, same fallback
-  // rule as every other optional column above.
-  const snCountryIdx = findCol(["country"]);
-  const areaIdx = findCol(["area"]);
-  const cityIdx = findCol(["city"]);
-  const city2Idx = findCol(["city2", "city 2"]);
-  const stateIdx = findCol(["state"]);
-  const supplierRatingIdx = findCol(["supplier rating"]);
-  const tourismBoardRatingIdx = findCol(["tourism board rating"]);
-  const propertyTypeIdx = findCol(["property type"]);
-  const externalResortCodeIdx = findCol(["external resort code"]);
-  const wifiIdx = findCol(["wifi"]);
-  const wifiCostIdx = findCol(["wifi cost"]);
-  const parkingIdx = findCol(["parking"]);
-  const petAllowanceIdx = findCol(["pet allowance"]);
-  const allowSameDayBookingIdx = findCol(["allow same day booking"]);
-  const smokingAllowedIdx = findCol(["smoking allowed"]);
-  const checkinTimeIdx = findCol(["checkin time"]);
-  const checkoutTimeIdx = findCol(["checkout time"]);
-
-  const seen = new Set();
-  const resorts = [];
-  for (let i = 1; i < lines.length; i++) {
-    const fields = parseCsvLine(lines[i]);
-    const name = (fields[nameIdx] || "").trim();
-    if (!name) continue;
-
-    const district = districtIdx > -1 ? (fields[districtIdx] || "").trim() : "";
-    const suburb = suburbIdx > -1 ? (fields[suburbIdx] || "").trim() : "";
-    const siteId = siteIdIdx > -1 ? (fields[siteIdIdx] || "").trim() : "";
-    const resortId = resortIdIdx > -1 ? (fields[resortIdIdx] || "").trim() : "";
-    const latitude = latIdx > -1 ? (fields[latIdx] || "").trim() : "";
-    const longitude = lngIdx > -1 ? (fields[lngIdx] || "").trim() : "";
-
-    const get = (idx) => (idx > -1 ? (fields[idx] || "").trim() : "");
-    const raw = {
-      snCountry: get(snCountryIdx),
-      area: get(areaIdx),
-      city: get(cityIdx),
-      city2: get(city2Idx),
-      state: get(stateIdx),
-      supplierRating: get(supplierRatingIdx),
-      tourismBoardRating: get(tourismBoardRatingIdx),
-      propertyType: get(propertyTypeIdx),
-      externalResortCode: get(externalResortCodeIdx),
-      wifi: get(wifiIdx),
-      wifiCost: get(wifiCostIdx),
-      parking: get(parkingIdx),
-      petAllowance: get(petAllowanceIdx),
-      allowSameDayBooking: get(allowSameDayBookingIdx),
-      smokingAllowed: get(smokingAllowedIdx),
-      checkinTime: get(checkinTimeIdx),
-      checkoutTime: get(checkoutTimeIdx),
-    };
-
-    const key = name.toLowerCase() + "|" + siteId + "|" + resortId;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    resorts.push({ name, district, suburb, siteId, resortId, latitude, longitude, ...raw });
-  }
-
-  resorts.sort((a, b) => a.name.localeCompare(b.name) || a.district.localeCompare(b.district));
-  return resorts;
-}
-
-// Fields map-api.js's geocoding pipeline writes onto a resort row once its
-// coordinate is resolved to a Town/Suburb (see lib/resort-key.js's
-// LOCATION_TAG_FIELDS, kept in sync with that list by hand — small and
-// stable, not worth an extra cross-file import for one array), plus the
-// Case B name-vs-coordinate flag fields set by the auto-place pass just
-// below (coordSuspicious/coordSuspiciousNote/coordSuggested — 2026-09-29).
-// Cleared here whenever this sync sees a property's coordinate actually
-// move, so a stale tag OR a stale suspicion flag tied to the OLD point
-// never lingers — the auto-place pass right after this loop re-derives
-// both fresh for the new coordinate.
 // The old zone/town tags (before the location tree, 2026-10-07). Removed from
-// every row on each sync and CSV upload.
+// every row on each sync.
 const OLD_ZONE_TAGS = ["zone", "townId", "suburbId", "locationLabel", "nearby", "offshoreKm", "locV", "zoneHint"];
 function stripOldZoneTags(resorts) {
   (resorts || []).forEach((r) => { if (r) OLD_ZONE_TAGS.forEach((f) => { delete r[f]; }); });
 }
+// Cleared when a property gets its first coordinate, so the tree placing and
+// name check below start fresh for it.
 const API_SYNC_CLEAR_ON_MOVE = ["country", "coordSuspicious", "coordSuspiciousNote", "coordSuggested"];
 
-// Maps one raw StockNetwork /api/1.0/resort row onto the same raw,
-// informational field names parseResortsFromCsv() above captures from a CSV
-// upload — so a property looks the same in the hub whichever source last
-// refreshed it. `snCountry` (not `country`) deliberately avoids the hub's
-// own geocoding-computed `country` field — see the big comment on
-// parseResortsFromCsv above. `resortTypeID` is a StockNetwork-internal GUID,
-// not the readable "Guest house"/"Lodge" text the CSV's Property Type column
-// carries, so it's deliberately NOT mapped to `propertyType` here — only a
-// CSV upload can set that field correctly.
-// Same small helper map-api.js defines for itself — duplicated here rather
-// than imported across the two routed functions (this file's own
-// parseCsvLine below is duplicated from map-api.js's copy for the same
-// reason: neither routed function should import the other), since it's
-// generic and only a few lines.
 async function mapWithConcurrency(items, limit, fn) {
   const results = new Array(items.length);
   let idx = 0;
@@ -206,6 +32,9 @@ async function mapWithConcurrency(items, limit, fn) {
   return results;
 }
 
+// One raw Stock Network /api/1.0/resort row's informational fields. `snCountry`
+// (not `country`) keeps clear of the hub's own tree-computed country: the hub
+// location tree is master for location (Jean, 2026-09-29).
 function mapApiRowToRawFields(r) {
   const s = (v) => (v === null || v === undefined ? "" : String(v).trim());
   return {
@@ -222,17 +51,7 @@ function mapApiRowToRawFields(r) {
   };
 }
 
-// Returns the first non-empty value found under any of `keys` on `obj`, or
-// "" if none are present. Used below for a StockNetwork API row's name and
-// SiteID equivalent fields, which — unlike every other field this file
-// reads off the API — were never actually needed until now: a MATCHED row
-// keeps the name/siteId the hub already has from its original CSV import,
-// so mapApiRowToRawFields above never had to know what StockNetwork calls
-// them. For an UNMATCHED row there is no existing hub record to fall back
-// on, so this guesses from the field-naming conventions StockNetwork's API
-// uses elsewhere (iExchangeResortFileID for resortId) — if none of these
-// guesses hit, the full raw row is kept alongside (see below) so the actual
-// field name can be read straight from it and this list tightened.
+// The first non-empty value under any of `keys` on `obj`, or "".
 function pickFirst(obj, keys) {
   for (const k of keys) {
     const v = obj && obj[k];
@@ -240,14 +59,22 @@ function pickFirst(obj, keys) {
   }
   return "";
 }
-const UNMATCHED_NAME_KEYS = ["name", "resortName", "ResortName", "Resort", "resort", "title", "Name", "ResortTitle"];
-const UNMATCHED_SITEID_KEYS = ["siteId", "siteID", "SiteID", "SiteId", "iExchangeSiteFileID", "iSiteID"];
-// Caps how many full unmatched-row objects get saved to blob storage in one
-// sync — a backlog in the thousands (e.g. the very first run after this
-// feature ships) would otherwise risk a single oversized blob write. The
-// real total is still reported via totalUnmatched even when the saved list
-// is capped.
-const UNMATCHED_SAVE_CAP = 500;
+const NAME_KEYS = ["name", "resortName", "ResortName", "Resort", "resort", "title", "Name", "ResortTitle"];
+// The "Added from Stock Network" list in admin keeps this many, newest first.
+const ADDED_KEEP = 500;
+const realCoord = (r) => typeof r.latitude === "number" && typeof r.longitude === "number" && !(r.latitude === 0 && r.longitude === 0);
+
+// A new resort-list row for a Stock Network property the hub doesn't have yet
+// (Jean, 2026-10-17: the nightly sync adds new properties itself). Location in
+// the hub comes from its pin and the hub location tree (the master); the rest
+// is what Stock Network sends. Null when the row has no name.
+function newResortRow(apiRow, resortId, at) {
+  const name = pickFirst(apiRow, NAME_KEYS);
+  if (!name) return null;
+  const has = realCoord(apiRow);
+  return Object.assign({ name, siteId: pickSite(siteFieldsOf(apiRow)).siteId, resortId,
+    latitude: has ? String(apiRow.latitude) : "", longitude: has ? String(apiRow.longitude) : "" }, mapApiRowToRawFields(apiRow), { addedFromSnAt: at });
+}
 
 async function handleApiSync(request, store, cors) {
   let body;
@@ -270,19 +97,30 @@ async function handleApiSync(request, store, cors) {
   const record = await store.get("current", { type: "json" });
   const resorts = record && Array.isArray(record.resorts) ? record.resorts : [];
 
-  // The same physical property can be listed under more than one SiteID
-  // (see lib/resort-key.js's own comment on this) — one API row updates
-  // every resort-list row sharing that ResortID.
+  // The same physical property can be listed under more than one SiteID:
+  // one API row updates every resort-list row sharing that ResortID (matched
+  // without regard to upper/lower case, so a property is never added twice).
+  const idKey = (v) => String(v || "").trim().toLowerCase();
   const byResortId = new Map();
   resorts.forEach((r, i) => {
     if (!r || !r.resortId) return;
-    if (!byResortId.has(r.resortId)) byResortId.set(r.resortId, []);
-    byResortId.get(r.resortId).push(i);
+    const k = idKey(r.resortId);
+    if (!byResortId.has(k)) byResortId.set(k, []);
+    byResortId.get(k).push(i);
   });
+  // ResortIDs admin removed from the hub ("Remove from hub"): never added again.
+  const pendingNewStore = getStore({ name: "resort-pending-new", consistency: "strong" });
+  const pendingNew = (await pendingNewStore.get("current", { type: "json" })) || {};
+  const dismissedIds = Array.isArray(pendingNew.dismissedIds) ? pendingNew.dismissedIds : [];
+  const dismissedSet = new Set(dismissedIds.map(idKey));
+  const syncAt = new Date().toISOString();
 
   let matchedProperties = 0,
     matchedRows = 0,
     unmatchedApiRows = 0,
+    addedProperties = 0,
+    skippedNoName = 0,
+    skippedRemoved = 0,
     coordinatesChanged = 0,
     // hub-is-master-for-location (2026-09-30): counters for the two new
     // outcomes below, alongside coordFlaggedSuspicious/coordFlagCleared
@@ -299,32 +137,25 @@ async function handleApiSync(request, store, cors) {
   // hub already had a coordinate never lands here, whether StockNetwork's
   // value matched or was flagged as a mismatch -- see the per-row loop.
   const changedIdxs = [];
-  // StockNetwork resort rows this sync couldn't match to any existing hub
-  // property (new-properties-flagging, 2026-10-03, Jean's request) — saved
-  // below so admin.html can show "N StockNetwork properties aren't in your
-  // hub yet" instead of these being silently dropped, which is what
-  // happened before this. Never auto-added to the hub itself: per
-  // hub-is-master-for-location, only a reviewed CSV upload creates a new
-  // resort-list row.
-  const unmatchedItems = [];
+  // Properties added this sync (Jean, 2026-10-17): every Stock Network
+  // property the hub doesn't have yet is added, unless admin removed it.
+  const added = [];
 
   for (const apiRow of rows) {
     const resortId = String(apiRow.iExchangeResortFileID || "").trim();
     if (!resortId) continue;
-    const idxs = byResortId.get(resortId);
+    const idxs = byResortId.get(idKey(resortId));
     if (!idxs || !idxs.length) {
       unmatchedApiRows++;
-      if (unmatchedItems.length < UNMATCHED_SAVE_CAP) {
-        unmatchedItems.push({
-          resortId,
-          name: pickFirst(apiRow, UNMATCHED_NAME_KEYS),
-          siteId: pickFirst(apiRow, UNMATCHED_SITEID_KEYS),
-          latitude: typeof apiRow.latitude === "number" ? apiRow.latitude : null,
-          longitude: typeof apiRow.longitude === "number" ? apiRow.longitude : null,
-          ...mapApiRowToRawFields(apiRow),
-          raw: apiRow,
-        });
-      }
+      if (dismissedSet.has(idKey(resortId))) { skippedRemoved++; continue; }
+      const rec = newResortRow(apiRow, resortId, syncAt);
+      if (!rec) { skippedNoName++; continue; }
+      const i = resorts.push(rec) - 1;
+      byResortId.set(idKey(resortId), [i]);
+      if (rec.latitude) changedIdxs.push(i);
+      addedProperties++;
+      added.push({ resortId, name: rec.name, siteId: rec.siteId, snCountry: rec.snCountry, area: rec.area, city: rec.city,
+        latitude: rec.latitude ? Number(rec.latitude) : null, longitude: rec.longitude ? Number(rec.longitude) : null, addedAt: syncAt });
       continue;
     }
     matchedProperties++;
@@ -501,7 +332,7 @@ async function handleApiSync(request, store, cors) {
   stripOldZoneTags(resorts);
   await store.setJSON(
     "current",
-    Object.assign({}, record, { resorts, apiSyncedAt: new Date().toISOString() })
+    Object.assign({}, record, { resorts, apiSyncedAt: syncAt, updatedAt: syncAt })
   );
 
   // New location tree (2026-10-07): place any property that is new or whose pin
@@ -510,24 +341,14 @@ async function handleApiSync(request, store, cors) {
   // night or with "Place now" on the lookup page.
   const treePlace = await placeTreeBacklog(resorts);
 
-  // Save this run's unmatched-row list, minus anything Jean has explicitly
-  // dismissed (dismissPendingNewStockNetworkProperty in map-api.js) — that
-  // set is read back here and carried forward since this whole list is a
-  // full replace every run (a daily full resort fetch means a property no
-  // longer unmatched just means she imported it; one still unmatched would
-  // otherwise resurface every single day forever without this).
-  const pendingNewStore = getStore({ name: "resort-pending-new", consistency: "strong" });
-  const existingPending = (await pendingNewStore.get("current", { type: "json" })) || {};
-  const dismissedIds = Array.isArray(existingPending.dismissedIds) ? existingPending.dismissedIds : [];
-  const dismissedSet = new Set(dismissedIds);
-  const keptItems = unmatchedItems.filter((it) => !dismissedSet.has(it.resortId));
+  // Admin's "Added from Stock Network" list: this run's additions first, then
+  // earlier ones (kept for a while so admin can look back).
+  const earlier = (Array.isArray(pendingNew.items) ? pendingNew.items : []).filter((it) => it && it.addedAt);
   await pendingNewStore.setJSON("current", {
-    items: keptItems,
+    items: added.concat(earlier).slice(0, ADDED_KEEP),
     dismissedIds,
-    totalUnmatched: unmatchedApiRows,
-    savedCount: keptItems.length,
-    truncated: unmatchedApiRows > keptItems.length + dismissedSet.size,
-    updatedAt: new Date().toISOString(),
+    lastRun: { at: syncAt, added: addedProperties, skippedNoName, skippedRemoved },
+    updatedAt: syncAt,
   });
 
   return new Response(
@@ -537,7 +358,9 @@ async function handleApiSync(request, store, cors) {
       matchedProperties,
       matchedRows,
       unmatchedApiRows,
-      newPropertiesPending: keptItems.length,
+      addedProperties,
+      skippedNoName,
+      skippedRemoved,
       coordinatesChanged,
       nameChecked,
       nameCheckSkippedForTime,
@@ -567,7 +390,7 @@ export default async (request, context) => {
   const cors = {
     "access-control-allow-origin": "*",
     "access-control-allow-methods": "GET, POST, OPTIONS",
-    "access-control-allow-headers": "content-type, x-admin-token, x-sync-secret",
+    "access-control-allow-headers": "content-type, x-sync-secret",
   };
 
   if (request.method === "OPTIONS") {
@@ -577,16 +400,6 @@ export default async (request, context) => {
   const store = getStore({ name: "resort-list", consistency: "strong" });
   const env = (k) => (typeof Netlify !== "undefined" ? Netlify.env.get(k) : Deno.env.get(k)) || "";
   const deny = (msg) => new Response(JSON.stringify({ ok: false, error: msg }), { status: 403, headers: { "content-type": "application/json", ...cors } });
-  // 2026-10-10: writing the shared resort list needs an admin login (CSV
-  // upload from admin › Map & Activities) or the nightly sync's shared
-  // secret (stocknetwork-sync.mjs sends PA_SYNC_SECRET). Before this, anyone
-  // — including any affiliate from the hub — could replace the list.
-  async function isAdmin(token) {
-    if (!token) return false;
-    const session = await getStore({ name: "admin-sessions", consistency: "strong" }).get(token, { type: "json" });
-    return !!(session && new Date(session.expiresAt).getTime() > Date.now());
-  }
-
   try {
     if (request.method === "GET") {
       // The complexes, resorts and estates that exist, for the listing form (Jean, 2026-10-17).
@@ -605,63 +418,14 @@ export default async (request, context) => {
     }
 
     if (request.method === "POST") {
-      // 2026-09-29: the nightly StockNetwork API sync (stocknetwork-sync.mjs)
-      // posts here too, but as JSON — { action: "syncStockNetworkApi", rows:
-      // [...raw StockNetwork /api/1.0/resort rows] } — a fundamentally
-      // different job from the CSV upload below: it only ever UPDATES raw,
-      // informational fields on properties that already exist in the hub
-      // (matched by StockNetwork's own ResortID), never creates a new
-      // resort-list row and never touches the hub's own Zone/Town/Suburb
-      // tree — per Jean's explicit "the hub is the master" instruction, only
-      // a coordinate change clears the tag so the existing geocoding
-      // pipeline re-resolves it fresh, exactly like a moved CSV coordinate
-      // already does (see mergeResorts/sameCoordinate above). Distinguished
-      // from the CSV path purely by Content-Type, so nothing about the CSV
-      // upload flow below needs to change.
-      const contentType = (request.headers.get("content-type") || "").toLowerCase();
-      if (contentType.includes("application/json")) {
-        const secret = env("PA_SYNC_SECRET");
-        if (!secret || request.headers.get("x-sync-secret") !== secret) return deny("forbidden");
-        return handleApiSync(request, store, cors);
-      }
-      if (!(await isAdmin(request.headers.get("x-admin-token") || ""))) {
-        return deny("Only Avante admin can update the resort list. Log in to admin and upload it under Map & Activities.");
-      }
-
-      const text = await request.text();
-      if (!text || !text.trim()) {
-        return new Response(JSON.stringify({ ok: false, error: "Uploaded file was empty." }), {
-          status: 400,
-          headers: { "content-type": "application/json", ...cors },
-        });
-      }
-
-      const freshResorts = parseResortsFromCsv(text);
-      if (!freshResorts.length) {
-        return new Response(JSON.stringify({ ok: false, error: "Could not find any resort names in that file." }), {
-          status: 400,
-          headers: { "content-type": "application/json", ...cors },
-        });
-      }
-
-      // Merge onto the previous list rather than replacing it outright, so
-      // any property an admin assigned to an affiliate (see admin-api.js's
-      // setResortAffId) keeps that assignment across this re-import — every
-      // other field (name/district/suburb/zoneHint/lat/lng) still comes
-      // fresh from this file, only affId carries forward. See
-      // lib/resort-key.js for the matching rules.
-      const previousRecord = await store.get("current", { type: "json" });
-      const previousResorts = previousRecord && Array.isArray(previousRecord.resorts) ? previousRecord.resorts : [];
-      const resorts = mergeResorts(previousResorts, freshResorts);
-
-      const updatedAt = new Date().toISOString();
-      stripOldZoneTags(resorts);
-      await store.setJSON("current", { resorts, updatedAt });
-      const treePlace = await placeTreeBacklog(resorts);
-
-      return new Response(JSON.stringify({ ok: true, count: resorts.length, updatedAt, resorts, treePlace }), {
-        headers: { "content-type": "application/json", ...cors },
-      });
+      // Only the nightly Stock Network sync (stocknetwork-sync.mjs) writes the
+      // resort list: { action: "syncStockNetworkApi", rows: [raw /api/1.0/resort
+      // rows] } with the shared secret. It updates Stock Network's own fields,
+      // adds properties the hub doesn't have yet, and never touches the hub's
+      // location tree (the master). The CSV upload is gone (Jean, 2026-10-17).
+      const secret = env("PA_SYNC_SECRET");
+      if (!secret || request.headers.get("x-sync-secret") !== secret) return deny("The resort list is updated every night from Stock Network.");
+      return handleApiSync(request, store, cors);
     }
 
     return new Response(JSON.stringify({ error: "method not allowed" }), {
