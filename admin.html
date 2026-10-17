@@ -10511,7 +10511,7 @@
         var ls = lastSend(e);
         var sent = ls ? (ls.ok ? when(ls.at) : '<b style="color:#b42318">Failed ' + escapeHtml(when(ls.at)) + '</b>') : '\u2014';
         return '<tr><td><b>' + escapeHtml(e.siteNr) + '</b></td><td>' + escapeHtml(e.propertyName || 'Spare') + '</td><td>' + escapeHtml(e.bbid || '') + '</td>' +
-          '<td>' + escapeHtml(e.status) + '</td><td>' + sent + '</td><td>' + (e.propertyAffiliate ? 'Yes' + (e.listingId ? ' (' + escapeHtml(e.listingId) + ')' : '') : 'No') + '</td>' +
+          '<td>' + escapeHtml(e.status) + (e.goLive ? '<br><small style="color:' + (e.goLive === 'Ready to go live' ? 'var(--teal-dark)' : '#b54708') + ';">' + escapeHtml(e.goLive) + (e.stockFrom ? ' (stock from ' + escapeHtml(when(e.stockFrom)) + ')' : '') + '</small>' : '') + '</td><td>' + sent + '</td><td>' + (e.propertyAffiliate ? 'Yes' + (e.listingId ? ' (' + escapeHtml(e.listingId) + ')' : '') : 'No') + '</td>' +
           '<td><button type="button" class="btn-outline" data-nr="' + escapeHtml(e.siteNr) + '" style="margin-top:0;">Open</button></td></tr>';
       }).join('');
     }
@@ -10569,6 +10569,7 @@
         var msg = !d.waiting ? 'No Site Nrs are waiting for Stock Network.' :
           !done.length ? 'None of the ' + d.waiting + ' waiting Site Nrs are on Stock Network yet.' :
           'Set up: ' + done.map(function(x){ return x.name + ' (' + x.siteNr + (x.affId ? ', affiliate ' + x.affId : '') + (x.welcomed ? ', login emailed' : ', login NOT emailed') + ')'; }).join('; ') + '.';
+        if((d.ready || []).length) msg += ' Ready to go live: ' + d.ready.map(function(x){ return x.name + ' (stock from ' + when(x.stockFrom) + ')'; }).join('; ') + '.';
         return load().then(function(){ say($('snrStatus'), msg); });
       }).catch(function(){ b.disabled = false; say($('snrStatus'), 'Could not check.'); });
     });

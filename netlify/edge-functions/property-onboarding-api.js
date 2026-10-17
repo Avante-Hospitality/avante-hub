@@ -510,6 +510,38 @@ function markRatesSent(record, at) {
   record.snSentAt = at;
 }
 
+// Ready to go live (Jean, 2026-10-17): a set-up property not on a channel
+// manager waits for stock until Avante's availability read (sn-availability.mjs,
+// the next 12 months) finds a free unit. Answers the entries that just became ready.
+const GO_LIVE = { waiting: "Waiting for stock", ready: "Ready to go live" };
+async function checkStock(reg, origin) {
+  const todo = (await listSiteNrs(reg)).filter((e) => e.status === "Set up" && e.resortId && e.channelManager === "None yet" && e.goLive !== GO_LIVE.ready).slice(0, 60);
+  if (!todo.length) return [];
+  const day = (ms) => new Date(ms).toISOString().slice(0, 10);
+  const av = await fetch(origin + "/api/sn-availability", { method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ ids: todo.map((e) => e.resortId), checkIn: day(Date.now()), checkOut: day(Date.now() + 365 * 864e5) }) }).then((r) => r.json()).catch(() => null);
+  const results = (av && av.results) || {}, ready = [], listings = getStore({ name: "property-listings", consistency: "strong" });
+  for (const e of todo) {
+    const r = results[String(e.resortId).toLowerCase()];
+    if (!r || r.error) continue; // not answered: try again next hour
+    const now = new Date().toISOString();
+    Object.assign(e, { goLive: r.firstOpen ? GO_LIVE.ready : GO_LIVE.waiting, stockCheckedAt: now, updatedAt: now });
+    if (r.firstOpen) {
+      Object.assign(e, { stockFrom: r.firstOpen, readyAt: now });
+      ready.push(e);
+      const rec = e.listingId ? await listings.get(e.listingId, { type: "json" }).catch(() => null) : null;
+      if (rec) {
+        const before = { goLive: rec.goLive || "" };
+        Object.assign(rec, { goLive: GO_LIVE.ready, stockFrom: r.firstOpen, dateUpdated: now });
+        addHistory(rec, "admin", "Ready to go live: Avante has stock from " + r.firstOpen, before);
+        await listings.setJSON(e.listingId, rec);
+      }
+    }
+    await saveSiteNr(reg, e);
+  }
+  return ready;
+}
+
 // The Site Nr entry still waiting for this listing to be complete, or null.
 async function waitingSiteOf(record) {
   const e = record && record.siteNr ? await getSiteNr(siteRegister(), record.siteNr).catch(() => null) : null;
@@ -1174,22 +1206,26 @@ export default async (request, context) => {
       // Found: the Site Nr is marked Set up, the property's hub affiliate is
       // made (number = Site ID; not connected until the property wants to use
       // the hub), its listing is linked, the property gets its hub login and
-      // admin gets a summary.
+      // admin gets a summary. Then every set-up property not on a channel
+      // manager is "Waiting for stock" until Avante's availability read finds
+      // stock for it (the next 12 months), then "Ready to go live".
       const secret = Deno.env.get("PA_SYNC_SECRET") || "";
       const bySchedule = !!secret && request.headers.get("x-pa-sync-secret") === secret;
       if (!bySchedule) { const denied = await requireAdmin(); if (denied) return denied; }
       const reg = siteRegister();
       const waiting = (await listSiteNrs(reg)).filter((e) => e.status === "Sent");
-      if (!waiting.length) return json({ ok: true, waiting: 0, setUp: [] });
-      let found;
-      try { found = await findSetUps(waiting.map((e) => ({ siteNr: e.siteNr, bbid: e.bbid }))); }
-      catch (e) { return json({ error: "Could not read Stock Network's property list: " + String((e && e.message) || e) }, 502); }
+      let found = [];
+      if (waiting.length) {
+        try { found = await findSetUps(waiting.map((e) => ({ siteNr: e.siteNr, bbid: e.bbid }))); }
+        catch (e) { return json({ error: "Could not read Stock Network's property list: " + String((e && e.message) || e) }, 502); }
+      }
       const origin = new URL(request.url).origin, done = [];
       for (let i = 0; i < waiting.length; i++) {
         const e = waiting[i], f = found[i];
         if (!f) continue;
         const now = new Date().toISOString();
         Object.assign(e, { status: "Set up", setUpAt: now, resortId: f.resortId, snSiteId: f.siteId, snName: f.name, updatedAt: now });
+        if (e.channelManager === "None yet") e.goLive = GO_LIVE.waiting;
         let affId = "", affNote = "";
         if (f.siteId) {
           const made = await createPropertyAffiliate({ affId: f.siteId, name: e.propertyName || f.name, email: e.email, phone: e.phone, siteNr: f.siteNr || e.siteNr,
@@ -1222,7 +1258,14 @@ export default async (request, context) => {
             (d.listingId ? ", listing " + escapeHtml(d.listingId) + " linked" : "") + (d.welcomed ? ", hub login emailed" : ", hub login NOT emailed") + "</li>").join("") +
           "</ul><p>See Admin &gt; Site Nrs.</p>"));
       }
-      return json({ ok: true, waiting: waiting.length, setUp: done });
+      const ready = await checkStock(reg, origin);
+      if (ready.length) {
+        const to = notifyTo || await getNotificationEmail();
+        if (to) context.waitUntil(sendNotificationEmail(to, "Ready to go live: " + ready.map((e) => e.propertyName).join(", ").slice(0, 150),
+          "<p>Avante now has stock for these properties, so they are <b>Ready to go live</b>:</p><ul>" + ready.map((e) => "<li><b>" + escapeHtml(e.propertyName) + "</b> — Site Nr " + escapeHtml(e.siteNr) +
+            ", first stock " + escapeHtml(e.stockFrom) + (e.listingId ? ", listing " + escapeHtml(e.listingId) : "") + "</li>").join("") + "</ul><p>See Admin &gt; Site Nrs.</p>"));
+      }
+      return json({ ok: true, waiting: waiting.length, setUp: done, ready: ready.map((e) => ({ siteNr: e.siteNr, name: e.propertyName, stockFrom: e.stockFrom })) });
     }
 
     if (["siteNrList", "siteNrReserve", "siteNrUpdate", "siteNrSend", "snSetupSettings"].includes(action)) {

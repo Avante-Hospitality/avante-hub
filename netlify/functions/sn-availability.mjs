@@ -5,7 +5,9 @@
 // stocknetwork-sync uses), so the secret never leaves the hub (Jean, 2026-10-11).
 //   POST /api/sn-availability { op:"status" } -> { ok, configured }
 //   POST /api/sn-availability { ids: [ResortID...] (max 60), checkIn, checkOut }
-//   -> { ok, configured, results: { id: { available, units, from } } }
+//   -> { ok, configured, results: { id: { available, units, from, firstOpen } } }
+// firstOpen: the first date with any free unit in the period asked (Jean,
+// 2026-10-17: a property is "Ready to go live" once Avante has stock for it).
 // Read-only: it only reads availability, never books or changes anything.
 const BASE = "https://api.stocknetwork.co.za";
 let TOKEN = null; // { accessToken, siteId, expires }
@@ -42,12 +44,13 @@ async function search(id, checkIn, checkOut, retried, debug) {
   // SN lists open stretches per unit (e.g. free 1-30 Nov). A stretch counts when
   // it covers the chosen dates; price: exact-date rate, else per-night share.
   const nights = Math.round((Date.parse(checkOut) - Date.parse(checkIn)) / 864e5);
-  let units = 0, from = null; const sample = [];
+  let units = 0, from = null, firstOpen = null; const sample = [];
   for (const resort of d.stockAvailability || []) {
     if (resort.resortId && String(resort.resortId).toLowerCase() !== id) continue;
     for (const rt of resort.roomTypes || []) for (const a of rt.availabilities || []) {
       const s = day(a.checkInDate), e = day(a.checkOutDate);
       if (sample.length < 8) sample.push({ unit: String(rt.roomType || "").trim(), start: s, end: e, nights: a.nights, units: a.unitsAvailable, rate: a.rates && a.rates.rate });
+      if (a.unitsAvailable > 0 && s && (firstOpen === null || s < firstOpen)) firstOpen = s < checkIn ? checkIn : s;
       if (!(a.unitsAvailable > 0) || s > checkIn || e < checkOut) continue;
       units += a.unitsAvailable;
       let rate = a.rates && Number(a.rates.rate);
@@ -55,8 +58,8 @@ async function search(id, checkIn, checkOut, retried, debug) {
       if (rate > 0 && (from === null || rate < from)) from = rate;
     }
   }
-  if (debug) return { available: units > 0, units, from, sample, resorts: (d.stockAvailability || []).length, loginSite: t.site, loginSiteId: t.siteId, loginVia: t.via, http: r.status, keys: Object.keys(d || {}), raw: JSON.stringify(d).slice(0, 600) };
-  return { available: units > 0, units, from };
+  if (debug) return { available: units > 0, units, from, firstOpen, sample, resorts: (d.stockAvailability || []).length, loginSite: t.site, loginSiteId: t.siteId, loginVia: t.via, http: r.status, keys: Object.keys(d || {}), raw: JSON.stringify(d).slice(0, 600) };
+  return { available: units > 0, units, from, firstOpen };
 }
 
 
