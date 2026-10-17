@@ -6,6 +6,7 @@ import { placeResortBacklog, PLACES_STORE } from "./lib/tree.js";
 // wrong StockNetwork coordinate gets flagged for review right away. Its place
 // in the location tree is set by placeTreeBacklog (lib/tree.js).
 import { checkNameAgainstCoordinate } from "./lib/name-check.js";
+import { estatesMap, estateNames, ESTATE_TYPES } from "./lib/estates.js";
 
 // Minimal CSV field-splitter (handles quoted fields, embedded commas, and
 // "" escaped quotes) — we only need the first column (the resort name), but
@@ -588,8 +589,15 @@ export default async (request, context) => {
 
   try {
     if (request.method === "GET") {
+      // The complexes, resorts and estates that exist, for the listing form (Jean, 2026-10-17).
+      if (new URL(request.url).searchParams.get("estates")) {
+        return new Response(JSON.stringify({ ok: true, types: ESTATE_TYPES, estates: await estateNames() }), { headers: { "content-type": "application/json", "cache-control": "no-store", ...cors } });
+      }
       const record = await store.get("current", { type: "json" });
-      const resorts = record && Array.isArray(record.resorts) ? record.resorts : [];
+      const list = record && Array.isArray(record.resorts) ? record.resorts : [];
+      // Each property's complex, resort or estate, where it has one: estate { n: name, t: type }.
+      const est = (await estatesMap().catch(() => null) || {}).byResort || {};
+      const resorts = list.map((r) => { const e = r && r.resortId && est[String(r.resortId).toLowerCase()]; return e ? { ...r, estate: { n: e.n, t: e.t } } : r; });
       const updatedAt = (record && record.updatedAt) || null;
       return new Response(JSON.stringify({ resorts, updatedAt, count: resorts.length }), {
         headers: { "content-type": "application/json", ...cors },

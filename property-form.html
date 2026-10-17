@@ -304,7 +304,14 @@
       </div>
       <div class="row">
         <div><label for="pSuburb">Suburb</label><input id="pSuburb"></div>
-        <div><label for="pComplex">Complex/Estate name</label><input id="pComplex"></div>
+        <div><label for="pInEstate">Is the property in a complex, resort or estate?</label>
+          <select id="pInEstate"><option value="">Choose…</option><option value="N">No</option><option value="Y">Yes</option></select></div>
+      </div>
+      <div class="row" id="estateRow" hidden>
+        <div><label for="pEstateType">What kind?</label>
+          <select id="pEstateType"><option value="">Choose…</option><option>Complex</option><option>Resort</option><option>Golf estate</option><option>Country estate</option><option>Wildlife estate</option><option>Eco estate</option><option>Other estate</option></select></div>
+        <div><label for="pComplex">Its name</label><input id="pComplex" list="estateList" autocomplete="off" placeholder="Start typing — pick it if it's in the list"><datalist id="estateList"></datalist>
+          <div class="hint" id="estateHint">Pick the name from the list when it's there, so every property in the same estate is spelled the same.</div></div>
       </div>
       <details class="more"><summary>Stock Network location fields</summary>
         <div class="row">
@@ -1099,6 +1106,7 @@
     if(f.channel && !channel) channel = f.channel;
     set('pName', f.propertyName, 'Property name');
     set('pType', f.propertyType, 'Property type');
+    if(f.complexName && !$('pComplex').value.trim()){ $('pInEstate').value = 'Y'; showEstate(); }
     set('pComplex', f.complexName, 'Complex/estate');
     set('pAddress', f.streetAddress, 'Address');
     if(typeof f.latitude === 'number' && typeof f.longitude === 'number'){ set('pLat', f.latitude, 'Latitude'); set('pLng', f.longitude, 'Longitude'); setCoordsVerified(false); }
@@ -1524,7 +1532,9 @@
       area: $('pArea').value.trim(),
       district: $('pDistrict').value.trim(),
       propertyType: $('pType').value.trim(),
-      complexName: $('pComplex').value.trim(),
+      inEstate: $('pInEstate').value,
+      estateType: $('pInEstate').value === 'Y' ? $('pEstateType').value : '',
+      complexName: $('pInEstate').value === 'Y' ? $('pComplex').value.trim() : '',
       streetAddress: $('pAddress').value.trim(),
       infoLink: $('pInfoLink').value.trim(),
       bookingLink: $('pBookingLink').value.trim(),
@@ -1617,11 +1627,31 @@
   // EDIT MODE — reopen a submitted listing with everything filled in
   // =====================================================================
   var KEY_MAP = { contactName:'contactName', contactPhone:'contactPhone', contactEmail:'contactEmail', notifyWho:'notifyWho', ownerName:'ownerFullName', ownerId:'ownerIdPassport', ownerEmail:'ownerEmail', ownerPhone:'ownerPhone', affName:'affiliateAgentName', affCompany:'affiliateCompany', affEmail:'affiliateEmail', affPhone:'affiliatePhone',
-    pName:'propertyName', pName2:'propertyName2', pCountry:'country', pProvince:'stateProvince', pRegion:'region', pCity:'city', pSuburb:'suburb', pComplex:'complexName', pArea:'area', pDistrict:'district', pCity2:'city2', pAddress:'streetAddress',
+    pName:'propertyName', pName2:'propertyName2', pCountry:'country', pProvince:'stateProvince', pRegion:'region', pCity:'city', pSuburb:'suburb', pComplex:'complexName', pInEstate:'inEstate', pEstateType:'estateType', pArea:'area', pDistrict:'district', pCity2:'city2', pAddress:'streetAddress',
     pSiteNr:'siteNr', pSiteId:'siteId', pType:'propertyType', pHost:'hostName', pPhone:'telephone', pEmail:'email', pInfoLink:'infoLink', pBookingLink:'bookingLink', pCheckIn:'checkInTime', pCheckOut:'checkOutTime', pDesc:'description',
     pRules:'houseRules', pAccess:'accessibility', pRating:'selfSupplierRating', pGrading:'tourismBoardGrading', pRatingLink:'ratingLink', pReviews:'channelReviews', pMoreInfo:'moreInfo', pAreaInfo:'areaInfo', pNotIncluded:'notIncluded',
     depositText:'depositPolicyText', depositPct:'depositPct', depositDays:'depositDays', childPolicy:'childPolicy', icalLink:'icalLink', channelLink:'channelListingLink', pLat:'latitude', pLng:'longitude' };
   var RATES_FROM_CHANNEL = false, EXISTING_ON_SN = false;
+  // In a complex, resort or estate (Jean, 2026-10-17): kind and name show only
+  // after "Yes". The names already on the hub are suggested, so every property
+  // in the same estate is spelled the same; picking one fills in its kind.
+  var ESTATES = null;
+  function showEstate(){
+    var yes = $('pInEstate').value === 'Y';
+    $('estateRow').hidden = !yes;
+    if(yes && !ESTATES){
+      ESTATES = [];
+      fetch('/api/resorts?estates=1', { cache: 'no-store' }).then(function(r){ return r.json(); }).then(function(j){
+        ESTATES = (j && j.estates) || [];
+        $('estateList').innerHTML = ESTATES.map(function(e){ var o = document.createElement('option'); o.value = e.n; o.label = [e.t, e.town].filter(Boolean).join(' · '); return o.outerHTML; }).join('');
+      }).catch(function(){});
+    }
+  }
+  $('pInEstate').addEventListener('change', showEstate);
+  $('pComplex').addEventListener('change', function(){
+    var v = this.value.trim().toLowerCase(), hit = (ESTATES || []).filter(function(e){ return e.n.toLowerCase() === v; })[0];
+    if(hit && hit.t && !$('pEstateType').value) $('pEstateType').value = hit.t;
+  });
   // Facilities read from Stock Network, ticked on the amenities list when they
   // match (only while nothing is ticked yet); the rest go in More info.
   function tickSnFacilities(list){
@@ -1636,6 +1666,8 @@
   }
   function fillFromListing(L){
     Object.keys(KEY_MAP).forEach(function(id){ if($(id)) $(id).value = L[KEY_MAP[id]] == null ? '' : L[KEY_MAP[id]]; });
+    if(!$('pInEstate').value && String(L.complexName || '').trim()) $('pInEstate').value = 'Y';
+    showEstate();
     if(!$('notifyWho').value) $('notifyWho').value = 'both';
     Array.prototype.forEach.call(document.getElementsByName('submittedBy'), function(r){ r.checked = r.value === (L.submittedBy === 'Affiliate' ? 'Affiliate' : 'Owner'); r.dispatchEvent(new Event('change')); });
     $('paymentGateway').checked = L.paymentGatewayInUse === 'Y'; $('sameDay').checked = L.allowSameDayBooking === 'Y';

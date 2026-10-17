@@ -16,6 +16,7 @@ import { feedByBbid, feedRowByResort, fillFromFeed, typeNames, learnTypeName, ty
 import { forwardGeocode, reverseGeocode } from "./lib/geocode.js";
 import { searchPlacePhotos, searchPlaceCandidates } from "./lib/places-images.js";
 import { placeCoordinate, snFieldsFromPlace, placeText, PLACES_STORE, PROPERTY_KEY } from "./lib/tree.js";
+import { estateTypeOf, forgetEstates } from "./lib/estates.js";
 
 // Backs the "Property Affiliate" onboarding tab in hub.html and the
 // "Property Listings" tab in admin.html. A property owner (or an existing
@@ -66,7 +67,7 @@ const STATUSES = ["Requested", "Listed", "Rejected"];
 // arrays, which stay as originally submitted for now.
 const EDITABLE_FIELDS = [
   "propertyName", "propertyName2", "country", "suburb", "city", "city2",
-  "stateProvince", "area", "district", "propertyType", "complexName",
+  "stateProvince", "area", "district", "propertyType", "complexName", "inEstate", "estateType",
   "infoLink", "bookingLink", "telephone", "email", "latitude", "longitude",
   "selfSupplierRating", "tourismBoardGrading", "ratingLink",
   "ownerFullName", "ownerIdPassport", "ownerEmail", "ownerPhone",
@@ -334,7 +335,10 @@ function submittedFields(body) {
     area: clean(body.area, 100),
     district: clean(body.district, 100),
     propertyType: clean(body.propertyType, 100),
-    complexName: clean(body.complexName, 200),
+    // In a complex, resort or estate? (Jean, 2026-10-17) "Y"/"N", its kind and its name.
+    inEstate: body.inEstate === "Y" ? "Y" : body.inEstate === "N" ? "N" : "",
+    estateType: body.inEstate === "N" ? "" : estateTypeOf(body.estateType),
+    complexName: body.inEstate === "N" ? "" : clean(body.complexName, 200),
     infoLink: clean(body.infoLink, 300),
     bookingLink: clean(body.bookingLink, 300),
     siteNr: clean(body.siteNr, 30),
@@ -579,6 +583,7 @@ export default async (request, context) => {
       addHistory(record, submitAsAdmin ? "admin" : record.submittedBy, "Submitted");
 
       await store.setJSON(listingId, record);
+      await forgetEstates();
 
       // The person who submitted gets a private link to come back and edit
       // the listing (add next season's rates, fix details) at any time.
@@ -792,6 +797,7 @@ export default async (request, context) => {
       const changed = addHistory(record, isAdmin ? "admin" : (record.submittedBy || "owner"), "Edited", before);
       if (!changed) return json({ ok: true, listing: { listingId: listingId }, unchanged: true });
       await store.setJSON(listingId, record);
+      await forgetEstates();
 
       if (!isAdmin) {
         const notifyTo = await getNotificationEmail();
@@ -1292,7 +1298,10 @@ export default async (request, context) => {
         if (!record.snTypeCode) { const fr = await feedRowByResort(record.resortId).catch(() => null); const c = fr && typeCodeOf(fr); if (c) record.snTypeCode = c; }
         if (record.snTypeCode) await learnTypeName(record.snTypeCode, record.propertyType).catch(() => {});
       }
+      record.estateType = record.inEstate === "N" ? "" : estateTypeOf(record.estateType);
+      if (record.inEstate === "N") record.complexName = "";
       await store.setJSON(listingId, record);
+      await forgetEstates();
 
       return json({ ok: true, listing: record });
     }
