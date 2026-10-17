@@ -100,28 +100,30 @@ function fieldMap(v, path, out) {
   if (!(path in out)) out[path] = String(v).slice(0, 80);
   return out;
 }
-async function snCall(path, body) {
+async function snCall(path, body, ms) {
   const t = await token();
   const r = await fetch(BASE + path.replace("{site}", encodeURIComponent(t.siteId)), {
     method: body ? "POST" : "GET", headers: { authorization: "Bearer " + t.accessToken, "content-type": "application/json", accept: "application/json" },
-    body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(25000) });
+    body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(ms || 25000) });
   const text = await r.text();
   let d = null; try { d = JSON.parse(text); } catch (e) {}
   return { http: r.status, fields: d ? fieldMap(d, "", {}) : { text: text.slice(0, 300) } };
 }
-async function fieldCheck(id, area, checkIn, checkOut) {
-  const body = { checkInDate: checkIn, checkOutDate: checkOut, resortID: id,
+// One read-only call per request, so each gets the full time: "v2search",
+// "v1paged" or "resortinfo". extra: fields added to the search request (e.g.
+// { unitSizes: [] }) to find the form Stock Network accepts.
+async function fieldCheck(call, id, area, checkIn, checkOut, extra) {
+  const body = Object.assign({ checkInDate: checkIn, checkOutDate: checkOut, resortID: id,
     geocoordinates: { latitude: 0, longitude: 0, withInKmRadius: 0 }, pricing: { minPrice: 0, maxPrice: 100000000 },
     region: { name: "" }, ignoreLocationData: true, groupStockToMatchDates: false, extendDatesIfNoMatchFound: false,
-    amenities: [], activities: [], experiences: [] };
+    amenities: [], activities: [], experiences: [], unitSizes: [] }, extra && typeof extra === "object" ? extra : {});
   const q = "?Offset=1&Limit=5&Date_From=" + checkIn + "&Date_To=" + checkOut + "&CallerDetails.SiteID={site}";
-  const out = {};
-  for (const [name, path, b] of [["v2search", "/api/2/search" + q, body], ["v1paged", "/api/1/search/paged" + q, body],
-    ["resortinfo", "/api/1/search/resortinfo/" + encodeURIComponent(area || ""), null]]) {
-    if (name === "resortinfo" && !area) continue;
-    try { out[name] = await snCall(path, b); } catch (e) { out[name] = { error: String(e.message || e) }; }
-  }
-  return out;
+  try {
+    if (call === "v2search") return await snCall("/api/2/search" + q, body, 24000);
+    if (call === "v1paged") return await snCall("/api/1/search/paged" + q, body, 24000);
+    if (call === "resortinfo") return await snCall("/api/1/search/resortinfo/" + encodeURIComponent(area || ""), null, 24000);
+    return { error: "call must be v2search, v1paged or resortinfo" };
+  } catch (e) { return { error: String(e.message || e) }; }
 }
 
 export default async (req) => {
@@ -132,7 +134,7 @@ export default async (req) => {
   if (!configured) return json({ ok: true, configured: false, results: {} });
   const ids = [...new Set((Array.isArray(b.ids) ? b.ids : []).map((x) => String(x).toLowerCase()).filter((x) => GUID.test(x)))].slice(0, 60);
   if (!ISO.test(b.checkIn || "") || !ISO.test(b.checkOut || "") || b.checkOut <= b.checkIn) return json({ ok: false, error: "Pick a check-in and check-out date." }, 400);
-  if (b.op === "fields" && ids.length === 1) return json({ ok: true, fields: await fieldCheck(ids[0], String(b.area || "").slice(0, 80), b.checkIn, b.checkOut) });
+  if (b.op === "fields" && ids.length === 1) return json({ ok: true, result: await fieldCheck(String(b.call || ""), ids[0], String(b.area || "").slice(0, 80), b.checkIn, b.checkOut, b.extra) });
   if (b.probe === true && ids.length === 1) return json({ ok: true, probe: await probe(ids[0], b.checkIn, b.checkOut, Number(b.lat), Number(b.lng)) });
   const results = {}; let i = 0;
   const worker = async () => { while (i < ids.length) { const id = ids[i++];
