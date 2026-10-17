@@ -12,39 +12,16 @@
 // and library photos through /api/stay?libphoto= (the library itself is
 // private to the hook builder).
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
-import { HOOKS_URL, makeHooksTicket } from "./hooks-ticket.js";
+import { GREF, LIBID, gphotoUrl, libphotoUrl, itemUrl, libIndex, libPost, forgetIndex, townTagOf } from "./photo-library.js";
+export { GREF, LIBID, gphotoUrl, libphotoUrl, townTagOf };
 
 const PLACES = "https://places.googleapis.com/v1";
-export const gphotoUrl = (ref) => "/api/stay?gphoto=" + encodeURIComponent(ref);
-export const libphotoUrl = (id) => "/api/stay?libphoto=" + encodeURIComponent(id);
-export const GREF = /^places\/[\w-]+\/photos\/[\w-]+$/;
-export const LIBID = /^L[0-9a-z]{6,20}$/;
 const env = (k) => (typeof Netlify !== "undefined" ? Netlify.env.get(k) : Deno.env.get(k)) || "";
 
 async function timed(url, init, ms) {
   const c = new AbortController(), t = setTimeout(() => c.abort(), ms || 8000);
   try { return await fetch(url, Object.assign({}, init || {}, { signal: c.signal })); } finally { clearTimeout(t); }
 }
-async function bearer() { return "Bearer " + (await makeHooksTicket({ sub: "admin", name: "Avante front store", role: "admin" })); }
-
-// The library's index, kept a few minutes per edge isolate.
-let libCache = null;
-async function libIndex() {
-  if (libCache && Date.now() - libCache.at < 5 * 60 * 1000) return libCache.idx;
-  try {
-    const r = await timed(new URL("/api/library", HOOKS_URL).href, { headers: { authorization: await bearer() } }, 10000);
-    const d = r.ok ? await r.json() : null;
-    if (d && d.ok) { libCache = { at: Date.now(), idx: { items: d.items || [], gq: d.gq || {}, mains: d.mains || {} } }; return libCache.idx; }
-  } catch (_) { /* library not reachable: Google only */ }
-  return { items: [], gq: {}, mains: {} };
-}
-async function libPost(body) {
-  try {
-    const r = await timed(new URL("/api/library", HOOKS_URL).href, { method: "POST", headers: { "content-type": "application/json", authorization: await bearer() }, body: JSON.stringify(body) }, 8000);
-    return await r.json().catch(() => null);
-  } catch (_) { return null; }
-}
-const itemUrl = (it) => (it.source === "google" && it.ref && GREF.test(it.ref) ? gphotoUrl(it.ref) : LIBID.test(it.id || "") ? libphotoUrl(it.id) : "");
 // Admin's main photos (set in the hook builder or library): { activityId (lower case): url }.
 export async function mainActPhotos() {
   const idx = await libIndex(), out = {};
@@ -57,18 +34,11 @@ export async function mainActPhotos() {
 }
 // Admin changed an activity's photos on the map: that photo is now its main
 // photo, so an older main photo chosen in the hook builder no longer applies.
-export async function clearActMain(id) { libCache = null; return libPost({ op: "clearMain", key: "act:" + String(id).toLowerCase() }); }
+export async function clearActMain(id) { forgetIndex(); return libPost({ op: "clearMain", key: "act:" + String(id).toLowerCase() }); }
 // A photo admin gave an activity in Map & Activities goes into the shared
 // photo library, tagged with the activity (and its town in the location tree),
 // and becomes the activity's main photo (Jean, 2026-10-14).
 //   upload: { full, thumb, w, h, hash } made in admin's browser;  google: { ref, credit }
-const normName = (s) => String(s || "").toLowerCase().replace(/[\u2018\u2019'`]/g, "").replace(/[^a-z0-9&]+/g, " ").trim();
-export function townTagOf(pl) {
-  if (!pl || !pl.t) return null;
-  const r = Array.isArray(pl.r) ? pl.r[0] || "" : pl.r || "";
-  const reg = r && normName(r) !== normName(pl.p) ? r : pl.p; // same shape as the hook builder's town keys
-  return reg ? { key: "t:" + reg + "|" + normName(pl.t), name: pl.t } : null;
-}
 export async function activityToLibrary(a, place, photo) {
   const tags = [{ key: "act:" + a.id, name: a.name || "Activity" }], town = townTagOf(place);
   if (town) tags.push(town);
@@ -82,7 +52,7 @@ export async function activityToLibrary(a, place, photo) {
   }
   if (!d || !d.ok) return { ok: false, error: (d && d.error) || "The photo library didn't answer." };
   const m = await libPost({ op: "setMain", key: "act:" + String(a.id).toLowerCase(), id: d.id });
-  libCache = null;
+  forgetIndex();
   return { ok: true, id: d.id, main: !!(m && m.ok) };
 }
 export const actQuery = (a) => [a.name, a.area].filter(Boolean).join(" ").replace(/\s+/g, " ").trim().slice(0, 200);
@@ -123,7 +93,7 @@ export async function googlePhotos(a, opts) {
   // Into the library one after the other (the library keeps one list), then the search itself.
   for (const sv of saves) await sv;
   await libPost({ op: "gq", q, refs: photos.map((p) => p.name), place });
-  libCache = null;
+  forgetIndex();
   return { ok: true, place, photos: out };
 }
 

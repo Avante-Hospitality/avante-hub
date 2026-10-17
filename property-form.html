@@ -84,6 +84,13 @@
   .doc-row input[type=file]{ font-size:12px; max-width:200px; }
   .doc-status{ font-size:12px; color:var(--green); white-space:nowrap; }
   .img-list{ margin-top:10px; font-size:13px; color:#33454f; }
+  .photo-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(120px,1fr)); gap:8px; margin-top:12px; }
+  .photo-grid:empty{ display:none; }
+  .photo-tile{ position:relative; border:1px solid var(--line); border-radius:9px; overflow:hidden; background:#fff; font-size:12px; }
+  .photo-tile img{ display:block; width:100%; height:90px; object-fit:cover; background:#e9eef0; }
+  .photo-tile span{ display:block; padding:4px 6px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .photo-tile .photo-x{ position:absolute; top:4px; right:4px; width:26px; height:26px; border-radius:50%; border:none; background:rgba(19,36,51,.75); color:#fff; font-size:15px; line-height:1; cursor:pointer; }
+  .photo-tile.busy img{ opacity:.4; }
   .img-list div{ padding:2px 0; }
   .agree-line{ display:flex; align-items:flex-start; gap:8px; margin-top:12px; }
   .agree-line input{ width:auto; margin-top:3px; }
@@ -165,6 +172,8 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js" defer></script>
 <script src="sn-export.js"></script>
+<link rel="stylesheet" href="photo-chooser.css">
+<script src="photo-chooser.js"></script>
 </head>
 <body>
 
@@ -242,7 +251,7 @@
     </div>
     <div class="card" id="affCard" style="display:none;">
       <h2 class="section-heading">Affiliate / Agent Details</h2>
-      <p class="hint">You must hold a signed Mandate from the Owner — upload it in step 7.</p>
+      <p class="hint">You must hold a signed Mandate from the Owner — upload it in step 5.</p>
       <label for="affName">Affiliate/Agent name</label>
       <input id="affName">
       <label for="affCompany">Affiliate company</label>
@@ -357,61 +366,20 @@
     </div>
   </section>
 
-  <!-- ============ STEP 5: UNITS & AMENITIES ============ -->
-  <section class="step" data-step="5" data-title="Units">
-    <h2 class="step-title">5. Units &amp; amenities</h2>
-    <p class="step-lede">One row per unit or room type. Rates are set on the calendar in the next step.</p>
-    <div data-shots="5"></div>
-    <div class="card">
-      <h2 class="section-heading">Unit / Room Types</h2>
-      <div id="unitList"></div>
-      <button type="button" class="btn-secondary" id="addUnitBtn">+ Add Unit Type</button>
-    </div>
-    <div class="card">
-      <h2 class="section-heading">Amenities &amp; Activities</h2>
-      <p class="hint">Tick everything that applies — this is what guests use to filter and compare listings.</p>
-      <div id="amenities"></div>
-      <label for="pNotIncluded">Shown as NOT included on other channels</label>
-      <input id="pNotIncluded" placeholder="e.g. Smoke alarm, Carbon monoxide alarm, Washer">
-      <div id="safetyNote"></div>
-    </div>
-  </section>
-
-  <!-- ============ STEP 6: CALENDAR & RATES ============ -->
-  <section class="step" data-step="6" data-title="Calendar &amp; rates">
-    <h2 class="step-title">6. Calendar &amp; rates</h2>
-    <div class="card rates-note"><p class="note info" style="margin:0"><b>Nothing to fill in here.</b> Your rates and availability come from your channel manager (for example NightsBridge) through Stock Network, so they stay there. Go on to step 7.</p></div>
-    <p class="step-lede">Tap a first night and a last night, type the <b>rack rate</b> (the public price per night) and minimum stay, and tap <b>Apply rate</b>. Block nights that are already booked. Avante works out the Stock Network rate for you.</p>
-    <div data-shots="6"></div>
-    <div class="card">
-      <div class="row">
-        <div><label for="calUnit">Unit type</label><select id="calUnit"></select></div>
-        <div><label for="icalLink">Calendar link (iCal) from the other channel</label><input id="icalLink" type="url" placeholder="https://www.airbnb.co.za/calendar/ical/....ics"></div>
-      </div>
-      <p class="note info" id="commNote"></p>
-      <div class="selbar" id="selBar"></div>
-      <div class="btns" style="justify-content:space-between"><button type="button" class="btn-secondary btn-sm" id="calPrev">◀ Earlier</button><b id="calRange" style="font-size:14px"></b><button type="button" class="btn-secondary btn-sm" id="calNext">Later ▶</button></div>
-      <div class="months" id="months"></div>
-      <div class="legend"><span>Rate set</span><span class="u">Open, no rate</span><span class="b">Booked / blocked</span><span class="s">Selected</span><span class="c">= price seen on the other channel</span><span class="p">Past (kept on record)</span></div>
-      <h3 class="section-heading" style="margin-top:18px; font-size:15px;">Seasons</h3>
-      <div class="scroll"><table><thead><tr><th>Unit</th><th>From</th><th>To</th><th class="num">Nights</th><th class="num">Min stay</th><th class="num">Rack (R)</th><th class="num">SN rate (R)</th></tr></thead><tbody id="seasonRows"></tbody></table></div>
-      <div id="seasonNote"></div>
-    </div>
-  </section>
-
-  <!-- ============ STEP 7: PHOTOS & DOCUMENTS ============ -->
+  <!-- ============ STEP 5: PHOTOS & DOCUMENTS (id 7) ============ -->
+  <!-- data-step is each step's id, not its place: Photos (7) comes before Units (5) so unit photos can be picked from the property's photos (Jean, 2026-10-17). -->
   <section class="step" data-step="7" data-title="Photos">
-    <h2 class="step-title">7. Photos &amp; documents</h2>
+    <h2 class="step-title">5. Photos &amp; documents</h2>
     <p class="step-lede">Upload the property's own photos (the originals, not copies from a channel), and the documents Avante needs before a listing can go live.</p>
     <div class="card">
       <h2 class="section-heading">Property &amp; Unit Photos</h2>
-      <p class="hint">Upload as many as you like — front exterior, living areas, each unit type, views.</p>
-      <input type="file" id="imageInput" accept="image/*" multiple>
-      <div class="img-list" id="imageList"></div>
+      <p class="hint">Add as many as you like — front exterior, living areas, each unit type, views. Upload your own, or pick them from the Avante photo library. In the next step you give each unit type its photos from these.</p>
+      <button type="button" class="btn-navy" id="addPhotosBtn">Add photos</button>
+      <div class="photo-grid" id="photoGrid"></div>
     </div>
     <div class="card" id="existingFilesCard" style="display:none">
-      <h2 class="section-heading">Already with this listing</h2>
-      <p class="hint">Files uploaded before. Tap one to open or download it. New files you add below are kept as well.</p>
+      <h2 class="section-heading">Documents already with this listing</h2>
+      <p class="hint">Documents uploaded before. Tap one to open or download it. New ones you add below are kept as well.</p>
       <div class="img-list" id="existingFiles"></div>
     </div>
     <div class="card">
@@ -445,6 +413,48 @@
         <input type="file" class="doc-input" accept="image/*,.pdf">
         <span class="doc-status"></span>
       </div>
+    </div>
+  </section>
+
+  <!-- ============ STEP 6: UNITS & AMENITIES (id 5) ============ -->
+  <section class="step" data-step="5" data-title="Units">
+    <h2 class="step-title">6. Units &amp; amenities</h2>
+    <p class="step-lede">One row per unit or room type. Rates are set on the calendar in the next step.</p>
+    <div data-shots="5"></div>
+    <div class="card">
+      <h2 class="section-heading">Unit / Room Types</h2>
+      <div id="unitList"></div>
+      <button type="button" class="btn-secondary" id="addUnitBtn">+ Add Unit Type</button>
+    </div>
+    <div class="card">
+      <h2 class="section-heading">Amenities &amp; Activities</h2>
+      <p class="hint">Tick everything that applies — this is what guests use to filter and compare listings.</p>
+      <div id="amenities"></div>
+      <label for="pNotIncluded">Shown as NOT included on other channels</label>
+      <input id="pNotIncluded" placeholder="e.g. Smoke alarm, Carbon monoxide alarm, Washer">
+      <div id="safetyNote"></div>
+    </div>
+  </section>
+
+  <!-- ============ STEP 7: CALENDAR & RATES (id 6) ============ -->
+  <section class="step" data-step="6" data-title="Calendar &amp; rates">
+    <h2 class="step-title">7. Calendar &amp; rates</h2>
+    <div class="card rates-note"><p class="note info" style="margin:0"><b>Nothing to fill in here.</b> Your rates and availability come from your channel manager (for example NightsBridge) through Stock Network, so they stay there. Go on to step 8.</p></div>
+    <p class="step-lede">Tap a first night and a last night, type the <b>rack rate</b> (the public price per night) and minimum stay, and tap <b>Apply rate</b>. Block nights that are already booked. Avante works out the Stock Network rate for you.</p>
+    <div data-shots="6"></div>
+    <div class="card">
+      <div class="row">
+        <div><label for="calUnit">Unit type</label><select id="calUnit"></select></div>
+        <div><label for="icalLink">Calendar link (iCal) from the other channel</label><input id="icalLink" type="url" placeholder="https://www.airbnb.co.za/calendar/ical/....ics"></div>
+      </div>
+      <p class="note info" id="commNote"></p>
+      <div class="selbar" id="selBar"></div>
+      <div class="btns" style="justify-content:space-between"><button type="button" class="btn-secondary btn-sm" id="calPrev">◀ Earlier</button><b id="calRange" style="font-size:14px"></b><button type="button" class="btn-secondary btn-sm" id="calNext">Later ▶</button></div>
+      <div class="months" id="months"></div>
+      <div class="legend"><span>Rate set</span><span class="u">Open, no rate</span><span class="b">Booked / blocked</span><span class="s">Selected</span><span class="c">= price seen on the other channel</span><span class="p">Past (kept on record)</span></div>
+      <h3 class="section-heading" style="margin-top:18px; font-size:15px;">Seasons</h3>
+      <div class="scroll"><table><thead><tr><th>Unit</th><th>From</th><th>To</th><th class="num">Nights</th><th class="num">Min stay</th><th class="num">Rack (R)</th><th class="num">SN rate (R)</th></tr></thead><tbody id="seasonRows"></tbody></table></div>
+      <div id="seasonNote"></div>
     </div>
   </section>
 
@@ -573,32 +583,41 @@
   termsModal.addEventListener('click', function(e){ if(e.target === termsModal) termsModal.classList.remove('show'); });
 
   // ---------- Steps ----------
+  // A step's data-step is its id (used in code, e.g. 6 = Calendar & rates);
+  // the order on screen is the order of the sections (Photos comes before Units).
   var steps = Array.prototype.slice.call(document.querySelectorAll('section.step'));
+  var stepIds = steps.map(function(s){ return +s.getAttribute('data-step'); });
   var current = 1;
-  function goStep(n){
-    current = Math.max(1, Math.min(steps.length, n));
+  function stepNo(id){ return stepIds.indexOf(id) + 1; }   // what people see: "step 5"
+  function goStep(id){
+    if(stepIds.indexOf(id) < 0) return;
+    current = id;
+    var pos = stepNo(id);
     steps.forEach(function(s){ s.classList.toggle('on', +s.getAttribute('data-step') === current); });
     renderStepButtons();
-    $('progressBar').style.width = Math.round(current / steps.length * 100) + '%';
-    $('backBtn').style.visibility = current === 1 ? 'hidden' : 'visible';
-    $('nextBtn').style.display = current === steps.length ? 'none' : '';
-    $('nextBtn').textContent = current < steps.length ? 'Next: ' + steps[current].getAttribute('data-title').replace('&amp;','&') : '';
+    $('progressBar').style.width = Math.round(pos / steps.length * 100) + '%';
+    $('backBtn').style.visibility = pos === 1 ? 'hidden' : 'visible';
+    $('nextBtn').style.display = pos === steps.length ? 'none' : '';
+    $('nextBtn').textContent = pos < steps.length ? 'Next: ' + steps[pos].getAttribute('data-title').replace('&amp;','&') : '';
     if(current === 3) updatePlaceNote();
     if(current === 6) renderCalendar();
+    if(current === 7) renderPhotos();
+    if(current === 5) renderUnitPhotos();
     if(current === 7 && !$('gQuery').value) $('gQuery').value = [$('pName').value, $('pSuburb').value || $('pCity').value].filter(Boolean).join(', ');
     if(current === 8) renderReview();
     window.scrollTo({ top: 0, behavior: 'smooth' });
     try { if(window.parent && window.parent !== window) window.parent.scrollTo({ top: 0, behavior: 'smooth' }); } catch(e){}
   }
   function renderStepButtons(){
+    var pos = stepNo(current);
     $('stepButtons').innerHTML = steps.map(function(s, i){
       var n = i + 1;
-      return '<button type="button" data-go="' + n + '" class="' + (n === current ? 'on' : (n < current ? 'done' : '')) + '"><span class="n">' + (n < current ? '✓' : n) + '</span><span class="lbl">' + s.getAttribute('data-title') + '</span></button>';
+      return '<button type="button" data-go="' + stepIds[i] + '" class="' + (n === pos ? 'on' : (n < pos ? 'done' : '')) + '"><span class="n">' + (n < pos ? '✓' : n) + '</span><span class="lbl">' + s.getAttribute('data-title') + '</span></button>';
     }).join('');
   }
   $('stepButtons').addEventListener('click', function(e){ var b = e.target.closest('button[data-go]'); if(b) goStep(+b.getAttribute('data-go')); });
-  $('backBtn').addEventListener('click', function(){ goStep(current - 1); });
-  $('nextBtn').addEventListener('click', function(){ goStep(current + 1); });
+  $('backBtn').addEventListener('click', function(){ goStep(stepIds[stepNo(current) - 2]); });
+  $('nextBtn').addEventListener('click', function(){ goStep(stepIds[stepNo(current)]); });
 
   // ---------- Submitted-by toggle ----------
   Array.prototype.forEach.call(document.getElementsByName('submittedBy'), function(r){
@@ -659,27 +678,15 @@
         '<label>Rates per pax (1 / 2 / 3 / 4 / 5)</label><div class="row"><input class="pu-rate1" inputmode="numeric"><input class="pu-rate2" inputmode="numeric"><input class="pu-rate3" inputmode="numeric"><input class="pu-rate4" inputmode="numeric"><input class="pu-rate5" inputmode="numeric"></div>' +
         '<div class="row"><div><label>Child rate (0-6)</label><input class="pu-childRate06" inputmode="numeric"></div><div><label>Child rate (7-12)</label><input class="pu-childRate712" inputmode="numeric"></div></div>' +
       '</details>' +
-      '<label>Unit photos</label><input type="file" class="pu-images" accept="image/*" multiple>' +
-      '<div class="img-list pu-images-list"></div>';
+      '<label>Unit photos</label><button type="button" class="btn-secondary btn-sm pu-photos-btn">Choose photos</button>' +
+      '<div class="photo-grid pu-photo-grid"></div>';
     unitList.appendChild(wrap);
-    wrap.querySelector('.remove-unit').addEventListener('click', function(){ wrap.remove(); delete RATES[uid]; });
-    wrap.querySelector('.pu-images').addEventListener('change', function(e){
-      var nameInput = wrap.querySelector('.pu-name');
-      var listEl = wrap.querySelector('.pu-images-list');
-      Array.prototype.forEach.call(e.target.files, function(file){
-        var row = document.createElement('div');
-        row.textContent = file.name + ' — waiting to upload…';
-        listEl.appendChild(row);
-        uploadFile(file, 'image', 'unit', function(data){
-          if(data && data.ok){
-            row.textContent = '✓ ' + file.name;
-            uploadedImages.push({ type: 'Unit', unitTypeName: nameInput.value.trim(), key: data.key, fileName: file.name, cover: 'N' });
-          } else {
-            row.textContent = file.name + ' — upload failed (' + ((data && data.error) || 'unknown') + ')';
-          }
-        });
-      });
+    wrap.querySelector('.remove-unit').addEventListener('click', function(){
+      // Its photos stay with the property.
+      uploadedImages.forEach(function(im){ if(im.uid === uid){ im.type = 'Property'; im.unitTypeName = ''; delete im.uid; } });
+      wrap.remove(); delete RATES[uid]; renderPhotos();
     });
+    wrap.querySelector('.pu-photos-btn').addEventListener('click', function(){ choosePhotos(uid); });
     return wrap;
   }
   $('addUnitBtn').addEventListener('click', addUnitRow);
@@ -769,21 +776,88 @@
       });
     });
   });
-  $('imageInput').addEventListener('change', function(){
-    Array.prototype.forEach.call($('imageInput').files, function(file){
-      var row = document.createElement('div');
-      row.textContent = file.name + ' — waiting to upload…';
-      $('imageList').appendChild(row);
-      uploadFile(file, 'image', 'property', function(data){
-        if(data && data.ok){
-          row.textContent = '✓ ' + file.name;
-          uploadedImages.push({ type: 'Property', unitTypeName: '', key: data.key, fileName: file.name, cover: 'N' });
-        } else {
-          row.textContent = file.name + ' — upload failed (' + ((data && data.error) || 'unknown') + ')';
-        }
+  // ---------- Photos: one chooser (photo-chooser.js) ----------
+  // The Photos step holds every photo of the listing. A unit type's photos
+  // are picked from those (or the library, or uploaded there), and keep the
+  // unit's row id (uid) while the form is open; the unit's name goes in when
+  // the form is saved.
+  var LISTING_RESORT_ID = '';
+  var pendingPhotos = [];   // [{ name }] still uploading or copying
+  function photoUrl(im){ return '/api/property-file?key=' + encodeURIComponent(im.key); }
+  function photoAuth(){ return ADMIN_T ? { token: ADMIN_T } : (EDIT_ID && EDIT_KEY ? { listingId: EDIT_ID, key: EDIT_KEY } : {}); }
+  function unitRowOf(uid){ return document.querySelector('.unit-row[data-uid="' + uid + '"]'); }
+  function unitLabel(uid){ var r = unitRowOf(uid); return r ? unitName(r, unitRows().indexOf(r)) : ''; }
+  function tileHtml(im, i, removeAttr, label){
+    return '<div class="photo-tile"><img src="' + esc(photoUrl(im)) + '" alt="" loading="lazy"><span>' + esc(label) + '</span>' +
+      '<button type="button" class="photo-x" ' + removeAttr + '="' + i + '" aria-label="Remove photo">×</button></div>';
+  }
+  function renderPhotos(){
+    $('photoGrid').innerHTML = uploadedImages.map(function(im, i){
+      return tileHtml(im, i, 'data-photo-del', im.uid ? unitLabel(im.uid) : (im.type === 'Unit' && im.unitTypeName ? im.unitTypeName : 'Property'));
+    }).join('') + pendingPhotos.map(function(p){ return '<div class="photo-tile busy"><img alt=""><span>' + esc(p.name) + ' — adding…</span></div>'; }).join('');
+    renderUnitPhotos();
+  }
+  function renderUnitPhotos(){
+    unitRows().forEach(function(row){
+      var uid = row.getAttribute('data-uid');
+      row.querySelector('.pu-photo-grid').innerHTML = uploadedImages.map(function(im, i){ return im.uid === uid ? tileHtml(im, i, 'data-photo-unit', im.fileName || 'Photo') : ''; }).join('');
+    });
+  }
+  // Removing on the Photos step takes the photo off the listing; on a unit it goes back to the property.
+  document.addEventListener('click', function(e){
+    var d = e.target.closest('[data-photo-del]');
+    if(d){ uploadedImages.splice(+d.getAttribute('data-photo-del'), 1); renderPhotos(); return; }
+    var u = e.target.closest('[data-photo-unit]');
+    if(u){ var im = uploadedImages[+u.getAttribute('data-photo-unit')]; im.type = 'Property'; im.unitTypeName = ''; delete im.uid; renderPhotos(); }
+  });
+  function place(){ return { c: $('pCountry').value.trim(), p: $('pProvince').value.trim(), r: $('pRegion').value.trim(), t: $('pCity').value.trim(), s: $('pSuburb').value.trim() }; }
+  // Adds what was picked to the listing (and to the unit, when uid is given).
+  function addPicked(picked, uid){
+    var as = function(im){ if(uid){ im.type = 'Unit'; im.uid = uid; } return im; };
+    picked.listing.forEach(function(it){ as(uploadedImages.filter(function(im){ return im.key === it.key; })[0]); });
+    picked.files.forEach(function(file){
+      var p = { name: file.name }; pendingPhotos.push(p);
+      uploadFile(file, 'image', uid ? 'unit' : 'property', function(data){
+        pendingPhotos.splice(pendingPhotos.indexOf(p), 1);
+        if(data && data.ok) uploadedImages.push(as({ type: 'Property', unitTypeName: '', key: data.key, fileName: file.name, cover: 'N' }));
+        else alert(file.name + ' could not be uploaded (' + ((data && data.error) || 'unknown') + '). Try it again.');
+        renderPhotos();
       });
     });
-  });
+    if(picked.library.length){
+      var p = { name: picked.library.length + ' library photo' + (picked.library.length === 1 ? '' : 's') }; pendingPhotos.push(p);
+      fetch('/api/photo-library', { method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(Object.assign({ action: 'toListing', listingId: LISTING_TMP, ids: picked.library.map(function(x){ return x.id; }) }, photoAuth())) })
+        .then(function(r){ return r.json(); }).catch(function(){ return null; })
+        .then(function(d){
+          pendingPhotos.splice(pendingPhotos.indexOf(p), 1);
+          var files = (d && d.files) || [], failed = picked.library.length - files.filter(function(f){ return f.key; }).length;
+          files.forEach(function(f){ if(f.key) uploadedImages.push(as({ type: 'Property', unitTypeName: '', key: f.key, fileName: f.fileName, caption: f.caption || '', cover: 'N' })); });
+          if(failed) alert(failed + ' library photo' + (failed === 1 ? '' : 's') + ' could not be added' + (d && d.error ? ' (' + d.error + ')' : '') + '. Try again.');
+          renderPhotos();
+        });
+    }
+    renderPhotos();
+  }
+  function choosePhotos(uid){
+    var unit = uid ? unitLabel(uid) : '';
+    var listing = uid ? uploadedImages.map(function(im){ return { key: im.key, thumb: photoUrl(im), name: im.fileName || 'Photo', used: im.uid === uid }; }) : [];
+    PhotoChooser.open({
+      title: uid ? 'Photos of ' + unit : 'Photos of ' + ($('pName').value.trim() || 'the property'),
+      auth: photoAuth(), listing: listing, filesOnly: true,
+      filingFor: { resortId: LISTING_RESORT_ID, listingId: EDIT_ID, name: $('pName').value.trim(), unit: unit, place: place() },
+      onDone: function(picked){ addPicked(picked, uid); }
+    });
+  }
+  $('addPhotosBtn').addEventListener('click', function(){ choosePhotos(''); });
+  // What is saved: a unit's photos carry the unit's name as it is now.
+  function imagesForSave(){
+    return uploadedImages.map(function(im){
+      var out = { type: im.type, unitTypeName: im.unitTypeName || '', key: im.key, fileName: im.fileName, caption: im.caption || '', cover: im.cover || 'N' };
+      if(im.uid){ out.type = 'Unit'; out.unitTypeName = unitLabel(im.uid); }
+      return out;
+    });
+  }
 
   // =====================================================================
   // SCREENSHOTS — paste or choose screenshots of the property's own
@@ -1056,7 +1130,7 @@
       eachDay(rs.from < TODAY ? TODAY : rs.from, rs.to, function(k){ if(overwrite || !RATES[uid][k]) RATES[uid][k] = { rack: rack, min: min }; });
       nSeason++; if(rs.note) notes.push(rs.note);
     });
-    if(nSeason) done.push(nSeason + ' rate season' + (nSeason === 1 ? '' : 's') + ' put on the calendar (step 6)' + (notes.length ? ' — ' + notes.slice(0, 3).join('; ') : ''));
+    if(nSeason) done.push(nSeason + ' rate season' + (nSeason === 1 ? '' : 's') + ' put on the calendar (step 7)' + (notes.length ? ' — ' + notes.slice(0, 3).join('; ') : ''));
     // Amenities: tick the matches.
     var ticked = 0;
     (f.amenities || []).forEach(function(a){
@@ -1298,6 +1372,7 @@
         if(data && data.ok){
           b.textContent = '✓ Added';
           uploadedImages.push({ type: 'Property', unitTypeName: '', key: data.key, fileName: name, caption: g.attribution ? 'Google photo: ' + g.attribution : 'Google photo', cover: 'N' });
+          renderPhotos();
         } else { b.disabled = false; b.textContent = 'Add (failed — try again)'; }
       });
     });
@@ -1337,17 +1412,17 @@
       [!isAff || anyDoc('mandate'), 'Signed mandate (affiliates only)', 7],
       [!!$('depositText').value.trim(), 'Cancellation policy', 8]
     ];
-    $('checklist').innerHTML = checks.map(function(c){ return '<li><span class="pill ' + (c[0] ? 'ok' : 'todo') + '">' + (c[0] ? 'Done' : 'To do') + '</span><span>' + esc(c[1]) + (c[0] ? '' : ' — <button type="button" class="btn-link" data-go="' + c[2] + '">go to step ' + c[2] + '</button>') + '</span></li>'; }).join('');
+    $('checklist').innerHTML = checks.map(function(c){ return '<li><span class="pill ' + (c[0] ? 'ok' : 'todo') + '">' + (c[0] ? 'Done' : 'To do') + '</span><span>' + esc(c[1]) + (c[0] ? '' : ' — <button type="button" class="btn-link" data-go="' + c[2] + '">go to step ' + stepNo(c[2]) + '</button>') + '</span></li>'; }).join('');
     $('snHead').innerHTML = '<tr>' + SN_COLS.map(function(c){ return '<th>' + esc(c) + '</th>'; }).join('') + '</tr>';
     var rows = snRows();
-    $('snBody').innerHTML = rows.length ? rows.map(function(r){ return '<tr>' + r.map(function(v){ return '<td>' + (v === '' ? '<span style="color:#c3ccd0">·</span>' : esc(v)) + '</td>'; }).join('') + '</tr>'; }).join('') : '<tr><td colspan="28" class="hint">No rows yet — set rates in step 6.</td></tr>';
+    $('snBody').innerHTML = rows.length ? rows.map(function(r){ return '<tr>' + r.map(function(v){ return '<td>' + (v === '' ? '<span style="color:#c3ccd0">·</span>' : esc(v)) + '</td>'; }).join('') + '</tr>'; }).join('') : '<tr><td colspan="28" class="hint">No rows yet — set rates in step 7.</td></tr>';
     if(!$('sigDate').value) $('sigDate').value = TODAY;
   }
   $('checklist').addEventListener('click', function(e){ var b = e.target.closest('[data-go]'); if(b) goStep(+b.getAttribute('data-go')); });
   document.addEventListener('click', function(e){
     var b = e.target.closest && e.target.closest('[data-dl]'); if(!b) return;
     var listing = buildPayload(), kind = b.getAttribute('data-dl');
-    if(!listing.rateSeasons.length && kind !== 'property'){ $('dlStatus').textContent = RATES_FROM_CHANNEL ? 'Rates come from the channel manager.' : 'Set rates in step 6 first.'; return; }
+    if(!listing.rateSeasons.length && kind !== 'property'){ $('dlStatus').textContent = RATES_FROM_CHANNEL ? 'Rates come from the channel manager.' : 'Set rates in step 7 first.'; return; }
     try {
       if(kind === 'property') AvanteSNExport.downloadPropertyFile(listing, listing.siteNr);
       if(kind === 'stockx') AvanteSNExport.downloadStockXlsx(listing, listing.siteNr);
@@ -1467,7 +1542,7 @@
       unitTypes: unitTypes,
       amenities: amenities,
       documents: uploadedDocs,
-      images: uploadedImages,
+      images: imagesForSave(),
       agreementSigned: agree,
       signatoryName: $('sigName').value.trim(),
       signatoryCapacity: $('sigCapacity').value,
@@ -1583,8 +1658,15 @@
     tickSnFacilities(L.snFacilities);
     // Files already uploaded stay with the listing
     uploadedDocs = (L.documents || []).map(function(d){ return { type: d.type, key: d.key, fileName: d.fileName }; });
-    uploadedImages = (L.images || []).map(function(im){ return { type: im.type, unitTypeName: im.unitTypeName, key: im.key, fileName: im.fileName, caption: im.caption, cover: im.cover }; });
-    var files = uploadedDocs.map(function(d){ return [d.type, d]; }).concat(uploadedImages.map(function(im){ return [(im.type || 'Photo') + ' photo', im]; }));
+    LISTING_RESORT_ID = L.resortId || '';
+    uploadedImages = (L.images || []).map(function(im){
+      var out = { type: im.type, unitTypeName: im.unitTypeName, key: im.key, fileName: im.fileName, caption: im.caption, cover: im.cover };
+      var row = im.type === 'Unit' && im.unitTypeName ? unitRows().filter(function(r, i){ return unitName(r, i) === im.unitTypeName; })[0] : null;
+      if(row) out.uid = row.getAttribute('data-uid');
+      return out;
+    });
+    renderPhotos();
+    var files = uploadedDocs.map(function(d){ return [d.type, d]; });
     if(files.length){
       $('existingFilesCard').style.display = '';
       $('existingFiles').innerHTML = files.map(function(f){ return '<div>' + esc(f[0]) + ': <a href="/api/property-file?key=' + encodeURIComponent(f[1].key) + '" target="_blank" rel="noopener">' + esc(f[1].fileName || f[1].key) + '</a></div>'; }).join('');

@@ -11,8 +11,7 @@ import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
 import { emailList } from "./lib/emails.js";
 import { createCore, PAError } from "./lib/pa-core.js";
 import { stayPayload } from "./lib/stay-payload.js";
-import { GREF, LIBID } from "./lib/act-photos.js";
-import { HOOKS_URL, makeHooksTicket } from "./lib/hooks-ticket.js";
+import { GREF, LIBID, libImage } from "./lib/photo-library.js";
 
 // Reading is open to any site; booking only from our own pages (checked below).
 const cors = { "access-control-allow-origin": "*", "access-control-allow-methods": "GET", "access-control-allow-headers": "content-type" };
@@ -59,10 +58,10 @@ export default async (request, context) => {
       }
       if (lid) {
         if (!LIBID.test(lid)) return new Response("Bad photo", { status: 400, headers: cors });
-        const tk = await makeHooksTicket({ sub: "admin", name: "Avante front store", role: "admin" }).catch(() => "");
-        const r = tk ? await fetch(new URL("/api/library?img=" + encodeURIComponent(lid), HOOKS_URL).href, { headers: { authorization: "Bearer " + tk } }).catch(() => null) : null;
-        if (!r || !r.ok) return new Response("Not found", { status: 404, headers: cors });
-        return new Response(await r.arrayBuffer(), { headers: { "content-type": r.headers.get("content-type") || "image/jpeg", "cache-control": "public, max-age=604800", ...cors } });
+        // &th=1: the library's thumbnail (photo chooser grids).
+        const img = await libImage(lid, url.searchParams.get("th") === "1").catch(() => null);
+        if (!img) return new Response("Not found", { status: 404, headers: cors });
+        return new Response(img.data, { headers: { "content-type": img.type, "cache-control": "public, max-age=604800", ...cors } });
       }
       const prop = await core.propertyBySlug(url.searchParams.get("slug") || "");
       if (!prop) return json({ ok: false, error: "This page isn't available." }, 404);

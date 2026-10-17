@@ -1,4 +1,5 @@
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
+import { slug, saveListingFile } from "./lib/listing-files.js";
 
 // Handles document + image uploads for the Property Affiliate onboarding
 // form (proof of ownership, proof of residence, ID, mandate, property/unit
@@ -6,16 +7,6 @@ import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
 // a stable key back out, GET to retrieve later for admin review.
 
 const MAX_BYTES = 10 * 1024 * 1024; // 10MB — covers scanned PDFs + photos
-
-function slug(s) {
-  return String(s || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 80);
-}
 
 export default async (request, context) => {
   const cors = {
@@ -60,10 +51,7 @@ export default async (request, context) => {
         });
       }
 
-      const key = listingId + "/" + kind + "/" + Date.now() + "-" + slug(fileName);
-      await store.set(key, buf, {
-        metadata: { contentType, fileName, listingId, kind, label },
-      });
+      const key = await saveListingFile(store, { listingId, kind, label, fileName, contentType, data: buf });
 
       return new Response(JSON.stringify({ ok: true, key: key, fileName: fileName }), {
         headers: { "content-type": "application/json", ...cors },

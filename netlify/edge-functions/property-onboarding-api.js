@@ -10,6 +10,7 @@ import { SITE_REGISTER_STORE, SITE_STATUSES, DEFAULT_SN_SETUP_EMAILS, newEntry, 
   listSiteNrs, nextFreeSiteNr, findOpenRequest, requestSheetBase64, sheetFileName, setupEmail, confirmationEmail } from "./lib/sn-site-register.js";
 import { readListingScreenshots } from "./lib/listing-reader.js";
 import { HOOKS_URL, makeHooksTicket } from "./lib/hooks-ticket.js";
+import { isAdminToken } from "./lib/admin-session.js";
 import { readResortInfo, copySnPhotos } from "./lib/sn-resort-info.js";
 import { feedByBbid, feedRowByResort, fillFromFeed, typeNames, learnTypeName, typeCodeOf } from "./lib/sn-feed.js";
 import { forwardGeocode, reverseGeocode } from "./lib/geocode.js";
@@ -437,14 +438,7 @@ function addHistory(record, by, action, before) {
   return true;
 }
 
-async function verifyAdminToken(token) {
-  if (!token) return false;
-  const sessionStore = getStore({ name: "admin-sessions", consistency: "strong" });
-  const session = await sessionStore.get(token, { type: "json" });
-  if (!session) return false;
-  if (new Date(session.expiresAt).getTime() < Date.now()) return false;
-  return true;
-}
+const verifyAdminToken = isAdminToken;
 
 // Email failures never break the listing submit/status flow.
 async function sendNotificationEmail(to, subject, html) {
