@@ -17,14 +17,14 @@ import { forwardGeocode, reverseGeocode } from "./lib/geocode.js";
 import { searchPlacePhotos, searchPlaceCandidates } from "./lib/places-images.js";
 import { placeCoordinate, snFieldsFromPlace, placeText, PLACES_STORE, PROPERTY_KEY } from "./lib/tree.js";
 
-// Backs the "Property Affiliate" onboarding tab in hub.html, the
-// "Property Listings" tab in admin.html, and the public property-agreement.html
-// acceptance page. A property owner (or an existing travel affiliate acting
-// as their mandated agent) submits a listing here; it's stored with status
-// "Requested" for Avante to review. Admin can edit the listing details, set
-// commission/duration/agreement terms, send that agreement to the submitter
-// for acceptance, and once accepted, change status to "Listed" (approved,
-// live) or "Rejected" at any point. Nothing here auto-publishes a listing
+// Backs the "Property Affiliate" onboarding tab in hub.html and the
+// "Property Listings" tab in admin.html. A property owner (or an existing
+// travel affiliate acting as their mandated agent) submits a listing here;
+// it's stored with status "Requested" for Avante to review. Admin can edit the
+// listing details and change status to "Listed" (approved, live) or
+// "Rejected" at any point. There is no separate listing agreement (Jean,
+// 2026-10-17): accepting the Avante Hospitality Terms & Conditions when the
+// listing is submitted covers every kind of property. Nothing here auto-publishes a listing
 // anywhere else — it only records/tracks it.
 
 function clean(v, max) {
@@ -59,7 +59,6 @@ function genToken() {
 }
 
 const STATUSES = ["Requested", "Listed", "Rejected"];
-const AGREEMENT_STATUSES = ["Not Sent", "Sent", "Accepted", "Declined"];
 
 // Fields an admin is allowed to edit via the "updateListing" action. This is
 // deliberately the core identifying/contact/descriptive information plus the
@@ -73,7 +72,6 @@ const EDITABLE_FIELDS = [
   "ownerFullName", "ownerIdPassport", "ownerEmail", "ownerPhone",
   "checkInTime", "checkOutTime", "description", "houseRules", "moreInfo",
   "areaInfo", "depositPolicyText", "depositPct", "depositDays", "childPolicy",
-  "commissionRate", "listingDuration", "agreementTerms",
   "streetAddress", "siteId", "region", "sourceChannel", "channelListingLink",
   "channelReviews", "hostName", "accessibility", "icalLink",
   // Contact person for bookings and queries, and who gets the hub's emails (Jean, 2026-10-14).
@@ -82,7 +80,7 @@ const EDITABLE_FIELDS = [
 
 const EDITABLE_FIELD_MAX = {
   description: 4000, houseRules: 4000, moreInfo: 4000, areaInfo: 4000,
-  agreementTerms: 6000, depositPolicyText: 2000, childPolicy: 1000,
+  depositPolicyText: 2000, childPolicy: 1000,
   // Email fields hold several addresses, separated by commas.
   email: 600, ownerEmail: 600, contactEmail: 600, contactPhone: 200, telephone: 200, ownerPhone: 200,
 };
@@ -223,7 +221,6 @@ async function buildListingFromSn(pr, row, opts = {}) {
     // from their channel manager through Stock Network — no calendar or
     // rates in the hub, and commission on hub bookings is 4.95% + VAT.
     channelProperty: pr.channel ? "Y" : "", ratesFromChannel: pr.channel ? "Y" : "", commissionPct: pr.channel ? "4.95" : "",
-    commissionRate: "", listingDuration: "", agreementTerms: "", agreementStatus: "Not Sent", agreementToken: "", agreementSentAt: "", agreementRespondedAt: "",
   });
   // Everything else Stock Network's feed has (type, phone, email, links, times…).
   const fromFeed = await fillListingFromFeed(record).catch(() => []);
@@ -511,20 +508,6 @@ function submitterEmailFor(record) {
   return recipients(ownerSide, record.contactEmail, record.notifyWho || "both").join(", ");
 }
 
-function withAgreementDefaults(record) {
-  if (!record) return record;
-  if (!record.commissionRate) record.commissionRate = "";
-  if (!record.listingDuration) record.listingDuration = "";
-  if (!record.agreementTerms) record.agreementTerms = "";
-  if (!record.agreementStatus || AGREEMENT_STATUSES.indexOf(record.agreementStatus) === -1) {
-    record.agreementStatus = "Not Sent";
-  }
-  if (!record.agreementToken) record.agreementToken = "";
-  if (!record.agreementSentAt) record.agreementSentAt = "";
-  if (!record.agreementRespondedAt) record.agreementRespondedAt = "";
-  return record;
-}
-
 export default async (request, context) => {
   const cors = {
     "access-control-allow-origin": "*",
@@ -581,18 +564,6 @@ export default async (request, context) => {
 
         ...submittedFields(body),
         editToken: genToken(),
-
-        // Commission / listing agreement (set by admin later, before a
-        // listing can go live) — distinct from the onboarding "agreementSigned"
-        // checkbox above, which just confirms the submitter accepted the
-        // general onboarding terms when filling in this form.
-        commissionRate: "",
-        listingDuration: "",
-        agreementTerms: "",
-        agreementStatus: "Not Sent",
-        agreementToken: "",
-        agreementSentAt: "",
-        agreementRespondedAt: "",
       };
 
       const emailErr0 = emailFieldError(record);
@@ -655,7 +626,6 @@ export default async (request, context) => {
       const keyOk = !!record.editToken && clean(body.key, 200) === record.editToken;
       if (!isAdmin && !keyOk) return json({ error: "This edit link isn't valid. Ask Avante Travel for a new one." }, 401);
       if (["markSentToSN", "emailSNFiles", "libraryAdd", "addPhotos", "removePhoto"].includes(action) && !isAdmin) return json({ error: "Only Avante admin can do this." }, 401);
-      withAgreementDefaults(record);
 
       if (action === "getForEdit") {
         const out = Object.assign({}, record);
@@ -948,7 +918,7 @@ export default async (request, context) => {
       if (!listingId) return json({ error: "missing listingId" }, 400);
       const record = await store.get(listingId, { type: "json" });
       if (!record) return json({ error: "not found" }, 404);
-      return json({ ok: true, listing: withAgreementDefaults(record) });
+      return json({ ok: true, listing: record });
     }
 
     if (action === "list") {
@@ -961,7 +931,6 @@ export default async (request, context) => {
       );
       const summaries = items
         .filter(Boolean)
-        .map(withAgreementDefaults)
         .map((r) => ({
           listingId: r.listingId,
           propertyName: r.propertyName,
@@ -974,7 +943,6 @@ export default async (request, context) => {
           siteId: r.siteId || "",
           coordsVerified: r.coordsVerified || "N",
           existingOnSN: r.existingOnSN || "",
-          agreementStatus: r.agreementStatus,
           dateSubmitted: r.dateSubmitted,
           dateUpdated: r.dateUpdated,
         }))
@@ -1053,7 +1021,7 @@ export default async (request, context) => {
         const now = new Date().toISOString(), listingId = genListingId();
         record = Object.assign({ listingId, status: "Requested", dateSubmitted: now, dateUpdated: now }, submittedFields({ propertyName, email: contact.email, telephone: contact.phone, submittedBy: "Owner" }),
           { editToken: genToken(), agreementSigned: "Y", channelProperty: cm !== "None yet" ? "Y" : "", ratesFromChannel: cm !== "None yet" ? "Y" : "", commissionPct: cm !== "None yet" ? "4.95" : "",
-            needsTreePlace: loc.place ? "" : "Y", commissionRate: "", listingDuration: "", agreementTerms: "", agreementStatus: "Not Sent", agreementToken: "", agreementSentAt: "", agreementRespondedAt: "",
+            needsTreePlace: loc.place ? "" : "Y",
             siteNr: site ? String(site.siteNr) : "" }, extra);
         if (loc.place) { record.latitude = String(loc.lat); record.longitude = String(loc.lng); await applyTreePlace(record, loc.place, false); }
         addHistory(record, "property", "Listing request from the List your property page (" + cm + (bbid ? ", BBID " + bbid : eresRef ? ", eRes ref " + eresRef : "") +
@@ -1326,7 +1294,7 @@ export default async (request, context) => {
       }
       await store.setJSON(listingId, record);
 
-      return json({ ok: true, listing: withAgreementDefaults(record) });
+      return json({ ok: true, listing: record });
     }
 
     if (action === "snRepull") {
@@ -1355,125 +1323,7 @@ export default async (request, context) => {
       record.dateUpdated = new Date().toISOString();
       addHistory(record, "admin", filled.length ? "Pulled again from Stock Network: " + filled.join(", ") : "Pulled again from Stock Network: nothing new", before);
       await store.setJSON(listingId, record);
-      return json({ ok: true, filled, snRead: !!sn.ok, feed: feed || null, listing: withAgreementDefaults(record) });
-    }
-
-    if (action === "sendAgreement") {
-      const denied = await requireAdmin();
-      if (denied) return denied;
-
-      const listingId = clean(body.listingId, 20);
-      if (!listingId) return json({ error: "missing listingId" }, 400);
-
-      const record = await store.get(listingId, { type: "json" });
-      if (!record) return json({ error: "not found" }, 404);
-      withAgreementDefaults(record);
-
-      if (!record.agreementTerms) {
-        return json({ error: "Add the agreement terms before sending." }, 400);
-      }
-
-      const to = submitterEmailFor(record);
-      if (!to) {
-        return json({ error: "No email address on file for the submitter." }, 400);
-      }
-
-      record.agreementToken = genToken();
-      record.agreementStatus = "Sent";
-      record.agreementSentAt = new Date().toISOString();
-      record.agreementRespondedAt = "";
-      record.dateUpdated = record.agreementSentAt;
-      await store.setJSON(listingId, record);
-
-      const origin = new URL(request.url).origin;
-      const link =
-        origin + "/property-agreement.html?id=" + encodeURIComponent(listingId) +
-        "&token=" + encodeURIComponent(record.agreementToken);
-
-      context.waitUntil(
-        sendNotificationEmail(
-          to,
-          "Listing agreement for " + record.propertyName + " — action needed",
-          "<p>Hi " + escapeHtml(record.ownerFullName || "") + ",</p>" +
-            "<p>Please review and accept the listing agreement for <strong>" +
-            escapeHtml(record.propertyName) + "</strong> so we can proceed with getting it live " +
-            "on Avante Travel's Private Property STR Database.</p>" +
-            "<p><a href=\"" + link + "\">Review and accept the agreement</a></p>" +
-            "<p>If the link above doesn't work, copy and paste this into your browser:<br>" +
-            escapeHtml(link) + "</p>"
-        )
-      );
-
-      return json({ ok: true, listing: record });
-    }
-
-    if (action === "getAgreement") {
-      const listingId = clean(body.listingId, 20);
-      const token = clean(body.token, 200);
-      if (!listingId || !token) return json({ error: "missing listingId or token" }, 400);
-
-      const record = await store.get(listingId, { type: "json" });
-      if (!record || !record.agreementToken || record.agreementToken !== token) {
-        return json({ error: "This agreement link is invalid or has expired." }, 404);
-      }
-      withAgreementDefaults(record);
-
-      return json({
-        ok: true,
-        agreement: {
-          listingId: record.listingId,
-          propertyName: record.propertyName,
-          ownerFullName: record.ownerFullName,
-          commissionRate: record.commissionRate,
-          listingDuration: record.listingDuration,
-          agreementTerms: record.agreementTerms,
-          agreementStatus: record.agreementStatus,
-          agreementRespondedAt: record.agreementRespondedAt,
-        },
-      });
-    }
-
-    if (action === "acceptAgreement") {
-      const listingId = clean(body.listingId, 20);
-      const token = clean(body.token, 200);
-      const decision = body.decision === "Declined" ? "Declined" : "Accepted";
-      if (!listingId || !token) return json({ error: "missing listingId or token" }, 400);
-
-      const record = await store.get(listingId, { type: "json" });
-      if (!record || !record.agreementToken || record.agreementToken !== token) {
-        return json({ error: "This agreement link is invalid or has expired." }, 404);
-      }
-      withAgreementDefaults(record);
-
-      if (record.agreementStatus !== "Sent") {
-        return json(
-          { error: "This agreement has already been responded to (" + record.agreementStatus + ")." },
-          400
-        );
-      }
-
-      record.agreementStatus = decision;
-      record.agreementRespondedAt = new Date().toISOString();
-      record.dateUpdated = record.agreementRespondedAt;
-      await store.setJSON(listingId, record);
-
-      const notifyTo = await getNotificationEmail();
-      if (notifyTo) {
-        context.waitUntil(
-          sendNotificationEmail(
-            notifyTo,
-            "Agreement " + decision.toLowerCase() + " — " + record.propertyName,
-            "<p>" + escapeHtml(record.ownerFullName || "The submitter") + " has <strong>" +
-              decision.toLowerCase() + "</strong> the listing agreement for <strong>" +
-              escapeHtml(record.propertyName) + "</strong> (" + escapeHtml(listingId) + ").</p>" +
-              (decision === "Accepted"
-                ? "<p>You can now mark this listing as Listed in Admin &gt; Property Listings.</p>"
-                : "<p>Log in to Admin &gt; Property Listings to follow up.</p>")
-          )
-        );
-      }
-
-      return json({ ok: true, agreementStatus: record.agreementStatus });
+      return json({ ok: true, filled, snRead: !!sn.ok, feed: feed || null, listing: record });
     }
 
     if (action === "updateStatus") {
@@ -1490,14 +1340,6 @@ export default async (request, context) => {
 
       const record = await store.get(listingId, { type: "json" });
       if (!record) return json({ error: "not found" }, 404);
-      withAgreementDefaults(record);
-
-      if (status === "Listed" && record.agreementStatus !== "Accepted") {
-        return json(
-          { error: "The listing agreement must be sent and accepted before this listing can be marked as Listed." },
-          400
-        );
-      }
 
       const prevStatus = record.status;
       const beforeStatus = { status: record.status, siteNr: record.siteNr };

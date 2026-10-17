@@ -13,7 +13,7 @@
 </head>
 <body id="top">
 <!-- KEEP THIS GUIDE UP TO DATE: every change to admin.html, admin-login.html,
-     explore-tree.html, tree-lookup.html, property-agreement.html or the admin
+     explore-tree.html, tree-lookup.html, property-agreement.html (now only a note for old agreement links) or the admin
      edge functions that changes what staff see or do must update the matching
      section here in the same change, and add a line to "What's new". See CLAUDE.md. -->
 <header class="ht-top">
@@ -34,11 +34,12 @@
   <main class="ht-main">
     <h1>Hub admin, step by step</h1>
     <p class="ht-lead">For Avante Travel staff. Every admin tab, one small step at a time.</p>
-    <p class="ht-updated">Last updated: 15 October 2026</p>
+    <p class="ht-updated">Last updated: 17 October 2026</p>
 
     <div class="ht-card ht-new" aria-label="What's new">
       <h2>What's new</h2>
       <ul>
+        <li><time>17 Oct 2026</time> Property Listings: the separate listing agreement is gone (no <b>Agreement</b> column, no <span class="btn">Send Agreement for Acceptance</span>, no Commission, Duration or Agreement Terms boxes). Every property accepts the one <b>Avante Hospitality Terms &amp; Conditions</b> when it lists, so you can set a checked listing to <b>Listed</b> straight away. Listing requests now show <b>Listed on now</b> (the channels the property is on). See <a href="#propertyListings">Property Listings</a>.</li>
         <li><time>15 Oct 2026</time> New tab <span class="tab">Site Nrs</span>: the hub gives out Stock Network Site Nrs (from 6023) and emails Stock Network's set-up sheet for a property that asks to list and isn't on Stock Network yet. The "List your property" page has a new tick box <b>I also want to become an Avante Property Affiliate</b>; only then is a listing made. See <a href="#siteNrs">Site Nrs</a>.</li>
         <li><time>14 Oct 2026</time> Every email box takes <b>several email addresses</b>, separated by a comma: affiliate <span class="field">Email (optional; several: separate with commas)</span>, the two "Notify these email addresses…" boxes, <span class="field">Email the edit link to (several: separate with commas)</span>, and the owner, contact and property emails on a listing. Each address gets the email, so you can add one that sets off other actions (for example WhatsApp group messages).</li>
         <li><time>14 Oct 2026</time> Listings have a <b>contact person for bookings and queries</b> (<span class="field">Contact person</span>, <span class="field">Contact phone</span>, <span class="field">Contact email (several: separate with commas)</span>) and <span class="field">Send Avante's emails about this listing to</span>: both, the owner only, or the contact person only. Status emails and the edit link follow that choice. See <a href="#propertyListings">Review a listing</a>.</li>
@@ -305,17 +306,13 @@
       <div class="tip">Each unit from Stock Network becomes its own unit type with 1 unit. If several units are the same type, the property can join them in step 5 (one row, with the number of units).</div>
       <h3>Review a listing</h3>
       <ol class="steps">
-        <li>Once: type the address(es) in <span class="field">Notify these email addresses when a new listing is submitted (separate several with commas)</span> and tap <b>Save</b>. New listings, listing requests and agreement answers are emailed to every address there.</li>
+        <li>Once: type the address(es) in <span class="field">Notify these email addresses when a new listing is submitted (separate several with commas)</span> and tap <b>Save</b>. New listings and listing requests are emailed to every address there.</li>
         <li>Tap <span class="btn g">Refresh</span>. Tap <span class="btn g">View</span> on a listing.</li>
         <li>Read the top rows: <b>Coordinates checked with Google</b>, <b>Filled from screenshots</b>, and <b>Rates (rack → SN)</b> per season.</li>
         <li>Check and correct the details. Several owner or property emails? Separate them with a comma.</li>
         <li>Someone else handles the property's bookings? Fill in <span class="field">Contact person</span>, <span class="field">Contact phone</span> and <span class="field">Contact email (several: separate with commas)</span>.</li>
         <li>Pick who gets Avante's emails in <span class="field">Send Avante's emails about this listing to</span>: <b>Both the owner and the contact person</b>, <b>The owner only</b> or <b>The contact person only</b>.</li>
-        <li>Tap <span class="btn">Save Changes</span> (Send Agreement doesn't save these).</li>
-        <li>Open it again and fill in <span class="field">Commission / Revenue Share</span>, <span class="field">Listing Duration</span> and the <span class="field">Agreement Terms</span>.</li>
-        <li>Tap <span class="btn">Send Agreement for Acceptance</span>. The person who sent the listing (owner or affiliate) gets an email to accept.</li>
-        <li>Wait until the <b>Agreement</b> column says Accepted (you also get an email).</li>
-        <li>Open it again, set <span class="field">Status</span> to <b>Listed</b>, type the <span class="field">StockNetwork Site Nr</span>, and tap <span class="btn">Save Changes</span>.</li>
+        <li>Set <span class="field">Status</span> to <b>Listed</b>, type the <span class="field">StockNetwork Site Nr</span>, and tap <span class="btn">Save Changes</span>.</li>
       </ol>
       <h3>Edit everything (units, amenities, rates)</h3>
       <ol class="steps">
@@ -363,7 +360,7 @@
       </ol>
       <div class="tip">Past rates are never sent again, but they stay on record: the property file has a sheet <b>All rates on record</b> with every season marked Past, Sent to SN or Not sent yet.</div>
       <div class="tip">The owner's own files (ID, proof of ownership, rate sheets, photos) are listed under <b>Files and Stock Network</b>. Tap a file name to download it.</div>
-      <div class="tip">"Listed" can only be chosen after the agreement is accepted. To say no, set Status to Rejected and save. Every status change emails the people chosen in <b>Send Avante's emails about this listing to</b> (for a listing sent by an affiliate, "owner" means the affiliate).</div>
+      <div class="tip">The property accepted the Avante Hospitality Terms &amp; Conditions when it listed; there is no separate agreement to send. To say no, set Status to Rejected and save. Every status change emails the people chosen in <b>Send Avante's emails about this listing to</b> (for a listing sent by an affiliate, "owner" means the affiliate).</div>
     </section>
 
     <section id="siteNrs">

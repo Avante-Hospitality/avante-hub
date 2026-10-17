@@ -744,20 +744,12 @@
   <div class="modal-overlay" id="propertyDetailsModalOverlay">
     <div class="modal-card" style="max-width:640px;">
       <h2 id="propertyDetailsModalTitle">Property Listing</h2>
-      <p class="modal-sub">Edit the listing details below, set commission &amp; agreement terms, then save. Send the agreement to the owner/affiliate for acceptance before marking a listing as Listed.</p>
+      <p class="modal-sub">Edit the listing details below, then save. The property accepted the Avante Hospitality Terms &amp; Conditions when it listed, so it can be marked Listed once it's checked.</p>
       <div id="propertyDetailsModalBody"></div>
       <label>Place in the location tree</label>
       <div id="propertyLocationPickerHost"></div>
       <div class="hint" style="margin-top:2px;">Worked out from the listing's latitude and longitude — separate from the Suburb/City/State fields above, which are as submitted by the owner/agent. Change the coordinates and save, then press Look up again.</div>
-      <label for="propCommissionInput" style="margin-top:14px;">Commission / Revenue Share</label>
-      <input id="propCommissionInput" placeholder="e.g. 15% of booking value">
-      <label for="propDurationInput">Listing Duration</label>
-      <input id="propDurationInput" placeholder="e.g. 12 months from listing date">
-      <label for="propAgreementTermsInput">Agreement Terms</label>
-      <textarea id="propAgreementTermsInput" style="min-height:140px;"></textarea>
-      <div class="modal-sub" id="propertyAgreementStatusRow" style="margin:-2px 0 10px;">Agreement status: Not Sent</div>
-      <button type="button" class="btn-outline" id="propertySendAgreementBtn" style="margin-bottom:14px;">Send Agreement for Acceptance</button>
-      <label for="propertyStatusInput">Status</label>
+      <label for="propertyStatusInput" style="margin-top:14px;">Status</label>
       <select id="propertyStatusInput">
         <option value="Requested">Requested</option>
         <option value="Listed">Listed</option>
@@ -1295,7 +1287,7 @@
         </div>
         <div class="status" id="propertyListingsStatus"></div>
         <div style="margin-top:18px;">
-          <p class="table-scroll-hint">&larr; Scroll sideways to see Agreement, Site Nr and Submitted &mdash; Actions stays visible on the right</p>
+          <p class="table-scroll-hint">&larr; Scroll sideways to see Site Nr and Submitted &mdash; Actions stays visible on the right</p>
           <div class="table-wrap">
             <table class="data-table">
               <thead>
@@ -1305,7 +1297,6 @@
                   <th>Submitted By</th>
                   <th>Location</th>
                   <th>Status</th>
-                  <th>Agreement</th>
                   <th>Site Nr</th>
                   <th>Submitted</th>
                   <th>Actions</th>
@@ -6672,13 +6663,6 @@
           badge.textContent = l.status || 'Requested';
           tdStatus.appendChild(badge);
           tr.appendChild(tdStatus);
-          var tdAgreement = document.createElement('td');
-          var ag = l.agreementStatus || 'Not Sent';
-          var agColor = ag === 'Accepted' ? '#2a8f45' : (ag === 'Declined' ? '#b42318' : (ag === 'Sent' ? '#0e2f44' : '#808080'));
-          tdAgreement.textContent = ag;
-          tdAgreement.style.color = agColor;
-          tdAgreement.style.fontWeight = '600';
-          tr.appendChild(tdAgreement);
 
           var tdSiteNr = document.createElement('td');
           tdSiteNr.textContent = l.siteNr || '\u2014';
@@ -6756,22 +6740,6 @@
       var SN_GAP_FIELDS = [['propertyType', 'Property type'], ['telephone', 'Property telephone'], ['email', 'Property email'], ['description', 'Description'],
         ['streetAddress', 'Street address'], ['ownerFullName', 'Owner name'], ['ownerEmail', 'Owner email'], ['ownerPhone', 'Owner phone'],
         ['checkInTime', 'Check-in time (full form)'], ['checkOutTime', 'Check-out time (full form)']];
-
-      function defaultAgreementTerms(l){
-        return 'This agreement confirms that ' + (l.propertyName || 'the property') + ', represented by ' +
-          (l.ownerFullName || 'the owner/agent') + ', will be listed on Avante Travel\'s Private Property STR Database.\n\n' +
-          'By accepting this agreement, the property owner (or their authorised agent) confirms that all information submitted is accurate, and agrees to the commission and listing duration terms stated in this agreement. Avante Travel will process and forward qualifying bookings in line with these terms.\n\n' +
-          'Either party may cancel this listing agreement with 30 days\' written notice.\n\n' +
-          'This is a summary agreement for the purposes of listing approval and does not replace any separate signed supplier agreement already in place.';
-      }
-
-      function fmtAgreementStatus(l){
-        var s = l.agreementStatus || 'Not Sent';
-        var extra = '';
-        if(s === 'Sent' && l.agreementSentAt) extra = ' (sent ' + fmtPropDate(l.agreementSentAt) + ')';
-        if((s === 'Accepted' || s === 'Declined') && l.agreementRespondedAt) extra = ' (' + fmtPropDate(l.agreementRespondedAt) + ')';
-        return 'Agreement status: ' + s + extra;
-      }
 
       // Exposed globally (2026-10-03) so the Map & Activities tab's map
       // popup can open this same modal for an onboarded ("Listed") pin's
@@ -7259,16 +7227,10 @@
           if(saveBtnEl) saveBtnEl.disabled = false;
           renderListingTreePlace(pickerHost, l, listingId);
 
-          document.getElementById('propCommissionInput').value = l.commissionRate || '';
-          document.getElementById('propDurationInput').value = l.listingDuration || '';
-          document.getElementById('propAgreementTermsInput').value = l.agreementTerms || defaultAgreementTerms(l);
-          document.getElementById('propertyAgreementStatusRow').textContent = fmtAgreementStatus(l);
 
           statusInput.value = l.status || 'Requested';
           siteNrInput.value = l.siteNr || '';
           renderListingFiles(document.getElementById('propertyFilesHost'), l);
-          var listedOption = statusInput.querySelector('option[value="Listed"]');
-          listedOption.disabled = l.agreementStatus !== 'Accepted';
         }).catch(function(){
           bodyEl.innerHTML = '';
           modalStatusEl.textContent = 'Could not load listing.';
@@ -7286,11 +7248,7 @@
         modalStatusEl.textContent = 'Saving\u2026';
         modalStatusEl.className = 'modal-status show';
 
-        var listingPayload = { listingId: currentListingId,
-          commissionRate: document.getElementById('propCommissionInput').value,
-          listingDuration: document.getElementById('propDurationInput').value,
-          agreementTerms: document.getElementById('propAgreementTermsInput').value
-        };
+        var listingPayload = { listingId: currentListingId };
         EDIT_FIELDS.forEach(function(f){
           listingPayload[f.key] = document.getElementById('propField_' + f.key).value;
         });
@@ -7387,36 +7345,6 @@
           }
         }).catch(function(){
           modalStatusEl.textContent = 'Could not delete listing.';
-          modalStatusEl.className = 'modal-status show';
-        });
-      });
-
-      document.getElementById('propertySendAgreementBtn').addEventListener('click', function(){
-        if(!currentListingId) return;
-        modalStatusEl.textContent = 'Sending agreement\u2026';
-        modalStatusEl.className = 'modal-status show';
-
-        var listingPayload = { listingId: currentListingId,
-          commissionRate: document.getElementById('propCommissionInput').value,
-          listingDuration: document.getElementById('propDurationInput').value,
-          agreementTerms: document.getElementById('propAgreementTermsInput').value
-        };
-
-        propAdminPost('updateListing', listingPayload).then(function(){
-          return propAdminPost('sendAgreement', { listingId: currentListingId });
-        }).then(function(res){
-          if(res.data && res.data.ok){
-            modalStatusEl.textContent = 'Agreement sent.';
-            document.getElementById('propertyAgreementStatusRow').textContent = fmtAgreementStatus(res.data.listing);
-            var listedOption = statusInput.querySelector('option[value="Listed"]');
-            listedOption.disabled = true;
-            loadPropertyListings();
-          } else {
-            modalStatusEl.textContent = (res.data && res.data.error) || 'Could not send agreement.';
-          }
-          modalStatusEl.className = 'modal-status show';
-        }).catch(function(){
-          modalStatusEl.textContent = 'Could not send agreement.';
           modalStatusEl.className = 'modal-status show';
         });
       });

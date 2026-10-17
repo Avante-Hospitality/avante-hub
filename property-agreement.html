@@ -4,231 +4,24 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Avante Travel — Listing Agreement</title>
-<link rel="preconnect" href="https://fonts.gstatic.com">
-<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Noto+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<meta name="robots" content="noindex">
+<!-- The separate listing agreement was taken out (Jean, 2026-10-17): every
+     listing is covered by the Avante Hospitality Terms & Conditions accepted
+     when the property listed. This page stays only for links already emailed. -->
 <style>
-  :root{
-    --teal:#0DCDC2;
-    --teal-dark:#0aa89f;
-    --navy:#0e2f44;
-    --ink:#333333;
-    --muted:#808080;
-    --mint:#f4fbfa;
-    --line:#e3e9e8;
-    --red:#c0392b;
-    --green:#2a8f45;
-  }
-  *{box-sizing:border-box;}
-  body{
-    margin:0;
-    font-family:'Noto Sans', sans-serif;
-    color:var(--ink);
-    background:var(--mint);
-    min-height:100vh;
-  }
-  h1,h2,h3,button{ font-family:'Montserrat', sans-serif; }
-
-  .topbar{
-    background:var(--navy);
-    color:#fff;
-    padding:16px 24px;
-    font-weight:800;
-    font-size:15px;
-    letter-spacing:0.02em;
-  }
-  .topbar span{ color:var(--teal); font-weight:700; }
-
-  .wrap{
-    max-width:640px;
-    margin:0 auto;
-    padding:32px 20px 60px;
-  }
-  .card{
-    background:#fff;
-    border-radius:14px;
-    padding:28px 26px 26px;
-    box-shadow:0 10px 40px rgba(14,47,68,0.12);
-  }
-  .card h1{ margin:0 0 6px; font-size:20px; color:var(--navy); }
-  .card .sub{ margin:0 0 20px; font-size:13px; color:var(--muted); }
-
-  .terms-row{
-    display:flex;
-    gap:14px;
-    flex-wrap:wrap;
-    margin-bottom:18px;
-  }
-  .terms-box{
-    flex:1;
-    min-width:180px;
-    background:var(--mint);
-    border:1px solid var(--line);
-    border-radius:10px;
-    padding:12px 14px;
-  }
-  .terms-box .label{
-    font-size:10.5px; text-transform:uppercase; letter-spacing:0.05em;
-    color:var(--teal-dark); font-weight:700; margin-bottom:4px;
-  }
-  .terms-box .value{ font-size:14px; color:var(--navy); font-weight:600; }
-
-  .agreement-text{
-    white-space:pre-wrap;
-    font-size:13.5px;
-    line-height:1.6;
-    color:var(--ink);
-    background:#fff;
-    border:1px solid var(--line);
-    border-radius:10px;
-    padding:16px;
-    margin-bottom:22px;
-    max-height:360px;
-    overflow-y:auto;
-  }
-
-  .actions{ display:flex; gap:12px; flex-wrap:wrap; }
-  button{
-    font-size:14px; font-weight:700; border-radius:8px; padding:12px 22px;
-    border:none; cursor:pointer;
-  }
-  .btn-accept{ background:var(--teal); color:#fff; }
-  .btn-accept:hover{ background:var(--teal-dark); }
-  .btn-decline{ background:#fff; color:var(--red); border:1.5px solid var(--red); }
-  .btn-decline:hover{ background:#fdf2f1; }
-  button:disabled{ opacity:0.5; cursor:not-allowed; }
-
-  .state-msg{
-    font-size:14px; padding:14px 16px; border-radius:10px; margin-bottom:18px;
-  }
-  .state-msg.info{ background:var(--mint); color:var(--navy); }
-  .state-msg.error{ background:#fdf2f1; color:var(--red); }
-  .state-msg.accepted{ background:#eaf7ed; color:var(--green); }
-  .state-msg.declined{ background:#fdf2f1; color:var(--red); }
-
-  .hidden{ display:none; }
+  body{ margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:16px;
+    font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; background:#f4fbfa; color:#0e2f44; }
+  .card{ background:#fff; border:1px solid #e3e9e8; border-radius:14px; padding:28px; max-width:520px; line-height:1.55; }
+  h1{ font-size:22px; margin:0 0 10px; }
+  a{ color:#0aa89f; font-weight:700; }
 </style>
 </head>
 <body>
-
-  <div class="topbar">AVANTE<span> TRAVEL</span></div>
-
-  <div class="wrap">
-    <div class="card" id="card">
-      <p class="sub">Loading agreement…</p>
-    </div>
+  <div class="card">
+    <h1>No separate agreement needed</h1>
+    <p>Avante no longer sends a separate listing agreement. Your listing is covered by the
+      <a href="terms-and-conditions.html">Avante Hospitality Terms &amp; Conditions</a> you accepted when you listed your property.</p>
+    <p>Questions? Email <a href="mailto:info@avantehospitality.co.za">info@avantehospitality.co.za</a>.</p>
   </div>
-
-<script>
-  function qs(name){
-    var m = new URLSearchParams(window.location.search);
-    return m.get(name) || '';
-  }
-  var listingId = qs('id');
-  var token = qs('token');
-  var card = document.getElementById('card');
-
-  function escapeHtml(v){
-    return String(v == null ? '' : v)
-      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  }
-
-  function post(action, extra){
-    var body = Object.assign({ action: action, listingId: listingId, token: token }, extra || {});
-    return fetch('/api/property-onboarding', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body)
-    }).then(function(r){ return r.json().then(function(data){ return { status: r.status, data: data }; }); });
-  }
-
-  function renderError(message){
-    card.innerHTML =
-      '<h1>Agreement not found</h1>' +
-      '<div class="state-msg error">' + escapeHtml(message || 'This agreement link is invalid or has expired.') + '</div>' +
-      '<p class="sub">If you believe this is a mistake, please contact Avante Travel directly.</p>';
-  }
-
-  function renderAlreadyResponded(a){
-    var isAccepted = a.agreementStatus === 'Accepted';
-    card.innerHTML =
-      '<h1>' + escapeHtml(a.propertyName || 'Listing agreement') + '</h1>' +
-      '<div class="state-msg ' + (isAccepted ? 'accepted' : 'declined') + '">' +
-      'This agreement was already <strong>' + escapeHtml(a.agreementStatus.toLowerCase()) + '</strong>' +
-      (a.agreementRespondedAt ? (' on ' + new Date(a.agreementRespondedAt).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' })) : '') +
-      '.</div>' +
-      '<p class="sub">No further action is needed. If you have questions, please contact Avante Travel directly.</p>';
-  }
-
-  function renderForm(a){
-    card.innerHTML =
-      '<h1>' + escapeHtml(a.propertyName || 'Listing agreement') + '</h1>' +
-      '<p class="sub">Please review the terms below for ' + escapeHtml(a.ownerFullName || 'this listing') + '. Accepting confirms your agreement so Avante Travel can proceed with getting this property listed.</p>' +
-      '<div class="terms-row">' +
-        '<div class="terms-box"><div class="label">Commission / Revenue Share</div><div class="value">' + (escapeHtml(a.commissionRate) || '—') + '</div></div>' +
-        '<div class="terms-box"><div class="label">Listing Duration</div><div class="value">' + (escapeHtml(a.listingDuration) || '—') + '</div></div>' +
-      '</div>' +
-      '<div class="agreement-text">' + (escapeHtml(a.agreementTerms) || 'No further terms provided.') + '</div>' +
-      '<div class="state-msg hidden" id="respondMsg"></div>' +
-      '<div class="actions" id="actionsRow">' +
-        '<button type="button" class="btn-accept" id="acceptBtn">Accept Agreement</button>' +
-        '<button type="button" class="btn-decline" id="declineBtn">Decline</button>' +
-      '</div>';
-
-    var msgEl = document.getElementById('respondMsg');
-    var actionsRow = document.getElementById('actionsRow');
-    var acceptBtn = document.getElementById('acceptBtn');
-    var declineBtn = document.getElementById('declineBtn');
-
-    function respond(decision){
-      acceptBtn.disabled = true;
-      declineBtn.disabled = true;
-      msgEl.className = 'state-msg info';
-      msgEl.textContent = 'Submitting…';
-      msgEl.classList.remove('hidden');
-      post('acceptAgreement', { decision: decision }).then(function(res){
-        if(res.data && res.data.ok){
-          msgEl.className = 'state-msg ' + (decision === 'Accepted' ? 'accepted' : 'declined');
-          msgEl.textContent = decision === 'Accepted'
-            ? 'Thank you — you’ve accepted this agreement. Avante Travel will proceed accordingly.'
-            : 'You’ve declined this agreement. Avante Travel has been notified.';
-          actionsRow.classList.add('hidden');
-        } else {
-          msgEl.className = 'state-msg error';
-          msgEl.textContent = (res.data && res.data.error) || 'Could not submit your response. Please try again.';
-          acceptBtn.disabled = false;
-          declineBtn.disabled = false;
-        }
-      }).catch(function(){
-        msgEl.className = 'state-msg error';
-        msgEl.textContent = 'Could not submit your response. Please try again.';
-        acceptBtn.disabled = false;
-        declineBtn.disabled = false;
-      });
-    }
-
-    acceptBtn.addEventListener('click', function(){ respond('Accepted'); });
-    declineBtn.addEventListener('click', function(){ respond('Declined'); });
-  }
-
-  if(!listingId || !token){
-    renderError('This agreement link is missing required information.');
-  } else {
-    post('getAgreement').then(function(res){
-      if(!res.data || !res.data.ok){
-        renderError(res.data && res.data.error);
-        return;
-      }
-      var a = res.data.agreement;
-      if(a.agreementStatus === 'Accepted' || a.agreementStatus === 'Declined'){
-        renderAlreadyResponded(a);
-      } else {
-        renderForm(a);
-      }
-    }).catch(function(){
-      renderError();
-    });
-  }
-</script>
-
 </body>
 </html>
