@@ -7,7 +7,7 @@ import { sendEmail } from "./lib/send-email.js";
 // SheetJS from its own CDN (the build SheetJS recommends for Deno).
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 import { SITE_REGISTER_STORE, SITE_STATUSES, DEFAULT_SN_SETUP_EMAILS, newEntry, reserveNextSiteNr, reserveSiteNr, getSiteNr, saveSiteNr,
-  listSiteNrs, nextFreeSiteNr, findOpenRequest, requestSheetBase64, sheetFileName, setupEmail, confirmationEmail, welcomeEmail, WAITING_FOR_LISTING } from "./lib/sn-site-register.js";
+  listSiteNrs, nextFreeSiteNr, findOpenRequest, requestSheetBase64, sheetFileName, setupEmail, confirmationEmail, welcomeEmail, WAITING_FOR_LISTING, CHANNEL_WELCOME_DEFAULT, fillWelcome, welcomeHtml } from "./lib/sn-site-register.js";
 import { readListingScreenshots } from "./lib/listing-reader.js";
 import { HOOKS_URL, makeHooksTicket } from "./lib/hooks-ticket.js";
 import { isAdminToken } from "./lib/admin-session.js";
@@ -1413,7 +1413,7 @@ export default async (request, context) => {
       return json({ ok: true, listingId, snSite });
     }
 
-    if (action === "channelLogin" || action === "channelActivate" || action === "channelWelcome") {
+    if (action === "channelLogin" || action === "channelActivate" || action === "channelWelcome" || action === "channelWelcomeText" || action === "channelWelcomeTemplate") {
       // Admin > Property Listings > "Activate a channel property" (Jean,
       // 2026-10-18): one pop-up, step by step. channelLogin tests the
       // property's Avante login and gives its Site Nr and Site ID (Stock
@@ -1475,13 +1475,31 @@ export default async (request, context) => {
         return json({ ok: true, listingId: record.listingId, affId: siteId, connected, connectError, done });
       }
 
-      // channelWelcome
-      const affId = clean(body.affId, 100), to = clean(body.to, 600);
+      // The welcome email's wording, kept in the property settings (Jean, 2026-10-18).
+      const template = async () => { const t = (await getSettings()).channelWelcome; return t && t.subject && t.body ? t : CHANNEL_WELCOME_DEFAULT; };
+      if (action === "channelWelcomeTemplate") {
+        if (body.op === "save") {
+          const subject = clean(body.subject, 200), text = String(body.body || "").replace(/\r/g, "").slice(0, 6000).trim();
+          if (!subject || !text) return json({ error: "Type the subject and the text." }, 400);
+          if (text.indexOf("{loginLink}") === -1) return json({ error: "Keep {loginLink} in the text: it's the link the property logs in with." }, 400);
+          await saveSettings({ channelWelcome: { subject, body: text } });
+        } else if (body.op === "reset") await saveSettings({ channelWelcome: null });
+        const t = await template();
+        return json({ ok: true, subject: t.subject, body: t.body, isDefault: t === CHANNEL_WELCOME_DEFAULT });
+      }
+      const affId = clean(body.affId, 100);
       const a = affId ? await affDir.get(affId, { type: "json" }).catch(() => null) : null;
       if (!a) return json({ error: "The affiliate wasn't found. Do step 4 first." }, 404);
+      const vars = { property: a.name, contact: clean(body.contactName, 120), siteNr: a.siteNr, affiliateNumber: affId, loginLink: new URL(request.url).origin + "/login.html?aff=" + encodeURIComponent(affId) };
+      const t = await template();
+      // Step 5 shows the email filled in, so admin can change it for this property.
+      if (action === "channelWelcomeText") return json({ ok: true, subject: fillWelcome(t.subject, vars), body: fillWelcome(t.body, vars) });
+      // channelWelcome: the text as changed in step 5 (the login link is already in it), or the saved wording.
+      const to = clean(body.to, 600);
       if (!emailList(to).length || badEmails(to).length) return json({ error: "Type the email address to send to." }, 400);
-      const w = welcomeEmail({ propertyName: a.name, siteNr: a.siteNr, contactName: clean(body.contactName, 120), channelManager: "NightsBridge" }, affId, new URL(request.url).origin + "/login.html?aff=" + encodeURIComponent(affId), { connected: body.connected === true });
-      const sent = await sendEmail({ to: emailList(to, 5), subject: w.subject, html: w.html });
+      const subject = clean(body.subject, 200) || fillWelcome(t.subject, vars);
+      const text = typeof body.body === "string" && body.body.trim() ? body.body.slice(0, 8000) : t.body;
+      const sent = await sendEmail({ to: emailList(to, 5), subject, html: welcomeHtml(text, vars) });
       return sent.ok ? json({ ok: true }) : json({ error: "Not sent: " + (sent.error || "unknown reason") }, 502);
     }
 

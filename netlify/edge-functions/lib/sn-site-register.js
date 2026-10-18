@@ -184,9 +184,7 @@ export function confirmationEmail(e) {
 // To the property when Avante has set it up (Jean, 2026-10-17): its hub login.
 // The hub never emails a password: the property sets its own with
 // "Forgot your password?" on the login page. Properties never see Stock Network.
-// opts.connected: Avante already connected the property in the hub (Activate a channel property).
-export function welcomeEmail(e, affId, loginUrl, opts) {
-  const connected = !!(opts && opts.connected);
+export function welcomeEmail(e, affId, loginUrl) {
   const channel = e.channelManager && e.channelManager !== "None yet";
   return {
     subject: "You're set up with Avante: " + e.propertyName,
@@ -198,8 +196,40 @@ export function welcomeEmail(e, affId, loginUrl, opts) {
         : "<p>You can now use Avante's hub for your calendar, bookings, guests, your own booking page and promotions.</p>") +
       "<p><b>Your hub login</b><br>Affiliate number: <b>" + esc(affId) + "</b><br>" +
       "Open <a href=\"" + esc(loginUrl) + "\">" + esc(loginUrl) + "</a> and tap <b>Forgot your password?</b> to choose your password.</p>" +
-      (connected ? "<p>Your property is already connected: log in, open <b>Property Affiliate</b>, and the <b>Hook Builder</b> and <b>Activities</b> are ready to use.</p>"
-        : "<p>When you're ready to connect, Avante will send you your Avante login (username, client ID and client secret).</p>") +
+      "<p>When you're ready to connect, Avante will send you your Avante login (username, client ID and client secret).</p>" +
       "<p>Questions? Reply to this email or write to info@avantehospitality.co.za.</p><p>Avante Hospitality</p>",
   };
+}
+
+// The welcome email of "Activate a channel property" (Jean, 2026-10-18):
+// admin edits it in Property Listings, and can change it for one property in
+// step 5. Plain text: a blank line starts a new paragraph, **words** are bold.
+// Fill-in words: {property} {contact} {siteNr} {affiliateNumber} {loginLink}.
+export const CHANNEL_WELCOME_DEFAULT = {
+  subject: "You're set up with Avante: {property}",
+  body: [
+    "Hello {contact},",
+    "{property} is now set up with Avante (Avante Site Nr {siteNr}).",
+    "Avante is now one of your channels. Your rates and availability keep coming from your channel manager; nothing changes there.",
+    "Whenever you like, you can also use Avante's hub to promote your property with the hook builder, add activities to your promotions and earn extra income from them.",
+    "**Your hub login**\nAffiliate number: {affiliateNumber}\nOpen {loginLink} and tap **Forgot your password?** to choose your password.",
+    "Your property is already connected: log in, open **Property Affiliate**, and the **Hook Builder** and **Activities** are ready to use.",
+    "Questions? Reply to this email or write to info@avantehospitality.co.za.\nAvante Hospitality",
+  ].join("\n\n"),
+};
+const FILL = /\{(property|contact|siteNr|affiliateNumber|loginLink)\}/g;
+// Plain text with the fill-in words filled (for the subject and the editor).
+export function fillWelcome(text, v) {
+  return String(text || "").replace(FILL, (m, k) => (k === "loginLink" ? v.loginLink : String(v[k] || ""))).replace(/ +,/g, ",");
+}
+// The email's HTML: escaped text, paragraphs, **bold**, and the login link clickable.
+export function welcomeHtml(text, v) {
+  const link = String(v.loginLink || "");
+  return String(text || "").replace(/\r/g, "").split(/\n{2,}/).map((para) => {
+    // The login link is clickable whether the text has {loginLink} or the link itself (step 5 shows it filled in).
+    const p0 = link ? para.trim().split(link).join("{loginLink}") : para.trim();
+    let h = esc(fillWelcome(p0, Object.assign({}, v, { loginLink: "\u0000LINK\u0000" })));
+    h = h.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/\n/g, "<br>").split("\u0000LINK\u0000").join('<a href="' + esc(link) + '">' + esc(link) + "</a>");
+    return h ? "<p>" + h + "</p>" : "";
+  }).join("");
 }

@@ -1303,6 +1303,20 @@
         <div class="status" id="propertySettingsStatus"></div>
       </div>
 
+      <div class="card" style="margin-top:20px;">
+        <h3 style="margin-top:0">Channel property welcome email</h3>
+        <p class="hint">The email <b>Activate a channel property</b> sends in step 5 (you can still change it there for one property). A blank line starts a new paragraph; put <b>**</b> around words to make them bold. Fill-in words: <code>{property}</code> <code>{contact}</code> <code>{siteNr}</code> <code>{affiliateNumber}</code> <code>{loginLink}</code> (keep <code>{loginLink}</code>: it's the link they log in with).</p>
+        <label for="cwSubject">Subject</label>
+        <input id="cwSubject" type="text">
+        <label for="cwBody" style="margin-top:10px;">Text</label>
+        <textarea id="cwBody" rows="16" style="width:100%; font-family:inherit;"></textarea>
+        <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:10px;">
+          <button class="primary" id="cwSave" type="button" style="margin-top:0;">Save</button>
+          <button class="btn-outline" id="cwReset" type="button" style="margin-top:0;">Back to Avante's wording</button>
+        </div>
+        <div class="status" id="cwStatus"></div>
+      </div>
+
       <div class="card">
         <h3 style="margin-top:0">Channel setup help (Airbnb, Booking.com, LekkeSlaap)</h3>
         <p>Properties can tap <b>Let Avante set it up</b> in Property Affiliate → Channels. They invite the address below on each channel, then the hub emails the people below.</p>
@@ -6624,7 +6638,18 @@
         }catch(e){ return '\u2014'; }
       }
 
+      // Channel property welcome email wording (Jean, 2026-10-18).
+      function cwShow(res, msg){
+        var d = res.data || {}, st = document.getElementById('cwStatus');
+        if(!d.ok){ st.textContent = d.error || 'Could not load.'; st.className = 'status show'; return; }
+        document.getElementById('cwSubject').value = d.subject || ''; document.getElementById('cwBody').value = d.body || '';
+        st.textContent = msg || (d.isDefault ? 'This is Avante\u2019s wording.' : ''); st.className = 'status' + (st.textContent ? ' show' : '');
+      }
+      function cwPost(op, extra, msg){ return propAdminPost('channelWelcomeTemplate', Object.assign({ op: op }, extra || {})).then(function(res){ cwShow(res, res.data && res.data.ok ? msg : ''); }).catch(function(){ var st = document.getElementById('cwStatus'); st.textContent = 'No connection. Try again.'; st.className = 'status show'; }); }
+      document.getElementById('cwSave').addEventListener('click', function(){ cwPost('save', { subject: document.getElementById('cwSubject').value, body: document.getElementById('cwBody').value }, 'Saved.'); });
+      document.getElementById('cwReset').addEventListener('click', function(){ if(confirm('Go back to Avante\u2019s wording? Your changes are lost.')) cwPost('reset', {}, 'Back to Avante\u2019s wording.'); });
       function loadPropertySettings(){
+        cwPost('get');
         return propAdminPost('getSettings').then(function(res){
           if(res.data && res.data.ok){
             document.getElementById('notificationEmailInput').value = (res.data.settings && res.data.settings.notificationEmail) || '';
@@ -7427,9 +7452,11 @@
                 : '<button type="button" class="primary" id="acwGo" style="margin-top:12px;"' + (W.busy ? ' disabled' : '') + '>' + (W.busy ? 'Activating…' : 'Activate') + '</button>');
           } else {
             h += W.welcomed ? '<p class="acw-ok">✔ Welcome email sent.</p><p class="acw-what"><b>' + escapeHtml(p.name) + '</b> can now log in to the hub with affiliate number <b>' + escapeHtml(W.result.affId) + '</b> and find the Hook Builder and Activities. Its listing is <b>' + escapeHtml(W.result.listingId) + '</b>.</p>'
-              : '<p class="acw-what">The property gets <b>You’re set up with Avante</b>: its affiliate number, the login link and how to choose a password. Its Avante login is never sent.</p>' +
-                '<label for="acwTo">Send to</label><input id="acwTo" inputmode="email" value="' + escapeHtml(W.contact.email) + '">' +
-                '<button type="button" class="primary" id="acwSend" style="margin-top:12px;"' + (W.busy ? ' disabled' : '') + '>' + (W.busy ? 'Sending…' : 'Send') + '</button>';
+              : '<p class="acw-what">Check the email. You can change it for this property; the saved wording is under <b>Channel property welcome email</b>. Its Avante login is never sent.</p>' +
+                '<label for="acwTo">Send to</label><input id="acwTo" inputmode="email" value="' + escapeHtml(W.to != null ? W.to : W.contact.email) + '">' +
+                (W.welcome ? '<label for="acwSubj">Subject</label><input id="acwSubj" value="' + escapeHtml(W.welcome.subject) + '">' +
+                  '<label for="acwText">Email</label><textarea id="acwText" rows="12">' + escapeHtml(W.welcome.body) + '</textarea>' : '<p class="hint">Loading the email\u2026</p>') +
+                '<button type="button" class="primary" id="acwSend" style="margin-top:12px;"' + (W.busy || !W.welcome ? ' disabled' : '') + '>' + (W.busy ? 'Sending\u2026' : 'Send') + '</button>';
           }
           if(W.msg) h += '<p class="acw-err">' + escapeHtml(W.msg) + '</p>';
           body.innerHTML = h;
@@ -7440,7 +7467,10 @@
             hits.addEventListener('click', function(e){ var b = e.target.closest('[data-ex-hit]'); if(!b) return; W.prop = (hits.__hits || [])[+b.getAttribute('data-ex-hit')]; W.login = null; W.result = null; W.msg = ''; W.step = 1; render(); }); }
           if(W.step === 2) document.getElementById('acwEmail').addEventListener('input', function(){ next.disabled = !ready(); });
         }
-        function go(n){ keepContact(); W.msg = ''; W.step = n; render(); body.scrollTop = 0; }
+        function keepWelcome(){ if(W.step === 4 && W.welcome && document.getElementById('acwText')){ W.welcome = { subject: val('acwSubj'), body: document.getElementById('acwText').value }; W.to = val('acwTo'); } }
+        function go(n){ keepContact(); W.msg = ''; W.step = n; render(); body.scrollTop = 0;
+          if(n === 4 && !W.welcome && W.result) propAdminPost('channelWelcomeText', { affId: W.result.affId, contactName: W.contact.contactName }).then(function(res){
+            var d = res.data || {}; if(d.ok){ W.welcome = { subject: d.subject, body: d.body }; } else W.msg = d.error || 'Could not load the email.'; render(); }); }
         body.addEventListener('click', function(e){
           var t = e.target;
           if(t.id === 'acwTest'){
@@ -7462,8 +7492,8 @@
               if(d.connected) setTimeout(function(){ go(4); }, 1200);
             }).catch(function(){ W.busy = false; W.msg = 'No connection. Try again.'; render(); });
           } else if(t.id === 'acwSend'){
-            var to = val('acwTo'); W.busy = true; W.msg = ''; render();
-            propAdminPost('channelWelcome', { affId: W.result.affId, to: to, contactName: W.contact.contactName, connected: !!W.result.connected }).then(function(res){
+            keepWelcome(); W.busy = true; W.msg = ''; render();
+            propAdminPost('channelWelcome', { affId: W.result.affId, to: W.to, contactName: W.contact.contactName, subject: W.welcome.subject, body: W.welcome.body }).then(function(res){
               W.busy = false; var d = res.data || {};
               if(!d.ok){ W.msg = d.error || 'Not sent.'; render(); return; }
               W.welcomed = true; render();

@@ -39,6 +39,7 @@
     <div class="ht-card ht-new" aria-label="What's new">
       <h2>What's new</h2>
       <ul>
+        <li><time>18 Oct 2026</time> The channel property welcome email can now be changed: for everyone under <b>Channel property welcome email</b> (Property Listings), or for one property in step 5 of <span class="btn">Activate a channel property</span>. See <a href="#addNbProperty">Add a NightsBridge property</a>.</li>
         <li><time>18 Oct 2026</time> New button <span class="btn">Activate a channel property</span> (Property Listings → Properties already on Stock Network): one pop-up, 5 steps, from finding the property to its welcome email. See <a href="#addNbProperty">Add a NightsBridge property</a>.</li>
         <li><time>18 Oct 2026</time> Property Listings → <b>Properties already on Stock Network</b>: new box <span class="field">Search by property name</span>. Type at least 3 letters and tap the property; the hub fills in its BBID and gets it. See <a href="#addNbProperty">Add a NightsBridge property</a>.</li>
         <li><time>18 Oct 2026</time> Add a NightsBridge property: the property opens the hook builder from the <span class="tab">Hook Builder ↗</span> tab (no longer under More ▾), and has no front store.</li>
@@ -431,11 +432,20 @@
         <li><b>2 Its Avante login:</b> paste the <span class="field">Username</span>, <span class="field">Client ID</span> and <span class="field">Client secret</span>. Tap <span class="btn">Check the login</span>. The hub finds its Site Nr and Site ID itself.</li>
         <li><b>3 Contact details:</b> check the <span class="field">Email</span>, <span class="field">Phone</span> and <span class="field">Contact person</span>. Tap <span class="btn">Next</span>.</li>
         <li><b>4 Activate:</b> tap <span class="btn">Activate</span>. The hub makes or links its listing, makes its Channel Property Affiliate (4.95% + VAT, Hook Builder on) and connects it. Each line shows ✔ when done.</li>
-        <li><b>5 Welcome email:</b> check <span class="field">Send to</span> and tap <span class="btn">Send</span>. The property gets <b>You're set up with Avante</b> with its affiliate number and login link.</li>
+        <li><b>5 Welcome email:</b> check <span class="field">Send to</span>. The <span class="field">Subject</span> and <span class="field">Email</span> show the email filled in for this property: change them here if you want (only for this property).</li>
+        <li>Tap <span class="btn">Send</span>. The property gets the email with its affiliate number and login link.</li>
         <li>Tap <span class="btn">Close</span>.</li>
       </ol>
       <div class="tip">The property never needs its Avante login: you connected it in step 4. It logs in to the hub, taps <b>Forgot your password?</b> to choose a password, and finds <span class="tab">Hook Builder ↗</span> and <span class="tab">Activities</span> ready.</div>
       <div class="tip"><span class="btn g">Back</span> goes to the step before. On a phone the pop-up fills the screen.</div>
+      <h3>Change the welcome email for every channel property</h3>
+      <ol class="steps">
+        <li>Tap <span class="tab">Property Listings</span> and scroll to <b>Channel property welcome email</b>.</li>
+        <li>Change the <span class="field">Subject</span> and <span class="field">Text</span>. A blank line starts a new paragraph. Put <b>**</b> around words to make them bold.</li>
+        <li>Keep the fill-in words where you want them: <code>{property}</code>, <code>{contact}</code>, <code>{siteNr}</code>, <code>{affiliateNumber}</code>, <code>{loginLink}</code>. <code>{loginLink}</code> must stay.</li>
+        <li>Tap <span class="btn">Save</span>.</li>
+      </ol>
+      <div class="tip">Want the original back? Tap <span class="btn g">Back to Avante's wording</span>.</div>
       <h3>A. Get the property into the hub step by step (pick one)</h3>
       <ol class="steps">
         <li><b>The property starts it:</b> it opens the <b>List your property</b> page, taps <b>NightsBridge</b>, types its <span class="field">NightsBridge BBID Number</span>, ticks <span class="field">I also want to become an Avante Property Affiliate</span> and taps <span class="btn">Submit</span>. You get an email: <b>Listing request: …</b>. Not on Stock Network yet? The hub gives it a Site Nr and emails Stock Network's sheet first (see <a href="#siteNrs">Site Nrs</a>).</li>
