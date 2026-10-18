@@ -145,9 +145,11 @@
     h += '<nav class="pa-tabbar" aria-label="Property Affiliate sections"><div class="pa-tabscroll">' + tabsFor().map(function (v) {
       var badge = v[0] === 'msgs' && S.msgsDue ? '<span class="pa-badge" aria-label="' + S.msgsDue + ' to send">' + S.msgsDue + '</span>' : '';
       return '<button type="button" data-act="view" data-v="' + v[0] + '"' + (S.view === v[0] ? ' aria-current="page"' : '') + '>' + v[1] + badge + '</button>';
-    }).join('') + '</div>' +
+    }).join('') +
+      // Hook Builder sits with the tabs, after Reviews (Jean, 2026-10-18); it opens in a new tab.
+      '<button type="button" data-act="hookbuilder" aria-label="Hook Builder (opens in a new tab)">Hook Builder ↗</button></div>' +
       '<div class="pa-more"><button type="button" data-act="more" aria-haspopup="true" aria-expanded="' + (!!S.more) + '"' + (inMore ? ' aria-current="page"' : '') + '>More ▾</button>' +
-      (S.more ? '<div class="pa-menu" role="menu"><button type="button" role="menuitem" data-act="view" data-v="onb">Onboarding Form</button><button type="button" role="menuitem" data-act="hookbuilder">Hook Builder</button>' +
+      (S.more ? '<div class="pa-menu" role="menu"><button type="button" role="menuitem" data-act="view" data-v="onb">Onboarding Form</button>' +
         (connected ? '<button type="button" role="menuitem" class="pa-menu-danger" data-act="disconnect">Disconnect property</button>' : '') + '</div>' : '') +
       '</div></nav>';
     if (S.err) h += '<div class="pa-err" role="alert" style="margin-bottom:12px">' + esc(S.err) + ' <button type="button" class="pa-btn small ghost" data-act="dismiss" style="margin-left:8px">OK</button></div>';
