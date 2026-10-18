@@ -60,6 +60,16 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     const rec = await resortStore.get("current", { type: "json" }).catch(() => null);
     return (rec && rec.resorts) || [];
   }
+  // The property's name when its availability read didn't bring one (no free
+  // nights in the first days read, Jean 2026-10-18: a channel property showed
+  // "Your property · 0 units"): the hub's resort list, then the live feed.
+  async function nameOf(rid) {
+    const k = String(rid || "").trim().toLowerCase(); if (!k) return "";
+    const row = (await resortRows()).find((r) => String(r.resortId || "").toLowerCase() === k);
+    if (row && row.name) return row.name;
+    const f = snFeed && snFeed.byResort ? await snFeed.byResort(k).catch(() => null) : null;
+    return f ? String(f.name || f.resortName || "").trim() : "";
+  }
   // The hub's resort list first; then Avante's own Property Listings (admin
   // types a new property's ResortID there when Stock Network gives it); then
   // Stock Network's live feed, which also has properties created after the
@@ -118,7 +128,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
       siteId: tok.siteId, site: tok.site, feedToken: randomToken(18), createdAt: now().toISOString(),
       settings: { email: "", phone: "", prices: {}, minStay: 2, autoBook: false, payMode: "both" }, channels: {},
     }, existing || {}, {
-      resortId: rid, resortName: snap.resortName || (existing && existing.resortName) || "",
+      resortId: rid, resortName: snap.resortName || (existing && existing.resortName) || await nameOf(rid),
       units: mergeUnits(existing && existing.units, units), aff: cleanStr(aff, 40) || (existing && existing.aff) || "",
       credsEnc: await encryptJSON(creds, encKey), updatedAt: now().toISOString(),
     });
@@ -158,6 +168,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     if (!s) throw new PAError("Not connected on this device.", 401);
     const prop = guess && s.siteId === guess ? guessed : await getJSON("site:" + s.siteId);
     if (!prop) throw new PAError("This property is no longer connected.", 401);
+    if (!prop.resortName && prop.resortId) { const n = await nameOf(prop.resortId); if (n) { prop.resortName = n; await setJSON("site:" + prop.siteId, prop); } }
     if (repairLink && prop.aff) { const link = await getJSON("aff:" + prop.aff); if (!link) await setJSON("aff:" + prop.aff, { siteId: prop.siteId }); }
     await syncChannelFlag(prop);
     return prop;

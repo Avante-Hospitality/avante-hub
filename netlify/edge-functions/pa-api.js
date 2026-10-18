@@ -4,7 +4,7 @@
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
 import { emailList } from "./lib/emails.js";
 import { createCore, PAError } from "./lib/pa-core.js";
-import { feedBySite, feedSearch } from "./lib/sn-feed.js";
+import { feedBySite, feedSearch, feedRowByResort } from "./lib/sn-feed.js";
 import { createActivities } from "./lib/pa-activities.js";
 import { stayPayload, resortInfo } from "./lib/stay-payload.js";
 import { treeAreaList } from "./lib/tree-place.js";
@@ -49,7 +49,7 @@ export default async (request) => {
     },
     sendEmail,
     // Stock Network's live property feed, for properties newer than the hub's resort list.
-    snFeed: { bySite: (nr, id) => feedBySite(nr, id), search: (q, max) => feedSearch(q, max) },
+    snFeed: { bySite: (nr, id) => feedBySite(nr, id), search: (q, max) => feedSearch(q, max), byResort: (rid) => feedRowByResort(rid) },
     listingStore: getStore({ name: "property-listings", consistency: "strong" }),
   });
   try {
