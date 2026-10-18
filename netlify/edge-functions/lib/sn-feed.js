@@ -191,13 +191,3 @@ export function fillFromFeed(record, row, names) {
   return filled;
 }
 
-// -> { ok, matches: [{ resortId, name, latitude, longitude, siteFields, siteNr, siteId }] } or { ok:false, error }
-export async function feedByBbid(bbid, fetchImpl = fetch) {
-  try {
-    const index = await loadIndex(fetchImpl);
-    const list = index.byBbid[normBbid(bbid)] || [];
-    return { ok: true, matches: list.map((m) => Object.assign({}, m, pickSite(m.siteFields))) };
-  } catch (e) {
-    return { ok: false, error: String((e && e.message) || e) };
-  }
-}

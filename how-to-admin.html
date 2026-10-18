@@ -39,6 +39,7 @@
     <div class="ht-card ht-new" aria-label="What's new">
       <h2>What's new</h2>
       <ul>
+        <li><time>18 Oct 2026</time> Clean-up: under <b>Properties already on Stock Network</b> the <b>Search by property name</b>, <b>NightsBridge BBID</b>, <b>Site Nr</b> and <b>Site ID</b> boxes and <b>Get the property</b> are gone: use <span class="btn">Activate a channel property</span>. <span class="btn g">Show properties</span> stays. The listing box now says <b>Stock Network doesn't have these — please fill in</b>.</li>
         <li><time>18 Oct 2026</time> The channel property welcome email can now be changed: for everyone under <b>Channel property welcome email</b> (Property Listings), or for one property in step 5 of <span class="btn">Activate a channel property</span>. See <a href="#addNbProperty">Add a NightsBridge property</a>.</li>
         <li><time>18 Oct 2026</time> New button <span class="btn">Activate a channel property</span> (Property Listings → Properties already on Stock Network): one pop-up, 5 steps, from finding the property to its welcome email. See <a href="#addNbProperty">Add a NightsBridge property</a>.</li>
         <li><time>18 Oct 2026</time> Property Listings → <b>Properties already on Stock Network</b>: new box <span class="field">Search by property name</span>. Type at least 3 letters and tap the property; the hub fills in its BBID and gets it. See <a href="#addNbProperty">Add a NightsBridge property</a>.</li>
@@ -260,24 +261,13 @@
       </ol>
       <div class="tip">The Stock Network files don't need the Site ID, so you can send them before you have it.</div>
       <h3>Properties already on Stock Network (The Dunes, Silver Ranch …)</h3>
-      <h3>The quick way: Site Nr and Site ID</h3>
-      <ol class="steps">
-        <li>Tap <span class="tab">Property Listings</span>. In the card <b>Properties already on Stock Network</b>, type the <span class="field">NightsBridge BBID</span> or the <span class="field">Site Nr</span>, and the <span class="field">Site ID (affiliate number)</span>.</li>
-        <li>Tap <span class="btn">Get the property</span>. The hub reads the rest from Stock Network: name, place in the location tree, description, unit types with sleeps, facilities and photos, plus from Stock Network's property feed the property type, phone, email, links and check-in/out times (whatever it has). The listing opens.</li>
-        <li>At the top of the listing a box says <b>Not on Stock Network — please fill in:</b> and names what is missing. Those boxes have a thick dashed border. Fill in only those, then tap <span class="btn">Save</span>.</li>
-        <li><b>Property type</b> empty? Type it once (e.g. Self Catering). The hub remembers it for that Stock Network type and fills it by itself for every other property of the same type.</li>
-        <li>Later, tap <span class="btn g">Pull again from Stock Network</span> in that box to fill any empty boxes from Stock Network again. It never changes what is typed.</li>
-        <li>More than one property on that BBID or Site Nr? Tap the one you mean.</li>
-        <li>With a BBID, the hub finds the property itself (Stock Network's <b>External Resort Code</b>) and makes it a channel property: no rates, Stock Network payment page only, 4.95% + VAT.</li>
-        <li>Only have the BBID? That's enough: when the hub's list lacks the Site Nr or Site ID, the hub asks Stock Network's own property feed and fills them in. The message says what Stock Network gave (<b>From Stock Network: Site Nr … · Site ID …</b>).</li>
-        <li>It still says there's <b>no Site Nr</b>? Type the <span class="field">Site Nr</span> as well (keep the BBID) and tap <span class="btn">Get the property</span> again. A Site Nr or Site ID you type always wins.</li>
-        <li>Email the property its edit link (see below). The link opens on the <b>Ready check</b>, which lists only what is still to do (usually the owner's details and the cancellation policy).</li>
-      </ol>
-      <div class="tip">If the Site ID belongs to a Channel Property Affiliate, the listing is made as a channel property (no rates, Avante's payment gateway, 4.95% + VAT).</div>
-      <h3>Or pick from the list</h3>
+      <div class="tip">A <b>channel property</b> (NightsBridge or another channel manager)? Use <span class="btn">Activate a channel property</span>: see <a href="#addNbProperty">Add a NightsBridge property</a>.</div>
+      <h3>Pick from the list</h3>
       <ol class="steps">
         <li>In the same card, tap <span class="btn g">Show properties</span>. It lists every property connected in Property Affiliate, and every Channel Property Affiliate.</li>
         <li>Tap <span class="btn">Create listing</span> next to the property. The listing opens, filled in from what the hub has: name, Site Nr, Site ID, place names from the location tree, coordinates, check-in/out, units and how many each sleeps, email and phone.</li>
+        <li>At the top of the listing a box says <b>Stock Network doesn't have these — please fill in:</b> and names what is missing. Those boxes have a thick dashed border. Fill in only those, then tap <span class="btn">Save</span>.</li>
+        <li>Later, tap <span class="btn g">Pull again from Stock Network</span> in that box to fill any empty boxes again. It never changes what is typed.</li>
         <li>Under <b>Let the property complete its listing</b>, check the address in <span class="field">Email the edit link to (several: separate with commas)</span> (it is filled in from <b>Send Avante's emails about this listing to</b>) and tap <span class="btn g">Email the edit link</span>. (Or tap <span class="btn g">Copy the link</span> and send it yourself.)</li>
         <li>The property opens the link, fills in what's missing (owner name, photos, amenities, policies, rates…) and taps <span class="btn">Save changes</span> on step 8.</li>
         <li>Want to fill it in yourself? Tap <span class="btn g">Open full form to edit (units, amenities, rates)</span>.</li>
@@ -446,45 +436,16 @@
         <li>Tap <span class="btn">Save</span>.</li>
       </ol>
       <div class="tip">Want the original back? Tap <span class="btn g">Back to Avante's wording</span>.</div>
-      <h3>A. Get the property into the hub step by step (pick one)</h3>
+      <h3>The property starts it itself</h3>
       <ol class="steps">
-        <li><b>The property starts it:</b> it opens the <b>List your property</b> page, taps <b>NightsBridge</b>, types its <span class="field">NightsBridge BBID Number</span>, ticks <span class="field">I also want to become an Avante Property Affiliate</span> and taps <span class="btn">Submit</span>. You get an email: <b>Listing request: …</b>. Not on Stock Network yet? The hub gives it a Site Nr and emails Stock Network's sheet first (see <a href="#siteNrs">Site Nrs</a>).</li>
-        <li><b>Or you start it:</b> tap <span class="tab">Property Listings</span>. Under <b>Properties already on Stock Network</b>, type part of its name in <span class="field">Search by property name</span> and tap the right one in the list (it fills in the BBID and gets the property). Or type the <span class="field">NightsBridge BBID</span> (or the <span class="field">Site Nr</span>), then tap <span class="btn">Get the property</span>. With a BBID the hub fetches the Site Nr and Site ID from Stock Network when it can.</li>
+        <li>It opens the <b>List your property</b> page, taps <b>NightsBridge</b>, types its <span class="field">NightsBridge BBID Number</span> and taps <span class="btn">Submit</span>. You get an email: <b>Listing request: …</b>.</li>
+        <li>Not on Stock Network yet? The hub gives it a Site Nr and emails Stock Network's sheet (see <a href="#siteNrs">Site Nrs</a>). When it's set up, use <span class="btn">Activate a channel property</span> as above.</li>
       </ol>
-      <div class="tip">Either way the listing is filled in from Stock Network: description, unit types and sleeps, facilities and photos. No rates: they come from NightsBridge.</div>
-      <h3>B. Check the listing</h3>
+      <h3>Test it once</h3>
       <ol class="steps">
-        <li>Tap <span class="tab">Property Listings</span>, then <span class="btn g">View</span> on the listing.</li>
-        <li>Check the name, the place in the location tree, the units and the photos.</li>
-        <li>It says <b>Not placed in the location tree yet</b>? Type the <span class="field">Latitude</span> and <span class="field">Longitude</span> and tap <span class="btn">Save Changes</span>. Open it again with <span class="btn g">View</span> and tap <span class="btn g">Look up again</span>.</li>
-        <li>No Site ID yet (made from the List your property page)? Type it in <span class="field">Site ID (affiliate number) — from SN after the Site Nr, for going live</span> and tap <span class="btn">Save Changes</span>.</li>
-      </ol>
-      <h3>C. Create the affiliate</h3>
-      <ol class="steps">
-        <li><b>Quick way:</b> in the listing, under <b>Let the property complete its listing</b>, tap <span class="btn g">Create the affiliate</span>. It makes the affiliate with the Site ID as its number, the Site Nr and name, <b>Channel Property Affiliate</b> and hook builder access. It never changes an affiliate that already exists. Then set its revenue share in <span class="tab">Affiliates</span>.</li>
-        <li><b>Or by hand:</b> tap <span class="tab">Affiliates</span>, then <span class="btn t">+ Add Affiliate</span>.</li>
-        <li>Type the Site ID in <span class="field">Affiliate ID</span>. Type the <span class="field">Name</span> and the <span class="field">StockNetwork Site Nr (optional)</span>.</li>
-        <li>Tick <span class="field">Channel Property Affiliate</span> and <span class="field">Hook builder access</span>.</li>
-        <li>Tap <span class="btn">Save Affiliate</span>.</li>
-      </ol>
-      <h3>D. Stock Network</h3>
-      <ol class="steps">
-        <li>In the listing, under <b>Send the files by email</b>, type Stock Network's address. Leave <span class="field">Property file (.xlsx)</span> and <span class="field">Add a link to the photos</span> ticked. The <span class="field">Rates file</span> stays on <b>Don't send</b>. Tap <span class="btn g">Send email</span>.</li>
-        <li>In Stock Network, set the property's commission to <b>4.95% + VAT</b>.</li>
-        <li>Get the property's Stock Network API login (username, client ID, client secret) for step E.</li>
-      </ol>
-      <h3>E. The property completes it</h3>
-      <ol class="steps">
-        <li>In the listing, under <b>Let the property complete its listing</b>, tap <span class="btn g">Email the edit link</span>.</li>
-        <li>The property opens the link on the <b>Ready check</b>, fills in the few things left (owner details, cancellation policy) and taps <span class="btn">Save changes</span>.</li>
-        <li>The property logs into its hub, taps <span class="tab">Channel Property</span> and connects with its Stock Network login.</li>
-        <li>On <span class="tab">Bookings</span> it types its email and phone and taps <span class="btn">Save</span>. Then it adds nearby <span class="tab">Activities</span> and taps <span class="tab">Hook Builder ↗</span> (after <span class="tab">Reviews</span>) for promotions. A NightsBridge property has no front store.</li>
-      </ol>
-      <h3>F. Test it once</h3>
-      <ol class="steps">
-        <li>Make one test booking on its front store.</li>
-        <li>Check it reaches NightsBridge marked <b>Avante Hub booking</b>, that payment goes through the Stock Network payment page, and that it shows in the property's <span class="tab">Bookings</span> in the hub.</li>
-        <li>Make one booking through one of its hook links. Check it shows in <span class="tab">Bookings</span> too (after opening Bookings, or within 15 minutes).</li>
+        <li>Make one hook for it in the hook builder and one test booking through that hook link.</li>
+        <li>Check it reaches NightsBridge marked <b>Avante Hub booking</b> and that payment goes through Avante's payment page.</li>
+        <li>Check it shows in the property's <span class="tab">Bookings</span> in the hub (it shows when <span class="tab">Bookings</span> is opened).</li>
       </ol>
       <div class="warn">A hook-link booking that doesn't show in <b>Bookings</b>: tell the developer. The hub keeps a note of what Stock Network sent, so it can be fixed quickly.</div>
     </section>

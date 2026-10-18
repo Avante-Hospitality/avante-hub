@@ -1279,19 +1279,6 @@
           <button class="primary" id="acwOpenBtn" type="button" style="margin-top:0;">Activate a channel property</button>
         </div>
         <p class="hint">Properties connected in Property Affiliate before the onboarding form existed (e.g. The Dunes). Give each one a listing, filled in from what the hub already has, so the property and you can complete the missing fields and send the updates to Stock Network.</p>
-        <div style="margin:6px 0 10px; max-width:520px;">
-          <label for="exName">Search by property name</label>
-          <input id="exName" type="search" autocomplete="off" placeholder="e.g. 37 On Anderson" style="width:100%;">
-          <div id="exNameHits" style="margin-top:6px;"></div>
-        </div>
-        <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; margin:6px 0 12px;">
-          <div><label for="exBbid">NightsBridge BBID</label><input id="exBbid" placeholder="e.g. 12345" style="width:140px;"></div>
-          <div style="align-self:center; padding-top:18px; color:var(--muted); font-size:13px;">or</div>
-          <div><label for="exSiteNr">Site Nr</label><input id="exSiteNr" placeholder="e.g. 5980" style="width:130px;"></div>
-          <div style="flex:1; min-width:220px;"><label for="exSiteId">Site ID (affiliate number)</label><input id="exSiteId" placeholder="e.g. 6de763dc-ea92-…" style="width:100%;"></div>
-          <button class="primary" id="exGetBtn" type="button">Get the property</button>
-        </div>
-        <div class="hint" id="exGetStatus" style="margin:0 0 10px;"></div>
         <button class="btn-outline" id="existingPropsBtn" type="button">Show properties</button>
         <div id="existingPropsHost" style="margin-top:10px;"></div>
       </div>
@@ -7224,7 +7211,7 @@
           var gaps = onSn ? SN_GAP_FIELDS.filter(function(g){ return !String(l[g[0]] || '').trim(); }) : [];
           if(onSn){
             html += '<div class="sn-gaps" style="border:3px solid var(--navy); border-radius:8px; padding:10px 12px; margin:12px 0;">' +
-              (gaps.length ? '<b>Not on Stock Network \u2014 please fill in:</b> ' + gaps.map(function(g){ return escapeHtml(g[1]); }).join(', ') + '.'
+              (gaps.length ? '<b>Stock Network doesn\u2019t have these \u2014 please fill in:</b> ' + gaps.map(function(g){ return escapeHtml(g[1]); }).join(', ') + '.'
                 : '<b>\u2713 Everything needed is filled in.</b>') +
               '<div style="margin-top:8px;"><button type="button" class="btn-outline" id="snRepullBtn">Pull again from Stock Network</button> <span class="hint" id="snRepullMsg">Fills only empty boxes. Never changes what is typed.</span></div></div>';
           }
@@ -7233,7 +7220,7 @@
             var val = escapeHtml(l[f.key] || '');
             var gap = gapKeys.indexOf(f.key) !== -1;
             var mark = gap ? ' style="border:3px dashed #8a4b00;"' : '';
-            var note = gap ? '<div class="hint" style="margin:2px 0 4px; font-weight:600;">Not on Stock Network \u2014 please fill in' +
+            var note = gap ? '<div class="hint" style="margin:2px 0 4px; font-weight:600;">Stock Network doesn\u2019t have these \u2014 please fill in' +
               (f.key === 'propertyType' && l.snTypeCode ? '. Type it once: the hub then fills it for every Stock Network property of this type.' : '.') + '</div>' : '';
             if(f.el === 'select'){
               var cur = l[f.key] || f.options[0][0];
@@ -7346,27 +7333,6 @@
         }).catch(function(){ host.innerHTML = '<div class="hint">Could not load.</div>'; });
       }
       document.getElementById('existingPropsBtn').addEventListener('click', loadExistingProps);
-      // Just the Site Nr and Site ID: the hub reads the rest (Jean, 2026-10-13).
-      function getBySite(resortId){
-        var nr = document.getElementById('exSiteNr').value.trim(), sid = document.getElementById('exSiteId').value.trim(), bb = document.getElementById('exBbid').value.trim();
-        var st = document.getElementById('exGetStatus'), btn = document.getElementById('exGetBtn');
-        if(!nr && !bb){ st.textContent = 'Type the NightsBridge BBID or the Site Nr.'; return; }
-        btn.disabled = true; st.textContent = 'Reading the property from Stock Network\u2026';
-        propAdminPost('createFromExisting', { bbid: bb, siteNr: nr, siteIdIn: sid, resortId: resortId || '' }).then(function(res){
-          btn.disabled = false;
-          var d = res.data || {};
-          if(d.chooseResort){
-            st.innerHTML = (bb ? 'BBID ' + escapeHtml(bb) : 'Site Nr ' + escapeHtml(nr)) + ' has more than one property. Tap the one you mean: ' + d.chooseResort.map(function(r){ return '<button type="button" class="btn-outline" data-ex-rid="' + escapeHtml(r.resortId) + '" style="margin:4px 4px 0 0;">' + escapeHtml(r.name) + '</button>'; }).join('');
-            return;
-          }
-          var snNote = d.snSite ? ' From Stock Network: ' + [d.snSite.siteNr ? 'Site Nr ' + d.snSite.siteNr : 'no Site Nr', d.snSite.siteId ? 'Site ID ' + d.snSite.siteId : 'no Site ID'].join(' \u00b7 ') + '.' : '';
-          if(d.ok){ st.textContent = 'Done. The listing is open below.' + snNote; loadPropertyListings(); openPropertyDetailsModal(d.listingId); return; }
-          if(d.snSite && d.snSite.fields){ st.textContent = (d.error || 'Not found.') + ' Stock Network sent these site fields: ' + (Object.keys(d.snSite.fields).map(function(k){ return k + ' = ' + d.snSite.fields[k]; }).join(', ') || 'none') + '.'; return; }
-          if(d.listingId){ st.textContent = d.error; openPropertyDetailsModal(d.listingId); return; }
-          st.textContent = d.error || 'Could not get the property.';
-        }).catch(function(){ btn.disabled = false; st.textContent = 'No connection. Try again.'; });
-      }
-      document.getElementById('exGetBtn').addEventListener('click', function(){ getBySite(''); });
       // A name box that lists the hub's properties as you type (3+ letters).
       // out.__hits holds the rows; each button has data-ex-hit="<index>".
       (function(){
@@ -7393,22 +7359,7 @@
           input.addEventListener('input', function(){ clearTimeout(timer); timer = setTimeout(function(){ show(input.value); }, 250); });
         };
       })();
-      // Search by name (Jean, 2026-10-18): the hub's property list, then
-      // "Get the property" with the chosen one's BBID and ResortID.
-      (function(){
-        var input = document.getElementById('exName'), out = document.getElementById('exNameHits');
-        window.resortNameSearch(input, out);
-        out.addEventListener('click', function(e){
-          var b = e.target.closest('[data-ex-hit]'); if(!b) return;
-          var r = (out.__hits || [])[+b.getAttribute('data-ex-hit')]; if(!r) return;
-          out.innerHTML = '';
-          input.value = r.name;
-          if(!r.externalResortCode){ document.getElementById('exGetStatus').textContent = r.name + ' has no NightsBridge BBID in the hub\u2019s list. Type its Site Nr above, then tap Get the property.'; return; }
-          document.getElementById('exBbid').value = r.externalResortCode;
-          document.getElementById('exSiteNr').value = '';
-          getBySite(r.resortId);
-        });
-      })();
+
       // ---- Activate a channel property (Jean, 2026-10-18) ----
       // One pop-up, five steps; each step jumps to the next when it's done.
       (function(){
@@ -7506,7 +7457,6 @@
         function onKey(e){ if(e.key === 'Escape') close(); }
         document.getElementById('acwOpenBtn').addEventListener('click', function(){ W = fresh(); ov.classList.add('show'); document.addEventListener('keydown', onKey); render(); });
       })();
-      document.getElementById('exGetStatus').addEventListener('click', function(e){ var rid = e.target.getAttribute('data-ex-rid'); if(rid) getBySite(rid); });
       document.getElementById('existingPropsHost').addEventListener('click', function(e){
         var open = e.target.getAttribute('data-ex-open'), create = e.target.getAttribute('data-ex-create');
         if(open){ openPropertyDetailsModal(open); return; }
