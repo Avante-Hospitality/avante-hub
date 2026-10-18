@@ -39,6 +39,7 @@
     <div class="ht-card ht-new" aria-label="What's new">
       <h2>What's new</h2>
       <ul>
+        <li><time>18 Oct 2026</time> New button <span class="btn">Activate a channel property</span> (Property Listings → Properties already on Stock Network): one pop-up, 5 steps, from finding the property to its welcome email. See <a href="#addNbProperty">Add a NightsBridge property</a>.</li>
         <li><time>18 Oct 2026</time> Property Listings → <b>Properties already on Stock Network</b>: new box <span class="field">Search by property name</span>. Type at least 3 letters and tap the property; the hub fills in its BBID and gets it. See <a href="#addNbProperty">Add a NightsBridge property</a>.</li>
         <li><time>18 Oct 2026</time> Add a NightsBridge property: the property opens the hook builder from the <span class="tab">Hook Builder ↗</span> tab (no longer under More ▾), and has no front store.</li>
         <li><time>17 Oct 2026</time> Site Nrs: a property <b>not on a platform</b> that is set up now shows <b>Waiting for stock</b> under its status. Once Avante has stock for it (the hourly check looks 12 months ahead) it shows <b>Ready to go live (stock from …)</b> and you get an email <b>Ready to go live</b>. See <a href="#siteNrs">Site Nrs</a>.</li>
@@ -421,7 +422,21 @@
     <section id="addNbProperty">
       <h2>🏨 Add a NightsBridge property (start to finish)</h2>
       <p class="what"><b>What it's for:</b> every step to bring a property that runs on NightsBridge into the hub, from the first contact to its first booking.</p>
-      <h3>A. Get the property into the hub (pick one)</h3>
+      <h3>The quick way: Activate a channel property</h3>
+      <p>For a property already on Stock Network through NightsBridge (or another channel manager). First get its <b>Avante login</b> (username, client ID, client secret) from Stock Network.</p>
+      <ol class="steps">
+        <li>Tap <span class="tab">Property Listings</span>.</li>
+        <li>Under <b>Properties already on Stock Network</b>, tap <span class="btn">Activate a channel property</span>. A pop-up opens with 5 steps.</li>
+        <li><b>1 Find the property:</b> type at least 3 letters of its name in <span class="field">Property name</span>. Tap it in the list.</li>
+        <li><b>2 Its Avante login:</b> paste the <span class="field">Username</span>, <span class="field">Client ID</span> and <span class="field">Client secret</span>. Tap <span class="btn">Check the login</span>. The hub finds its Site Nr and Site ID itself.</li>
+        <li><b>3 Contact details:</b> check the <span class="field">Email</span>, <span class="field">Phone</span> and <span class="field">Contact person</span>. Tap <span class="btn">Next</span>.</li>
+        <li><b>4 Activate:</b> tap <span class="btn">Activate</span>. The hub makes or links its listing, makes its Channel Property Affiliate (4.95% + VAT, Hook Builder on) and connects it. Each line shows ✔ when done.</li>
+        <li><b>5 Welcome email:</b> check <span class="field">Send to</span> and tap <span class="btn">Send</span>. The property gets <b>You're set up with Avante</b> with its affiliate number and login link.</li>
+        <li>Tap <span class="btn">Close</span>.</li>
+      </ol>
+      <div class="tip">The property never needs its Avante login: you connected it in step 4. It logs in to the hub, taps <b>Forgot your password?</b> to choose a password, and finds <span class="tab">Hook Builder ↗</span> and <span class="tab">Activities</span> ready.</div>
+      <div class="tip"><span class="btn g">Back</span> goes to the step before. On a phone the pop-up fills the screen.</div>
+      <h3>A. Get the property into the hub step by step (pick one)</h3>
       <ol class="steps">
         <li><b>The property starts it:</b> it opens the <b>List your property</b> page, taps <b>NightsBridge</b>, types its <span class="field">NightsBridge BBID Number</span>, ticks <span class="field">I also want to become an Avante Property Affiliate</span> and taps <span class="btn">Submit</span>. You get an email: <b>Listing request: …</b>. Not on Stock Network yet? The hub gives it a Site Nr and emails Stock Network's sheet first (see <a href="#siteNrs">Site Nrs</a>).</li>
         <li><b>Or you start it:</b> tap <span class="tab">Property Listings</span>. Under <b>Properties already on Stock Network</b>, type part of its name in <span class="field">Search by property name</span> and tap the right one in the list (it fills in the BBID and gets the property). Or type the <span class="field">NightsBridge BBID</span> (or the <span class="field">Site Nr</span>), then tap <span class="btn">Get the property</span>. With a BBID the hub fetches the Site Nr and Site ID from Stock Network when it can.</li>

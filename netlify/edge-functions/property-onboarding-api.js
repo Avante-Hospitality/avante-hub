@@ -13,6 +13,7 @@ import { HOOKS_URL, makeHooksTicket } from "./lib/hooks-ticket.js";
 import { isAdminToken } from "./lib/admin-session.js";
 import { isAffiliateSession } from "./lib/affiliate-session.js";
 import { createPropertyAffiliate } from "./lib/affiliates.js";
+import { SNClient } from "./lib/sn-client.js";
 import { readResortInfo, copySnPhotos } from "./lib/sn-resort-info.js";
 import { findSetUps, feedByBbid, feedRowByResort, fillFromFeed, typeNames, learnTypeName, typeCodeOf } from "./lib/sn-feed.js";
 import { forwardGeocode, reverseGeocode } from "./lib/geocode.js";
@@ -1410,6 +1411,78 @@ export default async (request, context) => {
       const listingId = record.listingId;
       await store.setJSON(listingId, record);
       return json({ ok: true, listingId, snSite });
+    }
+
+    if (action === "channelLogin" || action === "channelActivate" || action === "channelWelcome") {
+      // Admin > Property Listings > "Activate a channel property" (Jean,
+      // 2026-10-18): one pop-up, step by step. channelLogin tests the
+      // property's Avante login and gives its Site Nr and Site ID (Stock
+      // Network's property list doesn't have them). channelActivate makes or
+      // links its listing, makes its Channel Property Affiliate and connects
+      // it in Property Affiliate with that login, so the property never has
+      // to type it. channelWelcome emails the property its hub login.
+      const denied = await requireAdmin();
+      if (denied) return denied;
+      const creds = { username: clean(body.username, 100), clientID: clean(body.clientID, 100), clientSecret: clean(body.clientSecret, 100) };
+      const rid = clean(body.resortId, 64).toLowerCase();
+      const listings = async () => (await Promise.all((await store.list()).blobs.map((b) => store.get(b.key, { type: "json" }).catch(() => null)))).filter(Boolean);
+      const listingOf = async () => rid ? (await listings()).find((r) => String(r.resortId || "").toLowerCase() === rid) || null : null;
+      const affDir = getStore({ name: "affiliates-directory", consistency: "strong" });
+
+      if (action === "channelLogin") {
+        if (!creds.username || !creds.clientID || !creds.clientSecret) return json({ error: "Paste all three: username, client ID and client secret." }, 400);
+        let tok;
+        try { tok = await new SNClient(creds).login(); } catch (e) { return json({ error: String((e && e.message) || "The login wasn't accepted.") }, 400); }
+        const l = await listingOf(), a = tok.siteId ? await affDir.get(tok.siteId, { type: "json" }).catch(() => null) : null;
+        return json({ ok: true, siteNr: String(tok.site || ""), siteId: String(tok.siteId || ""), listingId: l ? l.listingId : "", listingSiteId: l ? l.siteId || "" : "",
+          affExists: !!a, affTypes: a ? a.types || [] : [], email: (l && (l.email || l.ownerEmail)) || (a && a.email) || "", phone: (l && l.telephone) || (a && a.phone) || "", contactName: (l && l.contactName) || "" });
+      }
+
+      if (action === "channelActivate") {
+        const siteNr = clean(body.siteNr, 20), siteId = clean(body.siteId, 100), name = clean(body.name, 200), bbid = clean(body.bbid, 40);
+        const email = clean(body.email, 600), phone = clean(body.phone, 200), contactName = clean(body.contactName, 120);
+        if (!rid || !siteId || !siteNr || !name) return json({ error: "Go back to step 1 and 2: the property and its Avante login are needed." }, 400);
+        if (!emailList(email).length || badEmails(email).length) return json({ error: "Type the property's email address (several: separate with commas)." }, 400);
+        const done = [], now = new Date().toISOString();
+        // 1. Its listing: the one it has, or a new one from the hub's lists.
+        let record = await listingOf();
+        if (!record) {
+          const cur = await getStore({ name: "resort-list", consistency: "strong" }).get("current", { type: "json" }).catch(() => null);
+          const row = ((cur && cur.resorts) || []).find((r) => String(r.resortId || "").toLowerCase() === rid) || {};
+          record = await buildListingFromSn({ siteId: "nr:" + siteNr + ":" + rid, site: siteNr, resortId: rid, resortName: name, aff: "", units: [], settings: { email, phone },
+            channel: true, siteIdForListing: siteId }, row, { by: "admin", historyNote: "Listing created by Activate a channel property" + (bbid ? " (NightsBridge BBID " + bbid + ")" : ""), extra: { bbid, channelManager: bbid ? "NightsBridge" : "" } });
+          done.push("Listing " + record.listingId + " made");
+        } else done.push("Listing " + record.listingId + " linked");
+        const before = { siteNr: record.siteNr || "", siteId: record.siteId || "", email: record.email || "", telephone: record.telephone || "" };
+        Object.assign(record, { siteNr, siteId, affId: siteId, channelProperty: "Y", ratesFromChannel: "Y", commissionPct: record.commissionPct || "4.95", existingOnSN: "Y",
+          email, telephone: phone || record.telephone || "", contactName: contactName || record.contactName || "", contactEmail: record.contactEmail || email, dateUpdated: now });
+        if (bbid && !record.bbid) record.bbid = bbid;
+        // 2. Its Channel Property Affiliate (number = Site ID).
+        const made = await createPropertyAffiliate({ affId: siteId, name, email, phone, siteNr, type: "channel", note: "Made by Activate a channel property" });
+        if (made.created) { record.affiliateCreatedAt = now; done.push("Affiliate " + siteId + " made (Channel Property)"); }
+        else done.push("Affiliate " + siteId + " already there" + ((made.aff.types || []).includes("channel") ? "" : " (not ticked Channel Property: check it in Affiliates)"));
+        addHistory(record, "admin", "Activated as a channel property (Site Nr " + siteNr + ")", before);
+        await store.setJSON(record.listingId, record);
+        // 3. Connect it in Property Affiliate with its Avante login.
+        let connected = false, connectError = "";
+        try {
+          const r = await fetch(new URL(request.url).origin + "/api/property", { method: "POST", headers: { "content-type": "application/json" },
+            body: JSON.stringify({ action: "connect", username: creds.username, clientID: creds.clientID, clientSecret: creds.clientSecret, aff: siteId, resortId: rid }) });
+          const d = await r.json().catch(() => ({}));
+          connected = !!(d.ok && d.property); if (!connected) connectError = d.error || "not connected";
+        } catch (e) { connectError = String((e && e.message) || e); }
+        done.push(connected ? "Connected in Property Affiliate" : "NOT connected: " + connectError);
+        return json({ ok: true, listingId: record.listingId, affId: siteId, connected, connectError, done });
+      }
+
+      // channelWelcome
+      const affId = clean(body.affId, 100), to = clean(body.to, 600);
+      const a = affId ? await affDir.get(affId, { type: "json" }).catch(() => null) : null;
+      if (!a) return json({ error: "The affiliate wasn't found. Do step 4 first." }, 404);
+      if (!emailList(to).length || badEmails(to).length) return json({ error: "Type the email address to send to." }, 400);
+      const w = welcomeEmail({ propertyName: a.name, siteNr: a.siteNr, contactName: clean(body.contactName, 120), channelManager: "NightsBridge" }, affId, new URL(request.url).origin + "/login.html?aff=" + encodeURIComponent(affId), { connected: body.connected === true });
+      const sent = await sendEmail({ to: emailList(to, 5), subject: w.subject, html: w.html });
+      return sent.ok ? json({ ok: true }) : json({ error: "Not sent: " + (sent.error || "unknown reason") }, 502);
     }
 
     if (action === "createAffiliateFromListing") {
