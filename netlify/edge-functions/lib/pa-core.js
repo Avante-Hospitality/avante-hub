@@ -70,6 +70,15 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     const f = snFeed && snFeed.byResort ? await snFeed.byResort(k).catch(() => null) : null;
     return f ? String(f.name || f.resortName || "").trim() : "";
   }
+  // The unit types on the property's Avante listing (filled from Stock Network
+  // when the listing was made, "Pull again from Stock Network" refreshes them).
+  async function listingUnits(rid) {
+    const k = String(rid || "").trim().toLowerCase();
+    if (!listingStore || !k) return [];
+    const all = await Promise.all((await listingStore.list()).blobs.map((b) => listingStore.get(b.key, { type: "json" }).catch(() => null)));
+    const rec = all.find((r) => r && String(r.resortId || "").toLowerCase() === k && (r.unitTypes || []).length);
+    return rec ? rec.unitTypes.filter((u) => u && u.name).map((u) => ({ name: String(u.name).trim(), size: Number(u.maxOccupancy) || 0 })) : [];
+  }
   // The hub's resort list first; then Avante's own Property Listings (admin
   // types a new property's ResortID there when Stock Network gives it); then
   // Stock Network's live feed, which also has properties created after the
@@ -116,14 +125,19 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
       else return { needResort: true, site: tok.site, candidates: matches };
     }
     const existing = await getJSON("site:" + tok.siteId);
+    // A channel property is only asked about when the hook builder searches
+    // (Jean, 2026-10-18): no availability read here. Its name comes from the
+    // hub's lists, its units from its Avante listing.
+    const channel = await isChannelAff(cleanStr(aff, 40) || (existing && existing.aff));
     // Start on the property's calendar start date (if it was connected before), today otherwise.
     const from0 = existing ? firstBookable(existing) : today();
     let snap = null, readTo = from0, lastErr = null;
-    for (const days of CONNECT_DAYS) {
+    if (channel) snap = { resortName: "", units: {} };
+    else for (const days of CONNECT_DAYS) {
       try { snap = await client.openStretches(rid, from0, addDays(from0, days)); readTo = addDays(from0, days); break; } catch (e) { lastErr = e; }
     }
     if (!snap) throw new PAError("Avante's booking system couldn't read this property's availability. " + ((lastErr && lastErr.message) || ""), 502);
-    const units = Object.values(snap.units).map((u) => ({ name: u.name, size: u.size, roomId: u.roomId }));
+    const units = channel ? await listingUnits(rid) : Object.values(snap.units).map((u) => ({ name: u.name, size: u.size, roomId: u.roomId }));
     const prop = Object.assign({
       siteId: tok.siteId, site: tok.site, feedToken: randomToken(18), createdAt: now().toISOString(),
       settings: { email: "", phone: "", prices: {}, minStay: 2, autoBook: false, payMode: "both" }, channels: {},
@@ -137,8 +151,8 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     await syncChannelFlag(prop);
     const token = await newSession(prop);
     if (prop.aff) await setJSON("aff:" + prop.aff, { siteId: prop.siteId });
-    // Connecting reads the full year once, to find every unit and its open nights.
-    await mergeWindow(prop, snap, from0, readTo, { first: true });
+    // Connecting reads the first days once, to find every unit and its open nights (not for a channel property).
+    if (!channel) await mergeWindow(prop, snap, from0, readTo, { first: true });
     await setJSON("tok:" + prop.siteId, { enc: await encryptJSON(tok, encKey), until: Math.min(tok.expires || Infinity, now().getTime() + TOKEN_REUSE_MS) });
     return { token, property: publicProperty(prop) };
   }
@@ -184,12 +198,18 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
   // payment page. The flag comes from the affiliate's types (admin ticks
   // "Channel Property Affiliate") and is kept on the property so the public
   // front store (stay-api.js, no affiliate lookup) follows the same rules.
-  async function syncChannelFlag(prop) {
-    if (!affiliates || !prop || !prop.aff) return;
+  // Is this affiliate a Channel Property Affiliate (and not also a Property Affiliate)? null when unknown.
+  async function isChannelAff(aff) {
+    if (!affiliates || !aff) return null;
     let pr = null;
-    try { pr = await affiliates.getProfile(prop.aff); } catch (_) { return; }
+    try { pr = await affiliates.getProfile(aff); } catch (_) { return null; }
     const types = pr && Array.isArray(pr.types) ? pr.types : [];
-    const ch = types.indexOf("channel") > -1 && types.indexOf("property") === -1;
+    return types.indexOf("channel") > -1 && types.indexOf("property") === -1;
+  }
+  async function syncChannelFlag(prop) {
+    if (!prop || !prop.aff) return;
+    const ch = await isChannelAff(prop.aff);
+    if (ch === null) return;
     if (!!prop.channel !== ch) { prop.channel = ch; await setJSON("site:" + prop.siteId, prop); }
   }
   const CHANNEL_COMMISSION = 4.95;
@@ -1141,8 +1161,8 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
       // One light "changed since" call per property with open hub bookings (Paid, cancellations).
       try {
         const open = (await bookingsOf(prop)).some((b) => !b.demo && b.reservationId && b.status !== "Cancelled" && !b.paidAt && b.items.some((i) => i.end >= today()));
-        // A channel property is always checked: bookings from its hook links are found this way.
-        if (open || prop.channel) { const r = await refreshStatuses(prop, { minGapMs: 10 * 60000 }); if (r.changed || r.added) out[prop.site + " statuses"] = (r.changed || 0) + " changed, " + (r.added || 0) + " new from links"; }
+        // A channel property is only checked when it opens Bookings (Jean, 2026-10-18).
+        if (open && !prop.channel) { const r = await refreshStatuses(prop, { minGapMs: 10 * 60000 }); if (r.changed || r.added) out[prop.site + " statuses"] = (r.changed || 0) + " changed, " + (r.added || 0) + " new from links"; }
       } catch (e) { out[prop.site + " statuses"] = { error: e.message }; }
       // Properties without channels make no background calls to Stock Network
       // (a channel property never syncs channels: NightsBridge does that).
