@@ -504,7 +504,7 @@
     if (isCh()) {
       var cs = S.prop.settings || {};
       h += '<section class="pa-card" aria-label="How it works"><p class="pa-h2">Bookings from the hub</p>' +
-        '<p class="pa-hint">This list shows only bookings that came through Avante: your hook and booking links. They reach your NightsBridge (or other channel manager) through Avante, marked <b>Avante Hub booking</b>. Guests pay on Avante\'s secure payment page. Your rates, availability, other bookings and guest messages stay in your channel manager.</p>' +
+        '<p class="pa-hint">This list shows only bookings that came through Avante: your hook and booking links. They reach your NightsBridge (or other channel manager) through Avante, marked <b>Avante Hub booking</b>. Guests pay on Avante\'s secure payment page (all bookings are paid to you within 3 to 5 working days, or before the guest\'s arrival, whichever is sooner).</p>' +
         '<div class="pa-form" style="margin-top:10px"><div class="pa-field"><label class="pa-label" for="ch-email">Your email for new booking notices</label><input id="ch-email" type="text" inputmode="email" value="' + esc(cs.email || '') + '" placeholder="name@example.com, other@example.com"></div>' +
         '<div class="pa-field"><label class="pa-label" for="ch-phone">Phone</label><input id="ch-phone" type="tel" value="' + esc(cs.phone || '') + '"></div></div>' + contactBlock(cs) +
         '<div class="pa-row" style="margin-top:8px"><button type="button" class="pa-btn small" data-act="chSaveContact">Save</button></div></section>';
