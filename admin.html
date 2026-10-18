@@ -1251,6 +1251,11 @@
       <div class="card">
         <h2 class="section-heading" style="margin-top:0;">Properties already on Stock Network</h2>
         <p class="hint">Properties connected in Property Affiliate before the onboarding form existed (e.g. The Dunes). Give each one a listing, filled in from what the hub already has, so the property and you can complete the missing fields and send the updates to Stock Network.</p>
+        <div style="margin:6px 0 10px; max-width:520px;">
+          <label for="exName">Search by property name</label>
+          <input id="exName" type="search" autocomplete="off" placeholder="e.g. 37 On Anderson" style="width:100%;">
+          <div id="exNameHits" style="margin-top:6px;"></div>
+        </div>
         <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; margin:6px 0 12px;">
           <div><label for="exBbid">NightsBridge BBID</label><input id="exBbid" placeholder="e.g. 12345" style="width:140px;"></div>
           <div style="align-self:center; padding-top:18px; color:var(--muted); font-size:13px;">or</div>
@@ -7309,6 +7314,39 @@
         }).catch(function(){ btn.disabled = false; st.textContent = 'No connection. Try again.'; });
       }
       document.getElementById('exGetBtn').addEventListener('click', function(){ getBySite(''); });
+      // Search by name (Jean, 2026-10-18): the hub's property list, then
+      // "Get the property" with the chosen one's BBID and ResortID.
+      (function(){
+        var input = document.getElementById('exName'), out = document.getElementById('exNameHits'), list = null, timer = null;
+        function rows(){ return list ? Promise.resolve(list) : fetch('/api/resorts').then(function(r){ return r.json(); }).then(function(d){ list = d.resorts || []; return list; }); }
+        function show(q){
+          q = q.trim().toLowerCase();
+          if(q.length < 3){ out.innerHTML = ''; return; }
+          out.innerHTML = '<div class="hint">Searching\u2026</div>';
+          rows().then(function(all){
+            if(input.value.trim().toLowerCase() !== q) return;
+            var hits = all.filter(function(r){ return String(r.name || '').toLowerCase().indexOf(q) > -1; }).slice(0, 15);
+            out.innerHTML = hits.length ? hits.map(function(r, i){
+              var place = [r.district || r.suburb, r.city || r.area].filter(Boolean).join(', ');
+              return '<button type="button" class="btn-outline" data-ex-hit="' + i + '" style="display:block; width:100%; text-align:left; margin:0 0 4px;">' + escapeHtml(r.name) +
+                (place ? ' <small style="color:var(--muted);">' + escapeHtml(place) + '</small>' : '') +
+                (r.externalResortCode ? ' <small style="color:var(--muted);">\u00b7 BBID ' + escapeHtml(r.externalResortCode) + '</small>' : ' <small style="color:var(--muted);">\u00b7 no BBID</small>') + '</button>';
+            }).join('') : '<div class="hint">No property with that name in the hub\u2019s list.</div>';
+            out.__hits = hits;
+          }).catch(function(){ out.innerHTML = '<div class="hint">Could not load the property list.</div>'; });
+        }
+        input.addEventListener('input', function(){ clearTimeout(timer); timer = setTimeout(function(){ show(input.value); }, 250); });
+        out.addEventListener('click', function(e){
+          var b = e.target.closest('[data-ex-hit]'); if(!b) return;
+          var r = (out.__hits || [])[+b.getAttribute('data-ex-hit')]; if(!r) return;
+          out.innerHTML = '';
+          input.value = r.name;
+          if(!r.externalResortCode){ document.getElementById('exGetStatus').textContent = r.name + ' has no NightsBridge BBID in the hub\u2019s list. Type its Site Nr above, then tap Get the property.'; return; }
+          document.getElementById('exBbid').value = r.externalResortCode;
+          document.getElementById('exSiteNr').value = '';
+          getBySite(r.resortId);
+        });
+      })();
       document.getElementById('exGetStatus').addEventListener('click', function(e){ var rid = e.target.getAttribute('data-ex-rid'); if(rid) getBySite(rid); });
       document.getElementById('existingPropsHost').addEventListener('click', function(e){
         var open = e.target.getAttribute('data-ex-open'), create = e.target.getAttribute('data-ex-create');
