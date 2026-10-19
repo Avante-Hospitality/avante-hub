@@ -10,7 +10,7 @@ removed screen, a new setting.
 | Guide | Covers | Update it when you change |
 |---|---|---|
 | `how-to.html` | Affiliate hub, front store, login, password, application, onboarding form | `hub.html`, `landing.html`, `login.html`, `reset-password.html`, `affiliate-application.html`, `property-form.html`, `promo.html`, link building (`booking-links.js`) |
-| `how-to-property.html` | Property Affiliate tab | `property-affiliate.js` / `.css`, `netlify/edge-functions/lib/pa-core.js`, `pa-api.js`, `approve-cancel.html` |
+| `how-to-property.html` | Property Affiliate tab | `property-affiliate.js` / `.css`, `netlify/edge-functions/lib/pa-core.js`, `pa-api.js` |
 | `how-to-hook-builder.html` | The hook builder (lives in the separate `avante-hooks` repo) | anything user-facing in `avante-hooks/public/index.html` |
 | `how-to-admin.html` | Admin | `admin.html`, `admin-login.html`, `explore-tree.html`, `tree-lookup.html`, `property-agreement.html`, admin edge functions |
 

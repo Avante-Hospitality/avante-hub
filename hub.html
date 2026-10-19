@@ -2997,13 +2997,11 @@
       return { set: set, subscribe: subscribe };
     })();
 
-    // ---------- Accommodation resort list updater ----------
+    // ---------- Accommodation resort list: how many are loaded ----------
+    // (The CSV upload is gone, Jean 2026-10-19: Stock Network's list updates the hub every night.)
     // (Places and properties are now picked from the location tree above.)
     (function(){
       var metaEl = document.getElementById('a-resortListMeta');
-      var uploadBtn = document.getElementById('a-resortUploadBtn');
-      var fileInput = document.getElementById('a-resortFileInput');
-      var statusEl = document.getElementById('a-resortUploadStatus');
 
       function populatePicker(resorts, updatedAt){
         resorts = resorts || [];
@@ -3026,52 +3024,6 @@
 
       ResortData.subscribe(populatePicker);
 
-      if(!uploadBtn || !fileInput) return; // the upload is admin-only now (admin › Map & Activities)
-      uploadBtn.addEventListener('click', function(){ fileInput.click(); });
-
-      fileInput.addEventListener('change', function(){
-        var file = fileInput.files && fileInput.files[0];
-        fileInput.value = '';
-        if(!file) return;
-
-        statusEl.className = 'status';
-        statusEl.textContent = '';
-
-        if(!/\.csv$/i.test(file.name)){
-          statusEl.textContent = 'Please choose a .csv file.';
-          statusEl.className = 'status show';
-          return;
-        }
-
-        uploadBtn.disabled = true;
-        uploadBtn.textContent = 'Uploading…';
-
-        file.text().then(function(csvText){
-          return fetch('/api/resorts', {
-            method: 'POST',
-            headers: { 'content-type': 'text/csv' },
-            body: csvText
-          });
-        })
-          .then(function(r){ return r.json().then(function(data){ return { status: r.status, data: data }; }); })
-          .then(function(res){
-            uploadBtn.disabled = false;
-            uploadBtn.textContent = 'Update resort list';
-            if(res.data && res.data.ok){
-              showToast('Resort list updated (' + res.data.count + ' resorts)');
-              ResortData.set(res.data.resorts, res.data.updatedAt);
-            }else{
-              statusEl.textContent = (res.data && res.data.error) || 'Could not update the resort list.';
-              statusEl.className = 'status show';
-            }
-          })
-          .catch(function(){
-            uploadBtn.disabled = false;
-            uploadBtn.textContent = 'Update resort list';
-            statusEl.textContent = 'Something went wrong reading or uploading that file.';
-            statusEl.className = 'status show';
-          });
-      });
     })();
 
     // ---------- Resort Info Link ----------

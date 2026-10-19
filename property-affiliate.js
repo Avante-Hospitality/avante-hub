@@ -1216,11 +1216,8 @@
         '<button type="button" class="pa-btn ghost" data-act="close">Close</button></div></div></div></div>';
     }
     if (m.done) {
-      var ap = m.done.approval;
       return h + hdr(m.done.title) + '<div class="body"><p style="margin:0;font-size:14px;line-height:1.55">' + esc(m.done.text) + '</p>' +
         payBlock(m.done.pay) +
-        (ap ? '<div class="pa-pay"><p class="pa-label" style="margin:0">Affiliate approval</p><p style="margin:0;font-size:13.5px;line-height:1.5">' + (ap.emailedTo ? 'Approval link emailed to ' + esc(ap.emailedTo) + '.' : 'The approval email could not be sent (no email on the affiliate\'s account).') + ' The link is valid for 24 hours and needs the affiliate\'s hub password.</p>' +
-          '<div class="pa-actions"><a class="pa-btn small" style="display:inline-flex;align-items:center;text-decoration:none" href="' + esc(ap.whatsappUrl) + '" target="_blank" rel="noopener">Send by WhatsApp' + (ap.hasPhone ? '' : ' (choose contact)') + '</a></div></div>' : '') +
         '<button type="button" class="pa-btn" style="align-self:flex-start" data-act="close">Done</button></div></div></div>';
     }
     if (m.type === 'find') {

@@ -66,9 +66,6 @@ export default async (request) => {
     // Hub login: is this affiliate a property affiliate, and open its property on this device.
     if (a === "affStatus") return json(Object.assign({ ok: true }, await core.affStatus(body.aff)));
     if (a === "resume") return json(Object.assign({ ok: true }, await core.resume(body.aff, body.password)));
-    // Approval page (approve-cancel.html): no property session, the one-time link is the key.
-    if (a === "approvalInfo") return json(Object.assign({ ok: true }, await core.approvalInfo(body.t)));
-    if (a === "approveCancel") return json(Object.assign({ ok: true }, await core.approveCancel(body.t, body.password)));
     const t0 = Date.now();
     // Opening: start reading the saved grid while the login is checked (token carries the site id).
     const preSite = a === "open" ? core.siteOfToken(body.token) : null;

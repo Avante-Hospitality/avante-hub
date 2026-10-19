@@ -29,8 +29,6 @@ const WINDOW_MAX_AGE_MS = 5 * 60 * 1000; // a screen window is re-read from SN w
 const MAX_WINDOW_DAYS = 62;             // the screen never asks SN for more than this at once
 const TOKEN_REUSE_MS = 50 * 60 * 1000;
 const FEED_ACTIVE_MS = 48 * 3600 * 1000; // a calendar link fetched by a channel within this time counts as linked
-const APPROVAL_HOURS = 24;
-const APPROVAL_MAX_TRIES = 5;
 const PAY_MODES = ["both", "gateway", "eft"];
 const DEFAULT_AFFILIATE_PASSWORD = "0000"; // same default as auth-api.js
 
@@ -764,79 +762,6 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     return { escalated: true, booking: decorate(b) };
   }
 
-  // ---------- affiliate approval for cancelling paid bookings ----------
-  // Not used since 2026-10-19 (Paid or Confirmed goes to admin instead); kept until Jean says it can go.
-  async function requestCancellation(prop, list, b) {
-    const aff = cleanStr(prop.aff, 40);
-    if (!aff || !affiliates) throw new PAError("This property isn't linked to an affiliate account, so a paid booking can't be cancelled from the hub. Cancel it in Avante's booking system.", 409);
-    const profile = (await affiliates.getProfile(aff)) || {};
-    const token = randomToken(24);
-    const exp = now().getTime() + APPROVAL_HOURS * 3600000;
-    await setJSON("appr:" + token, { siteId: prop.siteId, ref: b.ref, aff, exp, createdAt: now().toISOString(), used: false, fails: 0 });
-    b.cancelRequest = { at: now().toISOString(), exp: new Date(exp).toISOString() };
-    await saveBookings(prop, list);
-    const link = baseUrl + "/approve-cancel.html?t=" + token;
-    const units = b.items.filter((i) => !i.cancelled).map((i) => i.unit + " " + i.start + " to " + i.end).join(", ");
-    const text = "Avante hub: " + (prop.resortName || "A property") + " asks you to approve cancelling PAID booking " + b.ref + " (" + units + "). Approve with your hub password (link valid " + APPROVAL_HOURS + " hours): " + link;
-    let emailed = false;
-    if (profile.email) {
-      emailed = await sendEmail(profile.email, "Approve cancellation of paid booking " + b.ref,
-        "<p>Hi " + esc(profile.name || "") + ",</p><p><b>" + esc(prop.resortName || "A property") + "</b> asks you to approve cancelling a <b>paid</b> booking.</p>" +
-        "<p>Booking <b>" + esc(b.ref) + "</b><br>" + esc(units) + "<br>Guest: " + esc(((b.guest && b.guest.first) || "") + " " + ((b.guest && b.guest.last) || "")) + "<br>Amount paid: R" + esc(Math.round(Number(b.amountPaid) || Number(b.total) || 0)) + (b.paidEft ? " (EFT)" : "") + "</p>" +
-        "<p><a href=\"" + esc(link) + "\" style=\"display:inline-block;background:#0e2f44;color:#fff;padding:12px 18px;border-radius:8px;text-decoration:none;font-weight:700\">Review and approve</a></p>" +
-        "<p>You'll need your Avante hub password. The link works once and expires in " + APPROVAL_HOURS + " hours. If you didn't expect this, ignore this email and nothing is cancelled.</p>").catch(() => false);
-    }
-    const wa = waNumber(profile.phone);
-    return { needsApproval: true, booking: decorate(b),
-      approval: { emailedTo: emailed ? maskEmail(profile.email) : null, hasPhone: !!wa, whatsappUrl: "https://wa.me/" + wa + "?text=" + encodeURIComponent(text), expiresAt: new Date(exp).toISOString(), affiliateName: profile.name || "" } };
-  }
-
-  async function approvalRecord(token) {
-    const t = cleanStr(token, 80);
-    const a = t ? await getJSON("appr:" + t) : null;
-    if (!a) throw new PAError("This approval link isn't valid.", 404);
-    if (a.used) throw new PAError("This approval link has already been used.", 410);
-    if (a.exp < now().getTime()) throw new PAError("This approval link has expired. Ask the property to request the cancellation again.", 410);
-    if (a.fails >= APPROVAL_MAX_TRIES) throw new PAError("Too many wrong passwords. Ask the property to request the cancellation again.", 429);
-    const prop = await getJSON("site:" + a.siteId);
-    if (!prop) throw new PAError("This property is no longer connected.", 404);
-    const list = await bookingsOf(prop);
-    const b = list.find((x) => x.ref === a.ref);
-    if (!b) throw new PAError("Booking not found.", 404);
-    return { t, a, prop, list, b };
-  }
-
-  async function approvalInfo(token) {
-    const { a, prop, b } = await approvalRecord(token);
-    return { resortName: prop.resortName, ref: b.ref, status: b.status, aff: a.aff,
-      items: b.items.filter((i) => !i.cancelled).map((i) => ({ unit: i.unit, start: i.start, end: i.end })),
-      guest: ((b.guest && b.guest.first) || "") + " " + ((b.guest && b.guest.last) || ""),
-      total: b.total, amountPaid: b.amountPaid || 0, paidEft: !!b.paidEft, expiresAt: new Date(a.exp).toISOString() };
-  }
-
-  async function approveCancel(token, password) {
-    const { t, a, prop, list, b } = await approvalRecord(token);
-    const rec = affiliates ? await affiliates.getAuth(a.aff) : null;
-    const stored = rec && rec.passwordHash ? rec.passwordHash : await sha256Hex(DEFAULT_AFFILIATE_PASSWORD);
-    if ((await sha256Hex(String(password || ""))) !== stored) {
-      a.fails = (a.fails || 0) + 1; await setJSON("appr:" + t, a);
-      throw new PAError("Incorrect password." + (APPROVAL_MAX_TRIES - a.fails > 0 ? " " + (APPROVAL_MAX_TRIES - a.fails) + " tries left." : ""), 401);
-    }
-    if (b.status !== "Cancelled") {
-      const client = await clientFor(prop);
-      try { await client.cancelReservation(b.reservationId); }
-      catch (e) { throw new PAError("Approved, but Avante's booking system didn't cancel the booking: " + (e.message || e) + " Cancel it in the Avante back office.", 502); }
-      b.status = "Cancelled"; b.cancelledAt = now().toISOString();
-      await invalidate(prop, b.items);
-    }
-    b.cancelApproved = { by: a.aff, at: now().toISOString() };
-    delete b.cancelRequest;
-    a.used = true; a.usedAt = now().toISOString();
-    await setJSON("appr:" + t, a);
-    await saveBookings(prop, list);
-    if (propertyTo(prop)) await sendEmail(propertyTo(prop), "Booking " + b.ref + " cancelled (approved)", "<p>The affiliate approved the cancellation of paid booking <b>" + esc(b.ref) + "</b>. It is now cancelled. Any refund to the guest is handled outside the hub.</p>").catch(() => false);
-    return { ref: b.ref, resortName: prop.resortName };
-  }
 
   async function cancelUnit(prop, ref, unit) {
     const { list, b } = await findBooking(prop, ref);
@@ -1906,5 +1831,5 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
   }
   function notDemo(b) { if (b && b.demo) throw new PAError("This is a demo booking: it isn't in Avante's booking system, so it can't be changed, paid or cancelled.", 409); }
 
-  return { propertyTo, requestChannelHelp, prefetch, siteOfToken, newSession, decide, refreshStatuses, clientFor, connect, auth, disconnect, publicProperty, availability, search, book, cancel, cancelUnit, edit, find, saveSettings, channelsView, payInfo, markPaidEft, approvalInfo, approveCancel, affStatus, resume, seedDemo, clearDemo, isDemoSite, saveContact, checkIn, guests, messagesView, saveMessages, prepareMessage, markMessage, emailNow, inHouse, emailInHouse, firstBookable, fsSettings, saveFrontStore, frontStoreView, uploadFrontPhoto, removeFrontPhoto, frontPhoto, propertyBySlug, publicFrontStore, publicGuestInfo, guestKeyOk, publicOffers, publicAvailability, publicQuote, publicBook, fsStat, propertyReviewLink, remindMessages, icalFeed, runSync, syncProperty, channelEvents, addChannelEvent, snapshot, ensureWindow, resolveUnitNotice, findResortsForSite, findResort };
+  return { propertyTo, requestChannelHelp, prefetch, siteOfToken, newSession, decide, refreshStatuses, clientFor, connect, auth, disconnect, publicProperty, availability, search, book, cancel, cancelUnit, edit, find, saveSettings, channelsView, payInfo, markPaidEft, affStatus, resume, seedDemo, clearDemo, isDemoSite, saveContact, checkIn, guests, messagesView, saveMessages, prepareMessage, markMessage, emailNow, inHouse, emailInHouse, firstBookable, fsSettings, saveFrontStore, frontStoreView, uploadFrontPhoto, removeFrontPhoto, frontPhoto, propertyBySlug, publicFrontStore, publicGuestInfo, guestKeyOk, publicOffers, publicAvailability, publicQuote, publicBook, fsStat, propertyReviewLink, remindMessages, icalFeed, runSync, syncProperty, channelEvents, addChannelEvent, snapshot, ensureWindow, resolveUnitNotice, findResortsForSite, findResort };
 }
