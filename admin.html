@@ -7372,7 +7372,7 @@
           if(W.step === 0) return !!W.prop;
           if(W.step === 1) return !!W.login;
           if(W.step === 2) return !!val('acwEmail');
-          if(W.step === 3) return !!W.result;
+          if(W.step === 3) return !!(W.result && W.result.connected); // not connected: the welcome would say it is
           return true;
         }
         function keepContact(){ if(W.step === 2){ W.contact = { email: val('acwEmail'), phone: val('acwPhone'), contactName: val('acwContact') }; } }
@@ -7399,8 +7399,9 @@
           } else if(W.step === 3){
             h += '<p class="acw-what">One tap: the hub makes or links its listing, makes its ' + (W.login.hosted ? 'Property Affiliate (number ' + escapeHtml(W.login.siteId) + ', Hook Builder on)' : 'Channel Property Affiliate (number ' + escapeHtml(W.login.siteId) + ', 4.95% + VAT, Hook Builder on)') + ' and connects it with its Avante login.</p>' +
               '<ul class="acw-list"><li>' + escapeHtml(p.name) + ' · Site Nr ' + escapeHtml(W.login.siteNr) + '</li><li>' + escapeHtml(W.contact.email) + (W.contact.phone ? ' · ' + escapeHtml(W.contact.phone) : '') + '</li></ul>' +
-              (W.result ? '<ul class="acw-list">' + W.result.done.map(function(d){ return '<li class="' + (/NOT/.test(d) ? 'acw-err' : 'acw-ok') + '">' + escapeHtml(d) + '</li>'; }).join('') + '</ul>'
-                : '<button type="button" class="primary" id="acwGo" style="margin-top:12px;"' + (W.busy ? ' disabled' : '') + '>' + (W.busy ? 'Activating…' : 'Activate') + '</button>');
+              (W.result ? '<ul class="acw-list">' + W.result.done.map(function(d){ return '<li class="' + (/NOT/.test(d) ? 'acw-err' : 'acw-ok') + '">' + escapeHtml(d) + '</li>'; }).join('') + '</ul>' : '') +
+              (!W.result || !W.result.connected ? (W.result ? '<p class="acw-what">Not connected yet, so no welcome email. Check the login in step 2, then tap <b>Try again</b>.</p>' : '') +
+                '<button type="button" class="primary" id="acwGo" style="margin-top:12px;"' + (W.busy ? ' disabled' : '') + '>' + (W.busy ? 'Activating…' : W.result ? 'Try again' : 'Activate') + '</button>' : '');
           } else {
             h += W.welcomed ? '<p class="acw-ok">✔ Welcome email sent.</p><p class="acw-what"><b>' + escapeHtml(p.name) + '</b> can now log in to the hub with affiliate number <b>' + escapeHtml(W.result.affId) + '</b> and find the Hook Builder and Activities. Its listing is <b>' + escapeHtml(W.result.listingId) + '</b>.</p>'
               : '<p class="acw-what">Check the email. You can change it for this property' + (W.login.hosted ? '' : '; the saved wording is under <b>Channel property welcome email</b>') + '. Its Avante login is never sent.</p>' +
@@ -7411,7 +7412,7 @@
           }
           if(W.msg) h += '<p class="acw-err">' + escapeHtml(W.msg) + '</p>';
           body.innerHTML = h;
-          back.style.visibility = W.step > 0 && !(W.step === 4 && W.welcomed) && !(W.step >= 3 && W.result) ? 'visible' : 'hidden';
+          back.style.visibility = W.step > 0 && !(W.step === 4 && W.welcomed) && !(W.step >= 3 && W.result && W.result.connected) ? 'visible' : 'hidden';
           next.textContent = W.step === 4 ? 'Close' : 'Next';
           next.disabled = !ready();
           if(W.step === 0){ var inp = document.getElementById('acwName'), hits = document.getElementById('acwHits'); window.resortNameSearch(inp, hits); inp.focus();

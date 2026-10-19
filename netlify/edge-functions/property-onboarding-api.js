@@ -1563,7 +1563,17 @@ export default async (request, context) => {
         const type = hosted ? "property" : "channel", typeName = hosted ? "Property" : "Channel Property";
         const made = await createPropertyAffiliate({ affId: siteId, name, email, phone, siteNr, type, note: "Made by Activate (" + typeName + ")" });
         if (made.created) { record.affiliateCreatedAt = now; done.push("Affiliate " + siteId + " made (" + typeName + ")"); }
-        else done.push("Affiliate " + siteId + " already there" + ((made.aff.types || []).includes(type) ? "" : " (not ticked " + typeName + ": check it in Affiliates)"));
+        else {
+          // Already there with the other type (Jean, 2026-10-19): set it to this one, or a
+          // channel property would connect as a full property (front store, calendar).
+          const types = made.aff.types || [], other = hosted ? "channel" : "property";
+          if (!types.includes(type) || types.includes(other)) {
+            made.aff.types = types.filter((t) => t !== other).concat(types.includes(type) ? [] : [type]);
+            made.aff.updatedAt = now;
+            await affDir.setJSON(siteId, made.aff);
+            done.push("Affiliate " + siteId + " already there: set to " + typeName);
+          } else done.push("Affiliate " + siteId + " already there");
+        }
         addHistory(record, "admin", "Activated as a " + (hosted ? "property" : "channel property") + " (Site Nr " + siteNr + ")", before);
         await store.setJSON(record.listingId, record);
         context.waitUntil(retagListingPhotos(record).catch(() => null));
