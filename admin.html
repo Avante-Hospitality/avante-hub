@@ -538,6 +538,7 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.css">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
 <script src="sn-export.js"></script>
+<script src="listing-photo-library.js"></script>
 </head>
 <body>
 
@@ -1318,6 +1319,7 @@
       <div class="card" style="margin-top:20px;">
         <div class="btn-row" style="margin-top:0;">
           <button class="btn-outline" id="refreshPropertyListingsBtn">Refresh</button>
+          <button class="btn-outline" id="libAllBtn" type="button" title="Puts every listing's photos in the photo library, filed under the property and its unit types">Put all listing photos in the photo library</button>
         </div>
         <div class="status" id="propertyListingsStatus"></div>
         <div style="margin-top:18px;">
@@ -6721,6 +6723,31 @@
         });
       }
 
+      // One go for every listing (Jean, 2026-10-19): photos not in the library
+      // yet go in, and every listing's library photos are filed under its
+      // property and unit types. Safe to run again.
+      document.getElementById('libAllBtn').addEventListener('click', function(){
+        var btn = this, st = statusEl, added = 0, failed = 0, n = 0;
+        btn.disabled = true; st.className = 'status show';
+        propAdminPost('list').then(function(res){
+          var ls = ((res.data && res.data.listings) || []);
+          return ls.reduce(function(chain, l0, i){
+            return chain.then(function(){
+              st.textContent = 'Listing ' + (i + 1) + ' of ' + ls.length + ': ' + (l0.propertyName || l0.listingId) + '\u2026';
+              return propAdminPost('getForEdit', { listingId: l0.listingId }).then(function(r){
+                var l = r.data && r.data.listing; if(!l) return;
+                return ListingPhotoLibrary.add({ listingId: l.listingId, name: l.propertyName, images: l.images || [], done: l.libraryPhotos || {},
+                  post: function(body){ return propAdminPost(body.action, body).then(function(x){ return x.data; }); } })
+                  .then(function(rr){ added += rr.added; failed += rr.failed; return propAdminPost('libraryRetag', { listingId: l.listingId }); })
+                  .then(function(t){ n += (t.data && t.data.tagged) || 0; });
+              });
+            });
+          }, Promise.resolve()).then(function(){
+            btn.disabled = false;
+            st.textContent = 'Done: ' + added + ' photo' + (added === 1 ? '' : 's') + ' added to the library, ' + n + ' filed again' + (failed ? ', ' + failed + ' could not be added' : '') + '.';
+          });
+        }).catch(function(){ btn.disabled = false; st.textContent = 'Stopped: no connection. Run it again; nothing is doubled.'; });
+      });
       function loadPropertyListings(){
         statusEl.textContent = 'Loading\u2026';
         statusEl.className = 'status show';
@@ -7055,45 +7082,17 @@
         showLib();
         libBox.appendChild(libLine); libBox.appendChild(libBtn);
         host.appendChild(libBox);
-        function loadBitmap(key){
-          return fetch('/api/property-file?key=' + encodeURIComponent(key)).then(function(r){ if(!r.ok) throw new Error('photo ' + r.status); return r.blob(); })
-            .then(function(b){ return createImageBitmap(b); });
-        }
-        function scaledJpeg(img, max, q){
-          var k = Math.min(1, max / Math.max(img.width, img.height)), w = Math.max(1, Math.round(img.width * k)), h = Math.max(1, Math.round(img.height * k));
-          var c = document.createElement('canvas'); c.width = w; c.height = h; c.getContext('2d').drawImage(img, 0, 0, w, h);
-          return { url: c.toDataURL('image/jpeg', q), w: w, h: h, canvas: c };
-        }
-        function dhashOf(src){
-          var c = document.createElement('canvas'); c.width = 9; c.height = 8;
-          var x = c.getContext('2d'); x.drawImage(src, 0, 0, 9, 8); var d = x.getImageData(0, 0, 9, 8).data, bits = '';
-          for(var y = 0; y < 8; y++) for(var k2 = 0; k2 < 8; k2++){ var a = (y * 9 + k2) * 4, b = a + 4; bits += (d[a] + d[a+1] + d[a+2]) > (d[b] + d[b+1] + d[b+2]) ? '1' : '0'; }
-          return bits.match(/.{4}/g).map(function(n){ return parseInt(n, 2).toString(16); }).join('');
-        }
+        // The browser work and the filing are shared with the onboarding form (listing-photo-library.js).
         function addPhotosToLibrary(quiet){
-          var todo = listingImages.filter(function(im){ return !inLib[im.key]; });
-          if(!todo.length) return Promise.resolve();
+          if(!listingImages.some(function(im){ return !inLib[im.key]; })) return Promise.resolve();
           libBtn.disabled = true;
-          var failed = 0, lastErr = '';
-          var chain = Promise.resolve();
-          todo.forEach(function(im, i){
-            chain = chain.then(function(){
-              libLine.textContent = 'Saving photo ' + (i + 1) + ' of ' + todo.length + ' to the hook builder library\u2026';
-              return loadBitmap(im.key).then(function(bmp){
-                var full = scaledJpeg(bmp, 1600, 0.82), th = scaledJpeg(bmp, 360, 0.72);
-                var n = listingImages.indexOf(im) + 1;
-                return propAdminPost('libraryAdd', { listingId: l.listingId, imageKey: im.key,
-                  item: { name: (l.propertyName || 'Property') + ' ' + n + (im.unitTypeName ? ' \u2014 ' + im.unitTypeName : ''), w: full.w, h: full.h, hash: dhashOf(th.canvas) },
-                  full: full.url, thumb: th.url });
-              }).then(function(res){
-                if(res.data && res.data.ok) inLib[im.key] = res.data.id;
-                else { failed++; lastErr = (res.data && res.data.error) || 'unknown reason'; }
-              }).catch(function(err){ failed++; lastErr = err.message || String(err); });
-            });
-          });
-          return chain.then(function(){
+          return ListingPhotoLibrary.add({ listingId: l.listingId, name: l.propertyName, images: listingImages, done: inLib,
+            post: function(body){ return propAdminPost(body.action, body).then(function(res){ return res.data; }); },
+            progress: function(i, n){ libLine.textContent = 'Saving photo ' + i + ' of ' + n + ' to the hook builder library\u2026'; }
+          }).then(function(r){
+            Object.assign(inLib, r.done);
             libBtn.disabled = false; showLib();
-            if(failed){ libLine.textContent += ' ' + failed + ' could not be saved: ' + lastErr; if(!quiet) window.alert(failed + ' photo(s) could not be saved to the library: ' + lastErr); }
+            if(r.failed){ libLine.textContent += ' ' + r.failed + ' could not be saved: ' + r.lastErr; if(!quiet) window.alert(r.failed + ' photo(s) could not be saved to the library: ' + r.lastErr); }
           });
         }
         libBtn.addEventListener('click', function(){ addPhotosToLibrary(false); });

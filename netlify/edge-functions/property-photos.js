@@ -17,6 +17,7 @@ const page = (title, body, status = 200) => new Response(
   "header{background:#0e2f44;color:#fff;padding:18px 16px}header h1{margin:0;font-size:20px}header p{margin:4px 0 0;color:#cfe3e0;font-size:14px}" +
   "main{max-width:1100px;margin:0 auto;padding:16px}.bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:0 0 16px}" +
   ".btn{display:inline-block;background:#3fb8a9;color:#fff;text-decoration:none;font-weight:700;padding:10px 16px;border-radius:8px}" +
+  "h2{font-size:17px;margin:22px 0 10px}" +
   ".grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}" +
   "figure{margin:0;background:#fff;border:1px solid #d6e3e1;border-radius:10px;overflow:hidden}figure img{display:block;width:100%;height:170px;object-fit:cover;background:#e8efee}" +
   "figcaption{padding:8px 10px;font-size:13px;display:flex;justify-content:space-between;gap:8px}figcaption a{color:#1f7a6e;font-weight:700;white-space:nowrap}" +
@@ -97,11 +98,19 @@ export default async (request) => {
   }
 
   const base = "?l=" + encodeURIComponent(id) + "&k=" + encodeURIComponent(k);
+  const groups = [];
+  images.forEach((im, n) => {
+    const title = im.type === "Unit" && im.unitTypeName ? "Unit type: " + im.unitTypeName : "Property";
+    let g = groups.find((x) => x.title === title); if (!g) { g = { title, items: [] }; groups.push(g); }
+    g.items.push({ im, n });
+  });
+  groups.sort((a, b) => (a.title === "Property" ? -1 : b.title === "Property" ? 1 : a.title.localeCompare(b.title, "en", { numeric: true })));
   const title = (rec.propertyName || "Property") + " — photos";
   const body = "<header><h1>" + esc(title) + "</h1><p>" + esc([rec.siteNr ? "Site Nr " + rec.siteNr : "", rec.treePlaceText || [rec.suburb, rec.city].filter(Boolean).join(", ")].filter(Boolean).join(" · ")) + "</p></header><main>" +
     (images.length
-      ? '<div class="bar"><a class="btn" href="' + base + '&zip=1">Download all ' + images.length + " photos (.zip)</a><span class=\"hint\">Or tap a photo to open it full size.</span></div><div class=\"grid\">" +
-        images.map((im, n) => '<figure><a href="' + base + "&i=" + n + '" target="_blank" rel="noopener"><img loading="lazy" src="' + base + "&i=" + n + '" alt="' + esc(label(im, n)) + '"></a><figcaption><span>' + esc(label(im, n)) + '</span><a href="' + base + "&i=" + n + '&dl=1">Download</a></figcaption></figure>').join("") + "</div>"
+      ? '<div class="bar"><a class="btn" href="' + base + '&zip=1">Download all ' + images.length + " photos (.zip)</a><span class=\"hint\">Or tap a photo to open it full size.</span></div>" +
+        // Grouped: the property's own photos, then each unit type's (Jean, 2026-10-19), so they go into the right place.
+        groups.map((g) => "<h2>" + esc(g.title) + " (" + g.items.length + ")</h2><div class=\"grid\">" + g.items.map(({ im, n }) => '<figure><a href="' + base + "&i=" + n + '" target="_blank" rel="noopener"><img loading="lazy" src="' + base + "&i=" + n + '" alt="' + esc(label(im, n)) + '"></a><figcaption><span>' + esc(label(im, n)) + '</span><a href="' + base + "&i=" + n + '&dl=1">Download</a></figcaption></figure>').join("") + "</div>").join("")
       : '<p class="hint">There are no photos on this listing yet.</p>') +
     '<p class="hint" style="margin-top:20px">From Avante Travel.</p></main>';
   return page(title, body);

@@ -10,6 +10,7 @@ import { SITE_REGISTER_STORE, SITE_STATUSES, DEFAULT_SN_SETUP_EMAILS, newEntry, 
   listSiteNrs, nextFreeSiteNr, findOpenRequest, requestSheetBase64, sheetFileName, setupEmail, confirmationEmail, welcomeEmail, READY_TO_SEND, CHANNEL_WELCOME_DEFAULT, fillWelcome, welcomeHtml } from "./lib/sn-site-register.js";
 import { readListingScreenshots } from "./lib/listing-reader.js";
 import { HOOKS_URL, makeHooksTicket } from "./lib/hooks-ticket.js";
+import { propertyTags, unitTag, libPost } from "./lib/photo-library.js";
 import { isAdminToken } from "./lib/admin-session.js";
 import { isAffiliateSession } from "./lib/affiliate-session.js";
 import { createPropertyAffiliate } from "./lib/affiliates.js";
@@ -489,6 +490,26 @@ async function emailEditLink(record, to, origin, by) {
   record.history = (Array.isArray(record.history) ? record.history : []).concat([{ at, by, action: (sent.ok ? "Edit link emailed to " : "Edit link email FAILED to ") + toText }]).slice(-HISTORY_MAX);
   return sent;
 }
+// Where a listing photo is filed in the shared photo library (Jean,
+// 2026-10-19): the listing, its property (ResortID, once it has one) and,
+// for a unit photo, its unit type. Then the hook builder finds it under the
+// property and the unit type, not only under the listing.
+function libraryTagsFor(record, im) {
+  const name = record.propertyName || "Property";
+  const tags = propertyTags({ resortId: record.resortId, listingId: record.listingId, name }).map((t) => ({ key: t.key, name: t.name }));
+  const u = im && im.type === "Unit" && im.unitTypeName ? unitTag(record.resortId, im.unitTypeName, name) : null;
+  if (u) tags.push({ key: u.key, name: u.name });
+  return tags;
+}
+// File the listing's photos already in the library again (adds tags, never removes any).
+async function retagListingPhotos(record) {
+  const lib = record.libraryPhotos || {};
+  const changes = Object.entries(lib).map(([key, id]) => ({ id, tags: libraryTagsFor(record, (record.images || []).find((im) => im && im.key === key)) }));
+  if (!changes.length) return { tagged: 0 };
+  const d = await libPost({ op: "tagMany", changes });
+  return d && d.ok ? { tagged: d.tagged || 0 } : { error: (d && d.error) || "The photo library didn't answer." };
+}
+
 // A link to the listing's photos for Stock Network (a private page,
 // property-photos.js, opened with a random key kept on the listing), or "".
 function photosLinkFor(record, origin) {
@@ -696,7 +717,7 @@ export default async (request, context) => {
       return json({ ok: true, listingId: listingId, editLink: editLink });
     }
 
-    if (action === "getForEdit" || action === "update" || action === "completeListing" || action === "markSentToSN" || action === "emailSNFiles" || action === "libraryAdd" || action === "addPhotos" || action === "removePhoto") {
+    if (action === "getForEdit" || action === "update" || action === "completeListing" || action === "libraryRetag" || action === "markSentToSN" || action === "emailSNFiles" || action === "libraryAdd" || action === "addPhotos" || action === "removePhoto") {
       // Reopen a listing in the onboarding form: admin (token) or the
       // submitter with their private edit key.
       const listingId = clean(body.listingId, 20);
@@ -706,7 +727,7 @@ export default async (request, context) => {
       const isAdmin = await verifyAdminToken(body.token);
       const keyOk = !!record.editToken && clean(body.key, 200) === record.editToken;
       if (!isAdmin && !keyOk) return json({ error: "This edit link isn't valid. Ask Avante Travel for a new one." }, 401);
-      if (["markSentToSN", "emailSNFiles", "libraryAdd", "addPhotos", "removePhoto"].includes(action) && !isAdmin) return json({ error: "Only Avante admin can do this." }, 401);
+      if (["markSentToSN", "emailSNFiles", "addPhotos", "removePhoto"].includes(action) && !isAdmin) return json({ error: "Only Avante admin can do this." }, 401);
 
       if (action === "getForEdit") {
         const out = Object.assign({}, record);
@@ -714,6 +735,11 @@ export default async (request, context) => {
         delete out.editToken;
         if (!isAdmin) { delete out.history; delete out.photosToken; }
         return json({ ok: true, listing: out, asAdmin: isAdmin, waitingForSetUp: record.hostedSetup === "completing" });
+      }
+
+      if (action === "libraryRetag") {
+        // After a save: the listing's library photos filed under its property and unit types too.
+        return json(Object.assign({ ok: true }, await retagListingPhotos(record)));
       }
 
       if (action === "completeListing") {
@@ -843,7 +869,7 @@ export default async (request, context) => {
         const im = (record.images || []).find((x) => x && x.key === imageKey);
         if (!im) return json({ error: "That photo isn't on this listing." }, 400);
         const item = body.item && typeof body.item === "object" ? body.item : {};
-        const tags = [{ key: "listing:" + listingId, name: record.propertyName || "Property" }];
+        const tags = libraryTagsFor(record, im);
         let ticket;
         try { ticket = await makeHooksTicket({ sub: "admin", name: "Avante admin", role: "admin" }); }
         catch (e) { return json({ error: e.message }, 500); }
@@ -1234,6 +1260,7 @@ export default async (request, context) => {
             rec.siteNr = rec.siteNr || String(e.siteNr); rec.existingOnSN = "Y"; rec.dateUpdated = now;
             addHistory(rec, "admin", "Set up on Stock Network (Site Nr " + e.siteNr + "), found by the hourly check", before);
             await store.setJSON(e.listingId, rec);
+            context.waitUntil(retagListingPhotos(rec).catch(() => null));
           }
         }
         if (affId && !e.welcomeSentAt && emailList(e.email).length) {
@@ -1407,6 +1434,7 @@ export default async (request, context) => {
         else done.push("Affiliate " + siteId + " already there" + ((made.aff.types || []).includes("channel") ? "" : " (not ticked Channel Property: check it in Affiliates)"));
         addHistory(record, "admin", "Activated as a channel property (Site Nr " + siteNr + ")", before);
         await store.setJSON(record.listingId, record);
+        context.waitUntil(retagListingPhotos(record).catch(() => null));
         // 3. Connect it in Property Affiliate with its Avante login.
         let connected = false, connectError = "";
         try {
@@ -1541,6 +1569,8 @@ export default async (request, context) => {
       if (record.inEstate === "N") record.complexName = "";
       await store.setJSON(listingId, record);
       await forgetEstates();
+      // Its library photos filed under its property and unit types (ResortID or unit names may have changed).
+      context.waitUntil(retagListingPhotos(record).catch(() => null));
 
       return json({ ok: true, listing: record });
     }

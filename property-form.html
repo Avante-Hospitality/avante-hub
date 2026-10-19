@@ -176,6 +176,7 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js" defer></script>
 <script src="sn-export.js"></script>
+<script src="listing-photo-library.js"></script>
 <link rel="stylesheet" href="photo-chooser.css">
 <script src="photo-chooser.js"></script>
 </head>
@@ -383,8 +384,8 @@
     <h2 class="step-title">5. Photos &amp; documents</h2>
     <p class="step-lede">Upload the property's own photos (the originals, not copies from a channel), and the documents Avante needs before a listing can go live.</p>
     <div class="card">
-      <h2 class="section-heading">Property &amp; Unit Photos</h2>
-      <p class="hint">Add as many as you like — front exterior, living areas, each unit type, views. Upload your own, or pick them from the Avante photo library. In the next step you give each unit type its photos from these.</p>
+      <h2 class="section-heading">Property Photos</h2>
+      <p class="hint">Photos of the whole property: the outside, garden, pool, shared areas, views and the area. Upload your own, or pick them from the Avante photo library. <b>Photos of a unit type</b> (its rooms, bathroom, kitchen) go in the next step, under that unit type.</p>
       <button type="button" class="btn-navy" id="addPhotosBtn">Add photos</button>
       <div class="photo-grid" id="photoGrid"></div>
     </div>
@@ -708,7 +709,7 @@
         '<label>Rates per pax (1 / 2 / 3 / 4 / 5)</label><div class="row"><input class="pu-rate1" inputmode="numeric"><input class="pu-rate2" inputmode="numeric"><input class="pu-rate3" inputmode="numeric"><input class="pu-rate4" inputmode="numeric"><input class="pu-rate5" inputmode="numeric"></div>' +
         '<div class="row"><div><label>Child rate (0-6)</label><input class="pu-childRate06" inputmode="numeric"></div><div><label>Child rate (7-12)</label><input class="pu-childRate712" inputmode="numeric"></div></div>' +
       '</details>' +
-      '<label>Unit photos</label><button type="button" class="btn-secondary btn-sm pu-photos-btn">Choose photos</button>' +
+      '<label>Photos of this unit type</label><p class="hint" style="margin:0 0 6px">Its rooms, bathroom, kitchen and view. Upload them here, or pick from the library or the property photos.</p><button type="button" class="btn-secondary btn-sm pu-photos-btn">Add photos</button>' +
       '<div class="photo-grid pu-photo-grid"></div>';
     unitList.appendChild(wrap);
     wrap.querySelector('.remove-unit').addEventListener('click', function(){
@@ -822,8 +823,9 @@
       '<button type="button" class="photo-x" ' + removeAttr + '="' + i + '" aria-label="Remove photo">×</button></div>';
   }
   function renderPhotos(){
+    // The property's own photos here; unit photos show under their unit type (Jean, 2026-10-19).
     $('photoGrid').innerHTML = uploadedImages.map(function(im, i){
-      return tileHtml(im, i, 'data-photo-del', im.uid ? unitLabel(im.uid) : (im.type === 'Unit' && im.unitTypeName ? im.unitTypeName : 'Property'));
+      return im.uid ? '' : tileHtml(im, i, 'data-photo-del', im.type === 'Unit' && im.unitTypeName ? im.unitTypeName : 'Property');
     }).join('') + pendingPhotos.map(function(p){ return '<div class="photo-tile busy"><img alt=""><span>' + esc(p.name) + ' — adding…</span></div>'; }).join('');
     renderUnitPhotos();
   }
@@ -1439,7 +1441,8 @@
       [unitRows().some(function(r){ return r.querySelector('.pu-name').value.trim() && r.querySelector('.pu-maxOcc').value.trim(); }), 'Unit type name and sleeps', 5],
       [amenCount > 0, 'Amenities ticked (' + amenCount + ')', 5],
       [RATES_FROM_CHANNEL || s.length > 0, RATES_FROM_CHANNEL ? 'Rates come from your channel manager' : 'Rates set on the calendar (' + s.length + ' season' + (s.length === 1 ? '' : 's') + ')', 6],
-      [uploadedImages.length > 0, 'Photos (' + uploadedImages.length + ')', 7],
+      [uploadedImages.some(function(im){ return !im.uid; }), 'Property photos (' + uploadedImages.filter(function(im){ return !im.uid; }).length + ')', 7],
+      [unitRows().length > 0 && unitRows().every(function(r){ var uid = r.getAttribute('data-uid'); return uploadedImages.some(function(im){ return im.uid === uid; }); }), 'Photos of every unit type', 5],
       [EXISTING_ON_SN || (anyDoc('id-document') && anyDoc('proof-of-ownership') && anyDoc('proof-of-residence')), EXISTING_ON_SN ? 'Documents (done when you joined Avante)' : 'ID, proof of ownership and proof of residence', 7],
       [!isAff || anyDoc('mandate'), 'Signed mandate (affiliates only)', 7],
       [!!$('depositText').value.trim(), 'Cancellation policy', 8]
@@ -1617,6 +1620,7 @@
         statusEl.innerHTML = 'Thank you! Your listing (' + esc(data.listingId) + ') has been submitted for review. Avante Travel will be in touch once it is verified.' +
           (data.editLink ? '<br><br><b>Keep this link</b> to update the listing later, for example to add next season\'s rates (it was also emailed to you):<br><a href="' + esc(data.editLink) + '">' + esc(data.editLink) + '</a>' : '');
         statusEl.className = 'status show ok';
+        var m = /[?&]key=([^&]+)/.exec(data.editLink || ''); if(m) toLibrary(data.listingId, decodeURIComponent(m[1]));
       } else {
         submitBtn.disabled = false;
         statusEl.textContent = (data && (data.error || data.message)) || 'Something went wrong. Please try again.';
@@ -1754,6 +1758,18 @@
       goStep(editAsAdmin ? 1 : (res.listing.existingOnSN === 'Y' ? 8 : (RATES_FROM_CHANNEL ? 1 : 6)));
     });
   }
+  // The listing's photos into the shared photo library, filed under the
+  // property and unit types (listing-photo-library.js), quietly after a save.
+  function toLibrary(listingId, key){
+    if(!window.ListingPhotoLibrary || !listingId) return;
+    var auth = { listingId: listingId, key: key };
+    api(Object.assign({ action: 'getForEdit' }, auth)).then(function(r){
+      var l = r && r.ok && r.listing; if(!l) return;
+      return ListingPhotoLibrary.add({ listingId: listingId, name: l.propertyName, images: l.images || [], done: l.libraryPhotos || {},
+        post: function(body){ return api(Object.assign(body, auth)); } })
+        .then(function(){ return api(Object.assign({ action: 'libraryRetag' }, auth)); });
+    }).catch(function(){});
+  }
   // The listing is complete: the hub gives it its Avante Site Nr.
   function sendForSetUp(st){
     st.textContent = 'Saved. Sending your listing to Avante\u2026';
@@ -1772,6 +1788,7 @@
       btn.disabled = false; btn.textContent = 'Save changes';
       if(res && res.ok){
         unsaved = false; st.textContent = res.unchanged ? 'Nothing had changed.' : 'Saved. The change is on record with today\'s date.'; st.className = 'status show ok';
+        toLibrary(EDIT_ID, EDIT_KEY);
         if(WAITING_SETUP){ renderReview(); if(READY_ALL) sendForSetUp(st); else st.textContent += ' Finish the To do items in the Ready check and save again: then your listing goes to Avante to set your property up.'; }
       }
       else { st.textContent = (res && (res.error || res.message)) || 'Could not save. Try again.'; st.className = 'status show err'; }
