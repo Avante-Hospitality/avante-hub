@@ -259,7 +259,9 @@ export default async (request, context) => {
         const p = link && await pa.get("site:" + link.siteId, { type: "json" });
         const fs = p && p.frontStore;
         const sl = fs && (fs.slug || String(p.resortName || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""));
-        return p && p.resortId && fs && fs.on && sl ? [{ r: p.resortId, s: sl }] : [];
+        // A property affiliate is one even before the front store is switched on (Jean, 2026-10-19):
+        // the hook builder then knows the property, and asks for the front store before building Book links.
+        return p && p.resortId ? [{ r: p.resortId, s: fs && fs.on && sl ? sl : "" }] : [];
       } catch (e) { return []; }
     }
 
