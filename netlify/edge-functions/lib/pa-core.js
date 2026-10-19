@@ -49,7 +49,7 @@ export function waNumber(phone) { let d = String(phone || "").replace(/\D/g, "")
 // affiliates: { getAuth(aff) -> {passwordHash}|null, getProfile(aff) -> {name,email,phone}|null }
 // sendEmail(to, subject, html, { fromName, replyTo }?) -> Promise<boolean>
 // reviews: { baseUrl, secret, tenant } for the Avante Reviews app (review links in after-stay messages)
-export function createCore({ store, resortStore, encKey, now = () => new Date(), clientFactory = (c) => new SNClient(c), fetchImpl = (...a) => fetch(...a), baseUrl = "", affiliates = null, sendEmail = async () => false, reviews = null, snFeed = null, listingStore = null }) {
+export function createCore({ store, resortStore, encKey, now = () => new Date(), clientFactory = (c) => new SNClient(c), fetchImpl = (...a) => fetch(...a), baseUrl = "", affiliates = null, sendEmail = async () => false, reviews = null, snFeed = null, listingStore = null, adminEmail = async () => "" }) {
   const today = () => now().toISOString().slice(0, 10);
   const getJSON = (k) => store.get(k, { type: "json" });
   const setJSON = (k, v) => store.setJSON(k, v);
@@ -514,7 +514,10 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     if ((Number(b.amountPaid) || 0) > 0) return "part-paid";
     return "unpaid";
   }
-  function decorate(b) { return Object.assign({}, b, { payState: payState(b), locked: isPaid(b), contact: contactOf(b) }); }
+  // Paid or Confirmed on Stock Network (Jean, 2026-10-19): can't be changed or
+  // cancelled in the hub; a cancellation is escalated to Avante admin.
+  function isLocked(b) { return isPaid(b) || /confirm/i.test(String((b && b.snStatus) || "")); }
+  function decorate(b) { return Object.assign({}, b, { payState: payState(b), locked: isLocked(b), contact: contactOf(b) }); }
 
   async function payInfoFor(prop, b) {
     if (!b || b.origin === "channel") return null;
@@ -691,7 +694,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     await setJSON(k, have);
   }
 
-  const PAID_LOCK_MSG = "This booking has been paid, so it can't be changed in the hub. The guest must contact the property; changes are made in Avante's booking system. To cancel it, use Request cancellation: the linked affiliate must approve.";
+  const PAID_LOCK_MSG = "This booking is Paid or Confirmed, so it can't be changed or cancelled in the hub. The guest must contact the property. To cancel it, tap Ask Avante to cancel.";
 
   async function book(prop, body, { approval = false } = {}) {
     const items = (Array.isArray(body.items) ? body.items : []).slice(0, 10).map((it) => ({ unit: cleanStr(it.unit, 60), start: cleanStr(it.start, 10), end: cleanStr(it.end, 10), adults: Math.max(1, Math.min(20, Number(it.adults) || Number(body.adults) || 2)), children: Math.max(0, Math.min(20, Number(it.children) || Number(body.children) || 0)) }));
@@ -735,7 +738,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     const client = await clientFor(prop);
     if (await refreshPayment(client, b)) await saveBookings(prop, list);
     if (b.status === "Cancelled") return { booking: decorate(b), alreadyCancelled: true };
-    if (isPaid(b)) return requestCancellation(prop, list, b);
+    if (isLocked(b)) return escalateCancellation(prop, list, b);
     await client.cancelReservation(b.reservationId);
     b.status = "Cancelled"; b.cancelledAt = now().toISOString();
     await saveBookings(prop, list);
@@ -743,7 +746,26 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     return { booking: decorate(b) };
   }
 
+  // ---------- Paid or Confirmed: the cancellation goes to Avante admin (Jean, 2026-10-19) ----------
+  // Nothing is cancelled in the hub. Admin gets an email to escalate, cancels it
+  // on Stock Network, and the hub picks up the new status.
+  async function escalateCancellation(prop, list, b) {
+    const to = await adminEmail().catch(() => "");
+    const units = b.items.filter((i) => !i.cancelled).map((i) => i.unit + " " + i.start + " to " + i.end).join(", ");
+    const guest = (((b.guest && b.guest.first) || "") + " " + ((b.guest && b.guest.last) || "")).trim() || (contactOf(b).name || "");
+    const emailed = to ? await sendEmail(to, "ESCALATE: " + (prop.resortName || "A property") + " asks to cancel " + (b.snStatus || b.status) + " booking " + b.ref,
+      "<p><b>" + esc(prop.resortName || "A property") + "</b> (Site Nr " + esc(prop.site || "") + (prop.channel ? ", channel property" : "") + ") asks Avante to cancel booking <b>" + esc(b.ref) + "</b>.</p>" +
+      "<p>Status: <b>" + esc(b.snStatus || b.status) + "</b><br>" + esc(units) + "<br>Guest: " + esc(guest) + "<br>Total: R" + esc(Math.round(Number(b.total) || 0)) +
+      "<br>Paid: R" + esc(Math.round(Number(b.amountPaid) || 0)) + (b.paidEft ? " (EFT)" : "") + (b.source ? "<br>Booked through: " + esc(b.source) : "") + "</p>" +
+      "<p>It can't be cancelled from the hub because it is Paid or Confirmed. Cancel it on Stock Network and handle any refund; the hub then shows it as Cancelled.</p>").catch(() => false) : false;
+    if (!emailed) throw new PAError("Your request couldn't be sent to Avante. Try again, or email info@avantehospitality.co.za.", 502);
+    b.cancelRequest = { at: now().toISOString(), to: "admin" };
+    await saveBookings(prop, list);
+    return { escalated: true, booking: decorate(b) };
+  }
+
   // ---------- affiliate approval for cancelling paid bookings ----------
+  // Not used since 2026-10-19 (Paid or Confirmed goes to admin instead); kept until Jean says it can go.
   async function requestCancellation(prop, list, b) {
     const aff = cleanStr(prop.aff, 40);
     if (!aff || !affiliates) throw new PAError("This property isn't linked to an affiliate account, so a paid booking can't be cancelled from the hub. Cancel it in Avante's booking system.", 409);
@@ -826,7 +848,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     if (!it.detailId) throw new PAError("Avante's booking system did not return a detail ID for " + unit + ", so it can't be removed on its own. Cancel and book again.");
     const client = await clientFor(prop);
     if (await refreshPayment(client, b)) await saveBookings(prop, list);
-    if (isPaid(b)) throw new PAError(PAID_LOCK_MSG, 423);
+    if (isLocked(b)) throw new PAError(PAID_LOCK_MSG, 423);
     await client.cancelDetail(it.detailId);
     it.cancelled = true; it.cancelledAt = now().toISOString();
     await saveBookings(prop, list);
@@ -847,7 +869,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     const client = await clientFor(prop);
     if (await refreshPayment(client, b)) await saveBookings(prop, list);
     if (b.status === "Cancelled") throw new PAError(b.ref + " has been cancelled.", 409);
-    if (isPaid(b)) throw new PAError(PAID_LOCK_MSG, 423);
+    if (isLocked(b)) throw new PAError(PAID_LOCK_MSG, 423);
     if (next.unit === old.unit && next.start === old.start && next.end === old.end) {
       b.guest = { first: guest.first, last: guest.last, email: guest.email, cellphone: guest.cellphone };
       await saveBookings(prop, list);

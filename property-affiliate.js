@@ -484,7 +484,9 @@
     var p = PAY_PILL[b.payState] || PAY_PILL.unpaid;
     return '<span class="pa-pill" style="background:' + p[0] + ';color:' + p[1] + '">' + p[2] + (b.payState === 'part-paid' ? ' ' + money(b.amountPaid) : '') + '</span>';
   }
-  function statusPill(b) { var c = b.status === 'Cancelled' ? ['#e7ebeb', '#333'] : ['#dbe6ff', '#0b2f80']; return (b.demo ? '<span class="pa-pill" style="background:#f3e8ff;color:#5b21b6">Demo</span> ' : '') + '<span class="pa-pill" style="background:' + c[0] + ';color:' + c[1] + '">' + esc(b.status) + '</span>'; }
+  // A Paid or Confirmed booking the property asked Avante to cancel: "Paid (Cancel requested)" (Jean, 2026-10-19).
+  function statusText(b) { return b.status + (b.cancelRequest && b.status !== 'Cancelled' ? ' (Cancel requested)' : ''); }
+  function statusPill(b) { var c = b.status === 'Cancelled' ? ['#e7ebeb', '#333'] : ['#dbe6ff', '#0b2f80']; return (b.demo ? '<span class="pa-pill" style="background:#f3e8ff;color:#5b21b6">Demo</span> ' : '') + '<span class="pa-pill" style="background:' + c[0] + ';color:' + c[1] + '">' + esc(statusText(b)) + '</span>'; }
   function whoOf(b) { var c = b.contact || {}; if (b.origin === 'channel') return (c.name ? c.name + ' · ' : '') + (b.source || ''); return c.name || ((b.guest && (b.guest.first + ' ' + b.guest.last).trim()) || ''); }
   function bookingActions(b) {
     var live = b.items.filter(function (i) { return !i.cancelled; });
@@ -498,7 +500,6 @@
       if (S.payMode !== 'gateway') h += '<button type="button" class="pa-btn small ghost" data-act="markPaid" data-type="EFT" data-ref="' + esc(b.ref) + '">Paid by EFT</button><button type="button" class="pa-btn small ghost" data-act="markPaid" data-type="Cash" data-ref="' + esc(b.ref) + '">Paid on arrival</button>';
     }
     if (b.statusError) h += '<span class="pa-err" style="width:100%;font-size:12.5px">' + esc(b.statusError) + '</span>';
-    if (b.cancelRequest) h += '<span class="pa-hint" style="width:100%">Cancellation waiting for affiliate approval</span>';
     return '<div class="pa-actions">' + h + '</div>';
   }
   function viewBookings() {
@@ -528,7 +529,7 @@
           '<td>' + statusPill(b) + '</td><td>' + payPill(b) + '</td><td>' + bookingActions(b) + '</td></tr>';
       }).join('') + '</tbody></table></div>';
     }
-    h += '<p class="pa-hint">Open a booking to add or change the guest\'s details (also on paid and channel bookings) and to send WhatsApp messages and emails. Paid bookings can\'t be changed in the hub, and cancelling them needs the linked affiliate\'s approval. Bookings made outside the hub show on the Calendar as Booked elsewhere; manage those in Avante\'s booking system.</p></section>';
+    h += '<p class="pa-hint">Open a booking to add or change the guest\'s details (also on paid and channel bookings) and to send WhatsApp messages and emails. Paid or Confirmed bookings can\'t be changed or cancelled in the hub: tap Ask Avante to cancel and Avante does it. Bookings made outside the hub show on the Calendar as Booked elsewhere; manage those in Avante\'s booking system.</p></section>';
     if (S.prop.demoAllowed) h += '<section class="pa-card pa-soft" aria-label="Demo bookings"><p class="pa-h2">Demo bookings (Property Testing only)</p><p class="pa-hint">Six example bookings with guest details, plus example welcome and after-stay messages switched on, to show how the hub works. They stay in the hub: they are never sent to Avante\'s booking system or to your channel calendars.</p>' +
       '<div class="pa-actions" style="margin-top:10px"><button type="button" class="pa-btn" data-act="seedDemo">Load demo bookings</button><button type="button" class="pa-btn ghost" data-act="clearDemo">Remove demo bookings</button></div></section>';
     return h;
@@ -1235,31 +1236,31 @@
       var sub = whoOf(b) + ' · ' + live.map(function (i) { return i.unit + ' ' + short(i.start) + ' – ' + short(i.end); }).join(', ');
       if (tab !== 'stay' || b.demo || b.status === 'Cancelled') {
         var bodyHtml = tab === 'guest' ? viewGuestSection(b) : tab === 'msgs' ? viewMsgSection(b)
-          : '<div class="pa-items">' + live.map(function (it) { return '<div class="pa-item"><b style="flex:1 1 140px;color:#0e2f44">' + esc(it.unit) + '</b><span style="flex:1 1 170px;font-size:13px">' + short(it.start) + ' – ' + short(it.end) + ' · ' + nw(nightsBetween(it.start, it.end)) + '</span></div>'; }).join('') + '<div class="pa-row" style="justify-content:space-between"><span class="pa-label">' + esc(b.status) + '</span><b>' + money(b.total) + '</b></div></div>' +
+          : '<div class="pa-items">' + live.map(function (it) { return '<div class="pa-item"><b style="flex:1 1 140px;color:#0e2f44">' + esc(it.unit) + '</b><span style="flex:1 1 170px;font-size:13px">' + short(it.start) + ' – ' + short(it.end) + ' · ' + nw(nightsBetween(it.start, it.end)) + '</span></div>'; }).join('') + '<div class="pa-row" style="justify-content:space-between"><span class="pa-label">' + esc(statusText(b)) + '</span><b>' + money(b.total) + '</b></div></div>' +
             '<p class="pa-hint">' + (b.demo ? 'Demo booking: it isn\'t in Avante\'s booking system, so it can\'t be changed, paid or cancelled. Remove demo bookings from the Bookings tab.' : 'This booking was cancelled.') + '</p>';
         // Cancel is on every section of the booking (paid bookings: request cancellation).
-        var cancelBtn = !b.demo && b.status !== 'Cancelled' ? '<button type="button" class="pa-btn danger" data-act="cancelBooking"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'Working…' : b.locked ? 'Request cancellation' : 'Cancel this booking') + '</button>' : '';
+        var cancelBtn = !b.demo && b.status !== 'Cancelled' ? '<button type="button" class="pa-btn danger" data-act="cancelBooking"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'Working…' : b.locked ? 'Ask Avante to cancel' : 'Cancel this booking') + '</button>' : '';
         return h + hdr('Booking ' + b.ref, sub) + '<div class="body">' + segHtml + bodyHtml + '<div class="pa-row pa-dlgfoot">' + cancelBtn + '<button type="button" class="pa-btn ghost" data-act="close">Close</button></div></div></div></div>';
       }
     }
     if (editing && b.locked) {
-      h += hdr('Booking ' + b.ref + ' · ' + (PAY_PILL[b.payState] || PAY_PILL.paid)[2]);
+      h += hdr('Booking ' + b.ref + ' · ' + statusText(b));
       h += '<div class="body">' + segHtml + '<div class="pa-items">' + live.map(function (it) { return '<div class="pa-item"><b style="flex:1 1 140px;color:#0e2f44">' + esc(it.unit) + '</b><span style="flex:1 1 170px;font-size:13px">' + short(it.start) + ' – ' + short(it.end) + ' · ' + nw(nightsBetween(it.start, it.end)) + '</span></div>'; }).join('') +
         '<div class="pa-row" style="justify-content:space-between"><span class="pa-label">' + esc(whoOf(b)) + '</span><b>' + money(b.total) + '</b></div></div>' +
-        '<div class="pa-lock"><b>Paid: locked</b><br>This booking can\'t be changed in the hub. The guest must contact the property, and changes are made in Avante\'s booking system. To cancel it, request cancellation: the affiliate linked to this property approves it with their hub password.</div>' +
-        (b.cancelRequest ? '<p class="pa-hint">Cancellation already requested ' + esc(new Date(b.cancelRequest.at).toLocaleString()) + '. Requesting again sends a new link.</p>' : '') +
-        '<div class="pa-row"><button type="button" class="pa-btn danger" data-act="cancelBooking"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'Sending…' : 'Request cancellation') + '</button><button type="button" class="pa-btn ghost" data-act="close">Close</button></div></div></div></div>';
+        '<div class="pa-lock"><b>' + esc(b.status) + ': locked</b><br>A Paid or Confirmed booking can\'t be changed or cancelled in the hub. The guest must contact the property. To cancel it, tap Ask Avante to cancel: Avante cancels it and the status changes here. Already cancelled it in your channel manager? Still tap it, so Avante can update the booking.</div>' +
+        (b.cancelRequest ? '<p class="pa-hint">You asked Avante to cancel it on ' + esc(new Date(b.cancelRequest.at).toLocaleString()) + '. Asking again sends Avante another email.</p>' : '') +
+        '<div class="pa-row"><button type="button" class="pa-btn danger" data-act="cancelBooking"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'Sending…' : 'Ask Avante to cancel') + '</button><button type="button" class="pa-btn ghost" data-act="close">Close</button></div></div></div></div>';
       return h;
     }
     var items = editing ? live : S.cart, total = 0, short2 = false, g = editing ? (b.guest || {}) : {};
     h += hdr(editing ? 'Edit booking ' + b.ref : (S.cart.length > 1 ? 'New booking · ' + S.cart.length + ' units' : 'New booking'));
     h += '<div class="body">' + segHtml + '<div class="pa-items">' + items.map(function (it, i) {
-      var p = priceOf(it.unit, it.start, it.end); total += p || 0; if (nightsBetween(it.start, it.end) < (S.av ? S.av.minStay : 2)) short2 = true;
+      var p = priceOf(it.unit, it.start, it.end); total += p || 0; if (S.av && nightsBetween(it.start, it.end) < S.av.minStay) short2 = true; // checked once availability is loaded
       var rm = editing ? (live.length > 1 ? '<button type="button" class="pa-btn small danger" data-act="removeUnit" data-u="' + esc(it.unit) + '">Remove unit</button>' : '') : (S.cart.length > 1 ? '<button type="button" class="pa-btn small danger" data-act="uncart" data-i="' + i + '">Remove</button>' : '');
       return '<div class="pa-item"><b style="flex:1 1 140px;color:#0e2f44">' + esc(it.unit) + ' <span class="pa-hint">· ' + esc(sizeOf(it.unit)) + '</span></b><span style="flex:1 1 170px;font-size:13px">' + short(it.start) + ' – ' + short(it.end) + ' · ' + nw(nightsBetween(it.start, it.end)) + '</span><b>' + money(editing ? null : p) + '</b>' + rm + '</div>';
     }).join('') + (editing ? '' : '<div class="pa-row" style="justify-content:space-between"><span class="pa-label">' + (items.length === 1 ? '1 unit' : items.length + ' units, one reservation') + '</span><b style="font:800 16px Montserrat,sans-serif;color:#0e2f44">Total ' + money(total) + '</b></div>') + '</div>';
     if (editing && live.length === 1) {
-      h += '<div class="pa-form"><div class="pa-field"><label class="pa-label" for="pa-eu">Unit</label><select id="pa-eu">' + S.av.units.map(function (u) { return '<option' + (u.name === live[0].unit ? ' selected' : '') + '>' + esc(u.name) + '</option>'; }).join('') + '</select></div>' +
+      h += '<div class="pa-form"><div class="pa-field"><label class="pa-label" for="pa-eu">Unit</label><select id="pa-eu">' + (S.av ? S.av.units : [{ name: live[0].unit }]).map(function (u) { return '<option' + (u.name === live[0].unit ? ' selected' : '') + '>' + esc(u.name) + '</option>'; }).join('') + '</select></div>' +
         '<div class="pa-field"><label class="pa-label" for="pa-ei">Check-in</label><input id="pa-ei" type="date" value="' + live[0].start + '"></div><div class="pa-field"><label class="pa-label" for="pa-eo">Check-out</label><input id="pa-eo" type="date" value="' + live[0].end + '"></div></div>';
     }
     if (short2) h += '<p class="pa-err">Shorter than the ' + S.av.minStay + '-night minimum stay.</p>';
@@ -1693,7 +1694,7 @@
     }
     if (a === 'markPaid') {
       var how = t.dataset.type === 'Cash' ? 'on arrival (cash or card)' : 'by EFT';
-      if (!confirm('Record ' + t.dataset.ref + ' as paid ' + how + '?\n\nOnly do this once you have the money. The hub records the payment with Avante, which sets the booking to Paid. A paid booking is locked: it can\'t be changed in the hub, and cancelling needs approval.')) return;
+      if (!confirm('Record ' + t.dataset.ref + ' as paid ' + how + '?\n\nOnly do this once you have the money. The hub records the payment with Avante, which sets the booking to Paid. A paid booking is locked: it can\'t be changed or cancelled in the hub (Ask Avante to cancel).')) return;
       t.textContent = 'Saving…';
       return api('markPaid', { ref: t.dataset.ref, type: t.dataset.type || 'EFT' }).then(function (d) { S.msg = t.dataset.ref + ' recorded as paid ' + how + '. Avante now shows ' + (d.booking.snStatus || d.booking.status) + '.'; return api('find', { q: S.findQ }).then(function (d2) { S.bookings = d2.bookings; S.payMode = d2.payMode; render(); }); }).catch(fail);
     }
@@ -1758,10 +1759,10 @@
     }
     if (a === 'cancelBooking') {
       var locked = S.edit.locked;
-      if (!confirm(locked ? 'Request cancellation of PAID booking ' + S.edit.ref + '?\n\nThe affiliate linked to this property gets a link by email (and WhatsApp if you send it) and must approve with their hub password. Refunds are handled outside the hub.' : 'Cancel ' + S.edit.ref + '?')) return;
+      if (!confirm(locked ? 'Ask Avante to cancel ' + S.edit.status + ' booking ' + S.edit.ref + '?\n\nIt is NOT cancelled yet: Avante gets an email, cancels it and handles any refund.' : 'Cancel ' + S.edit.ref + '?')) return;
       busy(true); render();
       return api('cancel', { ref: S.edit.ref }).then(function (d) {
-        if (d.needsApproval) { S.busy = false; S.bookings = null; S.modal = { done: { title: 'Approval requested for ' + S.edit.ref, text: 'This booking is paid, so it is NOT cancelled yet. It will be cancelled as soon as the affiliate approves.', approval: d.approval } }; S.edit = null; render(); return; }
+        if (d.escalated) { S.busy = false; S.bookings = null; S.modal = { done: { title: 'Avante has your request for ' + S.edit.ref, text: 'It is NOT cancelled yet. Avante will cancel it and the status changes here. Until then it shows ' + d.booking.status + ' (Cancel requested).' } }; S.edit = null; render(); return; }
         afterChange({ title: 'Booking ' + S.edit.ref + ' cancelled', text: d.alreadyCancelled ? 'It had already been cancelled.' : 'Cancelled. The nights are open again and your other channels are unblocked within 15 minutes.' });
       }).catch(function (err) { S.busy = false; S.err = err.message; S.modal = null; render(); });
     }

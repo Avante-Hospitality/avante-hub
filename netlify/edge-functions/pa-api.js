@@ -51,6 +51,8 @@ export default async (request) => {
     // Stock Network's live property feed, for properties newer than the hub's resort list.
     snFeed: { bySite: (nr, id) => feedBySite(nr, id), search: (q, max) => feedSearch(q, max), byResort: (rid) => feedRowByResort(rid) },
     listingStore: getStore({ name: "property-listings", consistency: "strong" }),
+    // Admin's address (Admin > Property Listings settings): escalated cancellations go there.
+    adminEmail: async () => ((await getStore({ name: "property-settings", consistency: "strong" }).get("config", { type: "json" }).catch(() => null)) || {}).notificationEmail || "",
   });
   try {
     const a = String(body.action || "");
