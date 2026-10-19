@@ -184,6 +184,7 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js" defer></script>
 <script src="sn-export.js"></script>
+<script src="listing-ready.js"></script>
 <script src="listing-photo-library.js"></script>
 <link rel="stylesheet" href="photo-chooser.css">
 <script src="photo-chooser.js"></script>
@@ -1481,24 +1482,9 @@
   }
   function anyDoc(type){ return uploadedDocs.some(function(d){ return d.type === type; }); }
   function renderReview(){
-    var isAff = document.querySelector('input[name="submittedBy"]:checked').value === 'Affiliate';
-    var amenCount = document.querySelectorAll('.amenity-check:checked').length;
-    var s = seasons();
-    var checks = [
-      [!!$('pName').value.trim(), 'Property name', 4],
-      [!!$('ownerName').value.trim() && !!$('ownerId').value.trim(), 'Owner name and ID number', 2],
-      [!!($('pLat').value.trim() && $('pLng').value.trim()), 'Coordinates filled in', 3],
-      [coordsVerified, 'Coordinates checked with Google', 3],
-      [treePlaced || (!!$('pSuburb').value.trim() && !!$('pCity').value.trim() && editing), 'Placed in the hub location tree', 3],
-      [unitRows().some(function(r){ return r.querySelector('.pu-name').value.trim() && r.querySelector('.pu-maxOcc').value.trim(); }), 'Unit type name and sleeps', 5],
-      [amenCount > 0, 'Amenities ticked (' + amenCount + ')', 5],
-      [RATES_FROM_CHANNEL || s.length > 0, RATES_FROM_CHANNEL ? 'Rates come from your channel manager' : 'Rates set on the calendar (' + s.length + ' season' + (s.length === 1 ? '' : 's') + ')', 6],
-      [uploadedImages.some(function(im){ return !im.uid; }), 'Property photos (' + uploadedImages.filter(function(im){ return !im.uid; }).length + ')', 7],
-      [unitRows().length > 0 && unitRows().every(function(r){ var uid = r.getAttribute('data-uid'); return uploadedImages.some(function(im){ return im.uid === uid; }); }), 'Photos of every unit type', 5],
-      [EXISTING_ON_SN || (anyDoc('id-document') && anyDoc('proof-of-ownership') && anyDoc('proof-of-residence')), EXISTING_ON_SN ? 'Documents (done when you joined Avante)' : 'ID, proof of ownership and proof of residence', 7],
-      [!isAff || anyDoc('mandate'), 'Signed mandate (affiliates only)', 7],
-      [!!$('depositText').value.trim(), 'Cancellation policy', 8]
-    ];
+    // The same rules the server checks before giving a Site Nr (listing-ready.js).
+    var checks = ListingReady.checks(Object.assign(buildPayload(), { treePlaced: treePlaced, editing: editing,
+      ratesFromChannel: RATES_FROM_CHANNEL ? 'Y' : 'N', existingOnSN: EXISTING_ON_SN ? 'Y' : 'N' }));
     READY_ALL = checks.every(function(c){ return c[0]; });
     TODO_LIST = checks.filter(function(c){ return !c[0]; }).map(function(c){ return c[1]; });
     $('checklist').innerHTML = checks.map(function(c){ return '<li><span class="pill ' + (c[0] ? 'ok' : 'todo') + '">' + (c[0] ? 'Done' : 'To do') + '</span><span>' + esc(c[1]) + (c[0] ? '' : ' — <button type="button" class="btn-link" data-go="' + c[2] + '">go to step ' + stepNo(c[2]) + '</button>') + '</span></li>'; }).join('');

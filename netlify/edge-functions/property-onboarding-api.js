@@ -12,6 +12,7 @@ import { readListingScreenshots } from "./lib/listing-reader.js";
 import { HOOKS_URL, makeHooksTicket } from "./lib/hooks-ticket.js";
 import { propertyTags, unitTag, libPost } from "./lib/photo-library.js";
 import { isAdminToken } from "./lib/admin-session.js";
+import "../../listing-ready.js"; // globalThis.ListingReady: the Ready check, shared with the listing form
 import { isAffiliateSession } from "./lib/affiliate-session.js";
 import { createPropertyAffiliate } from "./lib/affiliates.js";
 import { SNClient } from "./lib/sn-client.js";
@@ -789,6 +790,9 @@ export default async (request, context) => {
         // Stock Network is on hold for now: admin sends the files from the
         // listing ("Send the files by email"), which marks the Site Nr Sent.
         if (record.hostedSetup !== "completing") return json({ ok: true, already: true, siteNr: record.siteNr || "" });
+        // The same Ready check the form shows (Jean, 2026-10-19): a Site Nr only when it is all Done.
+        const todo = globalThis.ListingReady.todo(Object.assign({}, record, { treePlaced: !!record.treePlace, editing: true }));
+        if (todo.length) return json({ error: "Not ready yet. Still to do: " + todo.join(", ") + "." }, 400);
         // Two taps at once (Jean, 2026-10-19): only the first one gets a Site Nr.
         // The store refuses the second claim; that tap answers with the number given.
         const reg = siteRegister(), claimKey = "complete:" + listingId;
