@@ -314,8 +314,8 @@ document.addEventListener('DOMContentLoaded', function () {
                             : 'We found ' + data.name + ' on Avante\'s booking system, so it is already set up there.';
                 } else if (channelManager === 'None yet' && data.listing) {
                     note = data.linkSent
-                        ? 'We\'ve emailed you a link to complete your listing (rooms, rates, photos and more). Once it\'s complete, it goes to Avante by itself and we set your property up. Your Avante Site Nr is ' + data.siteNr + '.'
-                        : 'Your listing is made, but we couldn\'t email you the link to complete it just now. Avante will send it to you. Your Avante Site Nr is ' + data.siteNr + '.';
+                        ? 'We\'ve emailed you a link to complete your listing (rooms, rates, photos and more). Once it\'s complete, it goes to Avante and you get your Avante Site Nr.'
+                        : 'Your listing is made, but we couldn\'t email you the link to complete it just now. Avante will send it to you.';
                 } else if (data.siteNr && data.repeat) {
                     note = 'You asked before, so nothing was sent again. Your Avante Site Nr is ' + data.siteNr + ' and Avante is setting your property up.' +
                         (data.listing ? ' Once you are set up, Avante will email you a link to complete your Property Affiliate listing.' : '');

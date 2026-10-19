@@ -492,7 +492,7 @@
     </div>
     <div class="card">
       <h2 class="section-heading">Ready check</h2>
-      <p class="hint" id="setupNote" style="display:none">When everything below is <b>Done</b>, tap <b>Save changes</b>. Your listing then goes to Avante by itself to set your property up.</p>
+      <p class="hint" id="setupNote" style="display:none">When everything below is <b>Done</b>, tap <b>Save changes</b>. Your listing then goes to Avante and you get your Avante Site Nr.</p>
       <ul class="checklist" id="checklist"></ul>
     </div>
     <div class="card">
@@ -1634,9 +1634,9 @@
     pRules:'houseRules', pAccess:'accessibility', pRating:'selfSupplierRating', pGrading:'tourismBoardGrading', pRatingLink:'ratingLink', pReviews:'channelReviews', pMoreInfo:'moreInfo', pAreaInfo:'areaInfo', pNotIncluded:'notIncluded',
     depositText:'depositPolicyText', depositPct:'depositPct', depositDays:'depositDays', childPolicy:'childPolicy', icalLink:'icalLink', channelLink:'channelListingLink', pLat:'latitude', pLng:'longitude' };
   var RATES_FROM_CHANNEL = false, EXISTING_ON_SN = false;
-  // A property not on a channel manager whose Site Nr waits for this listing
-  // (Jean, 2026-10-17): once the Ready check is all Done, saving sends the
-  // listing to Avante to be set up (sendForSetUp).
+  // A property not on a channel manager (Jean, 2026-10-17/19): once the Ready
+  // check is all Done, saving completes the listing and gives its Site Nr
+  // (completeListing).
   var WAITING_SETUP = false, READY_ALL = false;
   // In a complex, resort or estate (Jean, 2026-10-17): kind and name show only
   // after "Yes". The names already on the hub are suggested, so every property
@@ -1754,17 +1754,13 @@
       goStep(editAsAdmin ? 1 : (res.listing.existingOnSN === 'Y' ? 8 : (RATES_FROM_CHANNEL ? 1 : 6)));
     });
   }
-  // The saved listing, its property and rates files (sn-export.js), to Avante.
+  // The listing is complete: the hub gives it its Avante Site Nr.
   function sendForSetUp(st){
-    st.textContent = 'Saved. Sending your listing to Avante…';
-    api({ action: 'getForEdit', listingId: EDIT_ID, key: EDIT_KEY }).then(function(res){
-      if(!res || !res.ok) throw new Error((res && (res.error || res.message)) || 'Could not read the listing back.');
-      var files = AvanteSNExport.filesForEmail(res.listing, res.listing.siteNr, { property: true, rates: 'all', format: 'xlsx' });
-      return api({ action: 'sendForSetUp', listingId: EDIT_ID, key: EDIT_KEY, files: files });
-    }).then(function(r){
-      if(r && r.ok){ WAITING_SETUP = false; $('setupNote').style.display = 'none'; st.textContent = 'Saved, and your listing has gone to Avante to set your property up. We\'ll email you when you\'re set up.'; st.className = 'status show ok'; }
-      else { st.textContent = 'Saved, but not sent to Avante yet: ' + ((r && (r.error || r.message)) || 'try Save changes again.'); st.className = 'status show err'; }
-    }).catch(function(e){ st.textContent = 'Saved, but not sent to Avante yet: ' + e.message + ' Tap Save changes again.'; st.className = 'status show err'; });
+    st.textContent = 'Saved. Sending your listing to Avante\u2026';
+    api({ action: 'completeListing', listingId: EDIT_ID, key: EDIT_KEY }).then(function(r){
+      if(r && r.ok){ WAITING_SETUP = false; $('setupNote').style.display = 'none'; st.textContent = 'Saved, and your listing has gone to Avante. Your Avante Site Nr is ' + r.siteNr + '. We\u2019ll email you when you\u2019re set up.'; st.className = 'status show ok'; }
+      else { st.textContent = 'Saved, but not sent to Avante yet: ' + ((r && (r.error || r.message)) || 'tap Save changes again.'); st.className = 'status show err'; }
+    });
   }
   $('saveEditBtn').addEventListener('click', function(){
     var btn = this, st = $('editStatus');

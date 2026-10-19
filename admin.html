@@ -2233,7 +2233,7 @@
     <section class="panel" id="panel-siteNrs">
       <div class="hero">
         <h1>Site Nrs</h1>
-        <p>Every Stock Network Site Nr Avante gives out comes from this list, so no number is used twice. A property that asks to list on the "List your property" page and isn't on Stock Network yet gets the next free number, and Stock Network's sheet is emailed to the addresses below. A property <b>not on a platform</b> waits as <b>Waiting for listing</b>: it gets the link to complete its listing straight away, and when its Ready check is all Done the hub sends the sheet, property file, rates file and photos link by itself.</p>
+        <p>Every Stock Network Site Nr Avante gives out comes from this list, so no number is used twice. A property that asks to list on the "List your property" page and isn't on Stock Network yet gets the next free number, and Stock Network's sheet is emailed to the addresses below. A property <b>not on a platform</b> gets no Site Nr when it asks: it gets the link to complete its listing, and only when its Ready check is all Done does the hub give it the next Site Nr (status <b>Ready to send</b>) and email you. Send its files from the listing with <b>Send the files by email</b>; the Site Nr then shows <b>Sent</b>.</p>
         <p>Every hour the hub looks on Stock Network for Site Nrs that were sent. When it finds one it marks it <b>Set up</b>, makes the property's affiliate (not connected yet), links its listing and emails the property its hub login.</p>
       </div>
 
@@ -10679,7 +10679,7 @@
         '<h3 style="margin-top:0;">Site Nr ' + escapeHtml(e.siteNr) + '</h3>' +
         '<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:10px;">' +
         F.map(function(f){ return '<div><label for="snrF_' + f[0] + '">' + f[1] + '</label><input id="snrF_' + f[0] + '" value="' + escapeHtml(e[f[0]] || '') + '" style="width:100%;"></div>'; }).join('') +
-        '<div><label for="snrF_status">Status</label><select id="snrF_status" style="width:100%;">' + (statuses.length ? statuses : ['Spare','Waiting for listing','Sent','Set up']).map(function(s){ return '<option' + (s === e.status ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select></div>' +
+        '<div><label for="snrF_status">Status</label><select id="snrF_status" style="width:100%;">' + (function(l){ return l.indexOf(e.status) > -1 ? l : l.concat([e.status]); })(statuses.length ? statuses : ['Spare','Ready to send','Sent','Set up']).map(function(s){ return '<option' + (s === e.status ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select></div>' +
         '</div><p class="hint" style="margin:10px 0 0;">Rate on the sheet: 17.25. City2 is left out (Stock Network keeps its own).</p>' +
         '<div style="display:flex; flex-wrap:wrap; gap:10px; margin-top:10px;"><button type="button" class="primary" id="snrSave" style="margin-top:0;">Save</button>' +
         '<button type="button" class="btn-outline" id="snrSend" style="margin-top:0;">Save and send the sheet to Stock Network</button></div>' +

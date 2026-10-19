@@ -7,7 +7,7 @@ import { sendEmail } from "./lib/send-email.js";
 // SheetJS from its own CDN (the build SheetJS recommends for Deno).
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 import { SITE_REGISTER_STORE, SITE_STATUSES, DEFAULT_SN_SETUP_EMAILS, newEntry, reserveNextSiteNr, reserveSiteNr, getSiteNr, saveSiteNr,
-  listSiteNrs, nextFreeSiteNr, findOpenRequest, requestSheetBase64, sheetFileName, setupEmail, confirmationEmail, welcomeEmail, WAITING_FOR_LISTING, CHANNEL_WELCOME_DEFAULT, fillWelcome, welcomeHtml } from "./lib/sn-site-register.js";
+  listSiteNrs, nextFreeSiteNr, findOpenRequest, requestSheetBase64, sheetFileName, setupEmail, confirmationEmail, welcomeEmail, READY_TO_SEND, CHANNEL_WELCOME_DEFAULT, fillWelcome, welcomeHtml } from "./lib/sn-site-register.js";
 import { readListingScreenshots } from "./lib/listing-reader.js";
 import { HOOKS_URL, makeHooksTicket } from "./lib/hooks-ticket.js";
 import { isAdminToken } from "./lib/admin-session.js";
@@ -543,28 +543,20 @@ async function checkStock(reg, origin) {
   return ready;
 }
 
-// The Site Nr entry still waiting for this listing to be complete, or null.
-async function waitingSiteOf(record) {
-  const e = record && record.siteNr ? await getSiteNr(siteRegister(), record.siteNr).catch(() => null) : null;
-  return e && e.status === WAITING_FOR_LISTING && e.listingId === record.listingId ? e : null;
-}
 
-// more: { files: [{ filename, content (base64) }], extraHtml } sent along with the sheet.
-async function sendSnSetupSheet(entry, by, to, more) {
-  more = more || {};
+async function sendSnSetupSheet(entry, by, to) {
   const recipientsTo = emailText(to || (await getSnSetupEmails()), 20);
   const filename = sheetFileName(entry);
-  const { subject, html } = setupEmail(entry, more.extraHtml);
+  const { subject, html } = setupEmail(entry);
   let sent;
   try {
-    sent = await sendEmail({ to: recipientsTo, subject, html, attachments: [{ filename, content: requestSheetBase64(XLSX, [entry]) }].concat(more.files || []), replyTo: "admin@avantehospitality.co.za" });
+    sent = await sendEmail({ to: recipientsTo, subject, html, attachments: [{ filename, content: requestSheetBase64(XLSX, [entry]) }], replyTo: "admin@avantehospitality.co.za" });
   } catch (e) {
     sent = { ok: false, error: "Could not make the sheet: " + String((e && e.message) || e) };
   }
   const at = new Date().toISOString();
-  const file = [filename].concat((more.files || []).map((f) => f.filename)).join(", ");
-  entry.sendLog = (Array.isArray(entry.sendLog) ? entry.sendLog : []).concat([{ at, by, to: recipientsTo, file, ok: sent.ok, error: sent.ok ? undefined : sent.error }]).slice(-50);
-  if (sent.ok && (entry.status === "Spare" || entry.status === WAITING_FOR_LISTING)) entry.status = "Sent";
+  entry.sendLog = (Array.isArray(entry.sendLog) ? entry.sendLog : []).concat([{ at, by, to: recipientsTo, file: filename, ok: sent.ok, error: sent.ok ? undefined : sent.error }]).slice(-50);
+  if (sent.ok && (entry.status === "Spare" || entry.status === READY_TO_SEND)) entry.status = "Sent";
   entry.updatedAt = at;
   await saveSiteNr(siteRegister(), entry);
   return entry;
@@ -704,7 +696,7 @@ export default async (request, context) => {
       return json({ ok: true, listingId: listingId, editLink: editLink });
     }
 
-    if (action === "getForEdit" || action === "update" || action === "sendForSetUp" || action === "markSentToSN" || action === "emailSNFiles" || action === "libraryAdd" || action === "addPhotos" || action === "removePhoto") {
+    if (action === "getForEdit" || action === "update" || action === "completeListing" || action === "markSentToSN" || action === "emailSNFiles" || action === "libraryAdd" || action === "addPhotos" || action === "removePhoto") {
       // Reopen a listing in the onboarding form: admin (token) or the
       // submitter with their private edit key.
       const listingId = clean(body.listingId, 20);
@@ -721,40 +713,30 @@ export default async (request, context) => {
         delete out.agreementToken;
         delete out.editToken;
         if (!isAdmin) { delete out.history; delete out.photosToken; }
-        return json({ ok: true, listing: out, asAdmin: isAdmin, waitingForSetUp: !!(await waitingSiteOf(record)) });
+        return json({ ok: true, listing: out, asAdmin: isAdmin, waitingForSetUp: record.hostedSetup === "completing" });
       }
 
-      if (action === "sendForSetUp") {
-        // Jean (2026-10-17): a property not on a channel manager completed its
-        // listing (Ready check all Done). The form sends the property and rates
-        // files it built (sn-export.js); the hub emails them with Stock
-        // Network's sheet and a link to the photos to the SN set-up addresses.
-        // The hourly check then picks the property up once it's set up.
-        const site = await waitingSiteOf(record);
-        if (!site) return json({ ok: true, already: true });
-        const { files, tooBig } = cleanFiles(body.files);
-        if (!files.length) return json({ error: "The property and rates files are missing. Tap Save changes again." }, 400);
-        if (tooBig) return json({ error: "The files are too big to email (over 15 MB)." }, 400);
-        // The sheet gets the listing's latest details.
-        Object.assign(site, { propertyName: record.propertyName || site.propertyName, area: record.area || site.area, district: record.district || site.district, suburb: record.suburb || site.suburb,
-          description: String(record.description || site.description || "").slice(0, 1000) });
-        const origin = new URL(request.url).origin, pl = photosLinkFor(record, origin);
-        const extraHtml = "<p><b>The listing is complete.</b> Also attached: " + files.map((f) => escapeHtml(f.filename)).join(", ") + ".</p>" +
-          (pl.url ? '<p><b>Photos (' + pl.count + '):</b> <a href="' + escapeHtml(pl.url) + '">View and download the photos</a> (one .zip with all of them is on that page)</p>' : "<p>No photos on the listing yet.</p>");
-        await sendSnSetupSheet(site, isAdmin ? "Admin, listing complete" : "Listing completed by the property", undefined, { files, extraHtml });
-        const last = site.sendLog[site.sendLog.length - 1], at = last.at;
-        if (last.ok) markRatesSent(record, at);
-        record.snEmailLog = (Array.isArray(record.snEmailLog) ? record.snEmailLog : []).concat([{ at, to: last.to, subject: "Set-up sheet and files (listing complete)", files: last.file.split(", ").concat(pl.url ? ["Link to " + pl.count + " photos"] : []),
-          siteNr: String(site.siteNr), ok: last.ok, error: last.error, markedSent: last.ok }]).slice(-200);
-        addHistory(record, isAdmin ? "admin" : "property", (last.ok ? "Listing complete: set-up sheet, files and photos link sent to Stock Network (Site Nr " : "Listing complete, but sending to Stock Network FAILED (Site Nr ") + site.siteNr + ")");
-        record.dateUpdated = at;
+      if (action === "completeListing") {
+        // Jean (2026-10-19): a property not on a channel manager finished its
+        // listing (Ready check all Done) and tapped Save. Only now does it get
+        // its Site Nr (the hub is the only one giving them out). The email to
+        // Stock Network is on hold for now: admin sends the files from the
+        // listing ("Send the files by email"), which marks the Site Nr Sent.
+        if (record.hostedSetup !== "completing") return json({ ok: true, already: true, siteNr: record.siteNr || "" });
+        const now = new Date().toISOString();
+        const entry = newEntry({ propertyName: record.propertyName, channelManager: "None yet", contactName: record.contactName || record.ownerFullName, phone: record.telephone || record.contactPhone,
+          email: record.contactEmail || record.email, description: record.description || record.propertyName, area: record.area, district: record.district, suburb: record.suburb,
+          propertyAffiliate: true, listingId, note: record.listedOn ? "Listed on now: " + record.listedOn : "" });
+        entry.status = READY_TO_SEND;
+        entry.siteNr = await reserveNextSiteNr(siteRegister(), entry);
+        Object.assign(record, { siteNr: String(entry.siteNr), hostedSetup: "ready", completedAt: now, dateUpdated: now });
+        addHistory(record, isAdmin ? "admin" : "property", "Listing complete: Avante Site Nr " + entry.siteNr + " given (ready for Stock Network)", { siteNr: "" });
         await store.setJSON(listingId, record);
         const notifyTo = await getNotificationEmail();
-        if (notifyTo) context.waitUntil(sendNotificationEmail(notifyTo, (last.ok ? "Listing complete, sent to Stock Network: " : "Listing complete, NOT sent to Stock Network: ") + (record.propertyName || listingId),
-          "<p><b>" + escapeHtml(record.propertyName || "") + "</b> (listing " + escapeHtml(listingId) + ", Site Nr " + escapeHtml(site.siteNr) + ") completed its listing.</p>" +
-          (last.ok ? "<p>The sheet, " + files.map((f) => escapeHtml(f.filename)).join(", ") + (pl.url ? " and a photos link" : "") + " went to " + escapeHtml(last.to) + ". The hub picks the property up once Stock Network has set it up (hourly check).</p>"
-            : "<p><b>Sending failed</b> (" + escapeHtml(last.error || "") + "). Send it from Admin &gt; Property Listings (Email the files) and Admin &gt; Site Nrs.</p>")));
-        return last.ok ? json({ ok: true, siteNr: site.siteNr }) : json({ error: "Your listing is saved, but it couldn't be sent to Avante just now. Avante has been told and will send it." }, 502);
+        if (notifyTo) context.waitUntil(sendNotificationEmail(notifyTo, "Listing complete, ready for Stock Network: " + (record.propertyName || listingId) + " (Site Nr " + entry.siteNr + ")",
+          "<p><b>" + escapeHtml(record.propertyName || "") + "</b> (listing " + escapeHtml(listingId) + ") completed its listing and got Avante Site Nr <b>" + escapeHtml(entry.siteNr) + "</b>.</p>" +
+          "<p>Send it to Stock Network: Admin &gt; Property Listings &gt; View the listing &gt; <b>Send the files by email</b>.</p>"));
+        return json({ ok: true, siteNr: entry.siteNr });
       }
 
       if (action === "markSentToSN") {
@@ -800,6 +782,15 @@ export default async (request, context) => {
         if (ok && body.markSent) { markRatesSent(record, entry.at); entry.markedSent = true; }
         // The Site Nr the files were sent with is the allocated one: keep it.
         if (ok && siteNr && !record.siteNr) { before.siteNr = ""; record.siteNr = siteNr; }
+        // A completed listing's Site Nr waiting to be sent is now Sent (the hourly check looks for it).
+        if (ok && siteNr) {
+          const reg = siteRegister(), e = await getSiteNr(reg, siteNr).catch(() => null);
+          if (e && e.listingId === listingId && (e.status === READY_TO_SEND || e.status === "Spare")) {
+            e.status = "Sent"; e.updatedAt = entry.at;
+            e.sendLog = (Array.isArray(e.sendLog) ? e.sendLog : []).concat([{ at: entry.at, by: "Listing files emailed by admin", to: entry.to, file: entry.files.join(", "), ok: true }]).slice(-50);
+            await saveSiteNr(reg, e);
+          }
+        }
         record.snEmailLog = (Array.isArray(record.snEmailLog) ? record.snEmailLog : []).concat([entry]).slice(-200);
         record.history = (Array.isArray(record.history) ? record.history : []).concat([{ at: entry.at, by: "admin",
           action: (ok ? "Stock Network files emailed to " : "Email of Stock Network files FAILED to ") + entry.to + " (" + entry.files.join(", ") + ")" + (entry.markedSent ? "; rates marked as sent" : ""),
@@ -1090,10 +1081,8 @@ export default async (request, context) => {
       //    no edit link until admin has checked it and sends one.
       // Jean (2026-10-17), a property not on a channel manager ("Not on a
       // platform"): a listing is always made and its completion link emailed
-      // straight away. Its Site Nr waits ("Waiting for listing"); nothing goes
-      // to Stock Network until the listing's Ready check is complete, then the
-      // hub sends the sheet, property file, rates file and photos link
-      // (action sendForSetUp).
+      // straight away. It gets no Site Nr yet (Jean, 2026-10-19): the hub gives
+      // it one only when its listing is complete (action completeListing).
       if (await overDailyLimit("listingRequest", request, context)) return json({ error: "Too many requests from this connection today. Please email info@avantehospitality.co.za." }, 429);
       const contact = { name: clean(body.contactPerson, 120), phone: clean(body.phone, 200), email: clean(body.email, 600) };
       const propertyName = clean(body.propertyName, 200);
@@ -1124,9 +1113,17 @@ export default async (request, context) => {
         }
       }
 
+      // Not on a platform: asked before and not finished? The same listing, its link again.
+      let site = null, loc = {}, repeat = false, hostedPrev = null;
+      if (hosted) {
+        const same = (a, b) => String(a || "").toLowerCase().replace(/[^a-z0-9@.]+/g, "") === String(b || "").toLowerCase().replace(/[^a-z0-9@.]+/g, "");
+        hostedPrev = (await Promise.all((await store.list()).blobs.map((b) => store.get(b.key, { type: "json" }).catch(() => null))))
+          .find((r) => r && r.hostedSetup === "completing" && same(r.propertyName, propertyName) && same(r.contactEmail || r.email, emailText(contact.email))) || null;
+        repeat = !!hostedPrev;
+        if (!hostedPrev) loc = await guessSnLocation(propertyName);
+      }
       // Not on Stock Network yet: reserve the Site Nr and send the sheet.
-      let site = null, loc = {}, repeat = false;
-      if (!row) {
+      if (!row && !hosted) {
         // Submitted before and not set up yet? Same Site Nr, nothing sent again.
         site = await findOpenRequest(siteRegister(), { bbid, propertyName, email: emailText(contact.email) });
         if (site) {
@@ -1136,15 +1133,11 @@ export default async (request, context) => {
           loc = await guessSnLocation(propertyName);
           const entry = newEntry({ propertyName, bbid, channelManager: cm, eresRef, contactName: contact.name, phone: contact.phone, email: emailText(contact.email),
             area: loc.area, district: loc.district, suburb: loc.suburb, propertyAffiliate: wantsAffiliate, note: "Listed on now: " + listedOn });
-          if (hosted) entry.status = WAITING_FOR_LISTING;
           entry.siteNr = await reserveNextSiteNr(siteRegister(), entry);
-          if (hosted) site = entry;
-          else {
-            site = await sendSnSetupSheet(entry, "List your property page");
-            const conf = confirmationEmail(site);
-            // At most 5 addresses: the confirmation goes to whatever was typed on a public page.
-            context.waitUntil(sendEmail({ to: emailList(contact.email, 5), subject: conf.subject, html: conf.html }));
-          }
+          site = await sendSnSetupSheet(entry, "List your property page");
+          const conf = confirmationEmail(site);
+          // At most 5 addresses: the confirmation goes to whatever was typed on a public page.
+          context.waitUntil(sendEmail({ to: emailList(contact.email, 5), subject: conf.subject, html: conf.html }));
         }
       }
 
@@ -1154,15 +1147,15 @@ export default async (request, context) => {
       if (wantsAffiliate && row && !already) {
         record = await buildListingFromSn({ site: String(row.siteId || ""), resortId: row.resortId, resortName: row.name, aff: "", units: [], settings: { email: contact.email, phone: contact.phone }, channel: true, siteIdForListing: "" },
           row, { by: "property", status: "Requested", historyNote: "Listing request from the List your property page, BBID " + bbid + ", found on Stock Network", extra });
-      } else if (wantsAffiliate && !already && !(site && site.listingId)) {
+      } else if (wantsAffiliate && !already && !hostedPrev && !(site && site.listingId)) {
         const now = new Date().toISOString(), listingId = genListingId();
         record = Object.assign({ listingId, status: "Requested", dateSubmitted: now, dateUpdated: now }, submittedFields({ propertyName, email: contact.email, telephone: contact.phone, submittedBy: "Owner" }),
           { editToken: genToken(), agreementSigned: "Y", channelProperty: cm !== "None yet" ? "Y" : "", ratesFromChannel: cm !== "None yet" ? "Y" : "", commissionPct: cm !== "None yet" ? "4.95" : "",
-            needsTreePlace: loc.place ? "" : "Y",
+            needsTreePlace: loc.place ? "" : "Y", hostedSetup: hosted ? "completing" : "",
             siteNr: site ? String(site.siteNr) : "" }, extra);
         if (loc.place) { record.latitude = String(loc.lat); record.longitude = String(loc.lng); await applyTreePlace(record, loc.place, false); }
         addHistory(record, "property", "Listing request from the List your property page (" + cm + (bbid ? ", BBID " + bbid : eresRef ? ", eRes ref " + eresRef : "") +
-          (site ? "; Site Nr " + site.siteNr + " reserved" + (site.status === "Sent" ? ", sheet sent to Stock Network" : site.status === WAITING_FOR_LISTING ? ", waiting for the listing to be complete" : ", sheet NOT sent") : "") + ")");
+          (site ? "; Site Nr " + site.siteNr + " reserved" + (site.status === "Sent" ? ", sheet sent to Stock Network" : ", sheet NOT sent") : hosted ? "; Site Nr given when the listing is complete" : "") + ")");
       }
       if (record) {
         await store.setJSON(record.listingId, record);
@@ -1172,7 +1165,7 @@ export default async (request, context) => {
       // again when the property asks a second time). At most 5 addresses: it
       // goes to whatever was typed on a public page.
       let linkSent = false;
-      const linkRecord = hosted ? record || (site && site.listingId ? await store.get(site.listingId, { type: "json" }).catch(() => null) : null) : null;
+      const linkRecord = hosted ? record || hostedPrev : null;
       if (linkRecord) {
         linkSent = (await emailEditLink(linkRecord, emailList(contact.email, 5), new URL(request.url).origin, "property")).ok;
         await store.setJSON(linkRecord.listingId, linkRecord);
@@ -1187,8 +1180,8 @@ export default async (request, context) => {
           "<br><b>Listed on now:</b> " + escapeHtml(listedOn) +
           "<br><b>Property affiliate:</b> " + (wantsAffiliate ? "yes" : "no") + "</p>" +
           (row ? "<p>Already on Stock Network: <b>" + escapeHtml(row.name) + "</b>. Nothing was sent to Stock Network.</p>"
+            : hosted ? "<p>Not on a platform: no Site Nr yet. The hub gives it one when the property's listing is complete, and tells you.</p>" + (hostedPrev ? "<p>Asked before: listing " + escapeHtml(hostedPrev.listingId) + ", the link was sent again.</p>" : "")
             : repeat ? "<p>Asked before: same Site Nr <b>" + escapeHtml(site.siteNr) + "</b> (" + escapeHtml(site.status) + "). Nothing was sent to Stock Network again.</p>"
-            : site.status === WAITING_FOR_LISTING ? "<p>Site Nr <b>" + escapeHtml(site.siteNr) + "</b> reserved (" + WAITING_FOR_LISTING + "). Not on a platform, so nothing goes to Stock Network yet: when the property's listing is complete, the hub sends the sheet, property file, rates file and photos link by itself.</p>"
             : "<p>Site Nr <b>" + escapeHtml(site.siteNr) + "</b> reserved. " + (site.status === "Sent" ? "The Stock Network sheet was emailed to " + escapeHtml(site.sendLog[site.sendLog.length - 1].to) + "."
               : "<b>The Stock Network sheet could NOT be sent</b> (" + escapeHtml(site.sendLog[site.sendLog.length - 1].error || "") + "). Send it again from Admin &gt; Site Nrs.") + "</p>") +
           (already ? "<p>It already has a listing (" + escapeHtml(already.listingId) + "); no new listing was made.</p>"
@@ -1196,7 +1189,7 @@ export default async (request, context) => {
             : record ? "<p>Listing <b>" + escapeHtml(record.listingId) + "</b> was made, status Requested. Check it in Admin &gt; Property Listings, then tap <b>Email the edit link</b>.</p>"
             : "<p>No listing was made (the property did not ask to be a property affiliate).</p>")));
       }
-      return json({ ok: true, found: !!row, name: row ? row.name : "", already: !!already, siteNr: site ? site.siteNr : null, repeat, listing: !!(record || (site && site.listingId)), linkSent });
+      return json({ ok: true, found: !!row, name: row ? row.name : "", already: !!already, siteNr: site ? site.siteNr : null, repeat, listing: !!(record || hostedPrev || (site && site.listingId)), linkSent });
     }
 
     // ---------- Site Nr register (Admin > Site Nrs, Jean 2026-10-15) ----------
