@@ -1,4 +1,7 @@
-// Availability check for the separate Avante search site (avante-search.netlify.app).
+// Availability check, used by the hub's own hourly check (checkStock in
+// property-onboarding-api.js). Only callers with the hub's PA_SYNC_SECRET (header
+// x-pa-sync-secret) get an answer, so nobody else can spend Avante's Stock Network
+// login (Jean, 2026-10-19). The separate search site has its own copy.
 // Asks Stock Network's API one property at a time, so it never depends on SN's
 // own location fields and isn't cut off at 15 like SN's booking site.
 // Uses the hub's existing Avante SN API login (the same env vars the nightly
@@ -131,6 +134,8 @@ async function fieldCheck(call, id, area, checkIn, checkOut, extra) {
 
 export default async (req) => {
   if (req.method !== "POST") return json({ ok: false, error: "Use POST." }, 405);
+  const secret = process.env.PA_SYNC_SECRET || "";
+  if (!secret || req.headers.get("x-pa-sync-secret") !== secret) return json({ ok: false, error: "forbidden" }, 403);
   const configured = !!(process.env.STOCKNETWORK_USERNAME && process.env.STOCKNETWORK_CLIENT_ID && process.env.STOCKNETWORK_CLIENT_SECRET);
   let b = {}; try { b = await req.json(); } catch (e) {}
   if (b.op === "status") return json({ ok: true, configured });

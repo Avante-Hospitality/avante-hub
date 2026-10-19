@@ -541,7 +541,7 @@ async function checkStock(reg, origin) {
   const todo = (await listSiteNrs(reg)).filter((e) => e.status === "Set up" && e.resortId && e.channelManager === "None yet" && e.goLive !== GO_LIVE.ready).slice(0, 60);
   if (!todo.length) return [];
   const day = (ms) => new Date(ms).toISOString().slice(0, 10);
-  const av = await fetch(origin + "/api/sn-availability", { method: "POST", headers: { "content-type": "application/json" },
+  const av = await fetch(origin + "/api/sn-availability", { method: "POST", headers: { "content-type": "application/json", "x-pa-sync-secret": Deno.env.get("PA_SYNC_SECRET") || "" },
     body: JSON.stringify({ ids: todo.map((e) => e.resortId), checkIn: day(Date.now()), checkOut: day(Date.now() + 365 * 864e5) }) }).then((r) => r.json()).catch(() => null);
   const results = (av && av.results) || {}, ready = [], listings = getStore({ name: "property-listings", consistency: "strong" });
   for (const e of todo) {
