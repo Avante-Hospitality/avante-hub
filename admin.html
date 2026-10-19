@@ -1630,6 +1630,12 @@
         }
 
         window.adminTree = {
+          // Refresh units (Jean, 2026-10-19): read one property's unit types from Stock Network now.
+          refreshUnits: function(resortId){
+            var t = ''; try { t = sessionStorage.getItem('avante-admin-token') || ''; } catch(e){}
+            return fetch('/api/sn-units', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'refreshOne', resortId: resortId, token: t }) })
+              .then(function(r){ return r.json(); });
+          },
           data: function(){
             return mapPost('adminList').then(function(res){
               var d = res.data || {};

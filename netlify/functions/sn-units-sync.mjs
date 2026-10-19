@@ -1,6 +1,7 @@
-// Every 10 minutes: read the next ~60 Stock Network resort pages for their
-// unit types (sleeps, type), so the hub's location tree stays current. A full
-// round of all properties takes about 15 hours, gently. The work happens in
+// Every hour (Jean, 2026-10-19): read new properties, and any not read for 6
+// months, from their Stock Network resort pages (35 a time) for their
+// unit types (sleeps, type), so the hub's location tree stays current.
+// Nothing due: no page is opened. The work happens in
 // the /api/sn-units edge function (where the Blobs store lives).
 export default async () => {
   const base = process.env.URL || "https://go.avantetravel.co.za";
@@ -14,4 +15,4 @@ export default async () => {
   return new Response(text, { status: res.status, headers: { "content-type": "application/json" } });
 };
 
-export const config = { schedule: "*/10 * * * *" };
+export const config = { schedule: "23 * * * *" };

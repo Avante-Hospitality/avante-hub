@@ -326,13 +326,25 @@ var UNITS=null, UNIT_WAIT=[];
 function unitLabel(l){ return esc(l[0])+(l[1]?' · <b>'+l[1]+' sleeper</b>':'')+(l[3]>1?' <span class="subl">(×'+l[3]+')</span>':''); }
 function unitDetail(l){ var d=[]; d.push(l[1]?'Sleeps '+l[1]:'Sleeps: not given on Stock Network'); if(l[2]===0) d.push('studio'); else if(l[2]) d.push(l[2]+' bedroom'+(l[2]===1?'':'s'));
   d.push(l[3]+' unit'+(l[3]===1?'':'s')+(l[4]&&l[4].length?': '+l[4].join(', '):'')); return d.join(' · '); }
+// Admin: Refresh units reads this one property again now (otherwise every 6 months).
+function refreshBtn(ul,id){
+  if(!ADMIN||!ADMIN.refreshUnits) return;
+  var b=document.createElement('button'); b.type='button'; b.className='urow'; b.textContent='↻ Refresh units';
+  b.addEventListener('click',function(){ b.disabled=true; b.textContent='Reading Stock Network…';
+    ADMIN.refreshUnits(id).then(function(d){
+      if(!d||!d.ok){ b.disabled=false; b.textContent='↻ Refresh units — '+((d&&d.error)||'try again'); return; }
+      UNITS[id]=d.units; fillUnits(ul,id); var n=document.createElement('div'); n.className='udet'; n.textContent='Updated from Stock Network just now.'; ul.appendChild(n);
+    }).catch(function(){ b.disabled=false; b.textContent='↻ Refresh units — try again'; }); });
+  ul.appendChild(b);
+}
 function fillUnits(ul,id){
   var ls=(UNITS&&(UNITS[id]||UNITS[String(id).toLowerCase()]))||[]; ul.innerHTML='';
-  if(!ls.length){ ul.innerHTML='<div class="udet">No unit types listed on Stock Network.</div>'; return; }
+  if(!ls.length){ ul.innerHTML='<div class="udet">No unit types listed on Stock Network.</div>'; refreshBtn(ul,id); return; }
   ls.forEach(function(l){ var r=document.createElement('button'); r.type='button'; r.className='urow'; r.setAttribute('aria-expanded','false'); r.innerHTML=unitLabel(l);
     var det=document.createElement('div'); det.className='udet'; det.hidden=true; det.textContent=unitDetail(l);
     r.addEventListener('click',function(){ det.hidden=!det.hidden; r.setAttribute('aria-expanded',String(!det.hidden)); });
     ul.appendChild(r); ul.appendChild(det); });
+  refreshBtn(ul,id);
 }
 function loadUnits(){
   fetch('/api/sn-units').then(function(r){ if(!r.ok) throw 0; return r.json(); }).catch(function(){ return fetch('sn-units.json').then(function(r){ return r.json(); }); })
