@@ -789,15 +789,33 @@ export default async (request, context) => {
         // Stock Network is on hold for now: admin sends the files from the
         // listing ("Send the files by email"), which marks the Site Nr Sent.
         if (record.hostedSetup !== "completing") return json({ ok: true, already: true, siteNr: record.siteNr || "" });
+        // Two taps at once (Jean, 2026-10-19): only the first one gets a Site Nr.
+        // The store refuses the second claim; that tap answers with the number given.
+        const reg = siteRegister(), claimKey = "complete:" + listingId;
+        const claimed = await reg.setJSON(claimKey, { at: new Date().toISOString() }, { onlyIfNew: true });
+        const old = claimed && claimed.modified === false ? await reg.get(claimKey, { type: "json" }).catch(() => null) : null;
+        const stuck = old && Date.now() - Date.parse(old.at) > 120e3; // an earlier try that never finished
+        if (stuck) await reg.setJSON(claimKey, { at: new Date().toISOString() });
+        if (claimed && claimed.modified === false && !stuck) {
+          for (let i = 0; i < 10; i++) {
+            const r = await store.get(listingId, { type: "json" }).catch(() => null);
+            if (r && r.hostedSetup !== "completing") return json({ ok: true, already: true, siteNr: r.siteNr || "" });
+            await new Promise((ok) => setTimeout(ok, 500));
+          }
+          return json({ error: "Your listing is being sent to Avante. Wait a minute and open your link again." }, 409);
+        }
         const now = new Date().toISOString();
         const entry = newEntry({ propertyName: record.propertyName, channelManager: "None yet", contactName: record.contactName || record.ownerFullName, phone: record.telephone || record.contactPhone,
           email: record.contactEmail || record.email, description: record.description || record.propertyName, area: record.area, district: record.district, suburb: record.suburb,
           propertyAffiliate: true, listingId, note: record.listedOn ? "Listed on now: " + record.listedOn : "" });
         entry.status = READY_TO_SEND;
-        entry.siteNr = await reserveNextSiteNr(siteRegister(), entry);
-        Object.assign(record, { siteNr: String(entry.siteNr), hostedSetup: "ready", completedAt: now, dateUpdated: now });
-        addHistory(record, isAdmin ? "admin" : "property", "Listing complete: Avante Site Nr " + entry.siteNr + " given (ready for Stock Network)", { siteNr: "" });
-        await store.setJSON(listingId, record);
+        try { entry.siteNr = await reserveNextSiteNr(reg, entry); }
+        catch (e) { await reg.delete(claimKey).catch(() => {}); throw e; }
+        // Read it again: a step saved while the number was being given is kept.
+        const done = Object.assign((await store.get(listingId, { type: "json" }).catch(() => null)) || record,
+          { siteNr: String(entry.siteNr), hostedSetup: "ready", completedAt: now, dateUpdated: now });
+        addHistory(done, isAdmin ? "admin" : "property", "Listing complete: Avante Site Nr " + entry.siteNr + " given (ready for Stock Network)", { siteNr: "" });
+        await store.setJSON(listingId, done);
         const notifyTo = await getNotificationEmail();
         if (notifyTo) context.waitUntil(sendNotificationEmail(notifyTo, "Listing complete, ready for Stock Network: " + (record.propertyName || listingId) + " (Site Nr " + entry.siteNr + ")",
           "<p><b>" + escapeHtml(record.propertyName || "") + "</b> (listing " + escapeHtml(listingId) + ") completed its listing and got Avante Site Nr <b>" + escapeHtml(entry.siteNr) + "</b>.</p>" +
@@ -964,6 +982,12 @@ export default async (request, context) => {
       record.dateUpdated = new Date().toISOString();
       const changed = addHistory(record, isAdmin ? "admin" : (record.submittedBy || "owner"), "Edited", before);
       if (!changed) return json({ ok: true, listing: { listingId: listingId }, unchanged: true });
+      // Completed while this save was on its way (Jean, 2026-10-19)? Keep the
+      // Site Nr it was given, so the next save doesn't ask for another one.
+      const latest = await store.get(listingId, { type: "json" }).catch(() => null);
+      if (latest && latest.hostedSetup !== before.hostedSetup) {
+        Object.assign(record, { hostedSetup: latest.hostedSetup, completedAt: latest.completedAt, siteNr: isAdmin ? record.siteNr || latest.siteNr : latest.siteNr });
+      }
       await store.setJSON(listingId, record);
       await forgetEstates();
 

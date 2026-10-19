@@ -1868,9 +1868,12 @@
     }).catch(function(){});
   }
   // The listing is complete: the hub gives it its Avante Site Nr.
-  function sendForSetUp(st){
+  // The Save button stays off until the listing has gone (two taps must not ask twice).
+  function sendForSetUp(st, btn){
     st.textContent = 'Saved. Sending your listing to Avante\u2026';
+    btn.disabled = true;
     api({ action: 'completeListing', listingId: EDIT_ID, key: EDIT_KEY }).then(function(r){
+      btn.disabled = false;
       if(r && r.ok){ WAITING_SETUP = false; $('setupNote').style.display = 'none'; st.textContent = 'Saved, and your listing has gone to Avante. Your Avante Site Nr is ' + r.siteNr + '. We\u2019ll email you when you\u2019re set up.'; st.className = 'status show ok'; }
       else { st.textContent = 'Saved, but not sent to Avante yet: ' + ((r && (r.error || r.message)) || 'tap Save changes again.'); st.className = 'status show err'; }
     });
@@ -1886,7 +1889,7 @@
       if(res && res.ok){
         unsaved = false; st.textContent = res.unchanged ? 'Nothing had changed.' : 'Saved. The change is on record with today\'s date.'; st.className = 'status show ok';
         toLibrary(EDIT_ID, EDIT_KEY);
-        if(WAITING_SETUP){ renderReview(); if(READY_ALL) sendForSetUp(st); else st.textContent += ' Finish the To do items in the Ready check and save again: then your listing goes to Avante to set your property up.'; }
+        if(WAITING_SETUP){ renderReview(); if(READY_ALL) sendForSetUp(st, btn); else st.textContent += ' Finish the To do items in the Ready check and save again: then your listing goes to Avante to set your property up.'; }
       }
       else { st.textContent = (res && (res.error || res.message)) || 'Could not save. Try again.'; st.className = 'status show err'; }
     });
