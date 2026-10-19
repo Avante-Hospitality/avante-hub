@@ -1521,9 +1521,20 @@ export default async (request, context) => {
       // Site Nr is the one Avante gave it, so its Site Nrs entry finds its listing
       // even before the hourly check has found it on Stock Network.
       const regEntryOf = async (nr) => (nr ? await getSiteNr(siteRegister(), nr).catch(() => null) : null);
-      const listingOf = async (entry) => (rid && (await listings()).find((r) => String(r.resortId || "").toLowerCase() === rid)) ||
-        (entry && entry.listingId ? await store.get(entry.listingId, { type: "json" }).catch(() => null) : null) || null;
-      const hostedOf = (entry, l) => !!((entry && entry.channelManager === "None yet") || (l && l.hostedSetup));
+      // Its listing: by ResortID, by the Site Nrs entry, else by the Site Nr on the listing
+      // (a Site Nr given out before the hub's Site Nrs list, e.g. Little Gem's 6019, Jean 2026-10-19).
+      const listingOf = async (entry, siteNr) => {
+        const all = await listings(), nr = String(siteNr || (entry && entry.siteNr) || "").trim();
+        return (rid && all.find((r) => String(r.resortId || "").toLowerCase() === rid)) ||
+          (entry && entry.listingId && all.find((r) => r.listingId === entry.listingId)) ||
+          (nr && all.find((r) => String(r.siteNr || "").trim() === nr)) || null;
+      };
+      // Not on a channel manager: so its Site Nrs entry says, or its listing was made that way,
+      // or its listing names no channel manager (no BBID, not a channel property).
+      const hostedOf = (entry, l) => {
+        if (entry && entry.channelManager) return entry.channelManager === "None yet";
+        return !!(l && (l.hostedSetup || (l.channelProperty !== "Y" && !l.bbid && !l.channelManager)));
+      };
       const affDir = getStore({ name: "affiliates-directory", consistency: "strong" });
 
       if (action === "channelLogin") {
@@ -1534,7 +1545,7 @@ export default async (request, context) => {
         // The login must be the property's own (a pasted login of another property would link the wrong one).
         if (entry && entry.resortId && rid && String(entry.resortId).toLowerCase() !== rid)
           return json({ error: "This login is for Avante Site Nr " + entry.siteNr + " (" + (entry.propertyName || "another property") + "), not the property you picked." }, 400);
-        const l = await listingOf(entry), a = tok.siteId ? await affDir.get(tok.siteId, { type: "json" }).catch(() => null) : null;
+        const l = await listingOf(entry, tok.site), a = tok.siteId ? await affDir.get(tok.siteId, { type: "json" }).catch(() => null) : null;
         return json({ ok: true, siteNr: String(tok.site || ""), siteId: String(tok.siteId || ""), listingId: l ? l.listingId : "", listingSiteId: l ? l.siteId || "" : "", hosted: hostedOf(entry, l),
           affExists: !!a, affTypes: a ? a.types || [] : [], email: (l && (l.email || l.contactEmail || l.ownerEmail)) || (entry && entry.email) || (a && a.email) || "",
           phone: (l && l.telephone) || (entry && entry.phone) || (a && a.phone) || "", contactName: (l && l.contactName) || (entry && entry.contactName) || "" });
@@ -1547,7 +1558,7 @@ export default async (request, context) => {
         if (!emailList(email).length || badEmails(email).length) return json({ error: "Type the property's email address (several: separate with commas)." }, 400);
         const done = [], now = new Date().toISOString(), reg = siteRegister(), entry = await regEntryOf(siteNr);
         // 1. Its listing: the one it has, or a new one from the hub's lists.
-        let record = await listingOf(entry);
+        let record = await listingOf(entry, siteNr);
         const hosted = hostedOf(entry, record);
         if (!record) {
           const cur = await getStore({ name: "resort-list", consistency: "strong" }).get("current", { type: "json" }).catch(() => null);
