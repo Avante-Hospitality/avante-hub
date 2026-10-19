@@ -1,5 +1,5 @@
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
-import { SHORT_LINK_HOST, randomSlug, affIndexKey, addToAffIndex, SLUG_ALPHABET, RANDOM_SLUG_LEN } from "./lib/short-link.js";
+import { SHORT_LINK_HOST, randomSlug, affIndexKey, addToAffIndex, SLUG_ALPHABET, RANDOM_SLUG_LEN, isShortSlug } from "./lib/short-link.js";
 
 const MAX_ALIAS_LEN = 40;
 
@@ -39,9 +39,7 @@ async function existingSlugFor(store, aff, url) {
   return null;
 }
 
-function isValidAlias(a) {
-  return /^[a-zA-Z0-9-]{2,40}$/.test(a);
-}
+const isValidAlias = isShortSlug;
 
 export default async (request, context) => {
   const cors = {

@@ -81,6 +81,20 @@
     return p ? p.siteId : '';
   }
 
+  // ---------- The resort list (Jean, 2026-10-19) ----------
+  // /api/resorts is about 5,500 rows. Every part of a page asks this one loader,
+  // so it is downloaded once per page; a failed load is tried again next time.
+  // AvanteResorts.load() -> Promise of the API's answer ({ resorts, updatedAt, count }).
+  var resortsPromise = null;
+  function loadResorts() {
+    if (!resortsPromise) {
+      resortsPromise = fetch('/api/resorts').then(function (r) { if (!r.ok) throw new Error('resorts ' + r.status); return r.json(); })
+        .catch(function (e) { resortsPromise = null; throw e; });
+    }
+    return resortsPromise;
+  }
+  window.AvanteResorts = { load: loadResorts };
+
   // ---------- The location tree ----------
   // Loads the same placements the Hub's pages use: tree-places.json, with
   // the live placements (/api/tree-lookup) winning, and names from
@@ -91,7 +105,7 @@
     treePromise = Promise.all([
       fetch('tree-places.json').then(function (r) { return r.json(); }),
       fetch('/api/tree-lookup?kind=properties').then(function (r) { return r.json(); }).catch(function () { return {}; }),
-      fetch('/api/resorts').then(function (r) { return r.json(); }).catch(function () { return {}; })
+      loadResorts().catch(function () { return {}; })
     ]).then(function (res) {
       var places = Object.assign({}, (res[0] && res[0].places) || {}, (res[1] && res[1].properties) || {});
       var list = (res[2] && (res[2].resorts || res[2].list)) || (Array.isArray(res[2]) ? res[2] : []);

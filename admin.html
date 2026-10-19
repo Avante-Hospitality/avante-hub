@@ -3394,7 +3394,7 @@
     function loadAllResorts(){
       if(__allResortsCache) return Promise.resolve(__allResortsCache);
       if(__allResortsPromise) return __allResortsPromise;
-      __allResortsPromise = fetch('/api/resorts').then(function(r){ return r.json(); }).then(function(data){
+      __allResortsPromise = window.AvanteResorts.load().then(function(data){
         __allResortsCache = (data && Array.isArray(data.resorts)) ? data.resorts : [];
         return __allResortsCache;
       }).catch(function(){
@@ -4405,7 +4405,7 @@
       // autocompletes both a specific property and a whole area.
       function loadAutobuildResorts(){
         if(autobuildResortsLoaded) return Promise.resolve();
-        return fetch('/api/resorts').then(function(r){ return r.json(); }).then(function(data){
+        return window.AvanteResorts.load().then(function(data){
           var resorts = (data && data.resorts) || [];
           var seen = {};
           var options = '';
@@ -7336,7 +7336,7 @@
       // out.__hits holds the rows; each button has data-ex-hit="<index>".
       (function(){
         var list = null;
-        function rows(){ return list ? Promise.resolve(list) : fetch('/api/resorts').then(function(r){ return r.json(); }).then(function(d){ list = d.resorts || []; return list; }); }
+        function rows(){ return list ? Promise.resolve(list) : window.AvanteResorts.load().then(function(d){ list = d.resorts || []; return list; }); }
         window.resortNameSearch = function(input, out){
           var timer = null;
           function show(q){
@@ -10004,7 +10004,7 @@
           S.storeKey = 'snw-lookups:' + f.name + ':' + F.bytes.length;
           setStatus(statusEl, 'Read ' + (F.rows.length - 1) + ' rows. Checking what the hub already has…');
           return Promise.all([
-            fetch('/api/resorts').then(function(r){ return r.json(); }),
+            window.AvanteResorts.load(),
             fetch('/api/tree-lookup?kind=properties', { cache: 'no-store' }).then(function(r){ return r.json(); }).catch(function(){ return {}; })
           ]).then(function(res){
             var d = res[0];

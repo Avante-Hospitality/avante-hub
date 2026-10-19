@@ -1,5 +1,5 @@
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
-import { SHORT_LINK_HOST } from "./lib/short-link.js";
+import { SHORT_LINK_HOST, isShortSlug } from "./lib/short-link.js";
 import { toHolidayBuilderUrl } from "./lib/booking-link.js";
 import { withTreePath } from "./lib/tree-place.js";
 
@@ -20,6 +20,13 @@ export default async (request, context) => {
 
   if (!slug) {
     return Response.redirect(FALLBACK_URL, 302);
+  }
+  // Short links are only letters, numbers and hyphens (shorten-api.js), so a
+  // path with a dot or a slash (hub.html, /api/..., photos, scripts) is a real
+  // file: served straight away, without reading the short-link store
+  // (Jean, 2026-10-19: this ran a store read on every request).
+  if (!isShortSlug(slug)) {
+    return context.next();
   }
 
   const store = getStore({ name: "short-links", consistency: "strong" });
@@ -62,4 +69,8 @@ export default async (request, context) => {
   }
 };
 
-export const config = { path: "/*" };
+// Files, scripts and the API never reach this function at all.
+export const config = {
+  path: "/*",
+  excludedPath: ["/api/*", "/.netlify/*", "/*.html", "/*.js", "/*.mjs", "/*.css", "/*.json", "/*.png", "/*.jpg", "/*.jpeg", "/*.webp", "/*.gif", "/*.svg", "/*.ico", "/*.pdf", "/*.xml", "/*.txt", "/*.woff2"],
+};

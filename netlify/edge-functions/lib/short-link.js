@@ -39,6 +39,8 @@ export async function resolveShortLink(rawUrl, shortLinksStore) {
 // /api/shorten handler and the two helpers below (admin-api.js's bulk
 // short-code generator), so neither can drift from the other on what a
 // slug looks like or how the per-affiliate index is keyed/capped.
+// Every short link name: letters, numbers and hyphens, 2-40 long (random ones too).
+export const isShortSlug = (s) => /^[a-zA-Z0-9-]{2,40}$/.test(String(s || ""));
 export const SLUG_ALPHABET = "23456789abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ"; // no 0/O/1/l/I
 export const RANDOM_SLUG_LEN = 6;
 export const MAX_LINKS_PER_AFFILIATE = 300; // cap the per-affiliate index so it can't grow unbounded

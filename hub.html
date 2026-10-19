@@ -2965,7 +2965,6 @@
     // what makes the direct Resort Info Link below possible without ever
     // touching the availability/date search.
     var ResortData = (function(){
-      var RESORTS_API = '/api/resorts';
       var resorts = [];
       var updatedAt = null;
       var loaded = false;
@@ -2983,8 +2982,7 @@
       }
 
       function load(){
-        fetch(RESORTS_API)
-          .then(function(r){ return r.json(); })
+        window.AvanteResorts.load()
           .then(function(data){ set((data && data.resorts) || [], data && data.updatedAt); })
           .catch(function(){ loaded = true; notify(); });
       }
@@ -4050,7 +4048,7 @@
       var autobuildResortsLoaded = false;
       function loadAutobuildResorts(){
         if(autobuildResortsLoaded) return Promise.resolve();
-        return fetch('/api/resorts').then(function(r){ return r.json(); }).then(function(data){
+        return window.AvanteResorts.load().then(function(data){
           var resorts = (data && data.resorts) || [];
           var seen = {};
           var options = '';
@@ -4079,7 +4077,7 @@
       function loadAllResortsHub(){
         if(allResortsCacheHub) return Promise.resolve(allResortsCacheHub);
         if(allResortsPromiseHub) return allResortsPromiseHub;
-        allResortsPromiseHub = fetch('/api/resorts').then(function(r){ return r.json(); }).then(function(data){
+        allResortsPromiseHub = window.AvanteResorts.load().then(function(data){
           allResortsCacheHub = (data && Array.isArray(data.resorts)) ? data.resorts : [];
           return allResortsCacheHub;
         }).catch(function(){
