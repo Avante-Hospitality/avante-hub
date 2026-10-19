@@ -30,13 +30,13 @@ async function bearer() { return "Bearer " + (await makeHooksTicket({ sub: "admi
 const LIB_API = () => new URL("/api/library", HOOKS_URL).href;
 
 // A Google photo for a front store (Jean, 2026-10-19): only one Avante's library
-// has, read through the hook builder, which keeps each Google photo after the
-// first time, so Google is paid once per photo. -> { data, type } or null.
-export async function libGooglePhoto(ref) {
-  if (!GREF.test(ref || "")) return null;
+// has (nobody can use Avante's Google key for any photo). Never kept: Google's
+// terms. -> { data, type } or null.
+export async function libGooglePhoto(ref, key) {
+  if (!GREF.test(ref || "") || !key) return null;
   const idx = await libIndex();
   if (!(idx.items || []).some((x) => x.source === "google" && x.ref === ref)) return null; // not one of Avante's
-  const r = await timed(new URL("/api/places?photo=" + encodeURIComponent(ref), HOOKS_URL).href, { headers: { authorization: await bearer() } }, 12000).catch(() => null);
+  const r = await timed("https://places.googleapis.com/v1/" + ref + "/media?maxWidthPx=1200&key=" + encodeURIComponent(key), {}, 12000).catch(() => null);
   const type = (r && r.headers.get("content-type")) || "";
   return r && r.ok && type.startsWith("image/") ? { data: await r.arrayBuffer(), type } : null;
 }

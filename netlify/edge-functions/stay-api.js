@@ -50,10 +50,10 @@ export default async (request, context) => {
       const gref = url.searchParams.get("gphoto"), lid = url.searchParams.get("libphoto");
       if (gref) {
         if (!GREF.test(gref)) return new Response("Bad photo", { status: 400, headers: cors });
-        // Only Avante's own Google photos, from the library's saved copy (Google paid once).
-        const img = await libGooglePhoto(gref).catch(() => null);
+        // Only Avante's own Google photos (the ones in the library).
+        const img = await libGooglePhoto(gref, env("GOOGLE_PLACES_API_KEY")).catch(() => null);
         if (!img) return new Response("Not found", { status: 404, headers: cors });
-        return new Response(img.data, { headers: { "content-type": img.type, "cache-control": "public, max-age=604800", ...cors } });
+        return new Response(img.data, { headers: { "content-type": img.type, "cache-control": "public, max-age=86400", ...cors } });
       }
       if (lid) {
         if (!LIBID.test(lid)) return new Response("Bad photo", { status: 400, headers: cors });
