@@ -718,7 +718,7 @@ export default async (request, context) => {
       return json({ ok: true, listingId: listingId, editLink: editLink });
     }
 
-    if (action === "getForEdit" || action === "update" || action === "completeListing" || action === "libraryRetag" || action === "markSentToSN" || action === "emailSNFiles" || action === "libraryAdd" || action === "addPhotos" || action === "removePhoto") {
+    if (action === "getForEdit" || action === "update" || action === "completeListing" || action === "libraryRetag" || action === "completeLater" || action === "letAvante" || action === "markSentToSN" || action === "emailSNFiles" || action === "libraryAdd" || action === "addPhotos" || action === "removePhoto") {
       // Reopen a listing in the onboarding form: admin (token) or the
       // submitter with their private edit key.
       const listingId = clean(body.listingId, 20);
@@ -736,6 +736,45 @@ export default async (request, context) => {
         delete out.editToken;
         if (!isAdmin) { delete out.history; delete out.photosToken; }
         return json({ ok: true, listing: out, asAdmin: isAdmin, waitingForSetUp: record.hostedSetup === "completing" });
+      }
+
+      if (action === "completeLater") {
+        // "Complete later" (Jean, 2026-10-19): the property stops for now. Admin
+        // hears where it got to; the reminders (1, 3, 5 and 10 days) follow.
+        const now = new Date().toISOString(), step = Math.max(1, Math.min(8, parseInt(body.step, 10) || record.lastStep || 1));
+        Object.assign(record, { laterAt: now, lastStep: step });
+        addHistory(record, "property", "Will complete later (at step " + step + " of 8)");
+        // The link again, so it's at the top of their inbox.
+        const to = emailList(record.contactEmail || record.email, 5);
+        if (to.length) await emailEditLink(record, to, new URL(request.url).origin, "property").catch(() => null);
+        await store.setJSON(listingId, record);
+        const notifyTo = await getNotificationEmail();
+        if (notifyTo) context.waitUntil(sendNotificationEmail(notifyTo, "Will complete later: " + (record.propertyName || listingId),
+          "<p><b>" + escapeHtml(record.propertyName || "") + "</b> (listing " + escapeHtml(listingId) + ") tapped <b>Complete later</b> at step " + step + " of 8.</p>" +
+          "<p>Still to do: " + escapeHtml(clean(body.todo, 600) || "see the Ready check") + ".</p><p>The hub reminds them after 1, 3, 5 and 10 days.</p>"));
+        return json({ ok: true });
+      }
+
+      if (action === "letAvante") {
+        // "Let Avante set it up" (Jean, 2026-10-19): the property sends what it
+        // has (photos, rate sheets, screenshots, files, links, a note) and
+        // Avante completes the listing. Admin gets all of it by email.
+        const urls = String(body.urls || "").split(/\s+/).map((u) => u.trim()).filter((u) => /^https?:\/\/\S+$/i.test(u)).slice(0, 20);
+        const note = clean(body.note, 2000), files = (Array.isArray(body.files) ? body.files : []).slice(0, 40)
+          .map((f) => ({ key: clean(f && f.key, 300), name: clean(f && f.name, 150) })).filter((f) => f.key);
+        if (!urls.length && !note && !files.length) return json({ error: "Add a file, a link or a note first." }, 400);
+        const now = new Date().toISOString(), origin = new URL(request.url).origin;
+        record.helpRequest = { at: now, urls, note, files };
+        addHistory(record, "property", "Asked Avante to set it up (" + files.length + " file(s), " + urls.length + " link(s))");
+        await store.setJSON(listingId, record);
+        const notifyTo = await getNotificationEmail();
+        if (notifyTo) context.waitUntil(sendNotificationEmail(notifyTo, "Please set it up: " + (record.propertyName || listingId),
+          "<p><b>" + escapeHtml(record.propertyName || "") + "</b> (listing " + escapeHtml(listingId) + ") asks Avante to set up its listing.</p>" +
+          (note ? "<p><b>Note:</b><br>" + escapeHtml(note).replace(/\n/g, "<br>") + "</p>" : "") +
+          (urls.length ? "<p><b>Links:</b><br>" + urls.map((u) => '<a href="' + escapeHtml(u) + '">' + escapeHtml(u) + "</a>").join("<br>") + "</p>" : "") +
+          (files.length ? "<p><b>Files:</b><br>" + files.map((f) => '<a href="' + escapeHtml(origin + "/api/property-file?key=" + encodeURIComponent(f.key)) + '">' + escapeHtml(f.name || "file") + "</a>").join("<br>") + "</p>" : "") +
+          "<p>Open the listing in Admin &gt; Property Listings and tap <b>Open full form to edit</b>. Its <b>Read screenshots &amp; documents</b> can fill in most of it from these.</p>"));
+        return json({ ok: true });
       }
 
       if (action === "libraryRetag") {
@@ -1229,6 +1268,38 @@ export default async (request, context) => {
       // form (Jean, 2026-10-19). Asked before: only by the emailed link.
       const continueLink = hosted && record ? editLinkEmail(record, new URL(request.url).origin).link : undefined;
       return json({ ok: true, found: !!row, name: row ? row.name : "", already: !!already, siteNr: site ? site.siteNr : null, repeat, listing: !!(record || hostedPrev || (site && site.listingId)), linkSent, continueLink });
+    }
+
+    if (action === "remindListings") {
+      // Every morning (netlify/functions/listing-reminders.mjs): a property not
+      // on a platform that hasn't finished its listing gets a reminder 1, 3, 5
+      // and 10 days after its last save (Jean, 2026-10-19), with its link and
+      // "Let Avante set it up". Saving again starts the count again; asking
+      // Avante to set it up stops it.
+      const secret = Deno.env.get("PA_SYNC_SECRET") || "";
+      if (!secret || request.headers.get("x-pa-sync-secret") !== secret) return json({ error: "forbidden" }, 403);
+      const DAYS = [1, 3, 5, 10], nowMs = Date.now(), origin = new URL(request.url).origin, out = [];
+      for (const b of (await store.list()).blobs) {
+        const rec = await store.get(b.key, { type: "json" }).catch(() => null);
+        if (!rec || rec.hostedSetup !== "completing" || rec.helpRequest) continue;
+        const base = rec.dateUpdated || rec.dateSubmitted;
+        if (!rec.reminders || rec.reminders.base !== base) rec.reminders = { base, sent: 0 };
+        const i = rec.reminders.sent;
+        if (i >= DAYS.length || nowMs - Date.parse(base) < DAYS[i] * 864e5) continue;
+        const to = emailList(rec.contactEmail || rec.email, 5);
+        if (!to.length) continue;
+        const m = editLinkEmail(rec, origin);
+        const sent = await sendEmail({ to, subject: "Your Avante listing is waiting: " + (rec.propertyName || ""),
+          html: "<p>Hello,</p><p>Your listing for <b>" + escapeHtml(rec.propertyName || "your property") + "</b> isn't finished yet. It's saved, so you carry on where you stopped:<br><a href=\"" + m.link + "\">Complete my listing</a></p>" +
+            "<p>Rather have Avante do it? Send us your photos, rate sheet, screenshots or links and we'll set it up for you:<br><a href=\"" + m.link + "#help\">Let Avante set it up</a></p>" +
+            "<p>Questions? Reply to this email or write to info@avantehospitality.co.za.</p><p>Avante Hospitality</p>" });
+        if (!sent.ok) { out.push({ listingId: rec.listingId, error: sent.error }); continue; }
+        rec.reminders.sent = i + 1; rec.reminders.lastAt = new Date().toISOString();
+        rec.history = (Array.isArray(rec.history) ? rec.history : []).concat([{ at: rec.reminders.lastAt, by: "hub", action: "Reminder " + (i + 1) + " of " + DAYS.length + " emailed" }]).slice(-HISTORY_MAX);
+        await store.setJSON(rec.listingId, rec);
+        out.push({ listingId: rec.listingId, reminder: i + 1 });
+      }
+      return json({ ok: true, reminded: out });
     }
 
     // ---------- Site Nr register (Admin > Site Nrs, Jean 2026-10-15) ----------

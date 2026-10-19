@@ -155,6 +155,11 @@
   /* Back and Next always in reach, like a pop-up, also on a phone (Jean, 2026-10-19). */
   #stepNav{ position:sticky; bottom:0; z-index:15; background:var(--bg); padding:10px 0; margin-bottom:12px; box-shadow:0 -6px 12px -10px rgba(0,0,0,.25); }
   .saved-note{ font-size:12.5px; color:var(--muted); text-align:center; flex:1; }
+  #laterRow{ display:none; justify-content:center; gap:10px; flex-wrap:wrap; margin:-6px 0 18px; }
+  #laterRow.show{ display:flex; }
+  .help-drop{ border:2px dashed var(--line); border-radius:10px; padding:16px; text-align:center; cursor:pointer; color:var(--muted); margin-bottom:8px; }
+  .help-files{ font-size:13px; margin:0 0 10px; padding-left:18px; }
+  @media (max-width: 600px){ #helpModal, #laterModal{ padding:0; } #helpModal .modal-box, #laterModal .modal-box{ max-height:none; height:100%; border-radius:0; } }
   .modal-overlay{ display:none; position:fixed; inset:0; background:rgba(19,36,51,.6); align-items:center; justify-content:center; z-index:999; padding:20px; }
   .modal-overlay.show{ display:flex; }
   .modal-box{ background:#fff; border-radius:14px; max-width:640px; width:100%; max-height:82vh; display:flex; flex-direction:column; }
@@ -548,9 +553,40 @@
     <span class="saved-note" id="savedNote" aria-live="polite"></span>
     <button type="button" class="btn-primary" id="nextBtn">Next</button>
   </div>
+  <!-- A listing still being completed (Jean, 2026-10-19): stop for now, or hand it to Avante. -->
+  <div id="laterRow"><button type="button" class="btn-secondary btn-sm" id="laterBtn">Complete later</button><button type="button" class="btn-secondary btn-sm" id="helpBtn">Let Avante set it up</button></div>
   <div class="nav" style="justify-content:center; margin-top:-12px"><button type="button" class="btn-link" id="closeBtn2">Close the form</button></div>
 </main>
 
+<div class="modal-overlay" id="laterModal" role="dialog" aria-modal="true" aria-labelledby="laterTitle">
+  <div class="modal-box">
+    <div class="modal-head"><strong id="laterTitle">Saved. Carry on later</strong><button class="modal-close" data-close="laterModal" aria-label="Close">&times;</button></div>
+    <div class="modal-body">
+      <p>Your listing is saved. We've emailed you the link <b>Complete my listing</b>: it opens on this step.</p>
+      <p>We'll remind you in a day or two. Rather have Avante do it?</p>
+      <button type="button" class="btn-primary" id="laterHelpBtn">Let Avante set it up</button>
+      <p style="margin-top:14px"><button type="button" class="btn-link" data-close="laterModal">Carry on now</button></p>
+    </div>
+  </div>
+</div>
+<div class="modal-overlay" id="helpModal" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+  <div class="modal-box">
+    <div class="modal-head"><strong id="helpTitle">Let Avante set it up</strong><button class="modal-close" data-close="helpModal" aria-label="Close">&times;</button></div>
+    <div class="modal-body">
+      <p>Send us what you have and we'll complete your listing for you. Anything helps: photos, your rate sheet, screenshots of your listing on Airbnb or Booking.com, documents, or links.</p>
+      <label>Photos, screenshots and files</label>
+      <div class="help-drop" id="helpDrop" tabindex="0" role="button">Tap to choose files, or drop them here</div>
+      <input type="file" id="helpFiles" multiple hidden accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv">
+      <ul class="help-files" id="helpList"></ul>
+      <label for="helpUrls">Links (your listing on Airbnb, Booking.com, LekkeSlaap, your website; one per line)</label>
+      <textarea id="helpUrls" rows="3" placeholder="https://www.airbnb.co.za/rooms/…"></textarea>
+      <label for="helpNote" style="margin-top:10px">Anything else we should know (optional)</label>
+      <textarea id="helpNote" rows="3"></textarea>
+      <button type="button" class="btn-primary" id="helpSend" style="margin-top:12px">Send to Avante</button>
+      <div class="status" id="helpStatus"></div>
+    </div>
+  </div>
+</div>
 <div class="modal-overlay" id="termsModal">
   <div class="modal-box">
     <div class="modal-head">
@@ -1464,6 +1500,7 @@
       [!!$('depositText').value.trim(), 'Cancellation policy', 8]
     ];
     READY_ALL = checks.every(function(c){ return c[0]; });
+    TODO_LIST = checks.filter(function(c){ return !c[0]; }).map(function(c){ return c[1]; });
     $('checklist').innerHTML = checks.map(function(c){ return '<li><span class="pill ' + (c[0] ? 'ok' : 'todo') + '">' + (c[0] ? 'Done' : 'To do') + '</span><span>' + esc(c[1]) + (c[0] ? '' : ' — <button type="button" class="btn-link" data-go="' + c[2] + '">go to step ' + stepNo(c[2]) + '</button>') + '</span></li>'; }).join('');
     $('snHead').innerHTML = '<tr>' + SN_COLS.map(function(c){ return '<th>' + esc(c) + '</th>'; }).join('') + '</tr>';
     var rows = snRows();
@@ -1657,7 +1694,45 @@
   // A property not on a channel manager (Jean, 2026-10-17/19): once the Ready
   // check is all Done, saving completes the listing and gives its Site Nr
   // (completeListing).
-  var WAITING_SETUP = false, READY_ALL = false;
+  var WAITING_SETUP = false, READY_ALL = false, TODO_LIST = [];
+  // Complete later, and Let Avante set it up (Jean, 2026-10-19).
+  function openModal(id){ $(id).classList.add('show'); }
+  document.addEventListener('click', function(e){ var c = e.target.closest('[data-close]'); if(c) $(c.getAttribute('data-close')).classList.remove('show'); });
+  $('laterBtn').addEventListener('click', function(){
+    var btn = this; btn.disabled = true;
+    draftSave(stepNo(current));
+    renderReview();
+    api({ action: 'completeLater', listingId: EDIT_ID, key: EDIT_KEY, step: stepNo(current), todo: TODO_LIST.join(', ') }).then(function(r){
+      btn.disabled = false;
+      if(r && r.ok) openModal('laterModal'); else alert((r && (r.error || r.message)) || 'Could not save. Try again.');
+    });
+  });
+  $('helpBtn').addEventListener('click', function(){ openModal('helpModal'); });
+  $('laterHelpBtn').addEventListener('click', function(){ $('laterModal').classList.remove('show'); openModal('helpModal'); });
+  var helpUploads = [];   // { name, key } once uploaded, { name, busy } while uploading
+  function renderHelpList(){ $('helpList').innerHTML = helpUploads.map(function(f){ return '<li>' + esc(f.name) + (f.busy ? ' \u2014 uploading\u2026' : f.key ? ' \u2714' : ' \u2014 failed') + '</li>'; }).join(''); }
+  function addHelpFiles(list){
+    Array.prototype.forEach.call(list || [], function(file){
+      var f = { name: file.name, busy: true }; helpUploads.push(f);
+      uploadFile(file, /^image\//.test(file.type || '') ? 'image' : 'document', 'for-avante', function(d){ f.busy = false; if(d && d.ok) f.key = d.key; renderHelpList(); });
+    });
+    renderHelpList();
+  }
+  $('helpDrop').addEventListener('click', function(){ $('helpFiles').click(); });
+  $('helpFiles').addEventListener('change', function(){ addHelpFiles(this.files); this.value = ''; });
+  $('helpDrop').addEventListener('dragover', function(e){ e.preventDefault(); });
+  $('helpDrop').addEventListener('drop', function(e){ e.preventDefault(); addHelpFiles(e.dataTransfer.files); });
+  $('helpSend').addEventListener('click', function(){
+    var st = $('helpStatus'), btn = this;
+    if(helpUploads.some(function(f){ return f.busy; })){ st.textContent = 'Wait until the files have uploaded.'; st.className = 'status show err'; return; }
+    btn.disabled = true; st.textContent = 'Sending\u2026'; st.className = 'status show';
+    api({ action: 'letAvante', listingId: EDIT_ID, key: EDIT_KEY, urls: $('helpUrls').value, note: $('helpNote').value,
+      files: helpUploads.filter(function(f){ return f.key; }).map(function(f){ return { key: f.key, name: f.name }; }) }).then(function(r){
+      btn.disabled = false;
+      if(r && r.ok){ st.textContent = 'Sent. Avante will set up your listing and email you. You can close this page.'; st.className = 'status show ok'; }
+      else { st.textContent = (r && (r.error || r.message)) || 'Could not send. Try again.'; st.className = 'status show err'; }
+    });
+  });
   // In a complex, resort or estate (Jean, 2026-10-17): kind and name show only
   // after "Yes". The names already on the hub are suggested, so every property
   // in the same estate is spelled the same; picking one fills in its kind.
@@ -1764,6 +1839,8 @@
       editAsAdmin = !!res.asAdmin;
       WAITING_SETUP = !!res.waitingForSetUp;
       $('setupNote').style.display = WAITING_SETUP ? '' : 'none';
+      $('laterRow').classList.toggle('show', WAITING_SETUP && !editAsAdmin);
+      if(WAITING_SETUP && !editAsAdmin && location.hash === '#help') openModal('helpModal');
       fillFromListing(res.listing);
       document.querySelector('header p').textContent = (res.listing.propertyName || '') + ' — status: ' + (res.listing.status || 'Requested') + '. Change anything in any step, then tap Save changes in step 8. A dated record of every change is kept.' + (editAsAdmin ? ' (Opened from Admin.)' : '');
       if(WAITING_SETUP && !editAsAdmin) document.querySelector('header p').textContent = (res.listing.propertyName || '') + ': complete your listing step by step. It saves every time you tap Next, so you can stop and carry on later with the link in your email.';
