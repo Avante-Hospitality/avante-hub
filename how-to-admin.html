@@ -39,6 +39,7 @@
     <div class="ht-card ht-new" aria-label="What's new">
       <h2>What's new</h2>
       <ul>
+        <li><time>19 Oct 2026</time> <b>Not on a platform</b>, after Stock Network sets it up: the hourly check also finds it by its exact name (near its pin). Its Site Nr shows <b>Set up</b> with <b>Needs its Avante login: tap Activate</b>. Tap <span class="btn">Activate</span> on the row and paste the Avante login Stock Network sent: the pop-up <b>Activate a property</b> makes its Property Affiliate, connects it and emails its hub login. See <a href="#siteNrs">Site Nrs</a>.</li>
         <li><time>19 Oct 2026</time> A property completing its listing can tap <b>Complete later</b> (you get an email: <b>Will complete later</b>, with where it got to) or <b>Let Avante set it up</b> (you get <b>Please set it up</b> with its files, links and note). Unfinished listings get reminders 1, 3, 5 and 10 days after the last save, stopping once it asks Avante to set it up. See <a href="#siteNrs">Site Nrs</a>.</li>
         <li><time>19 Oct 2026</time> Listing photos go into the hook builder's photo library by themselves when a listing is saved, filed under the listing, the property (ResortID) and the unit type. New button <span class="btn g">Put all listing photos in the photo library</span> (Property Listings) does every listing at once. The Stock Network photo link groups photos by unit type. See <a href="#propertyListings">Property Listings</a>.</li>
         <li><time>19 Oct 2026</time> <b>Not on a platform</b>: the Site Nr is given only when the property's listing is complete (status <b>Ready to send</b>), and you get an email. The hub no longer emails Stock Network by itself: send the files from the listing with <b>Send the files by email</b>, and the Site Nr shows <b>Sent</b>. See <a href="#siteNrs">Site Nrs</a>.</li>
@@ -383,13 +384,19 @@
         <li>It makes Stock Network's <b>Request_pull_area</b> sheet: SiteID, BBID, Name, Contact, Phone No, Email, Description, Area, District, Rate (17.25), TripAdvisor Search Link (empty), Suburb. City2 is left out.</li>
         <li>On NightsBridge or eRes: it emails the sheet to the addresses at the bottom of <span class="tab">Site Nrs</span> straight away. The status changes to <b>Sent</b>.</li>
         <li>The property gets an email with its Site Nr.</li>
-        <li><b>Every hour</b> the hub looks on Stock Network for each <b>Sent</b> Site Nr (by Site Nr, or else by BBID).</li>
+        <li><b>Every hour</b> the hub looks on Stock Network for each <b>Sent</b> Site Nr (by Site Nr, else by BBID, else by its exact name near its pin).</li>
         <li>Found? The status changes to <b>Set up</b>.</li>
         <li>The hub makes the property's affiliate. Its affiliate number is the property's Site ID. It is <b>not connected</b> until the property enters its Avante login.</li>
         <li>The property's listing (if it has one) gets its ResortID and Site ID.</li>
         <li>The property gets an email <b>You're set up with Avante</b> with its affiliate number and the login link. It taps <b>Forgot your password?</b> to set a password.</li>
         <li>You get an email listing what was set up.</li>
-        <li>Not on a platform? Under its status it says <b>Waiting for stock</b>. Every hour the hub looks for Avante stock for it, 12 months ahead.</li>
+        <li>Not on a platform? Stock Network's list has no Site ID, so under its status it says <b>Needs its Avante login: tap Activate</b>. No affiliate or email yet.</li>
+        <li>Got the property's Avante login from Stock Network? Tap <span class="btn">Activate</span> on its row. The pop-up <b>Activate a property</b> opens on step 2 (on step 1 if the hourly check hasn't found it yet: tap its name).</li>
+        <li>Paste the <span class="field">Username</span>, <span class="field">Client ID</span> and <span class="field">Client secret</span>. Tap <span class="btn">Check the login</span>.</li>
+        <li>Check the email and phone. Tap <span class="btn">Next</span>.</li>
+        <li>Tap <span class="btn">Activate</span>. The hub makes its <b>Property Affiliate</b> (number = Site ID), links its listing and connects it.</li>
+        <li>Check the welcome email. Tap <span class="btn">Send</span>. Then <span class="btn">Close</span>.</li>
+        <li>Under its status it now says <b>Waiting for stock</b>. Every hour the hub looks for Avante stock for it, 12 months ahead.</li>
         <li>Stock found? It says <b>Ready to go live (stock from …)</b>, the listing notes it too, and you get an email <b>Ready to go live</b>.</li>
       </ol>
       <div class="tip">Don't want to wait for the hour? Tap <span class="btn g">Check Stock Network now</span> at the top of <span class="tab">Site Nrs</span>. The answer shows under the button.</div>
@@ -401,7 +408,7 @@
         <li>Tap <span class="btn g">Open</span> on the row.</li>
         <li>Change what you need (for example <span class="field">Area</span>, <span class="field">District</span>, <span class="field">Suburb</span>, or a <span class="field">Note to Stock Network (in the email)</span>).</li>
         <li>Tap <span class="btn">Save</span>, or <span class="btn g">Save and send the sheet to Stock Network</span> to email it again. Every email is listed under <b>Emails sent</b>.</li>
-        <li>Stock Network has created the site but the hourly check can't find it? Set <span class="field">Status</span> to <b>Set up</b> and tap <span class="btn">Save</span>. (This doesn't make the affiliate or send the login email.)</li>
+        <li>Stock Network has created the site but the hourly check can't find it? Not on a platform: tap <span class="btn">Activate</span> on the row and search for it by name in step 1. On a channel manager: use <span class="btn">Activate a channel property</span>.</li>
       </ol>
       <h3>Reserve a Site Nr by hand</h3>
       <ol class="steps">

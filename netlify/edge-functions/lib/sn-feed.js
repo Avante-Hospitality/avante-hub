@@ -10,6 +10,8 @@
 // The feed is big, so a slim index (BBID -> property + site fields) is kept for
 // 6 hours in the "sn-feed" store.
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
+import { normName } from "./photo-library.js";
+import { haversineKm } from "./geo-distance.js";
 
 const BASE = "https://api.stocknetwork.co.za";
 const CACHE_MS = 6 * 3600e3;
@@ -111,18 +113,29 @@ export async function feedBySite(siteNr, siteId, fetchImpl = fetch) {
 }
 
 // Requests waiting for Stock Network (Jean, 2026-10-17): is the property set
-// up yet? Matched by the Site Nr Avante gave it, else by its NightsBridge BBID.
+// up yet? Matched by the Site Nr Avante gave it, else by its NightsBridge BBID,
+// else (a property not on a channel manager has neither in the list, Jean
+// 2026-10-19) by its exact name: only when exactly one property has that name
+// and, where both have coordinates, it is within 5 km of the listing's pin.
 // Reads Stock Network's list fresh (once per call, for all of them).
-// wanted: [{ siteNr, bbid }] -> same order: { resortId, name, siteNr, siteId, latitude, longitude } or null
+// wanted: [{ siteNr, bbid, name, latitude, longitude }]
+// -> same order: { resortId, name, siteNr, siteId, latitude, longitude, by } or null
 export async function findSetUps(wanted, fetchImpl = fetch) {
   const rows = Object.entries(await resortIndex(fetchImpl, true));
-  return wanted.map(({ siteNr, bbid }) => {
-    const nr = String(siteNr || "").trim(), code = normBbid(bbid);
-    const hit = rows.find(([, row]) => nr && String(pickSite(siteFieldsOf(row)).siteNr) === nr) || rows.find(([, row]) => code && normBbid(row.resortCode) === code);
+  return wanted.map(({ siteNr, bbid, name, latitude, longitude }) => {
+    const nr = String(siteNr || "").trim(), code = normBbid(bbid), nm = normName(name);
+    let by = "Site Nr", hit = nr && rows.find(([, row]) => String(pickSite(siteFieldsOf(row)).siteNr) === nr);
+    if (!hit && code) { by = "BBID"; hit = rows.find(([, row]) => normBbid(row.resortCode) === code); }
+    if (!hit && nm) {
+      by = "name";
+      const same = rows.filter(([, row]) => normName(feedName(row)) === nm &&
+        !(Number(latitude) && Number(row.latitude) && haversineKm(latitude, longitude, row.latitude, row.longitude) > 5)); // 0 or missing: not compared
+      hit = same.length === 1 ? same[0] : null;
+    }
     if (!hit) return null;
     const [rid, row] = hit, site = pickSite(siteFieldsOf(row));
     const num = (v) => (v === "" || v == null ? null : Number(v));
-    return { resortId: rid, name: feedName(row), siteNr: String(site.siteNr), siteId: site.siteId, latitude: num(row.latitude), longitude: num(row.longitude) };
+    return { resortId: rid, name: feedName(row), siteNr: String(site.siteNr), siteId: site.siteId, latitude: num(row.latitude), longitude: num(row.longitude), by };
   });
 }
 

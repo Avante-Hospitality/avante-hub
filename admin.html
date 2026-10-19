@@ -7378,10 +7378,11 @@
         function keepContact(){ if(W.step === 2){ W.contact = { email: val('acwEmail'), phone: val('acwPhone'), contactName: val('acwContact') }; } }
         function render(){
           stepsEl.innerHTML = STEPS.map(function(t, i){ return '<span class="' + (i < W.step ? 'done' : i === W.step ? 'on' : '') + '" title="' + escapeHtml(t) + '"></span>'; }).join('');
+          document.getElementById('acwTitle').textContent = W.hosted || (W.login && W.login.hosted) ? 'Activate a property' : 'Activate a channel property';
           var h = '<h3>' + (W.step + 1) + '. ' + escapeHtml(STEPS[W.step]) + '</h3>', p = W.prop;
           if(W.step === 0){
             h += '<p class="acw-what">Type at least 3 letters of the property’s name, then tap it.</p>' +
-              '<label for="acwName">Property name</label><input id="acwName" type="search" autocomplete="off" placeholder="e.g. 37 On Anderson" value="' + escapeHtml(p ? p.name : '') + '"><div id="acwHits" style="margin-top:8px;"></div>' +
+              '<label for="acwName">Property name</label><input id="acwName" type="search" autocomplete="off" placeholder="e.g. 37 On Anderson" value="' + escapeHtml(p ? p.name : W.findName || '') + '"><div id="acwHits" style="margin-top:8px;"></div>' +
               (p ? '<p class="acw-ok">✔ ' + escapeHtml(p.name) + (p.externalResortCode ? ' · BBID ' + escapeHtml(p.externalResortCode) : '') + '</p>' : '');
           } else if(W.step === 1){
             h += '<p class="acw-what">Paste the Avante login Stock Network gave for <b>' + escapeHtml(p.name) + '</b>, then tap <b>Check the login</b>. The hub finds its Site Nr and Site ID itself.</p>' +
@@ -7396,13 +7397,13 @@
               '<label for="acwPhone">Phone</label><input id="acwPhone" type="tel" value="' + escapeHtml(W.contact.phone) + '">' +
               '<label for="acwContact">Contact person (optional)</label><input id="acwContact" value="' + escapeHtml(W.contact.contactName) + '">';
           } else if(W.step === 3){
-            h += '<p class="acw-what">One tap: the hub makes or links its listing, makes its Channel Property Affiliate (number ' + escapeHtml(W.login.siteId) + ', 4.95% + VAT, Hook Builder on) and connects it with its Avante login.</p>' +
+            h += '<p class="acw-what">One tap: the hub makes or links its listing, makes its ' + (W.login.hosted ? 'Property Affiliate (number ' + escapeHtml(W.login.siteId) + ', Hook Builder on)' : 'Channel Property Affiliate (number ' + escapeHtml(W.login.siteId) + ', 4.95% + VAT, Hook Builder on)') + ' and connects it with its Avante login.</p>' +
               '<ul class="acw-list"><li>' + escapeHtml(p.name) + ' · Site Nr ' + escapeHtml(W.login.siteNr) + '</li><li>' + escapeHtml(W.contact.email) + (W.contact.phone ? ' · ' + escapeHtml(W.contact.phone) : '') + '</li></ul>' +
               (W.result ? '<ul class="acw-list">' + W.result.done.map(function(d){ return '<li class="' + (/NOT/.test(d) ? 'acw-err' : 'acw-ok') + '">' + escapeHtml(d) + '</li>'; }).join('') + '</ul>'
                 : '<button type="button" class="primary" id="acwGo" style="margin-top:12px;"' + (W.busy ? ' disabled' : '') + '>' + (W.busy ? 'Activating…' : 'Activate') + '</button>');
           } else {
             h += W.welcomed ? '<p class="acw-ok">✔ Welcome email sent.</p><p class="acw-what"><b>' + escapeHtml(p.name) + '</b> can now log in to the hub with affiliate number <b>' + escapeHtml(W.result.affId) + '</b> and find the Hook Builder and Activities. Its listing is <b>' + escapeHtml(W.result.listingId) + '</b>.</p>'
-              : '<p class="acw-what">Check the email. You can change it for this property; the saved wording is under <b>Channel property welcome email</b>. Its Avante login is never sent.</p>' +
+              : '<p class="acw-what">Check the email. You can change it for this property' + (W.login.hosted ? '' : '; the saved wording is under <b>Channel property welcome email</b>') + '. Its Avante login is never sent.</p>' +
                 '<label for="acwTo">Send to</label><input id="acwTo" inputmode="email" value="' + escapeHtml(W.to != null ? W.to : W.contact.email) + '">' +
                 (W.welcome ? '<label for="acwSubj">Subject</label><input id="acwSubj" value="' + escapeHtml(W.welcome.subject) + '">' +
                   '<label for="acwText">Email</label><textarea id="acwText" rows="12">' + escapeHtml(W.welcome.body) + '</textarea>' : '<p class="hint">Loading the email\u2026</p>') +
@@ -7452,9 +7453,12 @@
         });
         back.addEventListener('click', function(){ if(W.step > 0) go(W.step - 1); });
         next.addEventListener('click', function(){ if(W.step === 4){ close(); return; } if(ready()) go(W.step + 1); });
-        function close(){ ov.classList.remove('show'); W.creds = null; document.removeEventListener('keydown', onKey); }
+        function close(){ ov.classList.remove('show'); W.creds = null; document.removeEventListener('keydown', onKey); if(W.result && document.getElementById('snrRefresh')) document.getElementById('snrRefresh').click(); }
         function onKey(e){ if(e.key === 'Escape') close(); }
-        document.getElementById('acwOpenBtn').addEventListener('click', function(){ W = fresh(); ov.classList.add('show'); document.addEventListener('keydown', onKey); render(); });
+        function open(start){ W = Object.assign(fresh(), start || {}); if(W.prop) W.step = 1; ov.classList.add('show'); document.addEventListener('keydown', onKey); render(); }
+        document.getElementById('acwOpenBtn').addEventListener('click', function(){ open(); });
+        // Admin > Site Nrs > Activate: a property not on a channel manager, once Stock Network has set it up (Jean, 2026-10-19).
+        window.openActivateProperty = function(e){ open({ hosted: true, prop: e.resortId ? { resortId: e.resortId, name: e.snName || e.propertyName } : null, findName: e.propertyName || '' }); };
       })();
       document.getElementById('existingPropsHost').addEventListener('click', function(e){
         var open = e.target.getAttribute('data-ex-open'), create = e.target.getAttribute('data-ex-create');
@@ -10650,6 +10654,8 @@
     function say(el, text){ el.textContent = text; el.className = 'status' + (text ? ' show' : ''); }
     function when(iso){ try { return iso ? new Date(iso).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }) : '\u2014'; } catch(e){ return '\u2014'; } }
     function lastSend(e){ var l = e.sendLog || []; return l.length ? l[l.length - 1] : null; }
+    // Not on a channel manager, sent to Stock Network and no hub account yet: Activate with its Avante login.
+    function canActivate(e){ return e.channelManager === 'None yet' && (e.status === 'Sent' || e.status === 'Set up') && !e.snSiteId; }
     function render(){
       var body = $('snrBody');
       if(!entries.length){ body.innerHTML = '<tr><td colspan="7">No Site Nrs given out by the hub yet.</td></tr>'; return; }
@@ -10657,8 +10663,9 @@
         var ls = lastSend(e);
         var sent = ls ? (ls.ok ? when(ls.at) : '<b style="color:#b42318">Failed ' + escapeHtml(when(ls.at)) + '</b>') : '\u2014';
         return '<tr><td><b>' + escapeHtml(e.siteNr) + '</b></td><td>' + escapeHtml(e.propertyName || 'Spare') + '</td><td>' + escapeHtml(e.bbid || '') + '</td>' +
-          '<td>' + escapeHtml(e.status) + (e.goLive ? '<br><small style="color:' + (e.goLive === 'Ready to go live' ? 'var(--teal-dark)' : '#b54708') + ';">' + escapeHtml(e.goLive) + (e.stockFrom ? ' (stock from ' + escapeHtml(when(e.stockFrom)) + ')' : '') + '</small>' : '') + '</td><td>' + sent + '</td><td>' + (e.propertyAffiliate ? 'Yes' + (e.listingId ? ' (' + escapeHtml(e.listingId) + ')' : '') : 'No') + '</td>' +
-          '<td><button type="button" class="btn-outline" data-nr="' + escapeHtml(e.siteNr) + '" style="margin-top:0;">Open</button></td></tr>';
+          '<td>' + escapeHtml(e.status) + (e.needsLogin ? '<br><small style="color:#b54708;">Needs its Avante login: tap Activate</small>' : '') + (e.goLive ? '<br><small style="color:' + (e.goLive === 'Ready to go live' ? 'var(--teal-dark)' : '#b54708') + ';">' + escapeHtml(e.goLive) + (e.stockFrom ? ' (stock from ' + escapeHtml(when(e.stockFrom)) + ')' : '') + '</small>' : '') + '</td><td>' + sent + '</td><td>' + (e.propertyAffiliate ? 'Yes' + (e.listingId ? ' (' + escapeHtml(e.listingId) + ')' : '') : 'No') + '</td>' +
+          '<td><button type="button" class="btn-outline" data-nr="' + escapeHtml(e.siteNr) + '" style="margin-top:0;">Open</button>' +
+          (canActivate(e) ? ' <button type="button" class="primary" data-activate="' + escapeHtml(e.siteNr) + '" style="margin-top:6px;">Activate</button>' : '') + '</td></tr>';
       }).join('');
     }
     function load(){
@@ -10703,7 +10710,11 @@
       if(message) say($('snrEditStatus'), message);
       host.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
-    $('snrBody').addEventListener('click', function(ev){ var b = ev.target.closest('button[data-nr]'); if(b) openEntry(b.getAttribute('data-nr')); });
+    $('snrBody').addEventListener('click', function(ev){
+      var b = ev.target.closest('button[data-nr]'); if(b) openEntry(b.getAttribute('data-nr'));
+      var a = ev.target.closest('button[data-activate]');
+      if(a) window.openActivateProperty(entries.filter(function(x){ return String(x.siteNr) === a.getAttribute('data-activate'); })[0] || {});
+    });
     $('snrRefresh').addEventListener('click', load);
     // The hourly check, run now (netlify/functions/sn-setup-check.mjs runs it every hour).
     $('snrCheck').addEventListener('click', function(){

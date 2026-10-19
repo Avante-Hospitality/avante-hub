@@ -215,6 +215,19 @@ export const CHANNEL_WELCOME_DEFAULT = {
     "Questions? Reply to this email or write to info@avantehospitality.co.za.\nAvante Hospitality",
   ].join("\n\n"),
 };
+// The same pop-up for a property not on a channel manager (Jean, 2026-10-19):
+// a Property Affiliate with its own calendar, rates and booking page.
+export const PROPERTY_WELCOME_DEFAULT = {
+  subject: CHANNEL_WELCOME_DEFAULT.subject,
+  body: [
+    "Hello {contact},",
+    "{property} is now set up with Avante (Avante Site Nr {siteNr}).",
+    "You can now use Avante's hub for your calendar, bookings, guests, your own booking page and promotions with the hook builder.",
+    "**Your hub login**\nAffiliate number: {affiliateNumber}\nOpen {loginLink} and tap **Forgot your password?** to choose your password.",
+    "Your property is already connected: log in and open **Property Affiliate**.",
+    "Questions? Reply to this email or write to info@avantehospitality.co.za.\nAvante Hospitality",
+  ].join("\n\n"),
+};
 const FILL = /\{(property|contact|siteNr|affiliateNumber|loginLink)\}/g;
 // Plain text with the fill-in words filled (for the subject and the editor).
 export function fillWelcome(text, v) {

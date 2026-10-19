@@ -7,7 +7,7 @@ import { sendEmail } from "./lib/send-email.js";
 // SheetJS from its own CDN (the build SheetJS recommends for Deno).
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 import { SITE_REGISTER_STORE, SITE_STATUSES, DEFAULT_SN_SETUP_EMAILS, newEntry, reserveNextSiteNr, reserveSiteNr, getSiteNr, saveSiteNr,
-  listSiteNrs, nextFreeSiteNr, findOpenRequest, requestSheetBase64, sheetFileName, setupEmail, confirmationEmail, welcomeEmail, READY_TO_SEND, CHANNEL_WELCOME_DEFAULT, fillWelcome, welcomeHtml } from "./lib/sn-site-register.js";
+  listSiteNrs, nextFreeSiteNr, findOpenRequest, requestSheetBase64, sheetFileName, setupEmail, confirmationEmail, welcomeEmail, READY_TO_SEND, CHANNEL_WELCOME_DEFAULT, PROPERTY_WELCOME_DEFAULT, fillWelcome, welcomeHtml } from "./lib/sn-site-register.js";
 import { readListingScreenshots } from "./lib/listing-reader.js";
 import { HOOKS_URL, makeHooksTicket } from "./lib/hooks-ticket.js";
 import { propertyTags, unitTag, libPost } from "./lib/photo-library.js";
@@ -1320,7 +1320,10 @@ export default async (request, context) => {
       const waiting = (await listSiteNrs(reg)).filter((e) => e.status === "Sent");
       let found = [];
       if (waiting.length) {
-        try { found = await findSetUps(waiting.map((e) => ({ siteNr: e.siteNr, bbid: e.bbid }))); }
+        // The listing's pin helps match a property found by name (one not on a channel manager).
+        const recs = await Promise.all(waiting.map((e) => (e.listingId ? store.get(e.listingId, { type: "json" }).catch(() => null) : null)));
+        try { found = await findSetUps(waiting.map((e, i) => ({ siteNr: e.siteNr, bbid: e.bbid, name: e.propertyName || (recs[i] && recs[i].propertyName),
+          latitude: recs[i] && recs[i].latitude, longitude: recs[i] && recs[i].longitude }))); }
         catch (e) { return json({ error: "Could not read Stock Network's property list: " + String((e && e.message) || e) }, 502); }
       }
       const origin = new URL(request.url).origin, done = [];
@@ -1335,7 +1338,12 @@ export default async (request, context) => {
           const made = await createPropertyAffiliate({ affId: f.siteId, name: e.propertyName || f.name, email: e.email, phone: e.phone, siteNr: f.siteNr || e.siteNr,
             type: e.channelManager && e.channelManager !== "None yet" ? "channel" : "property", note: "Made when Avante Site Nr " + e.siteNr + " was set up" });
           affId = f.siteId; affNote = made.created ? "affiliate made" : "affiliate already there";
-        } else affNote = "no Site ID from Stock Network yet, so no affiliate";
+        } else {
+          // Stock Network's list has no Site ID: admin pastes the property's Avante
+          // login in Site Nrs > Activate, which gives it (Jean, 2026-10-19).
+          e.needsLogin = true;
+          affNote = "found by " + f.by + "; paste its Avante login in Admin > Site Nrs > Activate to make its hub account and email it";
+        }
         if (e.listingId) {
           const rec = await store.get(e.listingId, { type: "json" }).catch(() => null);
           if (rec) {
@@ -1349,18 +1357,18 @@ export default async (request, context) => {
         }
         if (affId && !e.welcomeSentAt && emailList(e.email).length) {
           const w = welcomeEmail(e, affId, origin + "/login.html?aff=" + encodeURIComponent(affId));
-          const ok = await sendEmail({ to: emailList(e.email, 5), subject: w.subject, html: w.html }).catch(() => false);
-          if (ok) e.welcomeSentAt = now;
+          const sent = await sendEmail({ to: emailList(e.email, 5), subject: w.subject, html: w.html }).catch(() => ({ ok: false }));
+          if (sent.ok) e.welcomeSentAt = now;
         }
         await saveSiteNr(reg, e);
-        done.push({ siteNr: e.siteNr, name: e.propertyName, resortId: f.resortId, affId, affNote, welcomed: !!e.welcomeSentAt, listingId: e.listingId || "" });
+        done.push({ siteNr: e.siteNr, name: e.propertyName, resortId: f.resortId, affId, affNote, welcomed: !!e.welcomeSentAt, needsLogin: !!e.needsLogin, listingId: e.listingId || "" });
       }
       const notifyTo = done.length ? await getNotificationEmail() : "";
       if (notifyTo) {
         context.waitUntil(sendNotificationEmail(notifyTo, "Set up on Stock Network: " + done.map((d) => d.name).join(", ").slice(0, 150),
           "<p>The hourly check found these properties on Stock Network:</p><ul>" + done.map((d) => "<li><b>" + escapeHtml(d.name) + "</b> — Site Nr " + escapeHtml(d.siteNr) +
             ", ResortID " + escapeHtml(d.resortId) + (d.affId ? ", affiliate " + escapeHtml(d.affId) : "") + " (" + escapeHtml(d.affNote) + ")" +
-            (d.listingId ? ", listing " + escapeHtml(d.listingId) + " linked" : "") + (d.welcomed ? ", hub login emailed" : ", hub login NOT emailed") + "</li>").join("") +
+            (d.listingId ? ", listing " + escapeHtml(d.listingId) + " linked" : "") + (d.welcomed ? ", hub login emailed" : d.needsLogin ? "" : ", hub login NOT emailed") + "</li>").join("") +
           "</ul><p>See Admin &gt; Site Nrs.</p>"));
       }
       const ready = await checkStock(reg, origin);
@@ -1481,16 +1489,27 @@ export default async (request, context) => {
       const creds = { username: clean(body.username, 100), clientID: clean(body.clientID, 100), clientSecret: clean(body.clientSecret, 100) };
       const rid = clean(body.resortId, 64).toLowerCase();
       const listings = async () => (await Promise.all((await store.list()).blobs.map((b) => store.get(b.key, { type: "json" }).catch(() => null)))).filter(Boolean);
-      const listingOf = async () => rid ? (await listings()).find((r) => String(r.resortId || "").toLowerCase() === rid) || null : null;
+      // Also a property not on a channel manager (Jean, 2026-10-19): its login's
+      // Site Nr is the one Avante gave it, so its Site Nrs entry finds its listing
+      // even before the hourly check has found it on Stock Network.
+      const regEntryOf = async (nr) => (nr ? await getSiteNr(siteRegister(), nr).catch(() => null) : null);
+      const listingOf = async (entry) => (rid && (await listings()).find((r) => String(r.resortId || "").toLowerCase() === rid)) ||
+        (entry && entry.listingId ? await store.get(entry.listingId, { type: "json" }).catch(() => null) : null) || null;
+      const hostedOf = (entry, l) => !!((entry && entry.channelManager === "None yet") || (l && l.hostedSetup));
       const affDir = getStore({ name: "affiliates-directory", consistency: "strong" });
 
       if (action === "channelLogin") {
         if (!creds.username || !creds.clientID || !creds.clientSecret) return json({ error: "Paste all three: username, client ID and client secret." }, 400);
         let tok;
         try { tok = await new SNClient(creds).login(); } catch (e) { return json({ error: String((e && e.message) || "The login wasn't accepted.") }, 400); }
-        const l = await listingOf(), a = tok.siteId ? await affDir.get(tok.siteId, { type: "json" }).catch(() => null) : null;
-        return json({ ok: true, siteNr: String(tok.site || ""), siteId: String(tok.siteId || ""), listingId: l ? l.listingId : "", listingSiteId: l ? l.siteId || "" : "",
-          affExists: !!a, affTypes: a ? a.types || [] : [], email: (l && (l.email || l.ownerEmail)) || (a && a.email) || "", phone: (l && l.telephone) || (a && a.phone) || "", contactName: (l && l.contactName) || "" });
+        const entry = await regEntryOf(tok.site);
+        // The login must be the property's own (a pasted login of another property would link the wrong one).
+        if (entry && entry.resortId && rid && String(entry.resortId).toLowerCase() !== rid)
+          return json({ error: "This login is for Avante Site Nr " + entry.siteNr + " (" + (entry.propertyName || "another property") + "), not the property you picked." }, 400);
+        const l = await listingOf(entry), a = tok.siteId ? await affDir.get(tok.siteId, { type: "json" }).catch(() => null) : null;
+        return json({ ok: true, siteNr: String(tok.site || ""), siteId: String(tok.siteId || ""), listingId: l ? l.listingId : "", listingSiteId: l ? l.siteId || "" : "", hosted: hostedOf(entry, l),
+          affExists: !!a, affTypes: a ? a.types || [] : [], email: (l && (l.email || l.contactEmail || l.ownerEmail)) || (entry && entry.email) || (a && a.email) || "",
+          phone: (l && l.telephone) || (entry && entry.phone) || (a && a.phone) || "", contactName: (l && l.contactName) || (entry && entry.contactName) || "" });
       }
 
       if (action === "channelActivate") {
@@ -1498,9 +1517,10 @@ export default async (request, context) => {
         const email = clean(body.email, 600), phone = clean(body.phone, 200), contactName = clean(body.contactName, 120);
         if (!rid || !siteId || !siteNr || !name) return json({ error: "Go back to step 1 and 2: the property and its Avante login are needed." }, 400);
         if (!emailList(email).length || badEmails(email).length) return json({ error: "Type the property's email address (several: separate with commas)." }, 400);
-        const done = [], now = new Date().toISOString();
+        const done = [], now = new Date().toISOString(), reg = siteRegister(), entry = await regEntryOf(siteNr);
         // 1. Its listing: the one it has, or a new one from the hub's lists.
-        let record = await listingOf();
+        let record = await listingOf(entry);
+        const hosted = hostedOf(entry, record);
         if (!record) {
           const cur = await getStore({ name: "resort-list", consistency: "strong" }).get("current", { type: "json" }).catch(() => null);
           const row = ((cur && cur.resorts) || []).find((r) => String(r.resortId || "").toLowerCase() === rid) || {};
@@ -1509,14 +1529,18 @@ export default async (request, context) => {
           done.push("Listing " + record.listingId + " made");
         } else done.push("Listing " + record.listingId + " linked");
         const before = { siteNr: record.siteNr || "", siteId: record.siteId || "", email: record.email || "", telephone: record.telephone || "" };
-        Object.assign(record, { siteNr, siteId, affId: siteId, channelProperty: "Y", ratesFromChannel: "Y", commissionPct: record.commissionPct || "4.95", existingOnSN: "Y",
+        Object.assign(record, { siteNr, siteId, affId: siteId, resortId: record.resortId || rid, existingOnSN: "Y",
           email, telephone: phone || record.telephone || "", contactName: contactName || record.contactName || "", contactEmail: record.contactEmail || email, dateUpdated: now });
+        // A channel property: 4.95% + VAT, rates from its channel manager. One not on
+        // a channel manager keeps its own rates in the hub (a Property Affiliate).
+        if (!hosted) Object.assign(record, { channelProperty: "Y", ratesFromChannel: "Y", commissionPct: record.commissionPct || "4.95" });
         if (bbid && !record.bbid) record.bbid = bbid;
-        // 2. Its Channel Property Affiliate (number = Site ID).
-        const made = await createPropertyAffiliate({ affId: siteId, name, email, phone, siteNr, type: "channel", note: "Made by Activate a channel property" });
-        if (made.created) { record.affiliateCreatedAt = now; done.push("Affiliate " + siteId + " made (Channel Property)"); }
-        else done.push("Affiliate " + siteId + " already there" + ((made.aff.types || []).includes("channel") ? "" : " (not ticked Channel Property: check it in Affiliates)"));
-        addHistory(record, "admin", "Activated as a channel property (Site Nr " + siteNr + ")", before);
+        // 2. Its affiliate (number = Site ID): Channel Property Affiliate, or Property Affiliate.
+        const type = hosted ? "property" : "channel", typeName = hosted ? "Property" : "Channel Property";
+        const made = await createPropertyAffiliate({ affId: siteId, name, email, phone, siteNr, type, note: "Made by Activate (" + typeName + ")" });
+        if (made.created) { record.affiliateCreatedAt = now; done.push("Affiliate " + siteId + " made (" + typeName + ")"); }
+        else done.push("Affiliate " + siteId + " already there" + ((made.aff.types || []).includes(type) ? "" : " (not ticked " + typeName + ": check it in Affiliates)"));
+        addHistory(record, "admin", "Activated as a " + (hosted ? "property" : "channel property") + " (Site Nr " + siteNr + ")", before);
         await store.setJSON(record.listingId, record);
         context.waitUntil(retagListingPhotos(record).catch(() => null));
         // 3. Connect it in Property Affiliate with its Avante login.
@@ -1528,7 +1552,15 @@ export default async (request, context) => {
           connected = !!(d.ok && d.property); if (!connected) connectError = d.error || "not connected";
         } catch (e) { connectError = String((e && e.message) || e); }
         done.push(connected ? "Connected in Property Affiliate" : "NOT connected: " + connectError);
-        return json({ ok: true, listingId: record.listingId, affId: siteId, connected, connectError, done });
+        // 4. Its Site Nrs entry: set up, with its Site ID (the hourly check can't get that).
+        if (entry) {
+          Object.assign(entry, { status: "Set up", setUpAt: entry.setUpAt || now, resortId: entry.resortId || rid, snSiteId: siteId, snName: entry.snName || name,
+            listingId: entry.listingId || record.listingId, needsLogin: false, updatedAt: now });
+          if (hosted && !entry.goLive) entry.goLive = GO_LIVE.waiting;
+          await saveSiteNr(reg, entry);
+          done.push("Site Nr " + siteNr + " marked Set up");
+        }
+        return json({ ok: true, listingId: record.listingId, affId: siteId, hosted, connected, connectError, done });
       }
 
       // The welcome email's wording, kept in the property settings (Jean, 2026-10-18).
@@ -1547,7 +1579,8 @@ export default async (request, context) => {
       const a = affId ? await affDir.get(affId, { type: "json" }).catch(() => null) : null;
       if (!a) return json({ error: "The affiliate wasn't found. Do step 4 first." }, 404);
       const vars = { property: a.name, contact: clean(body.contactName, 120), siteNr: a.siteNr, affiliateNumber: affId, loginLink: new URL(request.url).origin + "/login.html?aff=" + encodeURIComponent(affId) };
-      const t = await template();
+      // A Property Affiliate (not on a channel manager) gets the property wording.
+      const t = (a.types || []).includes("channel") ? await template() : PROPERTY_WELCOME_DEFAULT;
       // Step 5 shows the email filled in, so admin can change it for this property.
       if (action === "channelWelcomeText") return json({ ok: true, subject: fillWelcome(t.subject, vars), body: fillWelcome(t.body, vars) });
       // channelWelcome: the text as changed in step 5 (the login link is already in it), or the saved wording.
@@ -1556,7 +1589,10 @@ export default async (request, context) => {
       const subject = clean(body.subject, 200) || fillWelcome(t.subject, vars);
       const text = typeof body.body === "string" && body.body.trim() ? body.body.slice(0, 8000) : t.body;
       const sent = await sendEmail({ to: emailList(to, 5), subject, html: welcomeHtml(text, vars) });
-      return sent.ok ? json({ ok: true }) : json({ error: "Not sent: " + (sent.error || "unknown reason") }, 502);
+      if (!sent.ok) return json({ error: "Not sent: " + (sent.error || "unknown reason") }, 502);
+      const entry = await regEntryOf(a.siteNr);
+      if (entry && !entry.welcomeSentAt) { entry.welcomeSentAt = new Date().toISOString(); await saveSiteNr(siteRegister(), entry); }
+      return json({ ok: true });
     }
 
     if (action === "createAffiliateFromListing") {

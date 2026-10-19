@@ -1781,7 +1781,10 @@
     setCoordsVerified(L.coordsVerified === 'Y', L.coordsVerifiedPlace);
     lockLocation(editAsAdmin);
     setTreePlaced(L.treePlaceText || '');
-    if(!editAsAdmin){
+    // A property still completing its first listing finds and checks its own
+    // location (Jean, 2026-10-19); after that only Avante admin changes it.
+    if(WAITING_SETUP && !editAsAdmin) $('placeHint').textContent = 'Find your property with Google, then check the coordinates. The place names fill in from the Avante hub location tree.';
+    if(!editAsAdmin && !WAITING_SETUP){
       ['pLat','pLng','pAddress'].forEach(function(id){ $(id).readOnly = true; });
       $('findGoogleBtn').style.display = 'none'; $('verifyBtn').style.display = 'none';
       $('candList').innerHTML = '<p class="note info">The location is set by Avante from the hub location tree. To change it, contact Avante Travel.</p>';
