@@ -30,5 +30,6 @@ Shared files: `how-to.css` (look), `how-to.js` (contents list + search), `how-to
 (the ❓ How to buttons on hub and admin panels).
 
 ## Other standing rules
+- Bundle uploads (Jean, 2026-10-19): every push to main costs Netlify credits (about 15 per deploy). Collect changes and upload/deploy together, at most once or twice a day — still only after Jean says yes.
 - Ask Jean before uploading to GitHub or deploying (push / merge to main deploys via Netlify).
 - Claude commits as Claude (user.name Claude, user.email noreply@anthropic.com) with Jean as co-author: "Co-Authored-By: Jean <jeanl1967@gmail.com>" (Jean, 2026-10-17).
