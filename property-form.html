@@ -151,7 +151,10 @@
   .gphoto div{ padding:6px; display:flex; flex-direction:column; gap:5px; }
   .checklist{ list-style:none; padding:0; margin:0; font-size:14px; }
   .checklist li{ display:flex; gap:10px; padding:4px 0; align-items:baseline; }
-  .nav{ display:flex; justify-content:space-between; gap:10px; margin:6px 0 24px; }
+  .nav{ display:flex; justify-content:space-between; align-items:center; gap:10px; margin:6px 0 24px; }
+  /* Back and Next always in reach, like a pop-up, also on a phone (Jean, 2026-10-19). */
+  #stepNav{ position:sticky; bottom:0; z-index:15; background:var(--bg); padding:10px 0; margin-bottom:12px; box-shadow:0 -6px 12px -10px rgba(0,0,0,.25); }
+  .saved-note{ font-size:12.5px; color:var(--muted); text-align:center; flex:1; }
   .modal-overlay{ display:none; position:fixed; inset:0; background:rgba(19,36,51,.6); align-items:center; justify-content:center; z-index:999; padding:20px; }
   .modal-overlay.show{ display:flex; }
   .modal-box{ background:#fff; border-radius:14px; max-width:640px; width:100%; max-height:82vh; display:flex; flex-direction:column; }
@@ -540,8 +543,9 @@
     </div>
   </section>
 
-  <div class="nav">
+  <div class="nav" id="stepNav">
     <button type="button" class="btn-secondary" id="backBtn">Back</button>
+    <span class="saved-note" id="savedNote" aria-live="polite"></span>
     <button type="button" class="btn-primary" id="nextBtn">Next</button>
   </div>
   <div class="nav" style="justify-content:center; margin-top:-12px"><button type="button" class="btn-link" id="closeBtn2">Close the form</button></div>
@@ -648,7 +652,19 @@
   $('closeBtn').addEventListener('click', closeForm);
   $('closeBtn2').addEventListener('click', closeForm);
   $('backBtn').addEventListener('click', function(){ goStep(stepIds[stepNo(current) - 2]); });
-  $('nextBtn').addEventListener('click', function(){ goStep(stepIds[stepNo(current)]); });
+  $('nextBtn').addEventListener('click', function(){ var to = stepIds[stepNo(current)]; draftSave(stepNo(to)); goStep(to); });
+  // A listing still being completed saves on every Next (Jean, 2026-10-19),
+  // so nothing is lost if the property closes the page; its link opens on
+  // the step it got to.
+  function draftSave(nextPos){
+    if(!WAITING_SETUP || !EDIT_ID) return;
+    var payload = buildPayload(); payload.action = 'update'; payload.listingId = EDIT_ID; payload.key = EDIT_KEY; payload.draft = true; payload.lastStep = nextPos;
+    $('savedNote').textContent = 'Saving\u2026';
+    api(payload).then(function(res){
+      if(res && res.ok){ unsaved = false; $('savedNote').textContent = 'Saved \u2714 ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
+      else $('savedNote').textContent = 'Not saved: ' + ((res && (res.error || res.message)) || 'try again');
+    });
+  }
 
   // ---------- Submitted-by toggle ----------
   Array.prototype.forEach.call(document.getElementsByName('submittedBy'), function(r){
@@ -1750,12 +1766,13 @@
       $('setupNote').style.display = WAITING_SETUP ? '' : 'none';
       fillFromListing(res.listing);
       document.querySelector('header p').textContent = (res.listing.propertyName || '') + ' — status: ' + (res.listing.status || 'Requested') + '. Change anything in any step, then tap Save changes in step 8. A dated record of every change is kept.' + (editAsAdmin ? ' (Opened from Admin.)' : '');
+      if(WAITING_SETUP && !editAsAdmin) document.querySelector('header p').textContent = (res.listing.propertyName || '') + ': complete your listing step by step. It saves every time you tap Next, so you can stop and carry on later with the link in your email.';
       $('sigCard').style.display = 'none';
       $('editSaveCard').style.display = '';
       renderChannelChips();
       // A property already on Stock Network opens on the Ready check, which
       // lists only what is still to do (Jean: very simple and easy).
-      goStep(editAsAdmin ? 1 : (res.listing.existingOnSN === 'Y' ? 8 : (RATES_FROM_CHANNEL ? 1 : 6)));
+      goStep(WAITING_SETUP && !editAsAdmin ? stepIds[Math.min(steps.length, Math.max(1, +res.listing.lastStep || 1)) - 1] : editAsAdmin ? 1 : (res.listing.existingOnSN === 'Y' ? 8 : (RATES_FROM_CHANNEL ? 1 : 6)));
     });
   }
   // The listing's photos into the shared photo library, filed under the

@@ -327,6 +327,11 @@ document.addEventListener('DOMContentLoaded', function () {
                     found.textContent = note;
                     found.classList.remove('hidden');
                 }
+                // Not on a platform: straight on to the step-by-step listing (Jean, 2026-10-19).
+                if (data.continueLink) {
+                    if (found) { found.textContent = 'Thank you! Let\'s complete your listing now, step by step. It saves every time you tap Next, and the link is in your email too.'; found.classList.remove('hidden'); }
+                    setTimeout(function () { location.href = data.continueLink; }, 2500);
+                }
                 form.style.display = 'none';
                 successMessage.classList.remove('hidden');
                 setTimeout(() => successMessage.classList.remove('opacity-0'), 10);

@@ -429,7 +429,8 @@ function addHistory(record, by, action, before) {
   const entry = { at: new Date().toISOString(), by: by, action: action };
   if (before) {
     const changed = {};
-    Object.keys(before).forEach((k) => {
+    // Fields that are new on the record count too (a field the listing didn't have yet).
+    [...new Set(Object.keys(before).concat(Object.keys(record)))].forEach((k) => {
       if (NO_HISTORY_KEYS.indexOf(k) > -1) return;
       if (JSON.stringify(before[k]) === JSON.stringify(record[k])) return;
       let old = before[k];
@@ -898,8 +899,11 @@ export default async (request, context) => {
       // A channel property's commission (4.95% + VAT on hub bookings) is set by
       // Avante, not by the form's default.
       if (before.channelProperty === "Y") record.commissionPct = before.commissionPct || "4.95";
-      if (!isAdmin) {
-        record.siteNr = before.siteNr || "";   // the Site Nr is allocated by Avante
+      // A property still completing its first listing (not on a platform, Jean
+      // 2026-10-19) sets its own location; after that it's locked.
+      const ownsLocation = isAdmin || before.hostedSetup === "completing";
+      if (!isAdmin) record.siteNr = before.siteNr || "";   // the Site Nr is allocated by Avante
+      if (!ownsLocation) {
         // Location is locked once submitted: coordinates, address and the
         // place names stay as Avante has them (the hub location tree is the master).
         ["latitude", "longitude", "streetAddress", "coordsVerified", "coordsVerifiedPlace"].concat(LOCATION_FIELDS)
@@ -910,7 +914,12 @@ export default async (request, context) => {
       if (incoming.coordsVerified === "Y" && (before.latitude !== record.latitude || before.longitude !== record.longitude || before.coordsVerified !== "Y")) {
         record.coordsVerifiedAt = new Date().toISOString();
       }
-      if (!record.propertyName || !record.ownerFullName) return json({ error: "Property name and owner name can't be empty." }, 400);
+      // A step-by-step save (draft: the form saves on every Next, Jean 2026-10-19)
+      // may come before the owner's name is typed.
+      const draft = body.draft === true;
+      // Where the property got to, so its link opens there next time.
+      if (Number.isInteger(body.lastStep) && body.lastStep > 0 && body.lastStep < 20) record.lastStep = body.lastStep;
+      if (!record.propertyName || (!record.ownerFullName && !draft)) return json({ error: "Property name and owner name can't be empty." }, 400);
       const emailErr1 = emailFieldError(record);
       if (emailErr1) return json({ error: emailErr1 }, 400);
       record.dateUpdated = new Date().toISOString();
@@ -919,7 +928,8 @@ export default async (request, context) => {
       await store.setJSON(listingId, record);
       await forgetEstates();
 
-      if (!isAdmin) {
+      // Admin hears about an owner's changes, not about every step of a listing still being completed.
+      if (!isAdmin && !(draft && before.hostedSetup === "completing")) {
         const notifyTo = await getNotificationEmail();
         if (notifyTo) {
           const what = Object.keys(record.history[record.history.length - 1].changed || {}).join(", ");
@@ -1215,7 +1225,10 @@ export default async (request, context) => {
             : record ? "<p>Listing <b>" + escapeHtml(record.listingId) + "</b> was made, status Requested. Check it in Admin &gt; Property Listings, then tap <b>Email the edit link</b>.</p>"
             : "<p>No listing was made (the property did not ask to be a property affiliate).</p>")));
       }
-      return json({ ok: true, found: !!row, name: row ? row.name : "", already: !!already, siteNr: site ? site.siteNr : null, repeat, listing: !!(record || hostedPrev || (site && site.listingId)), linkSent });
+      // A new listing (not on a platform) opens straight away in the step-by-step
+      // form (Jean, 2026-10-19). Asked before: only by the emailed link.
+      const continueLink = hosted && record ? editLinkEmail(record, new URL(request.url).origin).link : undefined;
+      return json({ ok: true, found: !!row, name: row ? row.name : "", already: !!already, siteNr: site ? site.siteNr : null, repeat, listing: !!(record || hostedPrev || (site && site.listingId)), linkSent, continueLink });
     }
 
     // ---------- Site Nr register (Admin > Site Nrs, Jean 2026-10-15) ----------
