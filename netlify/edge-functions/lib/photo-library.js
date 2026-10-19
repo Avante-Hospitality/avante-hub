@@ -29,6 +29,18 @@ async function timed(url, init, ms) {
 async function bearer() { return "Bearer " + (await makeHooksTicket({ sub: "admin", name: "Avante hub", role: "admin" })); }
 const LIB_API = () => new URL("/api/library", HOOKS_URL).href;
 
+// A Google photo for a front store (Jean, 2026-10-19): only one Avante's library
+// has, read through the hook builder, which keeps each Google photo after the
+// first time, so Google is paid once per photo. -> { data, type } or null.
+export async function libGooglePhoto(ref) {
+  if (!GREF.test(ref || "")) return null;
+  const idx = await libIndex();
+  if (!(idx.items || []).some((x) => x.source === "google" && x.ref === ref)) return null; // not one of Avante's
+  const r = await timed(new URL("/api/places?photo=" + encodeURIComponent(ref), HOOKS_URL).href, { headers: { authorization: await bearer() } }, 12000).catch(() => null);
+  const type = (r && r.headers.get("content-type")) || "";
+  return r && r.ok && type.startsWith("image/") ? { data: await r.arrayBuffer(), type } : null;
+}
+
 // The library's index, kept a few minutes per edge isolate.
 let libCache = null;
 export function forgetIndex() { libCache = null; }

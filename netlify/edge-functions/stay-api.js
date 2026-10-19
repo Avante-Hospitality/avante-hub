@@ -11,7 +11,7 @@ import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
 import { emailList } from "./lib/emails.js";
 import { createCore, PAError } from "./lib/pa-core.js";
 import { stayPayload } from "./lib/stay-payload.js";
-import { GREF, LIBID, libImage } from "./lib/photo-library.js";
+import { GREF, LIBID, libImage, libGooglePhoto } from "./lib/photo-library.js";
 
 // Reading is open to any site; booking only from our own pages (checked below).
 const cors = { "access-control-allow-origin": "*", "access-control-allow-methods": "GET", "access-control-allow-headers": "content-type" };
@@ -50,11 +50,10 @@ export default async (request, context) => {
       const gref = url.searchParams.get("gphoto"), lid = url.searchParams.get("libphoto");
       if (gref) {
         if (!GREF.test(gref)) return new Response("Bad photo", { status: 400, headers: cors });
-        const key = env("GOOGLE_PLACES_API_KEY"); if (!key) return new Response("Not set up", { status: 404, headers: cors });
-        const r = await fetch("https://places.googleapis.com/v1/" + gref + "/media?maxWidthPx=1200&key=" + encodeURIComponent(key)).catch(() => null);
-        const type = (r && r.headers.get("content-type")) || "";
-        if (!r || !r.ok || !type.startsWith("image/")) return new Response("Not found", { status: 404, headers: cors });
-        return new Response(await r.arrayBuffer(), { headers: { "content-type": type, "cache-control": "public, max-age=86400", ...cors } });
+        // Only Avante's own Google photos, from the library's saved copy (Google paid once).
+        const img = await libGooglePhoto(gref).catch(() => null);
+        if (!img) return new Response("Not found", { status: 404, headers: cors });
+        return new Response(img.data, { headers: { "content-type": img.type, "cache-control": "public, max-age=604800", ...cors } });
       }
       if (lid) {
         if (!LIBID.test(lid)) return new Response("Bad photo", { status: 400, headers: cors });
