@@ -98,6 +98,25 @@ export async function googlePhotos(a, opts) {
   return { ok: true, place, photos: out };
 }
 
+// Admin picks an activity's default photo from the library (Jean, 2026-10-20).
+export async function setActMain(id, libId) {
+  if (!LIBID.test(String(libId || ""))) return { ok: false, error: "Bad photo" };
+  const idx = await libIndex(); if (!idx.items.some((it) => it.id === libId)) return { ok: false, error: "That photo is no longer in the library." };
+  const r = await libPost({ op: "setMain", key: "act:" + String(id).toLowerCase(), id: libId });
+  forgetIndex();
+  return r && r.ok ? { ok: true } : { ok: false, error: (r && r.error) || "The photo library didn't answer." };
+}
+// The photo each activity shows now: admin's main photo, else its map photo, else the one found by itself.
+export async function defaultActPhotos(acts) {
+  const [mains, memo] = await Promise.all([mainActPhotos().catch(() => ({})), liveRemembered().catch(() => ({}))]), out = {};
+  for (const a of acts || []) {
+    const keys = Array.isArray(a.photoKeys) ? a.photoKeys : a.photoKey ? [a.photoKey] : [];
+    const main = mains[String(a.id || "").toLowerCase()], base = keys[0] ? "/api/property-file?key=" + encodeURIComponent(keys[0]) : "";
+    out[a.id] = { url: main || base || memo[a.id] || "", from: main ? "main" : base ? "map" : memo[a.id] ? "auto" : "" };
+  }
+  return out;
+}
+
 // The remembered photo per activity id: { id: url }.
 const memo = () => getStore({ name: "act-photos", consistency: "strong" });
 export async function rememberedPhotos() { return (await memo().get("map", { type: "json" }).catch(() => null)) || {}; }
