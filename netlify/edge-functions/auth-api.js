@@ -261,7 +261,11 @@ export default async (request, context) => {
         const sl = fs && (fs.slug || String(p.resortName || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""));
         // A property affiliate is one even before the front store is switched on (Jean, 2026-10-19):
         // the hook builder then knows the property, and asks for the front store before building Book links.
-        return p && p.resortId ? [{ r: p.resortId, s: fs && fs.on && sl ? sl : "" }] : [];
+        // c: a Channel Property Affiliate (not also a Property Affiliate) — its calendar is in NightsBridge,
+        // so its hooks' Book links go to Stock Network's booking page (Jean, 2026-10-20).
+        const dr = await directoryStore.get(a, { type: "json" }).catch(() => null), types = (dr && Array.isArray(dr.types)) ? dr.types : [];
+        const c = types.indexOf("channel") > -1 && types.indexOf("property") === -1 ? 1 : 0;
+        return p && p.resortId ? [{ r: p.resortId, s: fs && fs.on && sl ? sl : "", c }] : [];
       } catch (e) { return []; }
     }
 
