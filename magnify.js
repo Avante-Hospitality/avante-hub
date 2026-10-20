@@ -1,5 +1,6 @@
-/* Magnifier for the hub (Jean, 2026-10-20): tap 🔍, then tap any small text
-   (or picture) and it opens big in a popup. Tap 🔍 again to switch it off.
+/* Magnifier for the hub (Jean, 2026-10-20): tap Aa, then tap any small text
+   (or picture) and it opens big in a popup. Tap Aa again to switch it off.
+   Its button says "Aa" so it isn't mistaken for the search (magnifying glass, site-search.js).
    On every hub and admin page: <script src="magnify.js" defer></script> */
 (function () {
   'use strict';
@@ -7,7 +8,7 @@
   try { on = localStorage.getItem(KEY) === 'on'; } catch (e) {}
   var css = document.createElement('style');
   css.textContent =
-    '.mag-btn{position:fixed;left:14px;bottom:14px;z-index:9998;width:52px;height:52px;border-radius:50%;border:2px solid #0DCDC2;background:#fff;color:#0e2f44;font-size:24px;line-height:1;box-shadow:0 4px 14px rgba(14,47,68,.25);cursor:pointer}' +
+    '.mag-btn{position:fixed;left:14px;bottom:14px;z-index:9998;width:52px;height:52px;border-radius:50%;border:2px solid #0DCDC2;background:#fff;color:#0e2f44;font:800 20px/1 Montserrat,sans-serif;box-shadow:0 4px 14px rgba(14,47,68,.25);cursor:pointer}' +
     '.mag-btn[aria-pressed="true"]{background:#0DCDC2;color:#fff}' +
     'body.mag-on,body.mag-on *{cursor:zoom-in!important}' +
     'body.mag-on .mag-btn{cursor:pointer!important}' +
@@ -19,7 +20,7 @@
   document.head.appendChild(css);
 
   var btn = document.createElement('button');
-  btn.type = 'button'; btn.className = 'mag-btn'; btn.textContent = '\uD83D\uDD0D';
+  btn.type = 'button'; btn.className = 'mag-btn'; btn.textContent = 'Aa';
   btn.title = 'Magnifier: tap, then tap any small text to see it big';
   btn.setAttribute('aria-label', 'Magnifier');
   var tip = null;
@@ -27,7 +28,7 @@
     on = v; btn.setAttribute('aria-pressed', String(on)); document.body.classList.toggle('mag-on', on);
     try { localStorage.setItem(KEY, on ? 'on' : 'off'); } catch (e) {}
     if (tip) { tip.remove(); tip = null; }
-    if (on) { tip = document.createElement('div'); tip.className = 'mag-tip'; tip.textContent = 'Tap any text to see it big. Tap \uD83D\uDD0D to stop.'; document.body.appendChild(tip); setTimeout(function () { if (tip) { tip.remove(); tip = null; } }, 4000); }
+    if (on) { tip = document.createElement('div'); tip.className = 'mag-tip'; tip.textContent = 'Tap any text to see it big. Tap Aa to stop.'; document.body.appendChild(tip); setTimeout(function () { if (tip) { tip.remove(); tip = null; } }, 4000); }
   }
   btn.addEventListener('click', function (e) { e.stopPropagation(); set(!on); });
 
