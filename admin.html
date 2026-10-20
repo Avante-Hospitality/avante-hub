@@ -2082,7 +2082,7 @@
         <div class="btn-row" style="margin-top:0; align-items:center;">
           <button class="btn-outline" id="coordFileBtn">Choose StockNetwork export (.csv)…</button>
           <input type="file" id="coordFileInput" accept=".csv,text/csv" style="display:none;">
-          <select id="coordScopeSelect" style="width:auto; max-width:360px;">
+          <select id="coordScopeSelect" style="width:auto; max-width:min(360px, 100%);">
             <option value="first">Fix-first only: missing, 0,0, wrong country, or many on one point</option>
             <option value="all">Everything with rounded or missing coordinates (uses many more lookups)</option>
           </select>
