@@ -9,7 +9,7 @@
 //   GET            → { ok, activities, done, found, notFound, toDo }
 //   GET ?report=1  → the activities where nothing was found (for admin)
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
-import { rememberedPhotos, fillActPhotos } from "./lib/act-photos.js";
+import { liveRemembered, fillActPhotos } from "./lib/act-photos.js";
 
 const json = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { "content-type": "application/json", "cache-control": "no-store", "access-control-allow-origin": "*" } });
 const SEARCHES_PER_RUN = 12;
@@ -19,7 +19,7 @@ const mapPhoto = (a) => { const k = (Array.isArray(a.photoKeys) && a.photoKeys[0
 async function state() {
   const acts = ((await getStore({ name: "map-activities", consistency: "strong" }).get("all", { type: "json" }).catch(() => null)) || [])
     .filter((a) => a && a.id && a.name && a.visible !== false);
-  return { acts, memo: await rememberedPhotos().catch(() => ({})) };
+  return { acts, memo: await liveRemembered().catch(() => ({})) };
 }
 
 export default async (request) => {

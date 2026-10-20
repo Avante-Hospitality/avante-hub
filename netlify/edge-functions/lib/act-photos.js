@@ -62,8 +62,9 @@ export async function libraryPhotos(a) {
   const idx = await libIndex(), out = [], seen = new Set();
   const add = (it) => { const u = it && itemUrl(it); if (u && !seen.has(u)) { seen.add(u); out.push({ url: u, credit: it.credit || "", source: it.source || "" }); } };
   if (a.id) idx.items.filter((it) => (it.tags || []).some((t) => t.key === "act:" + a.id)).sort((x, y) => (x.source === "google") - (y.source === "google")).forEach(add);
+  // An earlier search's photos — only those still in the library (the photo link only serves library photos).
   const g = idx.gq[actQuery(a)];
-  if (g && Array.isArray(g.refs)) for (const ref of g.refs) add(idx.items.find((it) => it.src === "google:" + ref) || (GREF.test(ref) ? { source: "google", ref } : null));
+  if (g && Array.isArray(g.refs)) for (const ref of g.refs) add(idx.items.find((it) => it.src === "google:" + ref));
   return out;
 }
 
@@ -100,18 +101,35 @@ export async function googlePhotos(a, opts) {
 // The remembered photo per activity id: { id: url }.
 const memo = () => getStore({ name: "act-photos", consistency: "strong" });
 export async function rememberedPhotos() { return (await memo().get("map", { type: "json" }).catch(() => null)) || {}; }
+// A remembered Google photo that is no longer in the library can't be shown
+// (/api/stay?gphoto= only serves the library's own) — Jean, 2026-10-20: most
+// of The Dunes' things to do lost their photo this way. Those count as
+// "not looked for yet", so they are found again (library first, then Google).
+export async function liveRemembered() {
+  const [map, idx] = await Promise.all([rememberedPhotos(), libIndex()]);
+  if (!idx.items.length) return map; // library not reachable: keep what we have
+  const refs = new Set(idx.items.filter((it) => it.source === "google" && it.ref).map((it) => it.ref)), out = {};
+  for (const [id, u] of Object.entries(map)) {
+    const m = /[?&]gphoto=([^&]+)/.exec(u || "");
+    if (m && !refs.has(decodeURIComponent(m[1]))) continue; // gone from the library: look again
+    out[id] = u;
+  }
+  return out;
+}
 // Finds (library first, then Google) and remembers a photo for each activity that has none yet.
 export async function fillActPhotos(acts, max) {
   const todo = (acts || []).filter((a) => a && a.id).slice(0, max || 10);
   if (!todo.length) return {};
   const found = {};
-  for (let i = 0; i < todo.length; i += 3) {
-    await Promise.all(todo.slice(i, i + 3).map(async (a) => {
-      const lib = await libraryPhotos(a);
-      if (lib.length) { found[a.id] = lib[0].url; return; }
-      const g = await googlePhotos(a, { limit: 3 });
-      if (g.ok && g.photos.length) found[a.id] = g.photos[0].url; else found[a.id] = ""; // "" = looked, nothing found
-    }));
+  // One activity at a time: the library keeps one list, and saves made at the
+  // same moment could overwrite each other (that lost photos before).
+  for (const a of todo) {
+    const lib = await libraryPhotos(a);
+    if (lib.length) { found[a.id] = lib[0].url; continue; }
+    const g = await googlePhotos(a, { limit: 3 });
+    if (g.ok && g.photos.length) found[a.id] = g.photos[0].url;
+    else if (g.error && /didn't respond|answered/.test(g.error)) continue; // Google hiccup: try again next time
+    else found[a.id] = ""; // "" = looked, nothing found
   }
   const map = await rememberedPhotos();
   Object.assign(map, found);
