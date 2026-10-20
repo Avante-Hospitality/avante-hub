@@ -937,6 +937,10 @@ export default async (request, context) => {
         // Hook builder access: on for everyone unless switched off in this
         // form. Kept as it was when the form doesn't send it.
         hooksAccess: typeof body.hooksAccess === "boolean" ? body.hooksAccess : !(existing && existing.hooksAccess === false),
+        // A Channel Property's Front store and Activities (Jean, 2026-10-20): off
+        // until admin ticks them. Kept as they were when the form doesn't send them.
+        channelFrontStore: typeof body.channelFrontStore === "boolean" ? body.channelFrontStore : !!(existing && existing.channelFrontStore),
+        channelActivities: typeof body.channelActivities === "boolean" ? body.channelActivities : !!(existing && existing.channelActivities),
         createdAt: (existing && existing.createdAt) || new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };

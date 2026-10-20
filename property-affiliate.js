@@ -109,8 +109,8 @@
   // search with the unit calendar right under it).
   // Channel Property Affiliate (Jean, 2026-10-13): on NightsBridge or another
   // channel manager, so it gets only what NightsBridge doesn't give it:
-  // Bookings (from the hub only), Activities and Reviews. No front store
-  // (Jean, 2026-10-17): to them Avante is a channel; they sell through hooks.
+  // Bookings (from the hub only) and Reviews. Front store and Activities only
+  // when admin ticks them for it (Jean, 2026-10-20; off by default).
   function isCh() { return !!(S.prop && S.prop.channel); }
   // Contact person for bookings and queries, and who gets the hub's emails
   // about the property (Jean, 2026-10-14). Email boxes take several addresses.
@@ -125,8 +125,8 @@
       '</select></div></div><p class="pa-hint">Several email addresses? Separate them with a comma.</p></fieldset>';
   }
   function contactVals() { return { contactName: val('pa-cn').trim(), contactPhone: val('pa-cp').trim(), contactEmail: val('pa-ce').trim(), notifyWho: val('pa-nw') || 'both' }; }
-  var CH_TABS = ['book', 'acts', 'rev'];
-  function tabsFor() { return isCh() ? TABS.filter(function (v) { return CH_TABS.indexOf(v[0]) > -1; }) : TABS; }
+  function chTabs() { return ['book', 'rev'].concat(S.prop.activities ? ['acts'] : [], S.prop.frontStore ? ['front'] : []); }
+  function tabsFor() { return isCh() ? TABS.filter(function (v) { return chTabs().indexOf(v[0]) > -1; }) : TABS; }
   function homeView() { return isCh() ? 'book' : 'avail'; }
   var TABS = [['avail', 'Calendar'], ['book', 'Bookings'], ['guests', 'Guests'], ['acts', 'Activities'], ['msgs', 'Communication'], ['front', 'Front store'], ['chan', 'Channels'], ['rev', 'Reviews']];
   function render() {
@@ -137,7 +137,7 @@
     var h = '<div class="pa">';
     // "How to" opens this screen's part of the property affiliate guide (how-to-property.html).
     var howTo = !connected ? 'how-to-property.html#connect' : S.view === 'onb' ? 'how-to.html#property' : isCh() ? 'how-to-property.html#channel' : 'how-to-property.html#' + ({ avail: 'avail', book: 'book', guests: 'guests', acts: 'acts', msgs: 'msgs', front: 'frontstore', chan: 'chan', rev: 'rev' }[S.view] || 'tabs');
-    if (connected && isCh() && CH_TABS.indexOf(S.view) === -1 && S.view !== 'onb') S.view = 'book';
+    if (connected && isCh() && chTabs().indexOf(S.view) === -1 && S.view !== 'onb') S.view = 'book';
     h += '<header class="pa-top"><span class="pa-kicker">' + (connected && isCh() ? 'Channel Property' : 'Property Affiliate') + '</span>' + (connected ? '<b class="pa-propname">' + esc(S.prop.resortName || 'Your property') + '</b><span class="pa-hint pa-top-meta">' + (S.prop.units.length ? S.prop.units.length + ' units · ' : '') + 'Site Nr ' + esc(S.prop.site) +
       (isCh() ? ' · Avante commission ' + esc(S.prop.commissionPct) + '% + VAT' : '') + '</span>' : '') +
       '<a class="pa-howto" href="' + howTo + '" target="_blank" rel="noopener" aria-label="How to use this screen (opens the guide in a new tab)">❓ How to</a></header>';
