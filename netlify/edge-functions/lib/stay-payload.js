@@ -7,7 +7,7 @@ import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
 import { fetchResortInfo } from "./hook-source.js";
 import { propertyTreeOpts, propertyTreePlace, treePlaceCentre } from "./tree-place.js";
 import { nearestByDistance } from "./geo-distance.js";
-import { rememberedPhotos, fillActPhotos, mainActPhotos } from "./act-photos.js";
+import { liveRemembered, fillActPhotos, mainActPhotos } from "./act-photos.js";
 
 const INFO_TTL_MS = 24 * 3600 * 1000;
 
@@ -75,7 +75,7 @@ export async function stayPayload(core, prop, opts) {
     const km = Math.max(1, Math.min(150, Number(opts.km) || page.nearbyKm || 30));
     outKm = km;
     const hidden = new Set(page.actHidden || []), mine = page.actPhotos || {};
-    const [remembered, mains] = await Promise.all([rememberedPhotos().catch(() => ({})), mainActPhotos().catch(() => ({}))]);
+    const [remembered, mains] = await Promise.all([liveRemembered().catch(() => ({})), mainActPhotos().catch(() => ({}))]);
     let list = nearestByDistance(lat, lng, acts, { maxKm: km }).map((a) => {
       const keys = Array.isArray(a.photoKeys) ? a.photoKeys : a.photoKey ? [a.photoKey] : [];
       const base = keys[0] ? "/api/property-file?key=" + encodeURIComponent(keys[0]) : "";

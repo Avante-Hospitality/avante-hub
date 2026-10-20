@@ -7,6 +7,10 @@
      listing: [{ key, thumb, name, used }]           // "This listing": photos already with it
      filingFor: { resortId, listingId, name, unit, place: { c, p, r, t, s } }
                                                      // what "Show photos for" offers (unit, property, suburb … country); closest first
+     filing:  [{ key, name }]                        // or: the "Show photos for" list itself (e.g. an activity)
+     listingLabel: 'This activity',                  // name of the first tab (default "This listing")
+     single:  true,                                  // one photo only (tapping another swaps it)
+     tab:     'library',                             // the tab to start on
      filesOnly: true,                                // leave out Google photos (kept by reference only, can't become files)
      upload:  true,                                  // "From your device"
      onDone:  function (picked) { ... }              // { listing: [items], library: [photos], files: [File] }
@@ -22,10 +26,12 @@
     opts = opts || {};
     var listing = opts.listing || [], filing = [];
     var tabs = [];
-    if (listing.length) tabs.push(['listing', 'This listing (' + listing.length + ')']);
+    if (listing.length) tabs.push(['listing', (opts.listingLabel || 'This listing') + ' (' + listing.length + ')']);
     tabs.push(['library', 'Photo library']);
     if (opts.upload !== false) tabs.push(['device', 'From your device']);
     var S = { tab: tabs[0][0], picked: { listing: {}, library: {} }, files: [], lib: null, libKey: '', libQ: '', libBusy: false, libErr: '', filed: !opts.filingFor };
+    if (opts.filing && opts.filing.length) { filing = opts.filing; S.libKey = filing[0].key; S.filed = true; }
+    if (opts.tab && tabs.some(function (t) { return t[0] === opts.tab; })) S.tab = opts.tab;
 
     var ov = document.createElement('div');
     ov.className = 'pc-overlay';
@@ -99,6 +105,7 @@
         .catch(function () { if (ask !== libAsk) return; S.libBusy = false; S.libErr = 'The photo library didn\'t answer. Try again.'; render(); });
     }
     function addFiles(list) {
+      if (opts.single) { S.picked = { listing: {}, library: {} }; S.files.forEach(function (f) { URL.revokeObjectURL(f.url); }); S.files = []; list = Array.prototype.slice.call(list || [], 0, 1); }
       Array.prototype.forEach.call(list || [], function (f) { if (/^image\//.test(f.type || '')) S.files.push({ file: f, url: URL.createObjectURL(f) }); });
       render();
     }
@@ -118,7 +125,8 @@
       var p = e.target.closest('[data-pc-pick]');
       if (p && !p.disabled) {
         var from = p.getAttribute('data-pc-pick'), it = (from === 'listing' ? listing : S.lib)[+p.getAttribute('data-i')], id = from === 'listing' ? it.key : it.id;
-        if (S.picked[from][id]) delete S.picked[from][id]; else S.picked[from][id] = it;
+        if (S.picked[from][id]) delete S.picked[from][id];
+        else { if (opts.single) { S.picked = { listing: {}, library: {} }; S.files.forEach(function (f) { URL.revokeObjectURL(f.url); }); S.files = []; } S.picked[from][id] = it; }
         return render();
       }
       var u = e.target.closest('[data-pc-unfile]'); if (u) { var f = S.files.splice(+u.getAttribute('data-pc-unfile'), 1)[0]; URL.revokeObjectURL(f.url); return render(); }

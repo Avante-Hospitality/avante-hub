@@ -539,6 +539,8 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
 <script src="sn-export.js"></script>
 <script src="listing-photo-library.js"></script>
+<link rel="stylesheet" href="photo-chooser.css">
+<script src="photo-chooser.js"></script>
 </head>
 <body>
 
@@ -9214,6 +9216,55 @@
 
       cancelEditBtn.addEventListener('click', resetActivityForm);
 
+      // One photo upload for an activity: saved with it, into the library, and made its default photo.
+      function uploadActivityFile(a, file){
+        var params = new URLSearchParams({ listingId: 'activity-' + a.id, kind: 'image', label: 'activity', fileName: file.name });
+        return fetch('/api/property-file?' + params.toString(), { method: 'POST', headers: { 'content-type': file.type || 'application/octet-stream' }, body: file })
+          .then(function(r){ return r.json(); }).then(function(res){
+            if(!(res && res.ok)) throw new Error((res && res.error) || 'Upload failed.');
+            return mapAdminPost('addActivityPhoto', { id: a.id, photoKey: res.key }).then(function(r){ return activityPhotoToLibrary(a.id, res.key).then(function(){ return r; }); });
+          });
+      }
+      // Default photo per activity (Jean, 2026-10-20): the photo front stores and
+      // hooks show for it. Change it from its own photos, the library, Google or an upload.
+      var actDefaults = {};
+      function drawActDefaults(){
+        Array.prototype.forEach.call(document.querySelectorAll('[data-act-def]'), function(box){
+          var d = actDefaults[box.getAttribute('data-act-def')] || {}, img = box.querySelector('img'), lab = box.querySelector('small');
+          if(d.url){ img.src = d.url; img.style.visibility = 'visible'; } else { img.removeAttribute('src'); img.style.visibility = 'hidden'; }
+          lab.textContent = d.url ? ({ main: 'Default photo (chosen)', map: 'Default photo (map photo)', auto: 'Default photo (found by itself)' }[d.from] || 'Default photo') : 'No default photo yet';
+        });
+      }
+      function loadActDefaults(){
+        return mapAdminPost('activityDefaults').then(function(res){ if(res.data && res.data.ok){ actDefaults = res.data.photos || {}; drawActDefaults(); } }).catch(function(){});
+      }
+      function chooseActPhoto(a, tab){
+        if(!window.PhotoChooser){ actStatusEl.textContent = 'The photo chooser did not load. Refresh the page.'; actStatusEl.className = 'status show'; return; }
+        var keys = a.photoKeys || (a.photoKey ? [a.photoKey] : []);
+        window.PhotoChooser.open({
+          title: 'Default photo: ' + (a.name || 'activity'),
+          auth: { token: ADMIN_TOKEN }, single: true, tab: tab, listingLabel: 'This activity',
+          listing: keys.map(function(k){ return { key: k, thumb: '/api/property-file?key=' + encodeURIComponent(k), name: 'Map photo' }; }),
+          filing: [{ key: 'act:' + a.id, name: 'This activity' }, { key: '', name: 'The whole library (type to search)' }],
+          onDone: function(p){
+            var done = function(){ actStatusEl.textContent = 'Default photo changed for ' + a.name + '.'; actStatusEl.className = 'status show'; loadActDefaults(); };
+            var fail = function(err){ actStatusEl.textContent = (err && err.message) || 'Could not change the photo.'; actStatusEl.className = 'status show'; };
+            actStatusEl.textContent = 'Saving the default photo\u2026'; actStatusEl.className = 'status show';
+            if(p.files && p.files[0]) return uploadActivityFile(a, p.files[0]).then(function(){ loadActivities(); done(); }).catch(fail);
+            if(p.library && p.library[0]) return mapAdminPost('activitySetMain', { id: a.id, libId: p.library[0].id }).then(function(r){ if(!(r.data && r.data.ok)) throw new Error((r.data && r.data.error) || 'Could not change the photo.'); done(); }).catch(fail);
+            if(p.listing && p.listing[0]) return activityPhotoToLibrary(a.id, p.listing[0].key).then(done).catch(fail);
+          }
+        });
+      }
+      function googleActPhoto(a){
+        actStatusEl.textContent = 'Searching Google for ' + a.name + '\u2026'; actStatusEl.className = 'status show';
+        mapAdminPost('activityGoogle', { id: a.id }).then(function(r){
+          if(!(r.data && r.data.ok)){ actStatusEl.textContent = (r.data && r.data.error) || 'Google found nothing.'; return; }
+          actStatusEl.textContent = 'Google: ' + r.data.photos.length + ' photo(s) of ' + (r.data.place || a.name) + '. Pick one.';
+          chooseActPhoto(a, 'library');
+        }).catch(function(){ actStatusEl.textContent = 'Google didn\'t answer. Try again.'; });
+      }
+
       function renderActivitiesTable(activities){
         actTableBody.innerHTML = '';
         if(!activities.length){
@@ -9255,6 +9306,14 @@
           tr.appendChild(tdPrice);
 
           var tdPhoto = document.createElement('td');
+          var defBox = document.createElement('div');
+          defBox.setAttribute('data-act-def', a.id);
+          defBox.style.cssText = 'display:flex; gap:8px; align-items:center; margin-bottom:8px;';
+          defBox.innerHTML = '<img alt="" style="width:64px; height:64px; object-fit:cover; border-radius:8px; background:#eef4f4; visibility:hidden;"><div style="display:flex; flex-direction:column; gap:4px;"><small style="font-size:11px; color:var(--muted);">Default photo</small>' +
+            '<button type="button" class="btn-outline" data-act-change style="padding:4px 10px; font-size:12px;">Change photo</button><button type="button" class="btn-outline" data-act-google style="padding:4px 10px; font-size:12px;">Google</button></div>';
+          defBox.querySelector('[data-act-change]').addEventListener('click', function(){ chooseActPhoto(a); });
+          defBox.querySelector('[data-act-google]').addEventListener('click', function(){ googleActPhoto(a); });
+          tdPhoto.appendChild(defBox);
           var photoWrap = document.createElement('div');
           photoWrap.style.display = 'flex';
           photoWrap.style.flexWrap = 'wrap';
@@ -9301,24 +9360,7 @@
                 loadActivities();
                 return;
               }
-              var file = files.shift();
-              var params = new URLSearchParams({
-                listingId: 'activity-' + a.id,
-                kind: 'image',
-                label: 'activity',
-                fileName: file.name
-              });
-              fetch('/api/property-file?' + params.toString(), {
-                method: 'POST',
-                headers: { 'content-type': file.type || 'application/octet-stream' },
-                body: file
-              }).then(function(r){ return r.json(); }).then(function(res){
-                if(res && res.ok){
-                  var key = res.key;
-                  return mapAdminPost('addActivityPhoto', { id: a.id, photoKey: key }).then(function(r){ return activityPhotoToLibrary(a.id, key).then(function(){ return r; }); });
-                }
-                throw new Error((res && res.error) || 'Upload failed.');
-              }).then(function(){ uploadNext(); }).catch(function(err){
+              uploadActivityFile(a, files.shift()).then(function(){ uploadNext(); }).catch(function(err){
                 actStatusEl.textContent = err.message || 'Could not upload photo.';
                 actStatusEl.className = 'status show';
               });
@@ -9494,6 +9536,7 @@
           if(res.data && res.data.ok){
             var onboardedProps = (res.data.properties || []).filter(function(p){ return p.source !== 'resort-list'; });
             renderActivitiesTable(res.data.activities || []);
+            loadActDefaults();
             renderMapPropertiesTable(onboardedProps);
             renderMissingCoordsTable(res.data.missingCoordinates || []);
             renderMissingCoordsSummary(res.data.missingCoordinates || [], res.data.activities || []);

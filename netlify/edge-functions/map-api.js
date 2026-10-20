@@ -9,7 +9,7 @@ import { searchPlacePhotos, searchPlaceCandidates } from "./lib/places-images.js
 import { dataUriToBytes } from "./lib/data-uri.js";
 import { nearestByDistance } from "./lib/geo-distance.js";
 import { cachedForwardGeocode, checkNameAgainstCoordinate } from "./lib/name-check.js";
-import { clearActMain, activityToLibrary } from "./lib/act-photos.js";
+import { clearActMain, activityToLibrary, setActMain, defaultActPhotos, googlePhotos as actGooglePhotos } from "./lib/act-photos.js";
 
 // Backs the new "Map & Activities" admin tab and the new "Explore Map" hub
 // tab. Two data sources feed one shared response:
@@ -1508,6 +1508,24 @@ export default async (request, context) => {
       await saveActivities(activitiesStore, all);
       await clearActMain(id).catch(() => null);
       return json({ ok: true, activity: existing });
+    }
+
+    // Default photo per activity (Jean, 2026-10-20): what each one shows now, and changing it.
+    if (action === "activityDefaults") {
+      return json({ ok: true, photos: await defaultActPhotos(await loadActivities(activitiesStore)) });
+    }
+    if (action === "activitySetMain") {
+      const id = clean(body.id, 20), all = await loadActivities(activitiesStore);
+      if (!all.some((r) => r.id === id)) return json({ ok: false, error: "not found" }, 404);
+      const r = await setActMain(id, clean(body.libId, 30));
+      return json(r, r.ok ? 200 : 400);
+    }
+    if (action === "activityGoogle") {
+      // A Google search for the activity: its photos go into the library tagged with it (by reference only).
+      const id = clean(body.id, 20), all = await loadActivities(activitiesStore), a = all.find((r) => r.id === id);
+      if (!a) return json({ ok: false, error: "not found" }, 404);
+      const r = await actGooglePhotos({ id: a.id, name: a.name, area: a.area, latitude: parseFloat(a.latitude), longitude: parseFloat(a.longitude) }, { query: clean(body.q, 200) || undefined, limit: 6 });
+      return json(r, r.ok ? 200 : 502);
     }
 
     if (action === "activityLibraryAdd") {
