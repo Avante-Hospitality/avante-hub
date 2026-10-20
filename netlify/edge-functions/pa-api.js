@@ -77,10 +77,11 @@ export default async (request) => {
     const CHANNEL_BLOCKED = ["book", "markPaid", "channels", "channelHelp", "channelEvents", "addChannelEvent", "unitNotice", "syncNow",
       "guests", "messages", "saveMessages", "prepareMessage", "markMessage", "emailNow", "inHouse", "emailInHouse", "checkIn", "saveContact"];
     if (prop.channel && CHANNEL_BLOCKED.indexOf(a) > -1) return json({ ok: false, error: "Your channel manager (e.g. NightsBridge) already does this, so it isn't part of the hub for channel properties." }, 403);
-    // Its Front store and Activities only when admin has switched them on (Jean, 2026-10-20).
+    // No front store (its Promotions embed link instead), and Activities only when
+    // admin has switched it on (Jean, 2026-10-20).
     const isFront = a === "saveFrontStore" || /^(front|uploadFront|removeFront)/.test(a);
-    if (prop.channel && ((isFront && !prop.chFront) || (a.startsWith("act") && !prop.chActs)))
-      return json({ ok: false, error: (isFront ? "The front store" : "Activities") + " isn't switched on for your property yet. Ask Avante Travel." }, 403);
+    if (prop.channel && isFront) return json({ ok: false, error: "Channel properties don't have a front store. Put your Promotions embed link (Affiliate Marketing) on your website." }, 403);
+    if (prop.channel && a.startsWith("act") && !prop.chActs) return json({ ok: false, error: "Activities isn't switched on for your property yet. Ask Avante Travel." }, 403);
     // Activities the property sells to guests, with the supplier's reference numbers.
     if (a.startsWith("act")) {
       const acts = createActivities({

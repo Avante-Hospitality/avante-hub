@@ -109,8 +109,8 @@
   // search with the unit calendar right under it).
   // Channel Property Affiliate (Jean, 2026-10-13): on NightsBridge or another
   // channel manager, so it gets only what NightsBridge doesn't give it:
-  // Bookings (from the hub only) and Reviews. Front store and Activities only
-  // when admin ticks them for it (Jean, 2026-10-20; off by default).
+  // Bookings (from the hub only) and Reviews, and Activities when admin ticks
+  // it. No front store: it embeds its Promotions page instead (Jean, 2026-10-20).
   function isCh() { return !!(S.prop && S.prop.channel); }
   // Contact person for bookings and queries, and who gets the hub's emails
   // about the property (Jean, 2026-10-14). Email boxes take several addresses.
@@ -125,7 +125,7 @@
       '</select></div></div><p class="pa-hint">Several email addresses? Separate them with a comma.</p></fieldset>';
   }
   function contactVals() { return { contactName: val('pa-cn').trim(), contactPhone: val('pa-cp').trim(), contactEmail: val('pa-ce').trim(), notifyWho: val('pa-nw') || 'both' }; }
-  function chTabs() { return ['book', 'rev'].concat(S.prop.activities ? ['acts'] : [], S.prop.frontStore ? ['front'] : []); }
+  function chTabs() { return ['book', 'rev'].concat(S.prop.activities ? ['acts'] : []); }
   function tabsFor() { return isCh() ? TABS.filter(function (v) { return chTabs().indexOf(v[0]) > -1; }) : TABS; }
   function homeView() { return isCh() ? 'book' : 'avail'; }
   var TABS = [['avail', 'Calendar'], ['book', 'Bookings'], ['guests', 'Guests'], ['acts', 'Activities'], ['msgs', 'Communication'], ['front', 'Front store'], ['chan', 'Channels'], ['rev', 'Reviews']];

@@ -89,9 +89,11 @@
       var name = tab.getAttribute('data-panel'), tabName = clean(tab.textContent), panel = document.getElementById('panel-' + name);
       out.push({ label: tabName, where: 'Screen', text: tabName, go: function () { tab.click(); window.scrollTo(0, 0); } });
       if (!panel) return;
-      panel.querySelectorAll('h1, h2, h3, h4').forEach(function (h) {
+      // Headings, and the names of copy-a-link boxes (e.g. "Promotions embed link").
+      panel.querySelectorAll('h1, h2, h3, h4, .link-box > .label').forEach(function (h) {
         var t = clean(h.textContent);
-        if (!t || t.length > 90 || hiddenOn(h, panel)) return;
+        // Hidden by the page's own rules (e.g. a channel property's shop link) counts as hidden too.
+        if (!t || t.length > 90 || hiddenOn(h, panel) || getComputedStyle(h.closest('.link-box') || h).display === 'none') return;
         // The words just under the heading help it be found ("resort file" finds "Add from Stock Network's file").
         var next = h.nextElementSibling, more = next && /^(P|DIV)$/.test(next.tagName) ? clean(next.textContent).slice(0, 300) : '';
         out.push({ label: t, where: tabName, text: t + ' ' + tabName + ' ' + more, go: function () { tab.click(); flash(h); } });
@@ -106,7 +108,7 @@
     });
     // Menu links (How-to Guide, Change Password, Log Out ...).
     document.querySelectorAll('nav.tabs .menu-actions a').forEach(function (a) {
-      var t = clean(a.textContent); if (!t || hiddenOn(a, document.body)) return;
+      var t = clean(a.textContent); if (!t || hiddenOn(a, document.body) || getComputedStyle(a).display === 'none') return;
       out.push({ label: t, where: 'Menu', text: t, go: function () { a.click(); } });
     });
     return out;
@@ -145,6 +147,12 @@
     // A step about the front store or activities inside another part (e.g. Bookings).
     if (bar && /front store/i.test(it.label) && !bar.querySelector('button[data-v="front"]')) return false;
     if (bar && /activit/i.test(it.label) && !bar.querySelector('button[data-v="acts"]')) return false;
+    // A hidden link marked data-search-hides="words" hides the guide steps about it
+    // (a channel property's hub: no front store, so no shop link steps).
+    var hides = [].slice.call(document.querySelectorAll('[data-search-hides]')).some(function (el) {
+      return (hiddenOn(el, document.body) || getComputedStyle(el).display === 'none') && new RegExp(el.getAttribute('data-search-hides'), 'i').test(it.label);
+    });
+    if (hides) return false;
     // A guide section about a screen this user doesn't have.
     var t = document.querySelector('.tab[data-panel="' + it.section + '"]');
     return !t || shownTab(t);

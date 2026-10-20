@@ -954,6 +954,9 @@
     /* Channel property (types: channel, not property): the Property Affiliate
        module, showing only what its channel manager doesn't give it. */
     .tab.type-hidden, .panel.type-hidden{ display:none !important; }
+    /* A channel property has no front store (Jean, 2026-10-20): only the Promotions embed link. */
+    body.channel-only .full-shop{ display:none !important; }
+    body.channel-only #embedLinkBox{ margin-top:0 !important; }
   </style>
 <style>
   /* Phones: text boxes at 16px so iPhones don't zoom in when one is tapped
@@ -1134,7 +1137,7 @@
       <button class="tab" data-panel="tutorials">Tutorials</button>
       <div class="menu-actions">
         <a href="how-to.html" target="_blank" rel="noopener">❓ How-to Guide</a>
-        <a id="storefrontLink">View Front Store</a>
+        <a id="storefrontLink" class="full-shop" data-search-hides="front store|shop link|storefront">View Front Store</a>
         <a id="changePasswordLink">Change Password</a>
         <a id="logoutLink">Log Out</a>
       </div>
@@ -1295,7 +1298,7 @@
         <p>Paste your own booking link and landing page link for each promo, then copy them out to use in your ads</p>
       </div>
       <div class="card" id="storefrontCard" style="margin-bottom:28px; display:none;">
-        <div class="link-box show" style="margin-top:0;">
+        <div class="link-box show full-shop" style="margin-top:0;">
           <div class="label">Your affiliate storefront — share this one link with your clients</div>
           <div class="url" id="storefrontUrl"></div>
           <div class="btn-row">
@@ -1304,7 +1307,7 @@
             <button class="btn-outline" id="storefrontHomeBtn">Home</button>
           </div>
         </div>
-        <div class="hint" style="margin-top:10px;">This page shows every active hook below in one place, plus quick links to browse other categories. It updates automatically whenever you save a hook.</div>
+        <div class="hint full-shop" style="margin-top:10px;">This page shows every active hook below in one place, plus quick links to browse other categories. It updates automatically whenever you save a hook.</div>
 
         <div class="link-box show" id="embedLinkBox" style="margin-top:20px; display:none;">
           <div class="label">Promotions embed link — no header, for embedding on your own website</div>

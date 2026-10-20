@@ -638,9 +638,8 @@
       <p class="modal-sub" style="margin:-2px 0 8px;">Decides which menus they see in their hub. <b>Agent</b>: the link builders. <b>Property</b>: the Property Affiliate module (calendar, bookings, channels). <b>Channel Property</b> (on NightsBridge or another channel manager): Bookings, Reviews and the hook builder. Tick several to give all of them. Franchise, or nothing ticked, sees everything.</p>
       <div id="affChannelExtras" style="display:none; margin:0 0 8px; padding:10px 12px; border:1.5px solid var(--line); border-radius:10px;">
         <label style="margin-top:0;">Channel Property: also give them</label>
-        <label style="display:flex; align-items:center; gap:6px; font-weight:400;"><input type="checkbox" id="affChFrontInput"> Front store</label>
         <label style="display:flex; align-items:center; gap:6px; font-weight:400;"><input type="checkbox" id="affChActsInput"> Activities</label>
-        <p class="modal-sub" style="margin:4px 0 0;">Off for everyone until you tick it. They see it the next time they open their hub.</p>
+        <p class="modal-sub" style="margin:4px 0 0;">Off until you tick it. They see it the next time they open their hub. A channel property has no front store: it puts its <b>Promotions embed link</b> (Affiliate Marketing) on its own website.</p>
       </div>
       <label>Revenue share — by channel</label>
       <p class="modal-sub" style="margin:-2px 0 8px;">Each channel matches a tab in this affiliate's Hub. For each one, choose <strong>%</strong> for a percentage of revenue, or <strong>R flat</strong> for a fixed Rand amount paid per entry regardless of revenue. Leave at 0 if they don't get a cut of that channel.</p>
@@ -3457,7 +3456,6 @@
       document.getElementById('affTypeProperty').checked = existingTypes.indexOf('property') > -1;
       document.getElementById('affTypeAgent').checked = existingTypes.indexOf('agent') > -1;
       document.getElementById('affTypeChannel').checked = existingTypes.indexOf('channel') > -1;
-      document.getElementById('affChFrontInput').checked = !!(existing && existing.channelFrontStore);
       document.getElementById('affChActsInput').checked = !!(existing && existing.channelActivities);
       showChannelExtras();
       buildAffShareFields(existing ? existing.revenueShare : null);
@@ -3474,7 +3472,7 @@
       affOverlay.classList.add('show');
     }
     function closeAffiliateModal(){ affOverlay.classList.remove('show'); }
-    // Front store and Activities for a Channel Property (Jean, 2026-10-20): off until ticked.
+    // Activities for a Channel Property (Jean, 2026-10-20): off until ticked. No front store: the Promotions embed link instead.
     function showChannelExtras(){ document.getElementById('affChannelExtras').style.display = document.getElementById('affTypeChannel').checked ? '' : 'none'; }
     document.getElementById('affTypeChannel').addEventListener('change', showChannelExtras);
 
@@ -3519,7 +3517,6 @@
         affId: affId, name: name, email: email, siteNr: siteNr, types: types,
         revenueShare: revenueShare, bank: bank, status: status, notes: notes,
         hooksAccess: document.getElementById('affHooksAccessInput').checked,
-        channelFrontStore: document.getElementById('affChFrontInput').checked,
         channelActivities: document.getElementById('affChActsInput').checked
       }).then(function(res){
         if(!res.data || !res.data.ok){

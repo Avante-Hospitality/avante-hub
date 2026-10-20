@@ -189,7 +189,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
   // Channel Property Affiliate (Jean, 2026-10-13): a property on NightsBridge
   // (or another channel manager) that feeds Stock Network. It uses this module
   // like any property affiliate — same Stock Network login, Site Nr and Site
-  // ID, front store and activities (once admin ticks them), reviews — but never what its channel manager
+  // ID, activities (once admin ticks them), reviews — but never what its channel manager
   // already gives it: no calendar, channel (iCal) sync, guest records or guest
   // messages, no manual bookings or EFT, no hub minimum stay or calendar
   // start, no "approve each guest". Guests always pay on the Stock Network
@@ -197,23 +197,24 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
   // "Channel Property Affiliate") and is kept on the property so the public
   // front store (stay-api.js, no affiliate lookup) follows the same rules.
   // Is this affiliate a Channel Property Affiliate (and not also a Property Affiliate)? null when unknown.
-  // -> { channel, front, acts } or null when unknown. A Channel Property gets its
-  // Front store and Activities only when admin ticks them (Jean, 2026-10-20).
+  // -> { channel, acts } or null when unknown. A Channel Property gets Activities
+  // only when admin ticks it, and never a front store: it embeds its Promotions
+  // page on its own website instead (Jean, 2026-10-20).
   async function channelOf(aff) {
     if (!affiliates || !aff) return null;
     let pr = null;
     try { pr = await affiliates.getProfile(aff); } catch (_) { return null; }
     const types = pr && Array.isArray(pr.types) ? pr.types : [];
     const channel = types.indexOf("channel") > -1 && types.indexOf("property") === -1;
-    return { channel, front: channel && pr.channelFrontStore === true, acts: channel && pr.channelActivities === true };
+    return { channel, acts: channel && pr.channelActivities === true };
   }
   async function isChannelAff(aff) { const c = await channelOf(aff); return c ? c.channel : null; }
   async function syncChannelFlag(prop) {
     if (!prop || !prop.aff) return;
     const c = await channelOf(prop.aff);
     if (!c) return;
-    if (!!prop.channel !== c.channel || !!prop.chFront !== c.front || !!prop.chActs !== c.acts) {
-      Object.assign(prop, { channel: c.channel, chFront: c.front, chActs: c.acts });
+    if (!!prop.channel !== c.channel || !!prop.chActs !== c.acts) {
+      Object.assign(prop, { channel: c.channel, chActs: c.acts });
       await setJSON("site:" + prop.siteId, prop);
     }
   }
@@ -285,7 +286,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     const settings = p.channel ? Object.assign({}, p.settings || {}, { payMode: "gateway", approveGuests: false, minStay: 1, calendarStart: { mode: "today", date: "" } }) : p.settings;
     return { siteId: p.siteId, site: p.site, resortId: p.resortId, resortName: p.resortName, units: p.units, settings, connectedAt: p.createdAt, demoAllowed: ["3"].includes(String(p.site)), firstBookable: firstBookable(p),
       channel: !!p.channel, commissionPct: p.channel ? (+p.commissionPct > 0 ? +p.commissionPct : CHANNEL_COMMISSION) : undefined,
-      frontStore: !p.channel || !!p.chFront, activities: !p.channel || !!p.chActs };
+      activities: !p.channel || !!p.chActs };
   }
 
   // Calendar start (property setup): "today", or a set date that is also the
@@ -1554,7 +1555,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
   async function slugOwner(sl) { const r = await getJSON("fslug:" + sl); return r ? r.siteId : null; }
   async function saveFrontStore(prop, body) {
     body = body || {};
-    if (prop.channel && !prop.chFront) throw new PAError("The front store isn't switched on for your property yet. Ask Avante Travel.");
+    if (prop.channel) throw new PAError("Channel properties don't have a front store. Put your Promotions embed link (Affiliate Marketing) on your website.");
     const cur = fsSettings(prop), s = Object.assign({}, cur);
     const bool = (k) => { if (body[k] !== undefined) s[k] = !!body[k]; };
     ["on", "showPrices", "showCalendar", "showActivities", "showOffers"].forEach(bool);
@@ -1658,10 +1659,9 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     if (!owner) return null;
     const prop = await getJSON("site:" + owner);
     if (!prop) return null;
-    if (prop.channel || prop.aff) await syncChannelFlag(prop); // admin may have just changed it
     const s = fsSettings(prop);
-    // Channel properties have no front store unless admin ticked it (Jean, 2026-10-17 / 2026-10-20).
-    return s.on && (!prop.channel || prop.chFront) && s.slug === slug(sl) ? prop : null;
+    // Channel properties have no front store (Jean, 2026-10-17, 2026-10-20).
+    return s.on && !prop.channel && s.slug === slug(sl) ? prop : null;
   }
   function fsFirstNight(prop) {
     const s = fsSettings(prop), fb = firstBookable(prop), notice = addDays(today(), s.minNoticeDays || 0);
