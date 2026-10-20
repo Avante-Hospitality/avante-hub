@@ -146,6 +146,8 @@ function sanitizeFileRefs(input, max) {
   }));
 }
 
+const GUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 // The hub location tree is the master for a property's place names
 // (Jean, 2026-10-13): Country, Province, Region, City/Town, Suburb, and the
 // Stock Network Area / District, all come from placing the pin in the tree —
@@ -567,7 +569,17 @@ async function checkStock(reg, origin) {
 }
 
 
+// A Site Nr with a listing takes Area / District / Suburb from the listing's
+// place in the hub location tree (Jean, 2026-10-20): read-only in Site Nrs,
+// and always as the listing has them now when the sheet goes to Stock Network.
+// Changes the entry in place (not saved); placeFrom = the listing it came from.
+async function withListingPlace(entry) {
+  const l = entry && entry.listingId ? await getStore({ name: "property-listings", consistency: "strong" }).get(entry.listingId, { type: "json" }).catch(() => null) : null;
+  if (!l || !l.treePlace) return entry;
+  return Object.assign(entry, { area: l.area || "", district: l.district || "", suburb: l.suburb || "", placeFrom: l.listingId });
+}
 async function sendSnSetupSheet(entry, by, to) {
+  await withListingPlace(entry);
   const recipientsTo = emailText(to || (await getSnSetupEmails()), 20);
   const filename = sheetFileName(entry);
   const { subject, html } = setupEmail(entry);
@@ -1406,7 +1418,21 @@ export default async (request, context) => {
           "<p>Avante now has stock for these properties, so they are <b>Ready to go live</b>:</p><ul>" + ready.map((e) => "<li><b>" + escapeHtml(e.propertyName) + "</b> — Site Nr " + escapeHtml(e.siteNr) +
             ", first stock " + escapeHtml(e.stockFrom) + (e.listingId ? ", listing " + escapeHtml(e.listingId) : "") + "</li>").join("") + "</ul><p>See Admin &gt; Site Nrs.</p>"));
       }
-      return json({ ok: true, waiting: waiting.length, setUp: done, ready: ready.map((e) => ({ siteNr: e.siteNr, name: e.propertyName, stockFrom: e.stockFrom })) });
+      // Stock Network's list was read, but the hub couldn't keep it (Jean, 2026-10-20):
+      // admin hears about it (by email once a day from the hourly check).
+      const feed = found.feed || null;
+      if (feed && feed.saveError && bySchedule) {
+        const flags = getStore({ name: "sn-feed", consistency: "strong" }), day = new Date().toISOString().slice(0, 10);
+        if ((await flags.get("save-error-mailed", { type: "text" }).catch(() => "")) !== day) {
+          const to = await getNotificationEmail();
+          if (to) context.waitUntil(sendNotificationEmail(to, "Stock Network's property list couldn't be saved",
+            "<p>The hourly check read Stock Network's property list (" + feed.count + " properties) but the hub couldn't save it: " + escapeHtml(feed.saveError) +
+            ".</p><p>The check used the list it had just read. Other screens keep the older copy until a save works. Tell Claude.</p>"));
+          await flags.set("save-error-mailed", day).catch(() => {});
+        }
+      }
+      return json({ ok: true, waiting: waiting.length, setUp: done, ready: ready.map((e) => ({ siteNr: e.siteNr, name: e.propertyName, stockFrom: e.stockFrom })),
+        feed: feed ? { at: feed.at, count: feed.count, saveError: feed.saveError } : null });
     }
 
     if (["siteNrList", "siteNrReserve", "siteNrUpdate", "siteNrSend", "snSetupSettings"].includes(action)) {
@@ -1414,7 +1440,7 @@ export default async (request, context) => {
       if (denied) return denied;
       const reg = siteRegister();
       if (action === "siteNrList") {
-        const entries = await listSiteNrs(reg);
+        const entries = await Promise.all((await listSiteNrs(reg)).map(withListingPlace));
         return json({ ok: true, entries, next: await nextFreeSiteNr(reg), emails: await getSnSetupEmails(), statuses: SITE_STATUSES });
       }
       if (action === "snSetupSettings") {
@@ -1438,6 +1464,8 @@ export default async (request, context) => {
       if (!entry) return json({ error: "Site Nr " + clean(String(body.siteNr || ""), 12) + " isn't in the list." }, 404);
       if (action === "siteNrUpdate") {
         const f = fields(body);
+        // Placed by its listing: the place names aren't typed here.
+        if ((await withListingPlace(entry)).placeFrom) { delete f.area; delete f.district; delete f.suburb; }
         for (const k of Object.keys(f)) if (typeof f[k] === "string") entry[k] = k === "description" || k === "note" ? clean(f[k], 1000) : clean(f[k], k === "email" ? 600 : 200).replace(/[\r\n\t]+/g, " ");
         if (typeof body.email === "string" && badEmails(body.email).length) return json({ error: "\"" + badEmails(body.email)[0] + "\" doesn't look like an email address." }, 400);
         if (SITE_STATUSES.includes(body.status)) entry.status = body.status;
@@ -1539,14 +1567,26 @@ export default async (request, context) => {
 
       if (action === "channelLogin") {
         if (!creds.username || !creds.clientID || !creds.clientSecret) return json({ error: "Paste all three: username, client ID and client secret." }, 400);
+        if (rid && !GUID_RE.test(rid)) return json({ error: "A ResortID looks like ba923af0-e99c-4dbf-ae4a-ebe766afa777 (36 letters, numbers and dashes)." }, 400);
+        const client = new SNClient(creds);
         let tok;
-        try { tok = await new SNClient(creds).login(); } catch (e) { return json({ error: String((e && e.message) || "The login wasn't accepted.") }, 400); }
+        try { tok = await client.login(); } catch (e) { return json({ error: String((e && e.message) || "The login wasn't accepted.") }, 400); }
         const entry = await regEntryOf(tok.site);
         // The login must be the property's own (a pasted login of another property would link the wrong one).
         if (entry && entry.resortId && rid && String(entry.resortId).toLowerCase() !== rid)
           return json({ error: "This login is for Avante Site Nr " + entry.siteNr + " (" + (entry.propertyName || "another property") + "), not the property you picked." }, 400);
         const l = await listingOf(entry, tok.site), a = tok.siteId ? await affDir.get(tok.siteId, { type: "json" }).catch(() => null) : null;
-        return json({ ok: true, siteNr: String(tok.site || ""), siteId: String(tok.siteId || ""), listingId: l ? l.listingId : "", listingSiteId: l ? l.siteId || "" : "", hosted: hostedOf(entry, l),
+        // Not in Stock Network's list (Jean, 2026-10-20): the property comes from its own
+        // login: its Property Affiliate record, its listing or its Site Nrs entry. Else
+        // admin pastes its ResortID, and its name comes from Avante's booking system.
+        const pa = tok.siteId ? await getStore({ name: "property-affiliate", consistency: "strong" }).get("site:" + tok.siteId, { type: "json" }).catch(() => null) : null;
+        const resortId = rid || String((pa && pa.resortId) || (l && l.resortId) || (entry && entry.resortId) || "").trim().toLowerCase();
+        let name = (l && l.propertyName) || (entry && (entry.snName || entry.propertyName)) || (pa && pa.resortName) || "";
+        if (resortId && !name) {
+          const from = new Date().toISOString().slice(0, 10), to = new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10);
+          name = (await client.openStretches(resortId, from, to).catch(() => ({}))).resortName || "";
+        }
+        return json({ ok: true, siteNr: String(tok.site || ""), siteId: String(tok.siteId || ""), resortId, name, listingId: l ? l.listingId : "", listingSiteId: l ? l.siteId || "" : "", hosted: hostedOf(entry, l),
           affExists: !!a, affTypes: a ? a.types || [] : [], email: (l && (l.email || l.contactEmail || l.ownerEmail)) || (entry && entry.email) || (a && a.email) || "",
           phone: (l && l.telephone) || (entry && entry.phone) || (a && a.phone) || "", contactName: (l && l.contactName) || (entry && entry.contactName) || "" });
       }
@@ -1555,6 +1595,7 @@ export default async (request, context) => {
         const siteNr = clean(body.siteNr, 20), siteId = clean(body.siteId, 100), name = clean(body.name, 200), bbid = clean(body.bbid, 40);
         const email = clean(body.email, 600), phone = clean(body.phone, 200), contactName = clean(body.contactName, 120);
         if (!rid || !siteId || !siteNr || !name) return json({ error: "Go back to step 1 and 2: the property and its Avante login are needed." }, 400);
+        if (!GUID_RE.test(rid)) return json({ error: "That ResortID doesn't look right. Go back to step 2." }, 400);
         if (!emailList(email).length || badEmails(email).length) return json({ error: "Type the property's email address (several: separate with commas)." }, 400);
         const done = [], now = new Date().toISOString(), reg = siteRegister(), entry = await regEntryOf(siteNr);
         // 1. Its listing: the one it has, or a new one from the hub's lists.

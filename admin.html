@@ -1924,7 +1924,7 @@
 
       <div class="card map-jump-target" id="map-jump-sn-resort-list" style="margin-top:20px;">
         <h3 style="margin-top:0;">StockNetwork resort list</h3>
-        <p style="margin-top:0;">The full StockNetwork inventory (used by the Accommodation Link Builder in the Hub too). It is updated every night from Stock Network: new properties are added (see <b>Added from Stock Network</b> below) and Stock Network's own fields are refreshed. Where a property sits (country, province, region, town, suburb) always comes from its pin and the hub location tree, never from Stock Network. There is no file to upload any more.</p>
+        <p style="margin-top:0;">The full StockNetwork inventory (used by the Accommodation Link Builder in the Hub too). It is updated every night from Stock Network: new properties are added (see <b>Added from Stock Network</b> below) and Stock Network's own fields are refreshed. Where a property sits (country, province, region, town, suburb) always comes from its pin and the hub location tree, never from Stock Network. If Stock Network's list leaves a property out, add it from Stock Network's resort file under <b>Add from Stock Network's file</b> below.</p>
         <p id="resortListStatusText" style="margin:10px 0 0; font-size:13px; color:var(--muted);"></p>
       </div>
 
@@ -1940,6 +1940,25 @@
             <thead><tr><th>Property</th><th>ResortID</th><th>SiteID</th><th>Country / Area / City</th><th>Coordinates</th><th>Added</th><th></th></tr></thead>
             <tbody id="newSnPropsTableBody"></tbody>
           </table>
+        </div>
+
+        <div style="margin-top:18px; padding-top:16px; border-top:1.5px solid var(--line);">
+          <h4 style="margin:0 0 6px; font-size:13.5px;">Add from Stock Network's file</h4>
+          <p style="margin:0 0 10px; font-size:12.5px; color:var(--muted);">Stock Network's list sometimes leaves a property out, even one that is bookable. Its resort file (Resort Information .csv) has it. Choose the file: the hub shows the properties it doesn't have yet, and adds them when you tap <b>Add</b>. Properties the hub already has are never changed, and where a property sits still comes from its pin and the location tree.</p>
+          <div class="btn-row" style="margin-top:0;">
+            <button class="btn-outline" id="snFileBtn">Choose Stock Network's resort file (.csv)…</button>
+            <input type="file" id="snFileInput" accept=".csv,text/csv" style="display:none;">
+          </div>
+          <div class="status" id="snFileStatus"></div>
+          <div class="table-wrap" id="snFileTableWrap" style="display:none; margin-top:12px;">
+            <table class="data-table">
+              <thead><tr><th>Property</th><th>ResortID</th><th>City / Area</th></tr></thead>
+              <tbody id="snFileTableBody"></tbody>
+            </table>
+          </div>
+          <div class="btn-row" id="snFileAddRow" style="display:none; margin-top:10px;">
+            <button class="primary" id="snFileAddBtn">Add</button>
+          </div>
         </div>
       </div>
 
@@ -7341,8 +7360,7 @@
       // A name box that lists the hub's properties as you type (3+ letters).
       // out.__hits holds the rows; each button has data-ex-hit="<index>".
       (function(){
-        var list = null;
-        function rows(){ return list ? Promise.resolve(list) : window.AvanteResorts.load().then(function(d){ list = d.resorts || []; return list; }); }
+        function rows(){ return window.AvanteResorts.load().then(function(d){ return d.resorts || []; }); }
         window.resortNameSearch = function(input, out){
           var timer = null;
           function show(q){
@@ -7376,7 +7394,7 @@
         function val(id){ var el = document.getElementById(id); return el ? el.value.trim() : ''; }
         function ready(){
           if(W.step === 0) return !!W.prop;
-          if(W.step === 1) return !!W.login;
+          if(W.step === 1) return !!(W.login && W.prop.resortId && W.prop.name);
           if(W.step === 2) return !!val('acwEmail');
           if(W.step === 3) return !!(W.result && W.result.connected); // not connected: the welcome would say it is
           return true;
@@ -7388,15 +7406,21 @@
           var h = '<h3>' + (W.step + 1) + '. ' + escapeHtml(STEPS[W.step]) + '</h3>', p = W.prop;
           if(W.step === 0){
             h += '<p class="acw-what">Type at least 3 letters of the property’s name, then tap it.</p>' +
-              '<label for="acwName">Property name</label><input id="acwName" type="search" autocomplete="off" placeholder="e.g. 37 On Anderson" value="' + escapeHtml(p ? p.name : W.findName || '') + '"><div id="acwHits" style="margin-top:8px;"></div>' +
-              (p ? '<p class="acw-ok">✔ ' + escapeHtml(p.name) + (p.externalResortCode ? ' · BBID ' + escapeHtml(p.externalResortCode) : '') + '</p>' : '');
+              '<label for="acwName">Property name</label><input id="acwName" type="search" autocomplete="off" placeholder="e.g. 37 On Anderson" value="' + escapeHtml(p && !p.byLogin ? p.name : W.findName || '') + '"><div id="acwHits" style="margin-top:8px;"></div>' +
+              (p && !p.byLogin ? '<p class="acw-ok">✔ ' + escapeHtml(p.name) + (p.externalResortCode ? ' · BBID ' + escapeHtml(p.externalResortCode) : '') + '</p>' : '') +
+              '<p class="acw-what" style="margin-top:14px;">Not in the list? Stock Network sometimes leaves a property out.</p><button type="button" class="btn-outline" id="acwByLogin" style="margin-top:0;">Find it with its Avante login</button>';
           } else if(W.step === 1){
-            h += '<p class="acw-what">Paste the Avante login Stock Network gave for <b>' + escapeHtml(p.name) + '</b>, then tap <b>Check the login</b>. The hub finds its Site Nr and Site ID itself.</p>' +
+            h += '<p class="acw-what">Paste the Avante login Stock Network gave for <b>' + escapeHtml(p.name || 'the property') + '</b>, then tap <b>Check the login</b>. The hub finds its Site Nr and Site ID' + (p.byLogin ? ', and the property' : '') + ' itself.</p>' +
               '<label for="acwUser">Username</label><input id="acwUser" autocomplete="off">' +
               '<label for="acwCid">Client ID</label><input id="acwCid" autocomplete="off">' +
               '<label for="acwSecret">Client secret</label><input id="acwSecret" type="password" autocomplete="new-password">' +
               '<button type="button" class="primary" id="acwTest" style="margin-top:12px;"' + (W.busy ? ' disabled' : '') + '>' + (W.busy ? 'Checking…' : 'Check the login') + '</button>' +
-              (W.login ? '<p class="acw-ok">✔ Accepted · Site Nr ' + escapeHtml(W.login.siteNr) + ' · Site ID ' + escapeHtml(W.login.siteId) + '</p>' : '');
+              (W.login ? '<p class="acw-ok">✔ Accepted · Site Nr ' + escapeHtml(W.login.siteNr) + ' · Site ID ' + escapeHtml(W.login.siteId) + (p.resortId && p.name ? ' · ' + escapeHtml(p.name) : '') + '</p>' : '') +
+              // Found by its login, but the hub doesn't know which property it is (Jean, 2026-10-20).
+              (W.login && p.byLogin && !(p.resortId && p.name) ? '<p class="acw-what">The hub doesn’t know this property yet. Paste its ResortID: in Stock Network’s resort file (last column), or on the Book button of its booking page.</p>' +
+                '<label for="acwRid">ResortID</label><input id="acwRid" autocomplete="off" placeholder="e.g. ba923af0-e99c-4dbf-ae4a-ebe766afa777" value="' + escapeHtml(p.resortId || '') + '">' +
+                '<label for="acwPName">Property name</label><input id="acwPName" autocomplete="off" value="' + escapeHtml(p.name || W.findName || '') + '">' +
+                '<button type="button" class="primary" id="acwRidGo" style="margin-top:12px;"' + (W.busy ? ' disabled' : '') + '>' + (W.busy ? 'Checking…' : 'Use this ResortID') + '</button>' : '');
           } else if(W.step === 2){
             h += '<p class="acw-what">Where Avante’s emails and new booking notices go. Filled in where the hub already knows them: check them.</p>' +
               '<label for="acwEmail">Email (several: separate with commas)</label><input id="acwEmail" inputmode="email" value="' + escapeHtml(W.contact.email) + '">' +
@@ -7431,15 +7455,20 @@
             var d = res.data || {}; if(d.ok){ W.welcome = { subject: d.subject, body: d.body }; } else W.msg = d.error || 'Could not load the email.'; render(); }); }
         body.addEventListener('click', function(e){
           var t = e.target;
-          if(t.id === 'acwTest'){
-            var c = { username: val('acwUser'), clientID: val('acwCid'), clientSecret: val('acwSecret') };
-            if(!c.username || !c.clientID || !c.clientSecret){ W.msg = 'Paste all three: username, client ID and client secret.'; render(); return; }
+          if(t.id === 'acwByLogin'){
+            W.findName = val('acwName'); W.prop = { byLogin: true, resortId: '', name: '' }; W.login = null; W.result = null; go(1);
+          } else if(t.id === 'acwTest' || t.id === 'acwRidGo'){
+            var c = t.id === 'acwRidGo' ? W.creds : { username: val('acwUser'), clientID: val('acwCid'), clientSecret: val('acwSecret') };
+            var rid = t.id === 'acwRidGo' ? val('acwRid').toLowerCase() : W.prop.resortId, typedName = t.id === 'acwRidGo' ? val('acwPName') : '';
+            if(!c || !c.username || !c.clientID || !c.clientSecret){ W.msg = 'Paste all three: username, client ID and client secret.'; render(); return; }
+            if(t.id === 'acwRidGo' && !rid){ W.msg = 'Paste its ResortID.'; render(); return; }
             W.busy = true; W.msg = ''; W.creds = c; render();
-            propAdminPost('channelLogin', Object.assign({ resortId: W.prop.resortId }, c)).then(function(res){
+            propAdminPost('channelLogin', Object.assign({ resortId: rid }, c)).then(function(res){
               W.busy = false; var d = res.data || {};
               if(!d.ok){ W.msg = d.error || 'The login wasn’t accepted.'; render(); return; }
               W.login = d; W.contact = { email: d.email || '', phone: d.phone || '', contactName: d.contactName || '' };
-              go(2);
+              if(W.prop.byLogin) W.prop = { byLogin: true, resortId: d.resortId || '', name: typedName || d.name || W.prop.name || '' };
+              if(W.prop.resortId && W.prop.name) go(2); else render();
             }).catch(function(){ W.busy = false; W.msg = 'No connection. Try again.'; render(); });
           } else if(t.id === 'acwGo'){
             W.busy = true; W.msg = ''; render();
@@ -7465,7 +7494,8 @@
         function open(start){ W = Object.assign(fresh(), start || {}); if(W.prop) W.step = 1; ov.classList.add('show'); document.addEventListener('keydown', onKey); render(); }
         document.getElementById('acwOpenBtn').addEventListener('click', function(){ open(); });
         // Admin > Site Nrs > Activate: a property not on a channel manager, once Stock Network has set it up (Jean, 2026-10-19).
-        window.openActivateProperty = function(e){ open({ hosted: true, prop: e.resortId ? { resortId: e.resortId, name: e.snName || e.propertyName } : null, findName: e.propertyName || '' }); };
+        // Not found on Stock Network's list yet: straight to its login, which finds it (Jean, 2026-10-20).
+        window.openActivateProperty = function(e){ open({ hosted: true, prop: e.resortId ? { resortId: e.resortId, name: e.snName || e.propertyName } : { byLogin: true, resortId: '', name: '' }, findName: e.propertyName || '' }); };
       })();
       document.getElementById('existingPropsHost').addEventListener('click', function(e){
         var open = e.target.getAttribute('data-ex-open'), create = e.target.getAttribute('data-ex-create');
@@ -7943,6 +7973,30 @@
         }
       })();
 
+      // Minimal RFC-4180 parser (quoted fields, doubled quotes, newlines inside quotes),
+      // shared by the Stock Network file tools below.
+      window.parseCsvRows = function(text){
+        if(text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+        var rows = [], row = [], field = '', inQ = false, i = 0, n = text.length, c;
+        while(i < n){
+          c = text[i];
+          if(inQ){
+            if(c === '"'){
+              if(text[i+1] === '"'){ field += '"'; i += 2; continue; }
+              inQ = false; i++; continue;
+            }
+            field += c; i++; continue;
+          }
+          if(c === '"'){ inQ = true; i++; continue; }
+          if(c === ','){ row.push(field); field = ''; i++; continue; }
+          if(c === '\r'){ i++; continue; }
+          if(c === '\n'){ row.push(field); rows.push(row); row = []; field = ''; i++; continue; }
+          field += c; i++;
+        }
+        if(field !== '' || row.length){ row.push(field); rows.push(row); }
+        return rows;
+      };
+
       // ---- Improve property coordinates (from a StockNetwork export) ----
       // Reads the admin's own StockNetwork resort export in the browser,
       // asks map-api.js's read-only suggestCoordinates action to look each
@@ -7968,28 +8022,7 @@
 
         function setStatus(t, isError){ statusEl.textContent = t; statusEl.className = 'status show' + (isError ? '' : ' ok'); }
 
-        // Minimal RFC-4180 parser (quoted fields, doubled quotes, newlines inside quotes).
-        function parseCsv(text){
-          if(text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
-          var rows = [], row = [], field = '', inQ = false, i = 0, n = text.length, c;
-          while(i < n){
-            c = text[i];
-            if(inQ){
-              if(c === '"'){
-                if(text[i+1] === '"'){ field += '"'; i += 2; continue; }
-                inQ = false; i++; continue;
-              }
-              field += c; i++; continue;
-            }
-            if(c === '"'){ inQ = true; i++; continue; }
-            if(c === ','){ row.push(field); field = ''; i++; continue; }
-            if(c === '\r'){ i++; continue; }
-            if(c === '\n'){ row.push(field); rows.push(row); row = []; field = ''; i++; continue; }
-            field += c; i++;
-          }
-          if(field !== '' || row.length){ row.push(field); rows.push(row); }
-          return rows;
-        }
+        var parseCsv = window.parseCsvRows;
         function csvCell(v){
           v = (v === null || v === undefined) ? '' : String(v);
           return /[",\r\n]|^\s|\s$/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
@@ -8798,7 +8831,7 @@
             '<td>' + escapeHtml(item.siteId || '\u2014') + '</td>' +
             '<td>' + escapeHtml(hint) + '</td>' +
             '<td style="font-size:11px; color:var(--muted);">' + escapeHtml(coords) + '</td>' +
-            '<td>' + escapeHtml(day(item.addedAt)) + '</td>' +
+            '<td>' + escapeHtml(day(item.addedAt)) + (item.from === 'file' ? '<br><small style="color:var(--muted);">from the file</small>' : '') + '</td>' +
             '<td><button type="button" class="btn-outline btn-small" data-act="remove">Remove from hub</button></td>';
           tbody.appendChild(tr);
           tr.querySelector('[data-act="remove"]').addEventListener('click', function(){
@@ -8830,6 +8863,90 @@
         loadBtn.addEventListener('click', load);
       })();
 
+      // ---- Add from Stock Network's file (Jean, 2026-10-20) ----
+      // Stock Network's list (/api/1.0/resort) sometimes leaves a property out
+      // that its resort file has (Little Gem @ The Dunes, Oct 2026). The file is
+      // read here; only properties the hub doesn't have go to resorts-api.js
+      // (action addFromFile: the nightly sync's own add step, adding only).
+      (function(){
+        var $ = function(id){ return document.getElementById(id); };
+        var fileBtn = $('snFileBtn'), fileInput = $('snFileInput'), addBtn = $('snFileAddBtn');
+        if(!fileBtn || !fileInput || !addBtn) return;
+        var pending = [];
+        function setStatus(t, isError){ var el = $('snFileStatus'); el.textContent = t; el.className = 'status show' + (isError ? '' : ' ok'); }
+        function post(rows, dryRun){
+          return fetch('/api/resorts', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'addFromFile', token: ADMIN_TOKEN, dryRun: dryRun, rows: rows }) })
+            .then(function(r){ if(r.status === 401){ goToLogin(); return Promise.reject(new Error('unauthenticated')); } return r.json(); });
+        }
+        // The file's rows in the shape of Stock Network's list. One row per site, so a
+        // property can be there more than once: the first row with a SiteID counts.
+        // A row with more cells than the header (a comma inside a place name, e.g.
+        // "Sydenham, Jhb") is read from the right, so ResortID and the pin stay right.
+        function fileRows(text){
+          var rows = window.parseCsvRows(text), header = rows.shift() || [];
+          var lower = header.map(function(h){ return h.trim().toLowerCase(); });
+          var at = function(name){ return lower.indexOf(name); };
+          if(at('resort') < 0 || at('resortid') < 0) return null;
+          var byId = {};
+          rows.forEach(function(r){
+            if(r.length < 2) return;
+            var shift = Math.max(0, r.length - header.length);
+            var get = function(name){ var i = at(name); return i < 0 ? '' : String((i === 0 ? r[0] : r[i + shift]) || '').trim(); };
+            var id = get('resortid').toLowerCase();
+            if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id) || (byId[id] && byId[id].SiteID)) return;
+            var num = function(v){ var n = parseFloat(v); return isFinite(n) ? n : null; };
+            byId[id] = { iExchangeResortFileID: id, name: get('resort'), latitude: num(get('latitude')), longitude: num(get('longitude')),
+              country: get('country'), state: get('state'), area: get('area'), district: get('district'), city: get('city'), city2: get('city2'), suburb: get('suburb'),
+              supplierRating: get('supplier rating'), tourismBoardRating: get('tourism board rating'), resortCode: get('external resort code'), SiteID: get('siteid') };
+          });
+          return Object.keys(byId).map(function(k){ return byId[k]; });
+        }
+        function showList(list){
+          $('snFileTableBody').innerHTML = list.map(function(r){
+            return '<tr><td>' + escapeHtml(r.name) + '</td><td style="font-size:11px;">' + escapeHtml(r.resortId) + '</td><td>' + escapeHtml([r.city, r.area].filter(Boolean).join(' / ') || '\u2014') + '</td></tr>';
+          }).join('');
+          $('snFileTableWrap').style.display = list.length ? 'block' : 'none';
+          $('snFileAddRow').style.display = list.length ? 'flex' : 'none';
+        }
+        fileBtn.addEventListener('click', function(){ fileInput.click(); });
+        fileInput.addEventListener('change', function(){
+          var f = fileInput.files && fileInput.files[0]; fileInput.value = '';
+          if(!f) return;
+          pending = []; showList([]); setStatus('Reading ' + f.name + '\u2026');
+          var reader = new FileReader();
+          reader.onload = function(){
+            var all = fileRows(String(reader.result || ''));
+            if(!all){ setStatus('This doesn\u2019t look like Stock Network\u2019s resort file: it needs the "Resort" and "ResortID" columns.', true); return; }
+            // Only what the hub doesn't have goes to the server (it checks again).
+            window.AvanteResorts.load().then(function(d){
+              var have = {}; (d.resorts || []).forEach(function(r){ if(r && r.resortId) have[String(r.resortId).toLowerCase()] = 1; });
+              var missing = all.filter(function(r){ return !have[r.iExchangeResortFileID]; });
+              if(!missing.length){ setStatus('The file has ' + all.length + ' properties. The hub has all of them: nothing to add.'); return; }
+              return post(missing, true).then(function(res){
+                if(!res.ok){ setStatus(res.error || 'Could not check the file.', true); return; }
+                pending = missing.filter(function(r){ return res.toAdd.some(function(a){ return a.resortId.toLowerCase() === r.iExchangeResortFileID; }); });
+                showList(res.toAdd);
+                setStatus('The file has ' + all.length + ' properties. ' + (res.toAdd.length ? res.toAdd.length + ' aren\u2019t in the hub yet. Check them, then tap Add.' : 'Nothing to add.') +
+                  (res.skippedRemoved ? ' ' + res.skippedRemoved + ' were removed from the hub before, so stay out.' : ''));
+              });
+            }).catch(function(){ setStatus('Could not check the file. Try again.', true); });
+          };
+          reader.readAsText(f);
+        });
+        addBtn.addEventListener('click', function(){
+          if(!pending.length) return;
+          addBtn.disabled = true; setStatus('Adding\u2026');
+          post(pending, false).then(function(res){
+            addBtn.disabled = false;
+            if(!res.ok){ setStatus(res.error || 'Could not add them.', true); return; }
+            pending = []; showList([]);
+            setStatus('Added ' + res.addedProperties + ' propert' + (res.addedProperties === 1 ? 'y' : 'ies') + '. They are in the list above and get placed in the location tree like every other property.');
+            $('newSnPropsLoadBtn').click();
+            window.AvanteResorts.reset();
+          }).catch(function(){ addBtn.disabled = false; setStatus('Could not add them. Try again.', true); });
+        });
+      })();
+
       // ---- Corrected StockNetwork file (location columns from the location tree) ----
       // Reads the admin's StockNetwork resort export in the browser, asks
       // map-api.js's exportLocations action what Country / State / Area /
@@ -8853,28 +8970,7 @@
 
         function setStatus(t, isError){ statusEl.textContent = t; statusEl.className = 'status show' + (isError ? '' : ' ok'); }
 
-        // Same minimal RFC-4180 parser as the coordinates tool above.
-        function parseCsv(text){
-          if(text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
-          var rows = [], row = [], field = '', inQ = false, i = 0, n = text.length, c;
-          while(i < n){
-            c = text[i];
-            if(inQ){
-              if(c === '"'){
-                if(text[i+1] === '"'){ field += '"'; i += 2; continue; }
-                inQ = false; i++; continue;
-              }
-              field += c; i++; continue;
-            }
-            if(c === '"'){ inQ = true; i++; continue; }
-            if(c === ','){ row.push(field); field = ''; i++; continue; }
-            if(c === '\r'){ i++; continue; }
-            if(c === '\n'){ row.push(field); rows.push(row); row = []; field = ''; i++; continue; }
-            field += c; i++;
-          }
-          if(field !== '' || row.length){ row.push(field); rows.push(row); }
-          return rows;
-        }
+        var parseCsv = window.parseCsvRows;
         // The report opens in Excel, so it carries a BOM.
         function csvCell(v){
           v = (v === null || v === undefined) ? '' : String(v);
@@ -10684,6 +10780,8 @@
         say($('snrStatus'), ''); render();
       }).catch(function(){ say($('snrStatus'), 'Could not load the list.'); });
     }
+    // Placed by its listing (Jean, 2026-10-20): these come from the location tree, never typed.
+    var PLACE = { area: 1, district: 1, suburb: 1 };
     var F = [['propertyName','Name'],['bbid','BBID'],['contactName','Contact'],['phone','Phone No'],['email','Email (several: separate with commas)'],['description','Description'],['area','Area'],['district','District'],['suburb','Suburb'],['note','Note to Stock Network (in the email)']];
     function openEntry(nr, message){
       var e = entries.filter(function(x){ return String(x.siteNr) === String(nr); })[0]; if(!e) return;
@@ -10691,9 +10789,9 @@
       host.innerHTML = '<div style="border:1.5px solid var(--line); border-radius:12px; padding:16px;">' +
         '<h3 style="margin-top:0;">Site Nr ' + escapeHtml(e.siteNr) + '</h3>' +
         '<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:10px;">' +
-        F.map(function(f){ return '<div><label for="snrF_' + f[0] + '">' + f[1] + '</label><input id="snrF_' + f[0] + '" value="' + escapeHtml(e[f[0]] || '') + '" style="width:100%;"></div>'; }).join('') +
+        F.map(function(f){ var fixed = e.placeFrom && PLACE[f[0]]; return '<div><label for="snrF_' + f[0] + '">' + f[1] + '</label><input id="snrF_' + f[0] + '" value="' + escapeHtml(e[f[0]] || '') + '" style="width:100%;' + (fixed ? ' background:#f2f4f5;' : '') + '"' + (fixed ? ' readonly' : '') + '></div>'; }).join('') +
         '<div><label for="snrF_status">Status</label><select id="snrF_status" style="width:100%;">' + (function(l){ return l.indexOf(e.status) > -1 ? l : l.concat([e.status]); })(statuses.length ? statuses : ['Spare','Ready to send','Sent','Set up']).map(function(s){ return '<option' + (s === e.status ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select></div>' +
-        '</div><p class="hint" style="margin:10px 0 0;">Rate on the sheet: 17.25. City2 is left out (Stock Network keeps its own).</p>' +
+        '</div><p class="hint" style="margin:10px 0 0;">' + (e.placeFrom ? 'Area, District and Suburb come from listing ' + escapeHtml(e.placeFrom) + '\u2019s place in the location tree. To change them, change the listing\u2019s latitude and longitude in Property Listings. ' : '') + 'Rate on the sheet: 17.25. City2 is left out (Stock Network keeps its own).</p>' +
         '<div style="display:flex; flex-wrap:wrap; gap:10px; margin-top:10px;"><button type="button" class="primary" id="snrSave" style="margin-top:0;">Save</button>' +
         '<button type="button" class="btn-outline" id="snrSend" style="margin-top:0;">Save and send the sheet to Stock Network</button></div>' +
         '<div class="status" id="snrEditStatus"></div>' +
@@ -10734,6 +10832,7 @@
           !done.length ? 'None of the ' + d.waiting + ' waiting Site Nrs are on Stock Network yet.' :
           'Set up: ' + done.map(function(x){ return x.name + ' (' + x.siteNr + (x.affId ? ', affiliate ' + x.affId : '') + (x.welcomed ? ', login emailed' : ', login NOT emailed') + ')'; }).join('; ') + '.';
         if((d.ready || []).length) msg += ' Ready to go live: ' + d.ready.map(function(x){ return x.name + ' (stock from ' + when(x.stockFrom) + ')'; }).join('; ') + '.';
+        if(d.feed) msg += ' Stock Network\u2019s list read now: ' + d.feed.count + ' properties.' + (d.feed.saveError ? ' WARNING: the hub couldn\u2019t save that list (' + d.feed.saveError + '). This check used it anyway; tell Claude.' : '');
         return load().then(function(){ say($('snrStatus'), msg); });
       }).catch(function(){ b.disabled = false; say($('snrStatus'), 'Could not check.'); });
     });

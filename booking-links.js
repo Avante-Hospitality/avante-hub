@@ -85,6 +85,7 @@
   // /api/resorts is about 5,500 rows. Every part of a page asks this one loader,
   // so it is downloaded once per page; a failed load is tried again next time.
   // AvanteResorts.load() -> Promise of the API's answer ({ resorts, updatedAt, count }).
+  // AvanteResorts.reset(): the list changed (admin added properties), load it again next time.
   var resortsPromise = null;
   function loadResorts() {
     if (!resortsPromise) {
@@ -93,7 +94,7 @@
     }
     return resortsPromise;
   }
-  window.AvanteResorts = { load: loadResorts };
+  window.AvanteResorts = { load: loadResorts, reset: function () { resortsPromise = null; } };
 
   // ---------- The location tree ----------
   // Loads the same placements the Hub's pages use: tree-places.json, with

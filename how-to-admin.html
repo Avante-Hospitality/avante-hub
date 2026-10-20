@@ -34,11 +34,14 @@
   <main class="ht-main">
     <h1>Hub admin, step by step</h1>
     <p class="ht-lead">For Avante Travel staff. Every admin tab, one small step at a time.</p>
-    <p class="ht-updated">Last updated: 19 October 2026</p>
+    <p class="ht-updated">Last updated: 20 October 2026</p>
 
     <div class="ht-card ht-new" aria-label="What's new">
       <h2>What's new</h2>
       <ul>
+        <li><time>20 Oct 2026</time> Stock Network's list sometimes leaves a property out (Little Gem @ The Dunes). New on <span class="tab">Map &amp; Activities</span>: <b>Add from Stock Network's file</b>. Choose Stock Network's resort file, check the list, tap <span class="btn">Add</span>. It only adds what the hub doesn't have. See <a href="#mapActivities">Map &amp; Activities</a>.</li>
+        <li><time>20 Oct 2026</time> Activate pop-up: property not in the list? Tap <span class="btn g">Find it with its Avante login</span>. The login finds it. If the hub doesn't know it yet, paste its <span class="field">ResortID</span> and tap <span class="btn">Use this ResortID</span>. From <span class="tab">Site Nrs</span>, <span class="btn">Activate</span> goes straight to the login. See <a href="#addNbProperty">Add a NightsBridge property</a>.</li>
+        <li><time>20 Oct 2026</time> Site Nrs: a Site Nr with a listing takes <span class="field">Area</span>, <span class="field">District</span> and <span class="field">Suburb</span> from the listing's place in the location tree. They are grey and can't be typed. The sheet to Stock Network always uses them as they are now. <span class="btn g">Check Stock Network now</span> also says how many properties Stock Network's list had, and warns you if the hub couldn't save it. See <a href="#siteNrs">Site Nrs</a>.</li>
         <li><time>19 Oct 2026</time> Unit types are now read from Stock Network for new properties within the hour, and for every property again every 6 months (no longer every day). To read one property now, tap <span class="btn g">↻ Refresh units</span> under its units on the <b>Master map</b>. See <a href="#mapActivities">Map &amp; Activities</a>.</li>
         <li><time>19 Oct 2026</time> Activate pop-up: if connecting fails, step 4 shows <span class="btn">Try again</span> and you can't go on to the welcome email until it is connected. An affiliate that already exists is set to the right kind (Channel Property or Property) by itself.</li>
         <li><time>19 Oct 2026</time> Activate pop-up: a property whose Site Nr was given out before the <span class="tab">Site Nrs</span> list (for example Little Gem, 6019) is found by its Site Nr, and is treated as <b>not on a channel manager</b> when its listing names no channel manager.</li>
@@ -395,7 +398,7 @@
         <li>The property gets an email <b>You're set up with Avante</b> with its affiliate number and the login link. It taps <b>Forgot your password?</b> to set a password.</li>
         <li>You get an email listing what was set up.</li>
         <li>Not on a platform? Stock Network's list has no Site ID, so under its status it says <b>Needs its Avante login: tap Activate</b>. No affiliate or email yet.</li>
-        <li>Got the property's Avante login from Stock Network? Tap <span class="btn">Activate</span> on its row. The pop-up <b>Activate a property</b> opens on step 2 (on step 1 if the hourly check hasn't found it yet: tap its name).</li>
+        <li>Got the property's Avante login from Stock Network? Tap <span class="btn">Activate</span> on its row. The pop-up <b>Activate a property</b> opens on step 2.</li>
         <li>Paste the <span class="field">Username</span>, <span class="field">Client ID</span> and <span class="field">Client secret</span>. Tap <span class="btn">Check the login</span>.</li>
         <li>Check the email and phone. Tap <span class="btn">Next</span>.</li>
         <li>Tap <span class="btn">Activate</span>. The hub makes its <b>Property Affiliate</b> (number = Site ID), links its listing and connects it.</li>
@@ -405,14 +408,16 @@
       </ol>
       <div class="tip">Don't want to wait for the hour? Tap <span class="btn g">Check Stock Network now</span> at the top of <span class="tab">Site Nrs</span>. The answer shows under the button.</div>
       <div class="tip">Ticked Property Affiliate? The email asks Stock Network to set the channel property commission field to <b>4.95%</b> once the site is up. The sheet's Rate stays 17.25.</div>
-      <div class="tip">Area, District and Suburb come from the hub location tree when Google finds the property by its name. If not, they stay empty: fill them in and send again (below).</div>
+      <div class="tip">Area, District and Suburb come from the hub location tree. With a listing: from the listing's pin (grey, can't be typed). Without a listing: from where Google finds the property by its name. If Google can't find it, they stay empty: fill them in and send again (below).</div>
+      <div class="tip">After <span class="btn g">Check Stock Network now</span> the answer also says <b>Stock Network's list read now: … properties</b>. A <b>WARNING</b> that the hub couldn't save that list means the check still worked, but tell Claude. The hourly check emails you about it once a day.</div>
       <h3>Check or change a Site Nr, and send it again</h3>
       <ol class="steps">
         <li>Tap <span class="tab">Site Nrs</span>. The list shows the highest number first. <b>Failed</b> in <b>Sent to SN</b> means the email didn't go.</li>
         <li>Tap <span class="btn g">Open</span> on the row.</li>
-        <li>Change what you need (for example <span class="field">Area</span>, <span class="field">District</span>, <span class="field">Suburb</span>, or a <span class="field">Note to Stock Network (in the email)</span>).</li>
+        <li>Change what you need (for example <span class="field">Contact</span>, <span class="field">Email</span>, or a <span class="field">Note to Stock Network (in the email)</span>).</li>
+        <li>Grey <span class="field">Area</span>, <span class="field">District</span> and <span class="field">Suburb</span>? They come from the listing. To change them, open the listing in <span class="tab">Property Listings</span> and fix its latitude and longitude.</li>
         <li>Tap <span class="btn">Save</span>, or <span class="btn g">Save and send the sheet to Stock Network</span> to email it again. Every email is listed under <b>Emails sent</b>.</li>
-        <li>Stock Network has created the site but the hourly check can't find it? Not on a platform: tap <span class="btn">Activate</span> on the row and search for it by name in step 1. On a channel manager: use <span class="btn">Activate a channel property</span>.</li>
+        <li>Stock Network has created the site but the hourly check can't find it? Not on a platform: tap <span class="btn">Activate</span> on the row. It opens on the login step: paste the login and the hub finds the property. On a channel manager: use <span class="btn">Activate a channel property</span>.</li>
       </ol>
       <h3>Reserve a Site Nr by hand</h3>
       <ol class="steps">
@@ -437,7 +442,10 @@
         <li>Tap <span class="tab">Property Listings</span>.</li>
         <li>Under <b>Properties already on Stock Network</b>, tap <span class="btn">Activate a channel property</span>. A pop-up opens with 5 steps.</li>
         <li><b>1 Find the property:</b> type at least 3 letters of its name in <span class="field">Property name</span>. Tap it in the list.</li>
+        <li>Not in the list? Tap <span class="btn g">Find it with its Avante login</span>.</li>
         <li><b>2 Its Avante login:</b> paste the <span class="field">Username</span>, <span class="field">Client ID</span> and <span class="field">Client secret</span>. Tap <span class="btn">Check the login</span>. The hub finds its Site Nr and Site ID itself.</li>
+        <li>Came with <span class="btn g">Find it with its Avante login</span> and the hub asks for its <span class="field">ResortID</span>? Paste it. It is the last column of Stock Network's resort file.</li>
+        <li>Check <span class="field">Property name</span>. Tap <span class="btn">Use this ResortID</span>.</li>
         <li><b>3 Contact details:</b> check the <span class="field">Email</span>, <span class="field">Phone</span> and <span class="field">Contact person</span>. Tap <span class="btn">Next</span>.</li>
         <li><b>4 Activate:</b> tap <span class="btn">Activate</span>. The hub makes or links its listing, makes its Channel Property Affiliate (4.95% + VAT, Hook Builder on) and connects it. Each line shows ✔ when done.</li>
         <li>A red <b>NOT connected</b> line? Tap <span class="btn g">Back</span>, check the login, then tap <span class="btn">Try again</span>. The welcome email only comes once it is connected.</li>
@@ -509,12 +517,24 @@
         <li>Can't find it? Tap <b>Can't find it — flag as possibly inactive</b>. Later download the flagged list for Stock Network.</li>
       </ol>
       <h3>New Stock Network properties (added by themselves)</h3>
-      <p>Every night the hub adds the Stock Network properties it doesn't have yet. Their place in the location tree comes from their pin, like every other property. There is no file to upload.</p>
+      <p>Every night the hub adds the Stock Network properties it doesn't have yet. Their place in the location tree comes from their pin, like every other property.</p>
       <ol class="steps">
         <li>Go to <b>Added from Stock Network</b> and tap <span class="btn g">Refresh list</span>. It says how many last night's sync added, and lists them newest first.</li>
         <li>One Avante doesn't carry? Tap <span class="btn g">Remove from hub</span> on its row, then <b>OK</b>. The nightly sync won't add it again.</li>
         <li>Some still not in the tree? Under <b>Location tree</b>, tap <span class="btn">Re-run lookup</span>.</li>
       </ol>
+      <h3>A property Stock Network's list leaves out</h3>
+      <p>Bookable on Stock Network, but not in the hub (for example Little Gem @ The Dunes)? Stock Network's list left it out. Its resort file has it.</p>
+      <ol class="steps">
+        <li>On Stock Network, export the resort file (<b>Resort Information</b> .csv).</li>
+        <li>In <span class="tab">Map &amp; Activities</span>, go to <b>Added from Stock Network</b>.</li>
+        <li>Under <b>Add from Stock Network's file</b>, tap <span class="btn g">Choose Stock Network's resort file (.csv)…</span> and pick the file.</li>
+        <li>Wait. It says how many properties the file has and lists the ones the hub doesn't have yet.</li>
+        <li>Check the list. Tap <span class="btn">Add</span>.</li>
+        <li>They now show in the list above with <b>from the file</b>, and get placed in the location tree like every other property.</li>
+      </ol>
+      <div class="tip">Properties the hub already has are never changed by the file. One you took out with <span class="btn g">Remove from hub</span> stays out.</div>
+      <div class="tip">Tell Stock Network too: their list should have it. Until they fix it, the file is the way in.</div>
       <h3>Location differences with Stock Network</h3>
       <ol class="steps">
         <li>Go to <b>StockNetwork location review</b> and tap <b>Load flagged properties</b>.</li>

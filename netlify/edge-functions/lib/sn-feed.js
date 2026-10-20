@@ -7,8 +7,8 @@
 // doesn't document their names, so every field with "site" in its name is
 // returned as it is (siteFields), and the Site Nr / Site ID are picked out of
 // them: the Site ID is the GUID, the Site Nr the whole number.
-// The feed is big, so a slim index (BBID -> property + site fields) is kept for
-// 6 hours in the "sn-feed" store.
+// The feed is big, so every property's row (by ResortID) is kept for 6 hours
+// in the "sn-feed" store ("resort-index").
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
 import { normName } from "./photo-library.js";
 import { haversineKm } from "./geo-distance.js";
@@ -36,16 +36,8 @@ export function pickSite(fields) {
   const nr = (vals.find(([k, v]) => /^\d{1,7}$/.test(v) && /(no|nr|num|number|code)$/i.test(k)) || vals.find(([, v]) => /^\d{1,7}$/.test(v)) || [])[1] || "";
   return { siteId: guid, siteNr: nr };
 }
-function slim(row) {
-  const num = (v) => (typeof v === "number" ? v : v === null || v === undefined || v === "" ? null : Number(v));
-  return { resortId: String(row.iExchangeResortFileID || row.resortId || "").trim(), name: String(row.name || row.resortName || row.ResortName || "").trim(),
-    latitude: num(row.latitude), longitude: num(row.longitude), siteFields: siteFieldsOf(row) };
-}
-
 async function loadIndex(fetchImpl) {
   const store = getStore({ name: "sn-feed", consistency: "strong" });
-  const cached = await store.get("bbid-index", { type: "json" }).catch(() => null);
-  if (cached && cached.at && Date.now() - Date.parse(cached.at) < CACHE_MS) return cached;
   const username = env("STOCKNETWORK_USERNAME"), clientID = env("STOCKNETWORK_CLIENT_ID"), clientSecret = env("STOCKNETWORK_CLIENT_SECRET");
   if (!username || !clientID || !clientSecret) throw new Error("The Stock Network login for the property feed isn't set on this site.");
   const t = await fetchImpl(BASE + "/api/1.0/token", { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ username, clientID, clientSecret }) });
@@ -55,16 +47,16 @@ async function loadIndex(fetchImpl) {
   if (!r.ok) throw new Error("Stock Network's property feed answered " + r.status + ".");
   const data = await r.json();
   const rows = Array.isArray(data) ? data : data.resorts || data.data || [];
-  const byBbid = {}, byResort = {};
+  // Every property's full row (Jean, 2026-10-14: onboarding pulls all it can).
+  const byResort = {};
   for (const row of rows) {
-    const code = normBbid(row && row.resortCode); if (code) (byBbid[code] = byBbid[code] || []).push(slim(row));
     const rid = String((row && (row.iExchangeResortFileID || row.resortId)) || "").trim().toLowerCase(); if (rid) byResort[rid] = compact(row);
   }
-  const index = { at: new Date().toISOString(), count: rows.length, byBbid };
-  await store.setJSON("bbid-index", index).catch(() => {});
-  // Every property's full row too (Jean, 2026-10-14: onboarding pulls all it can).
-  await store.setJSON("resort-index", { at: index.at, byResort }).catch(() => {});
-  return index;
+  const idx = { at: new Date().toISOString(), byResort };
+  // A failed save is reported, never hidden behind the old copy (Jean, 2026-10-20).
+  let saveError = "";
+  await store.setJSON("resort-index", idx).catch((e) => { saveError = String((e && e.message) || e); });
+  return Object.assign(idx, { read: { at: idx.at, count: rows.length, saveError } });
 }
 
 // A feed row with only its plain values (text, numbers, yes/no).
@@ -78,15 +70,17 @@ function compact(row) {
   return out;
 }
 // Every property's full row, keyed by lower-case ResortID (refreshed every 6
-// hours, or now when fresh is set).
+// hours, or now when fresh is set). -> { at, byResort, read } where read
+// ({ at, count, saveError }) is there only when it was read from Stock Network now.
 async function resortIndex(fetchImpl, fresh) {
   const store = getStore({ name: "sn-feed", consistency: "strong" });
   let idx = fresh ? null : await store.get("resort-index", { type: "json" }).catch(() => null);
   if (!idx || !idx.at || Date.now() - Date.parse(idx.at) > CACHE_MS) {
-    try { await store.delete("bbid-index").catch(() => {}); await loadIndex(fetchImpl); idx = await store.get("resort-index", { type: "json" }).catch(() => null); }
+    // The rows just read are used as they are, even if saving them failed.
+    try { idx = await loadIndex(fetchImpl); }
     catch (e) { if (fresh) throw e; /* else use what we have */ }
   }
-  return (idx && idx.byResort) || {};
+  return idx && idx.byResort ? idx : { byResort: {} };
 }
 const feedName = (row) => String(row.name || row.resortName || row.ResortName || "").trim();
 const feedPlace = (row) => String(row.district || row.city || row.suburb || "").trim();
@@ -94,7 +88,7 @@ const feedPlace = (row) => String(row.district || row.city || row.suburb || "").
 // The property's full row from the feed, or null.
 export async function feedRowByResort(resortId, fetchImpl = fetch) {
   const id = String(resortId || "").trim().toLowerCase(); if (!id) return null;
-  return (await resortIndex(fetchImpl))[id] || null;
+  return (await resortIndex(fetchImpl)).byResort[id] || null;
 }
 
 // Properties on one Stock Network site, matched by its Site Nr or Site ID
@@ -105,7 +99,7 @@ export async function feedBySite(siteNr, siteId, fetchImpl = fetch) {
   const nr = String(siteNr || "").trim(), id = String(siteId || "").trim().toLowerCase();
   if (!nr && !id) return [];
   const out = [];
-  for (const [rid, row] of Object.entries(await resortIndex(fetchImpl))) {
+  for (const [rid, row] of Object.entries((await resortIndex(fetchImpl)).byResort)) {
     const s = pickSite(siteFieldsOf(row));
     if ((nr && s.siteNr === nr) || (id && s.siteId.toLowerCase() === id)) out.push({ resortId: rid, name: feedName(row), district: feedPlace(row) });
   }
@@ -121,8 +115,9 @@ export async function feedBySite(siteNr, siteId, fetchImpl = fetch) {
 // wanted: [{ siteNr, bbid, name, latitude, longitude }]
 // -> same order: { resortId, name, siteNr, siteId, latitude, longitude, by } or null
 export async function findSetUps(wanted, fetchImpl = fetch) {
-  const rows = Object.entries(await resortIndex(fetchImpl, true));
-  return wanted.map(({ siteNr, bbid, name, latitude, longitude }) => {
+  const idx = await resortIndex(fetchImpl, true), rows = Object.entries(idx.byResort);
+  // .feed: how the fresh read went ({ at, count, saveError }).
+  return Object.assign(wanted.map(({ siteNr, bbid, name, latitude, longitude }) => {
     const nr = String(siteNr || "").trim(), code = normBbid(bbid), nm = normName(name);
     let by = "Site Nr", hit = nr && rows.find(([, row]) => String(pickSite(siteFieldsOf(row)).siteNr) === nr);
     if (!hit && code) { by = "BBID"; hit = rows.find(([, row]) => normBbid(row.resortCode) === code); }
@@ -136,13 +131,13 @@ export async function findSetUps(wanted, fetchImpl = fetch) {
     const [rid, row] = hit, site = pickSite(siteFieldsOf(row));
     const num = (v) => (v === "" || v == null ? null : Number(v));
     return { resortId: rid, name: feedName(row), siteNr: String(site.siteNr), siteId: site.siteId, latitude: num(row.latitude), longitude: num(row.longitude), by };
-  });
+  }), { feed: idx.read || null });
 }
 
 // Properties whose name or place contains q (lower case). -> [{ resortId, name, district }]
 export async function feedSearch(q, max = 12, fetchImpl = fetch) {
   const out = [];
-  for (const [rid, row] of Object.entries(await resortIndex(fetchImpl))) {
+  for (const [rid, row] of Object.entries((await resortIndex(fetchImpl)).byResort)) {
     if ((feedName(row) + " " + feedPlace(row)).toLowerCase().indexOf(q) < 0) continue;
     out.push({ resortId: rid, name: feedName(row), district: feedPlace(row) });
     if (out.length >= max) break;

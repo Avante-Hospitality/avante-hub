@@ -7,6 +7,7 @@ import { placeResortBacklog, PLACES_STORE } from "./lib/tree.js";
 import { checkNameAgainstCoordinate } from "./lib/name-check.js";
 import { estatesMap, estateNames, ESTATE_TYPES } from "./lib/estates.js";
 import { pickSite, siteFieldsOf } from "./lib/sn-feed.js";
+import { isAdminToken } from "./lib/admin-session.js";
 
 // The old zone/town tags (before the location tree, 2026-10-07). Removed from
 // every row on each sync.
@@ -76,16 +77,11 @@ function newResortRow(apiRow, resortId, at) {
     latitude: has ? String(apiRow.latitude) : "", longitude: has ? String(apiRow.longitude) : "" }, mapApiRowToRawFields(apiRow), { addedFromSnAt: at });
 }
 
-async function handleApiSync(request, store, cors) {
-  let body;
-  try {
-    body = await request.json();
-  } catch (e) {
-    return new Response(JSON.stringify({ ok: false, error: "invalid JSON" }), {
-      status: 400,
-      headers: { "content-type": "application/json", ...cors },
-    });
-  }
+// rows: raw /api/1.0/resort rows (the nightly sync), or rows from Stock
+// Network's resort file in the same shape (admin's "Add from Stock Network's
+// file", Jean 2026-10-20). opts.addOnly: only add properties the hub doesn't
+// have; never change one it has. opts.dryRun: say what would be added, save nothing.
+async function handleApiSync(body, store, cors, opts = {}) {
   const rows = Array.isArray(body.rows) ? body.rows : [];
   if (!rows.length) {
     return new Response(JSON.stringify({ ok: false, error: "No rows supplied." }), {
@@ -150,15 +146,17 @@ async function handleApiSync(request, store, cors) {
       if (dismissedSet.has(idKey(resortId))) { skippedRemoved++; continue; }
       const rec = newResortRow(apiRow, resortId, syncAt);
       if (!rec) { skippedNoName++; continue; }
+      if (opts.source) rec.addedFrom = opts.source;
       const i = resorts.push(rec) - 1;
       byResortId.set(idKey(resortId), [i]);
       if (rec.latitude) changedIdxs.push(i);
       addedProperties++;
       added.push({ resortId, name: rec.name, siteId: rec.siteId, snCountry: rec.snCountry, area: rec.area, city: rec.city,
-        latitude: rec.latitude ? Number(rec.latitude) : null, longitude: rec.longitude ? Number(rec.longitude) : null, addedAt: syncAt });
+        latitude: rec.latitude ? Number(rec.latitude) : null, longitude: rec.longitude ? Number(rec.longitude) : null, addedAt: syncAt, from: opts.source || undefined });
       continue;
     }
     matchedProperties++;
+    if (opts.addOnly) continue;
     const fresh = mapApiRowToRawFields(apiRow);
     const hasNewCoord =
       typeof apiRow.latitude === "number" &&
@@ -252,6 +250,11 @@ async function handleApiSync(request, store, cors) {
     });
   }
 
+  if (opts.dryRun) {
+    return new Response(JSON.stringify({ ok: true, dryRun: true, totalRows: rows.length, alreadyInHub: matchedProperties, skippedRemoved, skippedNoName,
+      toAdd: added.map((a) => ({ resortId: a.resortId, name: a.name, city: a.city, area: a.area })) }), { headers: { "content-type": "application/json", ...cors } });
+  }
+
   // Name check for every property whose coordinate just changed (see the
   // import note at the top). Its place in the location tree is set by
   // placeTreeBacklog below.
@@ -332,7 +335,7 @@ async function handleApiSync(request, store, cors) {
   stripOldZoneTags(resorts);
   await store.setJSON(
     "current",
-    Object.assign({}, record, { resorts, apiSyncedAt: syncAt, updatedAt: syncAt })
+    Object.assign({}, record, { resorts, updatedAt: syncAt }, opts.source ? {} : { apiSyncedAt: syncAt })
   );
 
   // New location tree (2026-10-07): place any property that is new or whose pin
@@ -347,7 +350,7 @@ async function handleApiSync(request, store, cors) {
   await pendingNewStore.setJSON("current", {
     items: added.concat(earlier).slice(0, ADDED_KEEP),
     dismissedIds,
-    lastRun: { at: syncAt, added: addedProperties, skippedNoName, skippedRemoved },
+    lastRun: opts.source ? pendingNew.lastRun : { at: syncAt, added: addedProperties, skippedNoName, skippedRemoved },
     updatedAt: syncAt,
   });
 
@@ -418,14 +421,22 @@ export default async (request, context) => {
     }
 
     if (request.method === "POST") {
-      // Only the nightly Stock Network sync (stocknetwork-sync.mjs) writes the
-      // resort list: { action: "syncStockNetworkApi", rows: [raw /api/1.0/resort
-      // rows] } with the shared secret. It updates Stock Network's own fields,
-      // adds properties the hub doesn't have yet, and never touches the hub's
-      // location tree (the master). The CSV upload is gone (Jean, 2026-10-17).
+      // The nightly Stock Network sync (stocknetwork-sync.mjs) writes the resort
+      // list: { action: "syncStockNetworkApi", rows: [raw /api/1.0/resort rows] }
+      // with the shared secret. It updates Stock Network's own fields, adds
+      // properties the hub doesn't have yet, and never touches the hub's location
+      // tree (the master). Admin's resort file (below) only adds.
+      let body;
+      try { body = await request.json(); } catch (e) { return deny("The resort list is updated every night from Stock Network."); }
+      // Admin's "Add from Stock Network's file" (Jean, 2026-10-20): Stock Network's
+      // list sometimes leaves a property out; its resort file has it. Adds only.
+      if (body.action === "addFromFile") {
+        if (!(await isAdminToken(body.token))) return new Response(JSON.stringify({ ok: false, error: "Log in to Admin again." }), { status: 401, headers: { "content-type": "application/json", ...cors } });
+        return handleApiSync(body, store, cors, { addOnly: true, dryRun: body.dryRun === true, source: "file" });
+      }
       const secret = env("PA_SYNC_SECRET");
       if (!secret || request.headers.get("x-sync-secret") !== secret) return deny("The resort list is updated every night from Stock Network.");
-      return handleApiSync(request, store, cors);
+      return handleApiSync(body, store, cors);
     }
 
     return new Response(JSON.stringify({ error: "method not allowed" }), {
