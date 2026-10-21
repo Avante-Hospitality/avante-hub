@@ -13,7 +13,10 @@
 //      order of SN's stock upload template (Sheet1, dates as real dates
 //      formatted mm-dd-yy like the template Jean supplied).
 //
-// Needs SheetJS (window.XLSX) for .xlsx; the .csv works without it.
+// Needs SheetJS (window.XLSX) for .xlsx; the .csv works without it. SheetJS
+// is loaded only when a file is first made (load-script.js): run the export
+// inside AvanteSNExport.whenReady(fn), which loads it first (fn runs even if
+// it couldn't load, so the .csv still works and the .xlsx gives its message).
 // `listing` is the onboarding record shape stored by
 // netlify/edge-functions/property-onboarding-api.js (same keys the form
 // submits).
@@ -156,7 +159,15 @@
     return out;
   }
 
+  // Loads SheetJS (if it isn't yet), then runs fn; resolves with fn's result
+  // and rejects with what fn throws.
+  function whenReady(fn){
+    var loading = window.XLSX || !window.AvanteScripts ? Promise.resolve() : window.AvanteScripts.xlsx().catch(function(){});
+    return loading.then(function(){ return fn(); });
+  }
+
   window.AvanteSNExport = {
+    whenReady: whenReady,
     filesForEmail: filesForEmail,
     STOCK_COLS: STOCK_COLS,
     stockRows: stockRows,

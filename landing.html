@@ -5,15 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Avante Travel — Special Offers</title>
 <link rel="manifest" id="manifestLink" href="manifest.json">
-<script src="booking-links.js"></script>
 <meta name="theme-color" content="#0DCDC2">
 <link rel="icon" href="icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Avante">
-<link rel="preconnect" href="https://fonts.gstatic.com">
-<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Noto+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Noto+Sans:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
   :root{
     --teal:#0DCDC2;
@@ -185,7 +185,9 @@
   .offer-l2 .offer-text h3{ font-size:19px; }
   .offer-text .tag{ align-self:flex-start; font-family:'Montserrat',sans-serif; font-weight:700; font-size:12px; color:var(--navy); background:var(--teal); border-radius:100px; padding:4px 10px; }
   .offer .offer-text .actions{ margin-top:10px; }
-  .flyer-frame.noimg{ display:none; }
+  /* No picture (or it failed to load): keep the space, so nothing below jumps. */
+  .flyer-frame.noimg::after{ content:'Avante Travel'; position:absolute; inset:0; display:grid; place-items:center; font-family:'Montserrat',sans-serif; font-weight:700; font-size:13px; letter-spacing:.08em; color:var(--muted-ink); }
+  .feature .flyer-frame.noimg::after{ color:#bfe9e5; }
   .offer{ display:flex; flex-direction:column; gap:12px; }
   .offer-text h3{ font-size:16.5px; color:var(--navy); margin:0; line-height:1.3; font-weight:700; }
   .offer-text .place{ color:var(--muted-ink); font-size:13.5px; margin:3px 0 0; }
@@ -523,6 +525,8 @@
     </div>
   </main>
 
+  <!-- Not in <head>: nothing above needs it, and the script below does. -->
+  <script src="booking-links.js"></script>
   <script>
     // ---------- Shared: affiliate ID from the URL ----------
     var params = new URLSearchParams(window.location.search);
@@ -938,8 +942,9 @@
       }
       return h;
     }
-    function flyer(r, info, eager){
-      return '<div class="flyer-frame"><img class="flyer" alt="' + escapeHtml(info.name ? info.name + ' offer flyer' : 'Holiday offer flyer') + '"' + (eager ? '' : ' loading="lazy"') + '></div>';
+    // first: place 1, the big one — fetched straight away, before the rest.
+    function flyer(r, info, first){
+      return '<div class="flyer-frame"><img class="flyer" alt="' + escapeHtml(info.name ? info.name + ' offer flyer' : 'Holiday offer flyer') + '"' + (first ? ' fetchpriority="high"' : ' loading="lazy"') + '></div>';
     }
 
     // ---------- The 6 places and the rotation (Jean, 2026-10-10) ----------
@@ -983,7 +988,7 @@
             '<div class="actions">' + offerActions(r, info) + '</div>' +
           '</div>';
       }
-      return flyer(r, info, i < 3) +
+      return flyer(r, info, false) +
         '<div class="offer-text">' +
           (info.tag && lvl === 2 ? '<span class="tag">' + escapeHtml(info.tag) + '</span>' : '') +
           (info.name ? '<h3>' + title + '</h3>' : '') +
@@ -993,13 +998,60 @@
         '</div>';
     }
 
-    function loadFlyer(el, r){
+    // Where a hook's flyer comes from. Admin's version uses admin's picture
+    // (stored under "__admin__"). A hook with one fixed picture has an
+    // imageVersion (see /api/hook): its picture is then fetched resized for
+    // the screen through Netlify's image service, and kept by the browser.
+    // Hooks that rotate gallery photos keep the plain address.
+    var FLYER_WIDTHS = [480, 720, 1080];
+    var FLYER_SIZES = { 1: '(max-width:720px) 100vw, 460px', 2: '(max-width:520px) 100vw, (max-width:720px) 40vw, 240px', 3: '(max-width:520px) 100vw, (max-width:980px) 50vw, 420px' };
+    // Set once a resized copy fails (Netlify's image service unavailable):
+    // from then on every flyer asks for the original straight away.
+    var resizedFlyersFailed = false;
+    function flyerSource(r, i){
+      var imgAff = r.data.imageAff || (r.data.source === 'self' ? aff : '__admin__');
+      var plain = '/api/hook-image?aff=' + encodeURIComponent(imgAff) + '&hook=' + r.n;
+      var v = r.data.imageVersion;
+      if(!v || resizedFlyersFailed) return { plain: plain };
+      var path = encodeURIComponent('/api/hook-image/v/' + encodeURIComponent(imgAff) + '/' + r.n + '/' + encodeURIComponent(v));
+      var at = function(w){ return '/.netlify/images?url=' + path + '&w=' + w; };
+      return {
+        plain: plain,
+        src: at(720),
+        srcset: FLYER_WIDTHS.map(function(w){ return at(w) + ' ' + w + 'w'; }).join(', '),
+        sizes: FLYER_SIZES[LEVEL_OF[i]]
+      };
+    }
+    function setFlyerSource(img, f){
+      if(f.srcset){ img.sizes = f.sizes; img.srcset = f.srcset; img.src = f.src; }
+      else img.src = f.plain;
+    }
+    // Fetches the flyer for place i ahead of a swap, so the place never shows
+    // an empty frame. Resolves either way (a failed picture shows its frame).
+    function preloadFlyer(r, i){
+      return new Promise(function(done){
+        var im = new Image(), timer = setTimeout(done, 4000);
+        var finish = function(){ clearTimeout(timer); done(); };
+        im.onload = function(){ if(im.decode) im.decode().then(finish, finish); else finish(); };
+        im.onerror = function(){
+          if(im.srcset){ resizedFlyersFailed = true; im.removeAttribute('srcset'); im.removeAttribute('sizes'); im.src = flyerSource(r, i).plain; return; }
+          finish();
+        };
+        setFlyerSource(im, flyerSource(r, i));
+      });
+    }
+
+    function loadFlyer(el, r, i){
       var img = el.querySelector('img.flyer');
       if(!img) return;
+      var f = flyerSource(r, i);
       img.onload = function(){ img.classList.add('show'); };
-      img.onerror = function(){ img.parentNode.classList.add('noimg'); };
-      // Admin's version uses admin's picture (stored under "__admin__").
-      img.src = '/api/hook-image?aff=' + encodeURIComponent(r.data.imageAff || (r.data.source === 'self' ? aff : '__admin__')) + '&hook=' + r.n;
+      img.onerror = function(){
+        // The resized copy failed: try the original once, then show the frame.
+        if(img.srcset){ resizedFlyersFailed = true; img.removeAttribute('srcset'); img.removeAttribute('sizes'); img.src = f.plain; return; }
+        img.parentNode.classList.add('noimg');
+      };
+      setFlyerSource(img, f);
     }
 
     function renderOffers(active){
@@ -1021,7 +1073,7 @@
       var els = content.querySelectorAll('.place');
       plan.places.forEach(function(r, i){
         els[i].innerHTML = renderPlace(i, r);
-        loadFlyer(els[i], r);
+        loadFlyer(els[i], r, i);
       });
 
       var countEl = document.getElementById('offersCount');
@@ -1034,19 +1086,25 @@
 
     // One free place changes per tick, in turn; the hook it showed goes to
     // the back of the queue. Pauses while the visitor points at or tabs
-    // into an offer, has Full details open, or the page isn't visible.
+    // into an offer, has Full details open, the offers are scrolled out of
+    // view, or the page isn't visible. The incoming flyer is fetched first,
+    // so a place only changes once its new picture is ready.
     var rotationTimer = null;
     function startRotation(plan, els){
       if(rotationTimer) clearInterval(rotationTimer);
       if(!plan.queue.length || !plan.free.length) return;
-      var paused = false, turn = 0;
+      var paused = false, offScreen = false, busy = false, turn = 0;
       content.addEventListener('mouseenter', function(){ paused = true; });
       content.addEventListener('mouseleave', function(){ paused = false; });
       content.addEventListener('focusin', function(){ paused = true; });
       content.addEventListener('focusout', function(){ paused = false; });
+      if('IntersectionObserver' in window){
+        new IntersectionObserver(function(entries){ offScreen = !entries[0].isIntersecting; }).observe(content);
+      }
       var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       rotationTimer = setInterval(function(){
-        if(paused || document.hidden || bookingModalOverlay.classList.contains('show')) return;
+        if(busy || paused || offScreen || document.hidden || bookingModalOverlay.classList.contains('show')) return;
+        busy = true;
         var i = plan.free[turn % plan.free.length];
         turn++;
         var incoming = plan.queue.shift();
@@ -1055,12 +1113,15 @@
         var el = els[i];
         var swap = function(){
           el.innerHTML = renderPlace(i, incoming);
-          loadFlyer(el, incoming);
+          loadFlyer(el, incoming, i);
           el.classList.remove('swapping');
+          busy = false;
         };
-        if(reduce){ swap(); return; }
-        el.classList.add('swapping');
-        setTimeout(swap, 350);
+        preloadFlyer(incoming, i).then(function(){
+          if(reduce){ swap(); return; }
+          el.classList.add('swapping');
+          setTimeout(swap, 350);
+        });
       }, reduce ? ROTATE_MS * 1.5 : ROTATE_MS);
     }
 
@@ -1152,7 +1213,8 @@
     } else {
       // Every hook on this front store right now, with fixed places — see
       // /api/hook?list=1 (hidden and ended hooks are already left out).
-      fetch('/api/hook?aff=' + encodeURIComponent(aff) + '&list=1', { cache: 'no-store' })
+      // Cached briefly by the browser and Netlify; cleared on every save.
+      fetch('/api/hook?aff=' + encodeURIComponent(aff) + '&list=1')
         .then(function(r){ return r.json(); })
         .catch(function(){ return { hooks: [] }; })
         .then(function(res){

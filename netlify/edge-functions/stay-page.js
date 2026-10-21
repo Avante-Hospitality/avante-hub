@@ -5,6 +5,20 @@
 // property. The page itself loads everything else from /api/stay.
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
 
+// stay.html only changes with a deploy (which starts fresh edge isolates), so
+// one copy per isolate is enough.
+let shellHtml = null;
+async function stayShell(origin) {
+  if (!shellHtml) {
+    shellHtml = fetch(new URL("/stay.html", origin)).then((r) => {
+      if (!r.ok) throw new Error("stay.html returned " + r.status);
+      return r.text();
+    });
+    shellHtml.catch(() => { shellHtml = null; });
+  }
+  return shellHtml;
+}
+
 function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 
 export default async (request) => {
@@ -13,8 +27,7 @@ export default async (request) => {
   const slug = String(parts[1] || "").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 60);
   const mode = parts[2] === "guest" ? "guest" : parts[2] === "card" ? "card" : "store";
   const key = mode === "store" ? "" : String(parts[3] || "").replace(/[^a-z0-9]/gi, "").slice(0, 20);
-  const res = await fetch(new URL("/stay.html", url.origin));
-  let html = await res.text();
+  let html = await stayShell(url.origin);
   let title = "Book direct · Avante Travel", desc = "Book your stay direct, with live availability.", image = url.origin + "/home-hero.jpg";
   try {
     const store = getStore({ name: "property-affiliate", consistency: "strong" });
@@ -34,7 +47,18 @@ export default async (request) => {
     '<meta property="og:image" content="' + esc(image) + '">\n<meta property="og:url" content="' + esc(url.origin + url.pathname) + '">\n<meta name="twitter:card" content="summary_large_image">\n' +
     '<script>window.STAY = ' + JSON.stringify({ slug, mode, key }).replace(/</g, "\\u003c") + ';</script>';
   html = html.replace("<!--STAY-META-->", meta);
-  return new Response(html, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "referrer-policy": "no-referrer" } });
+  // The same for every visitor (no cookies or sign-in; the page loads its
+  // live data from /api/stay), so browsers keep it a minute and Netlify's CDN
+  // five. A changed name, welcome text or photo shows in shares within five to
+  // ten minutes; availability and prices are always live (/api/stay).
+  return new Response(html, {
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "public, max-age=60",
+      "netlify-cdn-cache-control": "public, s-maxage=300, stale-while-revalidate=300",
+      "referrer-policy": "no-referrer",
+    },
+  });
 };
 
-export const config = { path: ["/stay/*"] };
+export const config = { path: ["/stay/*"], cache: "manual" };

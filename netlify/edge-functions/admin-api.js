@@ -21,15 +21,19 @@ import { dataUriToBytes } from "./lib/data-uri.js";
 // one hashes image bytes, same as hook-image.js's own upload path.
 import { sha256Hex as sha256HexBytes } from "./lib/image-hash.js";
 import { mergeIntoRecord, AI_SCAN_CACHE_FIELDS_CLEARED } from "./lib/record-merge.js";
+import { purgeHookListCache } from "./lib/hook-cache.js";
+import { readAllRecords, AFFILIATES_STORE } from "./lib/blob-records.js";
+
+// Admin's own (Default) hooks are stored under this affiliate key; purging it
+// clears every front store's cached hook list (lib/hook-cache.js).
+const ADMIN_HOOK_KEY = "__admin__";
 import {
   parseStockNetworkCsv,
   normalizeStockNetworkStatus,
   parseMoney,
   parseUsDateToYmd,
-  periodBounds,
-  aggregateTransactions,
-  buildLeaderboard,
-  loadAffiliatesAndTransactions,
+  loadBookingSummary,
+  BOOKING_SUMMARY_STORE,
   fetchAllRecords,
   mapWithConcurrency,
   CHANNEL_KEYS as STATS_CHANNEL_KEYS,
@@ -257,9 +261,13 @@ function json(data, status, cors) {
 // { updatedRecord, changeInfo } — updatedRecord is what gets written
 // (dryRun permitting), changeInfo is merged into `{ key, ...changeInfo }`
 // for this hook's entry in the returned changes list.
-async function scanAndFixHooks(hookStore, dryRun, checkAndFix) {
+// purgeContext: pass the request context when `store` is promo-hooks, so the
+// front stores' cached hook lists are cleared for every affiliate written
+// (one affiliate: their own list; several: every list at once).
+async function scanAndFixHooks(hookStore, dryRun, checkAndFix, purgeContext) {
   const { blobs } = await hookStore.list();
   const changes = [];
+  const writtenAffs = new Set();
   let writeErrors = 0;
   await mapWithConcurrency(blobs, async (b) => {
     try {
@@ -269,12 +277,16 @@ async function scanAndFixHooks(hookStore, dryRun, checkAndFix) {
       if (!result) return;
       if (!dryRun) {
         await hookStore.setJSON(b.key, result.updatedRecord);
+        writtenAffs.add(String(b.key).split(":")[0]);
       }
       changes.push({ key: b.key, ...result.changeInfo });
     } catch (e) {
       writeErrors++;
     }
   });
+  if (purgeContext && writtenAffs.size) {
+    await purgeHookListCache(purgeContext, writtenAffs.size === 1 ? [...writtenAffs][0] : ADMIN_HOOK_KEY);
+  }
   return { changes, writeErrors };
 }
 
@@ -349,12 +361,11 @@ export default async (request, context) => {
       if (!authed) return json({ ok: false, error: "Not authenticated." }, 401, cors);
 
       if (resource === "affiliates") {
-        const { blobs } = await directoryStore.list();
-        const list = [];
-        for (const b of blobs) {
-          const rec = await directoryStore.get(b.key, { type: "json" });
-          if (rec) list.push(withChannelRevenue(withRevenueShare(rec)));
-        }
+        // Read in parallel (lib/blob-records.js); strict, so a failed read
+        // still fails the request rather than leaving an affiliate out.
+        const list = (await readAllRecords(directoryStore, { cacheName: AFFILIATES_STORE, strict: true }))
+          .filter(Boolean)
+          .map((rec) => withChannelRevenue(withRevenueShare(rec)));
         list.sort(function (a, b) {
           return (a.name || a.affId).localeCompare(b.name || b.affId);
         });
@@ -438,36 +449,20 @@ export default async (request, context) => {
       }
 
       if (resource === "bookingStats") {
-        const { affiliatesById, records } = await loadAffiliatesAndTransactions(directoryStore, transactionsStore);
-
-        const periods = periodBounds();
-        const stats = aggregateTransactions(records, periods);
-
-        const leaderboard = {};
-        for (const p of Object.keys(stats)) {
-          leaderboard[p] = {};
-          for (const ch of Object.keys(stats[p])) {
-            leaderboard[p][ch] = buildLeaderboard(stats[p][ch], affiliatesById);
-          }
-        }
-
-        const affiliateNames = {};
-        for (const affId of Object.keys(affiliatesById)) {
-          affiliateNames[affId] = affiliatesById[affId].name || affId;
-        }
-
+        // Same summary My Dashboard reads (lib/booking-stats.js
+        // loadBookingSummary): recomputed only when an affiliate or a
+        // transaction changed.
+        const summary = await loadBookingSummary(directoryStore, transactionsStore, getStore({ name: BOOKING_SUMMARY_STORE, consistency: "strong" }));
         return json(
           {
             ok: true,
-            periods: periods,
+            periods: summary.periods,
             channels: STATS_CHANNEL_KEYS,
-            stats: stats,
-            leaderboard: leaderboard,
-            affiliateNames: affiliateNames,
-            affiliateSiteNr: Object.fromEntries(
-              Object.keys(affiliatesById).map((id) => [id, affiliatesById[id].siteNr || ""])
-            ),
-            transactionCount: records.length,
+            stats: summary.stats,
+            leaderboard: summary.leaderboard,
+            affiliateNames: summary.affiliateNames,
+            affiliateSiteNr: summary.affiliateSiteNr,
+            transactionCount: summary.transactionCount,
           },
           200,
           cors
@@ -595,14 +590,9 @@ export default async (request, context) => {
       // booking email was addressed to (e.g. jeanl1967+aff123@gmail.com).
       let matched = null;
       if (alias) {
-        const { blobs } = await directoryStore.list();
-        for (const b of blobs) {
-          const rec = await directoryStore.get(b.key, { type: "json" });
-          if (rec && rec.bookingEmailAlias && sanitizeAlias_(rec.bookingEmailAlias) === alias) {
-            matched = rec;
-            break;
-          }
-        }
+        // First match in list order, as before; the records are read in parallel.
+        const all = await readAllRecords(directoryStore, { cacheName: AFFILIATES_STORE, strict: true });
+        matched = all.find((rec) => rec && rec.bookingEmailAlias && sanitizeAlias_(rec.bookingEmailAlias) === alias) || null;
       }
 
       // Affiliates can choose (in the WhatsApp Messaging tab) to only be
@@ -1138,6 +1128,7 @@ export default async (request, context) => {
         if (record.eventTheme) await rememberTheme(eventThemeStore, record.eventTheme);
       }
       await hookStore.setJSON("__admin__:" + n, record);
+      await purgeHookListCache(context, ADMIN_HOOK_KEY);
       return json({ ok: true, hook: n, record: record }, 200, cors);
     }
 
@@ -1149,6 +1140,7 @@ export default async (request, context) => {
       const n = (nums.length ? nums[nums.length - 1] : 0) + 1;
       if (!validHookNumber(n)) return json({ ok: false, error: "No more hooks can be added." }, 400, cors);
       await hookStore.setJSON("__admin__:" + n, { createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+      await purgeHookListCache(context, ADMIN_HOOK_KEY);
       return json({ ok: true, hook: n }, 200, cors);
     }
 
@@ -1182,6 +1174,7 @@ export default async (request, context) => {
       const slots = [key];
       for (let slot = 1; slot <= 20; slot++) slots.push(key + ":" + slot);
       await mapWithConcurrency(slots, (imgKey) => imageStore.delete(imgKey).catch(() => {}));
+      await purgeHookListCache(context, ADMIN_HOOK_KEY);
       return json({ ok: true, hook: n }, 200, cors);
     }
 
@@ -1285,6 +1278,7 @@ export default async (request, context) => {
         const galleryCount = Math.max(existing.galleryCount || 0, 1);
         await mergeIntoRecord(hookStore, key, { galleryCount: galleryCount, updatedAt: new Date().toISOString() });
       }
+      await purgeHookListCache(context, ADMIN_HOOK_KEY);
 
       return json({ ok: true, slot: slot }, 200, cors);
     }
@@ -1308,6 +1302,7 @@ export default async (request, context) => {
       if (!urls.length) return json({ ok: false, error: "No photos selected." }, 400, cors);
 
       const result = await saveHookPhotoUrls(hookStore, imageStore, "__admin__:" + n, urls, body.source);
+      if (result.ok) await purgeHookListCache(context, ADMIN_HOOK_KEY);
       return json(result, result.ok ? 200 : 502, cors);
     }
 
@@ -1353,6 +1348,7 @@ export default async (request, context) => {
       const flyerContactEmail = typeof body.contactEmail === "string" ? body.contactEmail.trim().slice(0, 200) : "";
       const record = { ...existing, flyerContactPhone: flyerContactPhone, flyerContactEmail: flyerContactEmail, updatedAt: new Date().toISOString() };
       await hookStore.setJSON(key, record);
+      await purgeHookListCache(context, ADMIN_HOOK_KEY);
       return json({ ok: true, flyerContactPhone: flyerContactPhone, flyerContactEmail: flyerContactEmail }, 200, cors);
     }
 
@@ -1435,7 +1431,7 @@ export default async (request, context) => {
           updatedRecord: { ...record, booking: resolved, landing: "", updatedAt: new Date().toISOString() },
           changeInfo: { oldLink: booking, newBooking: resolved },
         };
-      });
+      }, context);
 
       return json({ ok: true, dryRun: dryRun, count: changes.length, changes: changes, writeErrors: writeErrors }, 200, cors);
     }
@@ -1501,7 +1497,7 @@ export default async (request, context) => {
           updatedRecord: { ...record, booking: result.url, updatedAt: new Date().toISOString() },
           changeInfo: { oldBooking: booking, newBooking: result.url, wrongId: result.previousSiteId },
         };
-      });
+      }, context);
 
       return json({ ok: true, dryRun: dryRun, count: changes.length, changes: changes, writeErrors: writeErrors }, 200, cors);
     }
@@ -1536,7 +1532,7 @@ export default async (request, context) => {
           updatedRecord: { ...record, booking: converted, updatedAt: new Date().toISOString() },
           changeInfo: { what: "Hook", oldBooking: booking, newBooking: converted },
         };
-      });
+      }, context);
 
       const linkResult = await scanAndFixHooks(shortLinksStore, dryRun, async (key, record) => {
         if (!record || typeof record.url !== "string") return null; // per-affiliate index records etc.
@@ -1581,7 +1577,7 @@ export default async (request, context) => {
           updatedRecord: { ...record, mode: "admin", updatedAt: new Date().toISOString() },
           changeInfo: {},
         };
-      });
+      }, context);
 
       return json({ ok: true, dryRun: dryRun, count: changes.length, changes: changes, writeErrors: writeErrors }, 200, cors);
     }
@@ -1614,7 +1610,7 @@ export default async (request, context) => {
           updatedRecord: { ...record, booking: "", updatedAt: new Date().toISOString() },
           changeInfo: { oldBooking: booking },
         };
-      });
+      }, context);
 
       return json({ ok: true, dryRun: dryRun, count: changes.length, changes: changes, writeErrors: writeErrors }, 200, cors);
     }

@@ -83,7 +83,7 @@ ${pixel(title, rec.slug)}
 ${cover ? `<meta property="og:image" content="${esc(img(cover))}">` : ""}<meta property="og:url" content="${esc(origin + "/l/" + rec.slug)}">
 ${c.fbCover ? `<meta name="avante:fb-image" content="${esc(img(c.fbCover))}">` : ""}
 ${c.carousel && c.carousel.cards && c.carousel.cards.length >= 2 ? `<meta name="avante:carousel" content="${esc(JSON.stringify({ text: c.carousel.text || "", cards: c.carousel.cards.map((x) => ({ image: img(x.img), title: x.title || "", desc: x.desc || "" })) }))}">` : ""}
-<link rel="preconnect" href="https://fonts.gstatic.com"><link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800&family=Noto+Sans:wght@400;600&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800&family=Noto+Sans:wght@400;600&display=swap" rel="stylesheet">
 <style>
 :root{--teal:#0DCDC2;--teal-dark:#0aa89f;--navy:#0e2f44;--ink:#1d2b36;--mint:#f4fbfa}
 *{box-sizing:border-box}body{margin:0;font-family:'Noto Sans',system-ui,sans-serif;color:var(--ink);background:#eef4f4}
@@ -122,7 +122,7 @@ footer{text-align:center;color:#6b7c87;font-size:12px;padding:8px 16px 0}
 ${scenesHtml}<div class="intro"><h1>${esc(title)}</h1>${c.dates ? `<p>${esc(c.dates)}</p>` : ""}</div>
 <main>${coverHtml}${pagesHtml}<footer>Bookings are made securely through Avante Travel.</footer></main>
 <div class="bar">${wa ? `<a class="wa" href="${esc(wa)}" target="_blank" rel="noopener">WhatsApp us</a>` : ""}</div>
-${sc.length > 2 ? `<script>(function(){var t=0;setInterval(function(){t++;document.querySelectorAll(".side").forEach(function(s){var im=s.querySelectorAll("img");if(im.length<2)return;im.forEach(function(x,i){x.classList.toggle("on",i===t%im.length)})})},6500)})();</script>` : ""}
+${sc.length > 2 ? `<script>(function(){var t=0;setInterval(function(){if(document.hidden)return;t++;document.querySelectorAll(".side").forEach(function(s){var im=s.querySelectorAll("img");if(im.length<2)return;im.forEach(function(x,i){x.classList.toggle("on",i===t%im.length)})})},6500)})();</script>` : ""}
 </body></html>`;
 }
 
@@ -154,7 +154,17 @@ export default async (request) => {
   if (!ownBook && firstProp && firstProp[0]) {
     try { propTree = await propertyTreeOpts(firstProp[0].resortId, url.origin, firstProp[0].name); } catch (e) { propTree = null; }
   }
-  return new Response(page(rec, agent, url.origin, ownBook, propTree), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=60" } });
+  // The same for every visitor with the same link (it depends only on the
+  // path and ?a=; no cookies or sign-in): browsers and Netlify's CDN keep it
+  // a minute (cache: "manual" below lets the CDN do so).
+  return new Response(page(rec, agent, url.origin, ownBook, propTree), {
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "public, max-age=60",
+      "netlify-cdn-cache-control": "public, s-maxage=60, stale-while-revalidate=300",
+      "netlify-vary": "query=a",
+    },
+  });
 };
 
-export const config = { path: "/l/*" };
+export const config = { path: "/l/*", cache: "manual" };

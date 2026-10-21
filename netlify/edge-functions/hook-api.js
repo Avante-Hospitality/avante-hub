@@ -15,6 +15,7 @@ import { searchPlacePhotos } from "./lib/places-images.js";
 import { dataUriToBytes } from "./lib/data-uri.js";
 import { sha256Hex } from "./lib/image-hash.js";
 import { mergeIntoRecord, AI_SCAN_CACHE_FIELDS_CLEARED } from "./lib/record-merge.js";
+import { hookListCacheHeaders, purgeHookListCache, hookImageVersion } from "./lib/hook-cache.js";
 
 // Special affiliate key reserved for admin-managed default hook content.
 // Chosen so it can never collide with a real affiliate ID (StockNetwork
@@ -48,6 +49,23 @@ async function resolveShortLink(rawUrl) {
   return resolveShortLinkShared(rawUrl, shortStore);
 }
 
+// The same admin booking link is resolved for every affiliate's front
+// store, so keep each answer for a minute in this edge isolate (and share
+// one lookup between requests arriving together). Only used for reading
+// what to show — the save path below always looks the link up fresh.
+const SHORT_LINK_TTL_MS = 60 * 1000;
+const shortLinkMemo = new Map(); // rawUrl -> { at, value: Promise<string> }
+function resolveShortLinkCached(rawUrl) {
+  if (!isShortLink(rawUrl)) return Promise.resolve(rawUrl);
+  const hit = shortLinkMemo.get(rawUrl);
+  if (hit && Date.now() - hit.at < SHORT_LINK_TTL_MS) return hit.value;
+  if (shortLinkMemo.size > 500) shortLinkMemo.clear();
+  const value = resolveShortLink(rawUrl);
+  shortLinkMemo.set(rawUrl, { at: Date.now(), value });
+  value.catch(() => shortLinkMemo.delete(rawUrl));
+  return value;
+}
+
 function withAffiliate(landing, aff) {
   try {
     const u = new URL(landing);
@@ -58,7 +76,7 @@ function withAffiliate(landing, aff) {
 }
 
 async function personalizeBooking(rawUrl, replacement) {
-  const resolved = await resolveShortLink(rawUrl);
+  const resolved = await resolveShortLinkCached(rawUrl);
   return personalizeStockNetworkUrl(resolved, replacement);
 }
 
@@ -212,9 +230,12 @@ export default async (request, context) => {
       const all = url.searchParams.get("all") === "1";
       // Admin's hook numbers, plus any the affiliate manages themselves
       // (so their own version stays even if admin removes that hook).
-      const nums = await adminHookNumbers(store);
-      if (aff !== ADMIN_KEY) {
-        const own = await store.list({ prefix: aff + ":" }).catch(() => ({ blobs: [] }));
+      // Both listings at once.
+      const [nums, own] = await Promise.all([
+        adminHookNumbers(store),
+        aff !== ADMIN_KEY ? store.list({ prefix: aff + ":" }).catch(() => ({ blobs: [] })) : null,
+      ]);
+      if (own) {
         for (const b of own.blobs || []) {
           const n = validHookNumber(b.key.slice(aff.length + 1));
           if (n && !nums.includes(n)) nums.push(n);
@@ -246,11 +267,18 @@ export default async (request, context) => {
           endDate: end ? end.toISOString().slice(0, 10) : "",
           title,
           imageAff: source === "self" ? aff : ADMIN_KEY,
+          // Changes whenever the picture does; lets the front store ask for
+          // a long-cached copy (see hook-image.js). Empty while the hook
+          // rotates through gallery photos.
+          imageVersion: hookImageVersion(used),
           ...(data || {}),
         };
       }));
+      // The front store's list is cached on Netlify's CDN for a short while
+      // (cleared on every save, see lib/hook-cache.js); the hub's own
+      // management view (&all=1) is always fresh.
       return new Response(JSON.stringify({ ok: true, hooks: rows.filter(Boolean) }), {
-        headers: { "content-type": "application/json", "cache-control": "no-store", ...cors },
+        headers: { "content-type": "application/json", ...(all ? { "cache-control": "no-store" } : hookListCacheHeaders(aff)), ...cors },
       });
     } catch (e) {
       console.error("hook-api.js list:", String((e && e.message) || e));
@@ -323,6 +351,7 @@ export default async (request, context) => {
         }
         const imageStore = getStore({ name: "promo-hook-images", consistency: "strong" });
         const result = await saveHookPhotoUrls(store, imageStore, key, urls, body.source);
+        purgeHookListCache(context, aff);
         return new Response(JSON.stringify(result), {
           status: result.ok ? 200 : 502,
           headers: { "content-type": "application/json", ...cors },
@@ -440,6 +469,7 @@ export default async (request, context) => {
           await mergeIntoRecord(store, key, { galleryCount: galleryCount, updatedAt: new Date().toISOString() });
         }
 
+        purgeHookListCache(context, aff);
         return new Response(JSON.stringify({ ok: true, slot: slot }), { headers: { "content-type": "application/json", ...cors } });
       }
 
@@ -543,6 +573,7 @@ export default async (request, context) => {
       record.savedAt = new Date().toISOString();
 
       await store.setJSON(key, record);
+      purgeHookListCache(context, aff);
       return new Response(JSON.stringify({ ok: true, record: record }), {
         headers: { "content-type": "application/json", ...cors },
       });
@@ -551,7 +582,7 @@ export default async (request, context) => {
     // GET — resolve what should actually be shown for this hook.
     const data = await resolveHook(store, aff, hook, url.origin);
     return new Response(JSON.stringify(data), {
-      headers: { "content-type": "application/json", ...cors },
+      headers: { "content-type": "application/json", "cache-control": "no-store", ...cors },
     });
   } catch (err) {
     // Same fix as admin-api.js's identical catch-all — see there for the
@@ -572,4 +603,6 @@ export default async (request, context) => {
   }
 };
 
-export const config = { path: "/api/hook" };
+// cache: "manual" lets the CDN keep the front store's hook list (only that
+// response sends CDN cache headers; everything else here is no-store).
+export const config = { path: "/api/hook", cache: "manual" };

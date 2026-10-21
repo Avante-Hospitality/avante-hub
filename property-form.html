@@ -180,9 +180,9 @@
     input:not([type=checkbox]):not([type=radio]):not([type=range]), select, textarea{ font-size:16px !important; }
   }
 </style>
-<!-- Spreadsheets (Excel rate sheets in, Stock Network files out) and Word documents -->
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
-<script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js" defer></script>
+<!-- Spreadsheets (Excel rate sheets in, Stock Network files out) and Word documents:
+     SheetJS and mammoth load the first time a file needs them (load-script.js). -->
+<script src="load-script.js"></script>
 <script src="sn-export.js"></script>
 <script src="listing-ready.js"></script>
 <script src="listing-photo-library.js"></script>
@@ -1042,20 +1042,22 @@
         reader.onerror = function(){ d.status = 'could not open'; finish(); };
         reader.readAsDataURL(file);
       } else if(/\.(xlsx|xls|csv)$/.test(lower)){
-        reader.onload = function(){
+        reader.onload = function(){ AvanteScripts.xlsx().then(readSheet, readSheet); };
+        function readSheet(){
           try {
             var wb = window.XLSX.read(new Uint8Array(reader.result), { type: 'array', cellDates: true });
             d.text = wb.SheetNames.map(function(n){ return 'Sheet ' + n + ':\n' + window.XLSX.utils.sheet_to_csv(wb.Sheets[n], { dateNF: 'yyyy-mm-dd' }); }).join('\n\n');
             d.kind = 'text'; d.status = 'ready to read (' + wb.SheetNames.length + ' sheet' + (wb.SheetNames.length === 1 ? '' : 's') + ')';
           } catch(e){ d.status = 'kept, but could not be read'; }
           finish();
-        };
+        }
         reader.readAsArrayBuffer(file);
       } else if(/\.docx$/.test(lower)){
-        reader.onload = function(){
+        reader.onload = function(){ AvanteScripts.mammoth().then(readWord, readWord); };
+        function readWord(){
           if(!window.mammoth){ d.status = 'kept, but the Word reader did not load'; finish(); return; }
           window.mammoth.extractRawText({ arrayBuffer: reader.result }).then(function(r){ d.text = r.value; d.kind = 'text'; d.status = 'ready to read'; finish(); }, function(){ d.status = 'kept, but could not be read'; finish(); });
-        };
+        }
         reader.readAsArrayBuffer(file);
       } else {
         d.status = 'kept with the listing (old .doc files can\'t be read — save as .docx or PDF to have them read)'; finish();
@@ -1498,12 +1500,12 @@
     var b = e.target.closest && e.target.closest('[data-dl]'); if(!b) return;
     var listing = buildPayload(), kind = b.getAttribute('data-dl');
     if(!listing.rateSeasons.length && kind !== 'property'){ $('dlStatus').textContent = RATES_FROM_CHANNEL ? 'Rates come from the channel manager.' : 'Set rates in step 7 first.'; return; }
-    try {
+    AvanteSNExport.whenReady(function(){
       if(kind === 'property') AvanteSNExport.downloadPropertyFile(listing, listing.siteNr);
       if(kind === 'stockx') AvanteSNExport.downloadStockXlsx(listing, listing.siteNr);
       if(kind === 'stockc') AvanteSNExport.downloadStockCsv(listing, listing.siteNr);
       $('dlStatus').textContent = 'Downloaded.';
-    } catch(err){ $('dlStatus').textContent = err.message; }
+    }).catch(function(err){ $('dlStatus').textContent = err.message; });
   });
   $('copySnBtn').addEventListener('click', function(){
     var txt = [SN_COLS].concat(snRows()).map(function(r){ return r.join('\t'); }).join('\n');

@@ -20,7 +20,10 @@ import { readResortInfo, copySnPhotos } from "./lib/sn-resort-info.js";
 import { findSetUps, feedRowByResort, fillFromFeed, typeNames, learnTypeName, typeCodeOf } from "./lib/sn-feed.js";
 import { forwardGeocode, reverseGeocode } from "./lib/geocode.js";
 import { searchPlacePhotos, searchPlaceCandidates } from "./lib/places-images.js";
-import { placeCoordinate, snFieldsFromPlace, placeText, PLACES_STORE, PROPERTY_KEY } from "./lib/tree.js";
+// The tree engine (lib/tree.js, 300KB of region data) is loaded only when a
+// pin is placed or a place is described (loadTree), not on every request.
+import { PLACES_STORE, PROPERTY_KEY, loadTree } from "./lib/tree-keys.js";
+import { allListings, readAllRecords, readAllEntries, AFFILIATES_STORE } from "./lib/blob-records.js";
 import { estateTypeOf, forgetEstates } from "./lib/estates.js";
 
 // Backs the "Property Affiliate" onboarding tab in hub.html and the
@@ -154,7 +157,8 @@ const GUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // never from what an owner types or what a channel shows. Only admin can
 // override them.
 const LOCATION_FIELDS = ["country", "stateProvince", "region", "city", "suburb", "district", "area"];
-function treeFields(place) {
+async function treeFields(place) {
+  const { snFieldsFromPlace } = await loadTree();
   const sn = snFieldsFromPlace(place);
   return {
     country: sn.country, stateProvince: sn.state,
@@ -165,6 +169,7 @@ function treeFields(place) {
 async function placeInTree(lat, lng) {
   const la = Number(lat), lo = Number(lng);
   if (!validCoord(la, lo)) return null;
+  const { placeCoordinate } = await loadTree();
   const r = await placeCoordinate(la, lo, Deno.env.get("GOOGLE_GEOCODING_API_KEY") || "");
   return r && r.ok ? r.place : null;
 }
@@ -173,9 +178,10 @@ async function placeInTree(lat, lng) {
 // way Admin's "Place in the location tree" lookup does for a listing.
 async function applyTreePlace(record, place, keepTypedLocation) {
   if (!place) return;
+  const { placeText } = await loadTree();
   record.treePlace = place;
   record.treePlaceText = placeText(place);
-  if (!keepTypedLocation) Object.assign(record, treeFields(place));
+  if (!keepTypedLocation) Object.assign(record, await treeFields(place));
   // A property already on Stock Network is in the tree under its own Resort
   // ID; don't add it a second time as a listing.
   if (record.resortId) return;
@@ -608,7 +614,7 @@ async function guessSnLocation(name) {
     if (!c || !words(c.name) || !(words(c.name).includes(words(name)) || words(name).includes(words(c.name)))) return {};
     const place = await placeInTree(c.lat, c.lng);
     if (!place) return {};
-    const f = treeFields(place);
+    const f = await treeFields(place);
     return { area: f.area, district: f.district, suburb: f.suburb, place, lat: c.lat, lng: c.lng };
   } catch (e) {
     return {};
@@ -694,7 +700,7 @@ export default async (request, context) => {
       addHistory(record, submitAsAdmin ? "admin" : record.submittedBy, "Submitted");
 
       await store.setJSON(listingId, record);
-      await forgetEstates();
+      await forgetEstates(context);
 
       // The person who submitted gets a private link to come back and edit
       // the listing (add next season's rates, fix details) at any time.
@@ -1005,7 +1011,7 @@ export default async (request, context) => {
         Object.assign(record, { hostedSetup: latest.hostedSetup, completedAt: latest.completedAt, siteNr: isAdmin ? record.siteNr || latest.siteNr : latest.siteNr });
       }
       await store.setJSON(listingId, record);
-      await forgetEstates();
+      await forgetEstates(context);
 
       // Admin hears about an owner's changes, not about every step of a listing still being completed.
       if (!isAdmin && !(draft && before.hostedSetup === "completing")) {
@@ -1097,7 +1103,7 @@ export default async (request, context) => {
       if (!r || !r.ok) return json({ ok: false, reason: (r && r.reason) || "failed", message: "Google couldn't check these coordinates just now." });
       const result = { ok: true, country: r.country, province: r.province, town: r.town, townType: r.townType, suburb: r.suburb, warnings: [] };
       const place = await placeInTree(lat, lng);
-      if (place) result.tree = { text: placeText(place), fields: treeFields(place) };
+      if (place) result.tree = { text: (await loadTree()).placeText(place), fields: await treeFields(place) };
       // Compare with what the form says, and with the address if given.
       const said = { country: clean(body.country, 100), province: clean(body.province, 100), town: clean(body.city, 100) };
       const low = (s) => String(s || "").toLowerCase();
@@ -1140,12 +1146,7 @@ export default async (request, context) => {
       const denied = await requireAdmin();
       if (denied) return denied;
 
-      const { blobs } = await store.list();
-      const items = await Promise.all(
-        blobs.map((b) => store.get(b.key, { type: "json" }))
-      );
-      const summaries = items
-        .filter(Boolean)
+      const summaries = (await allListings(store, { strict: true }))
         .map((r) => ({
           listingId: r.listingId,
           propertyName: r.propertyName,
@@ -1174,7 +1175,7 @@ export default async (request, context) => {
       if (!aff || !(await isAffiliateSession(aff, clean(body.session, 100)))) return json({ error: "Please log in to the hub again." }, 401);
       const profile = await getStore({ name: "affiliates-directory", consistency: "strong" }).get(aff, { type: "json" }).catch(() => null);
       const siteNr = String((profile && profile.siteNr) || "").trim();
-      const all = (await Promise.all((await store.list()).blobs.map((b) => store.get(b.key, { type: "json" })))).filter(Boolean);
+      const all = await allListings(store, { strict: true });
       const mine = all.filter((r) => r.siteId === aff || r.affId === aff || r.paSiteId === aff || (siteNr && String(r.siteNr || "").trim() === siteNr))
         .sort((a, b) => String(b.dateUpdated || "").localeCompare(String(a.dateUpdated || "")));
       const r = mine[0];
@@ -1223,7 +1224,7 @@ export default async (request, context) => {
         const hits = ((cur && cur.resorts) || []).filter((r) => r.externalResortCode && norm(r.externalResortCode) === norm(bbid));
         row = hits.length === 1 ? hits[0] : null;
         if (row) {
-          const all = (await Promise.all((await store.list()).blobs.map((b) => store.get(b.key, { type: "json" })))).filter(Boolean);
+          const all = await allListings(store, { strict: true });
           already = all.find((r) => r.resortId && String(r.resortId).toLowerCase() === String(row.resortId).toLowerCase()) || null;
         }
       }
@@ -1232,7 +1233,7 @@ export default async (request, context) => {
       let site = null, loc = {}, repeat = false, hostedPrev = null;
       if (hosted) {
         const same = (a, b) => String(a || "").toLowerCase().replace(/[^a-z0-9@.]+/g, "") === String(b || "").toLowerCase().replace(/[^a-z0-9@.]+/g, "");
-        hostedPrev = (await Promise.all((await store.list()).blobs.map((b) => store.get(b.key, { type: "json" }).catch(() => null))))
+        hostedPrev = (await allListings(store))
           .find((r) => r && r.hostedSetup === "completing" && same(r.propertyName, propertyName) && same(r.contactEmail || r.email, emailText(contact.email))) || null;
         repeat = !!hostedPrev;
         if (!hostedPrev) loc = await guessSnLocation(propertyName);
@@ -1319,8 +1320,8 @@ export default async (request, context) => {
       const secret = Deno.env.get("PA_SYNC_SECRET") || "";
       if (!secret || request.headers.get("x-pa-sync-secret") !== secret) return json({ error: "forbidden" }, 403);
       const DAYS = [1, 3, 5, 10], nowMs = Date.now(), origin = new URL(request.url).origin, out = [];
-      for (const b of (await store.list()).blobs) {
-        const rec = await store.get(b.key, { type: "json" }).catch(() => null);
+      // Read in parallel; the reminders below still go out one at a time.
+      for (const rec of await allListings(store)) {
         if (!rec || rec.hostedSetup !== "completing" || rec.helpRequest) continue;
         const base = rec.dateUpdated || rec.dateSubmitted;
         if (!rec.reminders || rec.reminders.base !== base) rec.reminders = { base, sent: 0 };
@@ -1489,27 +1490,22 @@ export default async (request, context) => {
       const denied = await requireAdmin();
       if (denied) return denied;
       const paStore = getStore({ name: "property-affiliate", consistency: "strong" });
-      const props = [];
-      for (const b of (await paStore.list({ prefix: "site:" })).blobs) {
-        const pr = await paStore.get(b.key, { type: "json" }).catch(() => null);
-        if (pr && pr.siteId) props.push(pr);
-      }
+      const props = (await readAllRecords(paStore, { prefix: "site:" })).filter((pr) => pr && pr.siteId);
       // Channel Property Affiliates (on NightsBridge etc.) are already on
       // Stock Network too, but aren't connected in Property Affiliate: they
       // come from the affiliates list (type "channel") and its Site Nr.
       const cur = await getStore({ name: "resort-list", consistency: "strong" }).get("current", { type: "json" }).catch(() => null);
       const resortRows = (cur && cur.resorts) || [];
       const dirStore = getStore({ name: "affiliates-directory", consistency: "strong" });
-      for (const b of (await dirStore.list()).blobs) {
-        const a = await dirStore.get(b.key, { type: "json" }).catch(() => null);
+      for (const { key, value: a } of await readAllEntries(dirStore, { cacheName: AFFILIATES_STORE })) {
         if (!a || !Array.isArray(a.types) || a.types.indexOf("channel") === -1) continue;
-        const aff = a.affId || b.key;
+        const aff = a.affId || key;
         if (props.some((pr) => pr.aff === aff)) continue;
         const rows = resortRows.filter((r) => a.siteNr && String(r.siteId || "").trim() === String(a.siteNr).trim());
         props.push({ siteId: "aff:" + aff, site: a.siteNr || "", resortId: rows.length === 1 ? rows[0].resortId : "", resortName: a.name || (rows[0] && rows[0].name) || "",
           aff, units: [], settings: { email: a.email || "", phone: a.phone || "" }, channel: true, siteIdForListing: aff });
       }
-      const all = (await Promise.all((await store.list()).blobs.map((b) => store.get(b.key, { type: "json" })))).filter(Boolean);
+      const all = await allListings(store, { strict: true });
       const listingFor = (pr) => all.find((r) => (r.paSiteId && r.paSiteId === pr.siteId) || (r.resortId && pr.resortId && r.resortId === pr.resortId) || (pr.channel && r.channelProperty === "Y" && r.affId === pr.aff));
 
       if (action === "existingProperties") {
@@ -1544,7 +1540,7 @@ export default async (request, context) => {
       if (denied) return denied;
       const creds = { username: clean(body.username, 100), clientID: clean(body.clientID, 100), clientSecret: clean(body.clientSecret, 100) };
       const rid = clean(body.resortId, 64).toLowerCase();
-      const listings = async () => (await Promise.all((await store.list()).blobs.map((b) => store.get(b.key, { type: "json" }).catch(() => null)))).filter(Boolean);
+      const listings = () => allListings(store);
       // Also a property not on a channel manager (Jean, 2026-10-19): its login's
       // Site Nr is the one Avante gave it, so its Site Nrs entry finds its listing
       // even before the hourly check has found it on Stock Network.
@@ -1778,7 +1774,7 @@ export default async (request, context) => {
       record.estateType = record.inEstate === "N" ? "" : estateTypeOf(record.estateType);
       if (record.inEstate === "N") record.complexName = "";
       await store.setJSON(listingId, record);
-      await forgetEstates();
+      await forgetEstates(context);
       // Its library photos filed under its property and unit types (ResortID or unit names may have changed).
       context.waitUntil(retagListingPhotos(record).catch(() => null));
 

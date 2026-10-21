@@ -86,30 +86,51 @@
   // so it is downloaded once per page; a failed load is tried again next time.
   // AvanteResorts.load() -> Promise of the API's answer ({ resorts, updatedAt, count }).
   // AvanteResorts.reset(): the list changed (admin added properties), load it again next time.
-  var resortsPromise = null;
+  // The browser keeps the list for 5 minutes (/api/resorts sends max-age=300);
+  // after a reset it asks the server again ('no-cache': a quick "not modified"
+  // when nothing changed), so admin sees new properties straight away.
+  var resortsPromise = null, resortsRecheck = false;
   function loadResorts() {
     if (!resortsPromise) {
-      resortsPromise = fetch('/api/resorts').then(function (r) { if (!r.ok) throw new Error('resorts ' + r.status); return r.json(); })
+      resortsPromise = fetch('/api/resorts', resortsRecheck ? { cache: 'no-cache' } : undefined)
+        .then(function (r) { if (!r.ok) throw new Error('resorts ' + r.status); resortsRecheck = false; return r.json(); })
         .catch(function (e) { resortsPromise = null; throw e; });
     }
     return resortsPromise;
   }
-  window.AvanteResorts = { load: loadResorts, reset: function () { resortsPromise = null; } };
+  // AvanteResorts.list() -> Promise of just the rows ([] when the list couldn't be loaded).
+  function listResorts() {
+    return loadResorts().then(function (data) { return (data && Array.isArray(data.resorts)) ? data.resorts : []; }, function () { return []; });
+  }
+  window.AvanteResorts = { load: loadResorts, list: listResorts, reset: function () { resortsPromise = null; resortsRecheck = true; } };
 
   // ---------- The location tree ----------
   // Loads the same placements the Hub's pages use: tree-places.json, with
   // the live placements (/api/tree-lookup) winning, and names from
   // /api/resorts. Resolves to a tree object (see makeTree). Loaded once.
-  var treePromise = null;
+  // loadPlaces(): Promise of { resortId: place } — the same merge, without the
+  // names (admin's and the hub's Auto-build Browse trees use it). Loaded once.
+  var treePromise = null, placesPromise = null;
+  function loadPlaces() {
+    if (placesPromise) return placesPromise;
+    placesPromise = Promise.all([
+      fetch('tree-places.json').then(function (r) { return r.json(); }),
+      fetch('/api/tree-lookup?kind=properties').then(function (r) { return r.json(); }).catch(function () { return {}; })
+    ]).then(function (res) {
+      // the hub's live placements (new or moved properties) win over the file
+      return Object.assign({}, (res[0] && res[0].places) || {}, (res[1] && res[1].properties) || {});
+    });
+    placesPromise.catch(function () { placesPromise = null; });
+    return placesPromise;
+  }
   function loadTree() {
     if (treePromise) return treePromise;
     treePromise = Promise.all([
-      fetch('tree-places.json').then(function (r) { return r.json(); }),
-      fetch('/api/tree-lookup?kind=properties').then(function (r) { return r.json(); }).catch(function () { return {}; }),
+      loadPlaces(),
       loadResorts().catch(function () { return {}; })
     ]).then(function (res) {
-      var places = Object.assign({}, (res[0] && res[0].places) || {}, (res[1] && res[1].properties) || {});
-      var list = (res[2] && (res[2].resorts || res[2].list)) || (Array.isArray(res[2]) ? res[2] : []);
+      var places = res[0];
+      var list = (res[1] && (res[1].resorts || res[1].list)) || (Array.isArray(res[1]) ? res[1] : []);
       var names = {};
       list.forEach(function (r) { if (r && r.resortId && r.name && !names[r.resortId]) names[r.resortId] = r.name; });
       return makeTree(places, names);
@@ -324,6 +345,6 @@
 
   root.AvanteBooking = {
     BASE: BASE, FIELDS: FIELDS, build: build, parse: parse, convert: convert, siteId: siteId,
-    loadTree: loadTree, mountTreePicker: mountTreePicker, loadUnits: loadUnits, unitLabel: unitLabel, unitDetail: unitDetail, unitToggle: unitToggle
+    loadTree: loadTree, loadPlaces: loadPlaces, mountTreePicker: mountTreePicker, loadUnits: loadUnits, unitLabel: unitLabel, unitDetail: unitDetail, unitToggle: unitToggle
   };
 })(window);

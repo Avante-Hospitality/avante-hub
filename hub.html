@@ -946,9 +946,6 @@
   nav.tabs .menu-actions a:hover{ background:var(--mint); }
   @media (max-width:900px){ nav.tabs{ width:min(320px, calc(100vw - 32px)); } header.hub-header{ padding:12px 16px; } nav.tabs{ right:16px; } }
 </style>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.css">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.css">
   <link rel="stylesheet" href="property-affiliate.css">
   <style>
     /* Channel property (types: channel, not property): the Property Affiliate
@@ -2403,6 +2400,40 @@
     var AFF_ID = new URLSearchParams(window.location.search).get('aff') || '';
     // Server session from the last login; Account Details only works with it.
     function hubSession(){ try{ return localStorage.getItem('avante-hub-session:' + AFF_ID) || ''; }catch(e){ return ''; } }
+
+    // Asked once when the hub opens, shared by every part that needs it
+    // (Jean, 2026-10-21: faster hub start):
+    //   hubHookList()  every hook of this affiliate (/api/hook ... &list=1&all=1),
+    //                  asked again after any hook is saved from this page;
+    //   hubProfile()   this affiliate's profile (/api/auth getProfile).
+    // Each resolves to the server's JSON answer; a failed request is asked again next time.
+    var hubHookListPromise = null, hubProfilePromise = null;
+    function hubHookList(){
+      if(!hubHookListPromise){
+        hubHookListPromise = fetch('/api/hook?aff=' + encodeURIComponent(AFF_ID) + '&list=1&all=1', { cache: 'no-store' })
+          .then(function(r){ return r.json(); });
+        hubHookListPromise.then(function(d){ if(!(d && d.ok)) hubHookListPromise = null; }, function(){ hubHookListPromise = null; });
+      }
+      return hubHookListPromise;
+    }
+    function hubProfile(){
+      if(!hubProfilePromise){
+        hubProfilePromise = fetch('/api/auth', { method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ action: 'getProfile', aff: AFF_ID, session: hubSession() }) })
+          .then(function(r){ return r.json(); });
+        hubProfilePromise.then(function(d){ if(!(d && d.ok)) hubProfilePromise = null; }, function(){ hubProfilePromise = null; });
+      }
+      return hubProfilePromise;
+    }
+    (function(){
+      // A hook saved (any POST, PUT or DELETE to /api/hook...): the list is asked again next time.
+      var pageFetch = window.fetch.bind(window);
+      window.fetch = function(input, init){
+        var url = String((input && input.url) || input || ''), method = String((init && init.method) || (input && input.method) || 'GET').toUpperCase();
+        if(method !== 'GET' && method !== 'HEAD' && /\/api\/hook(\?|$|-)/.test(url)) hubHookListPromise = null;
+        return pageFetch(input, init);
+      };
+    })();
     function hubRelogin(){
       try{ localStorage.removeItem('avante-hub-auth:' + AFF_ID); localStorage.removeItem('avante-hub-session:' + AFF_ID); }catch(e){}
       window.location.href = 'login.html' + (AFF_ID ? ('?aff=' + encodeURIComponent(AFF_ID)) : '');
@@ -2412,9 +2443,7 @@
     // "Open the hook builder" button (body.hooks-on, see the CSS).
     (function(){
       if(!AFF_ID || !hubSession()) return;
-      fetch('/api/auth', { method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ action: 'getProfile', aff: AFF_ID, session: hubSession() }) })
-        .then(function(r){ return r.json(); })
+      hubProfile()
         .then(function(d){
           if(!(d && d.ok && d.profile)) return;
           if(d.profile.hooksAccess) document.body.classList.add('hooks-on');
@@ -3582,8 +3611,7 @@
       function loadHookModeFromList(n, affId){
         if(!affId) return loadHookMode(n, affId);
         if(!hookListPromise[affId]){
-          hookListPromise[affId] = fetch('/api/hook?aff=' + encodeURIComponent(affId) + '&list=1&all=1', { cache: 'no-store' })
-            .then(function(r){ return r.json(); })
+          hookListPromise[affId] = (affId === AFF_ID ? hubHookList() : fetch('/api/hook?aff=' + encodeURIComponent(affId) + '&list=1&all=1', { cache: 'no-store' }).then(function(r){ return r.json(); }))
             .then(function(d){ if(!d || !d.ok) throw new Error('list'); var m = {}; (d.hooks || []).forEach(function(h){ m[h.hook] = h; }); return m; });
         }
         hookListPromise[affId].then(function(m){
@@ -4027,20 +4055,7 @@
 
       // Full property list, shared between the Browse tree and (were it
       // ever needed here) any other per-property lookup — fetched once.
-      var allResortsCacheHub = null;
-      var allResortsPromiseHub = null;
-      function loadAllResortsHub(){
-        if(allResortsCacheHub) return Promise.resolve(allResortsCacheHub);
-        if(allResortsPromiseHub) return allResortsPromiseHub;
-        allResortsPromiseHub = window.AvanteResorts.load().then(function(data){
-          allResortsCacheHub = (data && Array.isArray(data.resorts)) ? data.resorts : [];
-          return allResortsCacheHub;
-        }).catch(function(){
-          allResortsPromiseHub = null;
-          return [];
-        });
-        return allResortsPromiseHub;
-      }
+      function loadAllResortsHub(){ return window.AvanteResorts.list(); }
 
       // The affiliate identity Auto-build saves under — same priority
       // order saveHook() below already uses (AFF_ID from this affiliate's
@@ -4237,13 +4252,12 @@
         // placed from each property's coordinates (tree-places.json, built from
         // Google + the Avante regions). Same tick-box behaviour as before: the
         // flat Set of resortKeys is the one source of truth.
+        // Placements and resort list: the page's shared, loaded-once copies (booking-links.js).
         return Promise.all([
-          fetch('tree-places.json').then(function(r){ return r.json(); }),
-          loadAllResortsHub(),
-          fetch('/api/tree-lookup?kind=properties').then(function(r){ return r.json(); }).catch(function(){ return {}; })
+          window.AvanteBooking.loadPlaces(),
+          loadAllResortsHub()
         ]).then(function(results){
-          // the hub's live placements (new or moved properties) win over the file
-          var places = Object.assign({}, (results[0] && results[0].places) || {}, (results[2] && results[2].properties) || {});
+          var places = results[0];
           var resorts = results[1] || [];
           containerEl.innerHTML = '';
           if(!resorts.length){
@@ -4730,7 +4744,8 @@
       // to Download SVG instead of failing silently. Shared by
       // downloadFlyerPng (saves a file) and useFlyerAsHookPhoto (uploads it
       // straight in as this hook's own ad creative).
-      function rasterizeFlyerToPng(svg, onBlob, onError){
+      // type: 'image/png' (default) or 'image/jpeg' (0.85 quality, on white).
+      function rasterizeFlyerToPng(svg, onBlob, onError, type){
         try{
           var openTagEnd = svg.indexOf('>') + 1;
           var withStyle = svg.slice(0, openTagEnd) +
@@ -4743,12 +4758,13 @@
             var canvas = document.createElement('canvas');
             canvas.width = 1080; canvas.height = 1350;
             var ctx = canvas.getContext('2d');
+            if(type === 'image/jpeg'){ ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height); }
             ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
             URL.revokeObjectURL(url);
             canvas.toBlob(function(pngBlob){
               if(!pngBlob){ onError(); return; }
               onBlob(pngBlob);
-            }, 'image/png');
+            }, type || 'image/png', 0.85);
           };
           img.onerror = function(){ URL.revokeObjectURL(url); onError(); };
           img.src = url;
@@ -4784,12 +4800,13 @@
         if(!st || !st.svg) return;
         statusEl.textContent = 'Setting this as the hook’s photo…';
         statusEl.className = 'status show';
-        rasterizeFlyerToPng(st.svg, function(pngBlob){
-          uploadHookImage(n, pngBlob);
+        // JPEG: a fraction of the PNG's size, so front stores load it faster.
+        rasterizeFlyerToPng(st.svg, function(jpegBlob){
+          uploadHookImage(n, jpegBlob);
         }, function(){
           statusEl.textContent = 'Could not convert this flyer to an image in this browser — try Download PNG instead, then use Upload image on this hook.';
           statusEl.className = 'status show';
-        });
+        }, 'image/jpeg');
       }
 
       grid.addEventListener('click', function(e){
@@ -4974,8 +4991,7 @@
       });
       // Current settings for every hook (hidden ones included).
       if(AFF_ID){
-        fetch('/api/hook?aff=' + encodeURIComponent(AFF_ID) + '&list=1&all=1', { cache: 'no-store' })
-          .then(function(r){ return r.json(); })
+        hubHookList()
           .then(function(res){
             ((res && res.hooks) || []).forEach(function(h){
               var show = document.getElementById('h' + h.hook + '-show');
@@ -5007,8 +5023,6 @@
     nothing needs passing in explicitly.
   -->
   <script src="share-kit.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.js"></script>
   <script>
 
     // ---------- Link shortener (shared across every link the Hub builds) ----------
@@ -5294,12 +5308,7 @@
           statusEl.className = 'status show';
           return;
         }
-        fetch('/api/auth', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ action: 'getProfile', aff: AFF_ID, session: hubSession() })
-        })
-          .then(function(r){ return r.json(); })
+        hubProfile()
           .then(function(data){
             if(data && data.relogin){ hubRelogin(); return; }
             loaded = true;
@@ -5362,6 +5371,7 @@
             saveBtn.textContent = 'Save Account Details';
             if(data && data.relogin){ hubRelogin(); return; }
             if(data && data.ok){
+              hubProfilePromise = null; // the saved details are asked for again next time
               if(data.profile) renderRevenueShare(data.profile.revenueShare);
               showToast('Account details saved');
             }else{
@@ -5387,7 +5397,8 @@
 
 </script>
 
-  <script src="qrcode.js" defer></script>
+  <!-- qrcode.js loads the first time a QR code is drawn (load-script.js) -->
+  <script src="load-script.js" defer></script>
   <script src="property-affiliate.js" defer></script>
 <script>
   // The one "Open the hook builder" button above the hooks (Jean, 2026-10-08).

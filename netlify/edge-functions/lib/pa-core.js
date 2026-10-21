@@ -19,6 +19,7 @@ import { SNClient, SNError, addDays, nightsBetween } from "./sn-client.js";
 import { parseIcs, buildIcs, nightsToRanges } from "./ical.js";
 import { encryptJSON, decryptJSON, randomToken, sha256Hex } from "./pa-crypto.js";
 import { emailList as listOf, badEmails, recipients } from "./emails.js";
+import { allListings, readAllEntries } from "./blob-records.js";
 
 export const CHANNELS = { bcom: "Booking.com", airbnb: "Airbnb", lekke: "LekkeSlaap" };
 const CONNECT_DAYS = [14];               // connect reads only the first 14 days; later days load as the calendar moves (Jean: keep SN calls light)
@@ -50,6 +51,8 @@ export function waNumber(phone) { let d = String(phone || "").replace(/\D/g, "")
 export function createCore({ store, resortStore, encKey, now = () => new Date(), clientFactory = (c) => new SNClient(c), fetchImpl = (...a) => fetch(...a), baseUrl = "", affiliates = null, sendEmail = async () => false, reviews = null, snFeed = null, listingStore = null, adminEmail = async () => "" }) {
   const today = () => now().toISOString().slice(0, 10);
   const getJSON = (k) => store.get(k, { type: "json" });
+  // Set once every connected property has its "aff:<number>" link (see propertyOfAff).
+  const AFF_LINKS_DONE = "meta:affLinksBackfilled";
   const setJSON = (k, v) => store.setJSON(k, v);
 
   // ---------- properties & sessions ----------
@@ -73,7 +76,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
   async function listingUnits(rid) {
     const k = String(rid || "").trim().toLowerCase();
     if (!listingStore || !k) return [];
-    const all = await Promise.all((await listingStore.list()).blobs.map((b) => listingStore.get(b.key, { type: "json" }).catch(() => null)));
+    const all = await allListings(listingStore);
     const rec = all.find((r) => r && String(r.resortId || "").toLowerCase() === k && (r.unitTypes || []).length);
     return rec ? rec.unitTypes.filter((u) => u && u.name).map((u) => ({ name: String(u.name).trim(), size: Number(u.maxOccupancy) || 0 })) : [];
   }
@@ -91,7 +94,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
   }
   async function listingsForSite(siteNr) {
     if (!listingStore || !String(siteNr || "").trim()) return [];
-    const all = await Promise.all((await listingStore.list()).blobs.map((b) => listingStore.get(b.key, { type: "json" }).catch(() => null)));
+    const all = await allListings(listingStore);
     return all.filter((r) => r && r.resortId && String(r.siteNr || "").trim() === String(siteNr).trim());
   }
   // "Which property is this?" search: name or place, resort list plus the live feed, no duplicates.
@@ -242,22 +245,42 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     await store.delete("feed:" + prop.feedToken);
     await store.delete("site:" + prop.siteId);
     await store.delete("tok:" + prop.siteId);
-    if (prop.aff) { const link = await getJSON("aff:" + prop.aff); if (link && link.siteId === prop.siteId) await store.delete("aff:" + prop.aff); }
+    if (prop.aff) {
+      const link = await getJSON("aff:" + prop.aff);
+      // Another property may share this affiliate number: the next lookup scans again (propertyOfAff).
+      if (link && link.siteId === prop.siteId) { await store.delete("aff:" + prop.aff); await store.delete(AFF_LINKS_DONE); }
+    }
     return { ok: true };
   }
 
-  // The property connected under an affiliate number (falls back to a scan for
-  // properties connected before the link was recorded).
+  // The property connected under an affiliate number. Every connect records an
+  // "aff:<number>" link (and a session open repairs a missing one), so the link
+  // is the answer. Properties connected before links were recorded are found
+  // by one scan of every property, which records all their links and then
+  // AFF_LINKS_DONE, so an affiliate with no property is answered at once
+  // instead of by reading every property each time the hub opens.
   async function propertyOfAff(aff) {
     aff = cleanStr(aff, 40);
     if (!aff) return null;
     const link = await getJSON("aff:" + aff);
     if (link) { const p = await getJSON("site:" + link.siteId); if (p) return p; await store.delete("aff:" + aff); }
-    for (const b of (await store.list({ prefix: "site:" })).blobs) {
-      const p = await getJSON(b.key);
-      if (p && p.aff === aff) { await setJSON("aff:" + aff, { siteId: p.siteId }); return p; }
+    if (await getJSON(AFF_LINKS_DONE)) return null;
+    const found = await backfillAffLinks();
+    return found.get(aff) || null;
+  }
+  // Links every connected property to its affiliate number (the first property
+  // in list order wins, as the old one-by-one scan did); returns aff -> property.
+  async function backfillAffLinks() {
+    const found = new Map();
+    for (const { value: p } of await readAllEntries(store, { prefix: "site:", strict: true })) {
+      if (p && p.aff && !found.has(p.aff)) found.set(p.aff, p);
     }
-    return null;
+    for (const [aff, p] of found) {
+      const link = await getJSON("aff:" + aff);
+      if (!link || !(await getJSON("site:" + link.siteId))) await setJSON("aff:" + aff, { siteId: p.siteId });
+    }
+    await setJSON(AFF_LINKS_DONE, { at: now().toISOString(), linked: found.size });
+    return found;
   }
 
   // Is this affiliate a property affiliate? (Used to open the hub on Property Affiliate.)

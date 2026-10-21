@@ -1,3 +1,49 @@
-[[edge_functions]]
-  path = "/api/hook"
-  function = "hook-api"
+# Edge function routes are declared in each function's own `export const
+# config` (e.g. hook-api.js: /api/hook).
+
+# Browser caching for static files (Jean, 2026-10-21). Netlify's CDN always
+# serves the newest deploy; these only say how long a visitor's browser may
+# reuse its own copy. Scripts and styles are not fingerprinted and pages call
+# into them, so they are always re-checked (a cheap "not changed" reply) —
+# a page from a new deploy must never run an older shared script. Data files
+# an hour (then refreshed in the background); pictures a day. HTML pages keep
+# Netlify's default (always checked).
+[[headers]]
+  for = "/*.png"
+  [headers.values]
+    Cache-Control = "public, max-age=86400"
+
+[[headers]]
+  for = "/*.jpg"
+  [headers.values]
+    Cache-Control = "public, max-age=86400"
+
+[[headers]]
+  for = "/*.svg"
+  [headers.values]
+    Cache-Control = "public, max-age=86400"
+
+[[headers]]
+  for = "/*.gif"
+  [headers.values]
+    Cache-Control = "public, max-age=86400"
+
+[[headers]]
+  for = "/*.js"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/*.css"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/tree-*.json"
+  [headers.values]
+    Cache-Control = "public, max-age=3600, stale-while-revalidate=86400"
+
+[[headers]]
+  for = "/sn-units*.json"
+  [headers.values]
+    Cache-Control = "public, max-age=3600, stale-while-revalidate=86400"

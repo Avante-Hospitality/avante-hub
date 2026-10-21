@@ -1,10 +1,8 @@
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
 import { emailList, badEmails } from "./lib/emails.js";
 import {
-  periodBounds,
-  aggregateTransactions,
-  buildLeaderboard,
-  loadAffiliatesAndTransactions,
+  loadBookingSummary,
+  BOOKING_SUMMARY_STORE,
   CHANNEL_KEYS as STATS_CHANNEL_KEYS,
   LEADERBOARD_EXCLUDED_SITE_NRS,
 } from "./lib/booking-stats.js";
@@ -345,10 +343,11 @@ export default async (request, context) => {
       // (a position and a total, never another affiliate's name or data),
       // even though the underlying stats/leaderboard are computed the same
       // way admin-api.js's bookingStats resource computes them.
-      const { affiliatesById, records } = await loadAffiliatesAndTransactions(directoryStore, transactionsStore);
-
-      const periods = periodBounds();
-      const stats = aggregateTransactions(records, periods);
+      // The summary is recomputed only when an affiliate or a transaction
+      // changed (lib/booking-stats.js loadBookingSummary), so the numbers
+      // are the same as computing them here every time.
+      const summary = await loadBookingSummary(directoryStore, transactionsStore, getStore({ name: BOOKING_SUMMARY_STORE, consistency: "strong" }));
+      const { periods, stats, leaderboard } = summary;
       const emptyBucket = { count: 0, value: 0 };
       const emptyStatus = { request: emptyBucket, booked: emptyBucket, cancelled: emptyBucket, confirmed: emptyBucket, paid: emptyBucket };
 
@@ -359,7 +358,7 @@ export default async (request, context) => {
         myRank[p] = {};
         for (const ch of Object.keys(stats[p])) {
           myStats[p][ch] = stats[p][ch][aff] || emptyStatus;
-          const lb = buildLeaderboard(stats[p][ch], affiliatesById);
+          const lb = leaderboard[p][ch];
           const byCountRow = lb.byCount.find((r) => r.affId === aff);
           const byValueRow = lb.byValue.find((r) => r.affId === aff);
           myRank[p][ch] = {
@@ -370,7 +369,7 @@ export default async (request, context) => {
       }
 
       const excludedFromLeaderboard = LEADERBOARD_EXCLUDED_SITE_NRS.includes(
-        String((affiliatesById[aff] && affiliatesById[aff].siteNr) || "").trim()
+        String(summary.affiliateSiteNr[aff] || "").trim()
       );
 
       return new Response(

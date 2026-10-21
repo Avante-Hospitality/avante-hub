@@ -317,7 +317,7 @@ function itemEl(o,showSub){
   function tog(){ var ls=UNITS&&(UNITS[it.id]||UNITS[String(it.id).toLowerCase()]); tg.textContent=UNITS?(ls&&ls.length?(ul.hidden?'▸ ':'▾ ')+ls.length+' unit type'+(ls.length===1?'':'s'):''):''; }
   tog(); UNIT_WAIT.push(tog);
   b.addEventListener('click',function(){ pick(b,{item:it});
-    if(!UNITS){ ul.hidden=false; ul.innerHTML='<div class="udet">Loading unit types…</div>'; UNIT_WAIT.push(function(){ fillUnits(ul,it.id); }); return; }
+    if(!UNITS){ loadUnits(); ul.hidden=false; ul.innerHTML='<div class="udet">Loading unit types…</div>'; UNIT_WAIT.push(function(){ fillUnits(ul,it.id); }); return; }
     if(ul.hidden) fillUnits(ul,it.id); ul.hidden=!ul.hidden||!ul.childNodes.length; tog(); });
   w.appendChild(b); w.appendChild(ul); return w;
 }
@@ -346,7 +346,10 @@ function fillUnits(ul,id){
     ul.appendChild(r); ul.appendChild(det); });
   refreshBtn(ul,id);
 }
+// Read the first time a property is opened (about 1MB), not when the page opens.
+var unitsLoading=false;
 function loadUnits(){
+  if(unitsLoading) return; unitsLoading=true;
   fetch('/api/sn-units').then(function(r){ if(!r.ok) throw 0; return r.json(); }).catch(function(){ return fetch('sn-units.json').then(function(r){ return r.json(); }); })
     .then(function(d){ UNITS=(d&&d.units)||{}; var w=UNIT_WAIT; UNIT_WAIT=[]; w.forEach(function(f){ try{ f(); }catch(e){} }); if(SEL&&SEL.members&&SEL.members.length===1&&SEL.members[0].kind==='property') update(false); })
     .catch(function(){ UNITS={}; });
@@ -358,7 +361,9 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18,att
 var cluster=L.markerClusterGroup({maxClusterRadius:50}).addTo(map);
 var focusLayer=L.layerGroup().addTo(map), regLayer=null, hiReg=null;
 function icon(kind,big,hidden){ var c=hidden?'#b7b7ae':kind==='activity'?'#0e7c66':'#1a4d7a', s=big?16:13; return L.divIcon({className:'',html:'<div style="background:'+c+';width:'+s+'px;height:'+s+'px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 2px rgba(0,0,0,.45)"></div>',iconSize:[s,s]}); }
-function marker(it,big){ it.raw._tree=it; var m=L.marker([it.lat,it.lng],{icon:icon(it.kind,big,it.hidden)}); m.bindPopup(function(){return popupContent(it.raw);},{maxWidth:ADMIN?320:260});
+// Each place's dot is made once per size and reused on every redraw.
+function marker(it,big){ var k=big?'_mBig':'_mSmall'; if(it[k]){ it._m=it[k]; return it[k]; } it[k]=makeMarker(it,big); return it[k]; }
+function makeMarker(it,big){ it.raw._tree=it; var m=L.marker([it.lat,it.lng],{icon:icon(it.kind,big,it.hidden)}); m.bindPopup(function(){return popupContent(it.raw);},{maxWidth:ADMIN?320:260});
   // clicking a dot opens the tree to it
   m.on('popupopen',function(){ if(it.kind!==TAB) return; quietMoves(); markInView(revealItem(it)); });
   it._m=m; return m; }
@@ -444,7 +449,7 @@ function card(near){
     h+='<div class="near"><h3>'+near.length+' '+otherName+' '+(SEL.region?'in '+esc(SEL.label)+' or within '+R+' km of it':'within '+R+' km')+'</h3><div class="nlist" id="nlist"></div></div>';
   } else h+='<p class="hint">Select a region, city, suburb or single place to see the '+otherName+' around it.</p>';
   var one=SEL.members.length===1&&SEL.members[0].kind==='property'?SEL.members[0]:null;
-  if(one){ var uls=UNITS?(UNITS[one.id]||UNITS[String(one.id).toLowerCase()]||[]):null;
+  if(one){ if(!UNITS) loadUnits(); var uls=UNITS?(UNITS[one.id]||UNITS[String(one.id).toLowerCase()]||[]):null;
     h+='<div class="ucard"><h3>Unit types</h3>'+(uls===null?'<p class="hint">Loading…</p>':uls.length?'<ul>'+uls.map(function(l){ return '<li>'+unitLabel(l)+'<br><span class="subl">'+esc(unitDetail(l))+'</span></li>'; }).join('')+'</ul>':'<p class="hint">No unit types listed on Stock Network.</p>')+'</div>'; }
   $('card').innerHTML=h;
   if(canRadius){
@@ -520,13 +525,17 @@ function choose(it){
 $('pick').addEventListener('change',function(e){ var it=NAMES[e.target.value]; if(it){ choose(it); e.target.blur(); } });
 $('pick').addEventListener('keydown',function(e){ if(e.key==='Enter'){ var it=NAMES[e.target.value]; if(it){ e.preventDefault(); choose(it); } } });
 
+// The name list (thousands of options) is built the first time the box is used.
+var pickerFilled=false;
+function fillPickerOnce(){ if(!pickerFilled && PROPS.length+ACTS.length){ pickerFilled=true; fillPicker(); } }
+['focus','pointerdown'].forEach(function(ev){ $('pick').addEventListener(ev,fillPickerOnce); });
 loadAll().then(function(){
-  fillPicker();
+  if(document.activeElement===$('pick')) fillPickerOnce();
   $('status').hidden=true;
   $('nP').textContent=PROPS.length.toLocaleString('en-ZA'); $('nA').textContent=ACTS.length.toLocaleString('en-ZA');
   var notLooked=ACTS.filter(function(a){return a.notLooked;}).length;
   if(notLooked){ $('status').hidden=false; $('status').textContent=notLooked+' activities are placed by their nearest property until the activity lookup runs'+(ADMIN?' (press Re-run lookup under Location tree).':' (admin: Location tree lookup page).'); }
-  drawRegions(); setTab('property'); loadUnits();
+  drawRegions(); setTab('property');
   var first=treeEl.querySelector('.row'); if(first) first.click();
 }).catch(function(){ $('status').textContent='Could not load the map data. Refresh the page to try again.'; });
 })();

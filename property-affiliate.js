@@ -730,8 +730,19 @@
   }
 
   // ---- Front store (public page /stay/<slug>, guest page, room card) ----
+  // qrcode.js loads the first time a QR is shown (load-script.js): until it
+  // has, the QR box holds a placeholder that is filled in once it arrives.
   function qrSvg(text, px) {
+    if (!window.qrcode) {
+      if (window.AvanteScripts) AvanteScripts.qrcode().then(fillQrPlaceholders, function () {});
+      return '<span class="pa-qr-wait" data-qr-text="' + esc(text) + '" data-qr-px="' + (px || 150) + '" style="display:inline-block;width:' + (px || 150) + 'px;height:' + (px || 150) + 'px"></span>';
+    }
     try { var q = qrcode(0, 'M'); q.addData(text); q.make(); return q.createSvgTag({ cellSize: 4, margin: 2, scalable: true }).replace('<svg ', '<svg style="width:' + (px || 150) + 'px;height:' + (px || 150) + 'px" role="img" aria-label="QR code for ' + esc(text) + '" '); } catch (e) { return ''; }
+  }
+  function fillQrPlaceholders() {
+    Array.prototype.forEach.call(document.querySelectorAll('.pa-qr-wait'), function (el) {
+      el.outerHTML = qrSvg(el.getAttribute('data-qr-text'), +el.getAttribute('data-qr-px') || 150);
+    });
   }
   function frontPhotos() {
     var F = S.front, all = [];
@@ -1017,7 +1028,7 @@
   // One iframe for the whole session (kept on <body>, so a re-render of the
   // tab doesn't reload it). It sits over the empty column next to the steps
   // (#fs-pvslot); on phones it opens full screen from the Preview button.
-  var PV = null, pvTimer = null;
+  var PV = null, pvTimer = null, pvTick = 0;
   function pvEnsure() {
     if (PV) return PV;
     var box = document.createElement('div');
@@ -1037,8 +1048,16 @@
     });
     window.addEventListener('resize', pvFollowSoon);
     document.addEventListener('scroll', pvFollowSoon, true);
-    setInterval(pvFollow, 600); // also notices the hub switching to another panel
+    document.addEventListener('visibilitychange', function () { pvWatch(); if (!document.hidden) pvFollow(); });
     return PV;
+  }
+  // While the Front store tab is open (and the browser tab is visible), check
+  // the preview's place every 600ms: this also notices the hub switching to
+  // another panel. Stopped on every other view, so it costs nothing there.
+  function pvWatch() {
+    var want = !!PV && S.view === 'front' && !document.hidden;
+    if (want && !pvTick) pvTick = setInterval(pvFollow, 600);
+    else if (!want && pvTick) { clearInterval(pvTick); pvTick = 0; }
   }
   var pvRaf = 0;
   function pvFollowSoon() { if (!pvRaf) pvRaf = requestAnimationFrame(function () { pvRaf = 0; pvFollow(); }); }
@@ -1071,8 +1090,8 @@
   }
   function pvQueue() { clearTimeout(pvTimer); pvTimer = setTimeout(function () { keepFront(); pvSend(); }, 250); }
   function pvAfterRender() {
-    if (S.view !== 'front' || !S.front || !S.prop) { if (PV) pvFollow(); return; }
-    pvEnsure(); pvFollow(); pvSend();
+    if (S.view !== 'front' || !S.front || !S.prop) { if (PV) pvFollow(); pvWatch(); return; }
+    pvEnsure(); pvFollow(); pvSend(); pvWatch();
   }
   function fsMarkDirty() { S.fsDirty = true; var el = document.getElementById('fs-dirty'); if (el) el.hidden = false; }
   function fsLoadPreview(km) {
@@ -1911,7 +1930,7 @@
       keepFront(); var keep2 = S.front.settings;
       return api('removeFrontPhoto', { url: t.dataset.u }).then(function (d) { mergeFront(d); S.front.settings = Object.assign({}, S.front.settings, keep2, { photos: Array.isArray(keep2.photos) ? keep2.photos.filter(function (x) { return x !== t.dataset.u; }) : null }); render(); }).catch(fail);
     }
-    if (a === 'dlQr') { try { var dl2 = document.createElement('a'); dl2.href = qrPng(t.dataset.url); dl2.download = (S.prop.resortName || 'property').replace(/[^a-z0-9]+/gi, '-').toLowerCase() + '-' + t.dataset.name + '-qr.png'; document.body.appendChild(dl2); dl2.click(); dl2.remove(); } catch (e2) { fail(e2); } return; }
+    if (a === 'dlQr') { (window.AvanteScripts ? AvanteScripts.qrcode() : Promise.resolve()).then(function () { try { var dl2 = document.createElement('a'); dl2.href = qrPng(t.dataset.url); dl2.download = (S.prop.resortName || 'property').replace(/[^a-z0-9]+/gi, '-').toLowerCase() + '-' + t.dataset.name + '-qr.png'; document.body.appendChild(dl2); dl2.click(); dl2.remove(); } catch (e2) { fail(e2); } }, fail); return; }
     if (a === 'saveMessages') {
       collectMsgEdit();
       var sendList = msgEditList().map(function (m) { var o = Object.assign({}, m); delete o._open; return o; });

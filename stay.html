@@ -6,8 +6,8 @@
 <!--STAY-META-->
 <link rel="icon" href="/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Noto+Sans:wght@400;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <!-- Property front store (/stay/<slug>), in-house guest page (/stay/<slug>/guest)
      and printable room card (/stay/<slug>/card). Served by
      netlify/edge-functions/stay-page.js; data from /api/stay (stay-api.js).
@@ -207,8 +207,6 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
 </head>
 <body>
 <div id="app"><div class="center muted">Loading…</div></div>
-<script src="/qrcode.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
 (function () {
   'use strict';
@@ -228,6 +226,18 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
   // Only plain web links and the hub's own photo addresses go into links and backgrounds.
   function safeUrl(u) { u = String(u || ''); return /^(https?:\/\/|\/api\/)[^'"()\s<>]+$/i.test(u) ? u : ''; }
   function safeLink(u) { u = String(u || ''); return /^(https?:\/\/|mailto:|tel:)/i.test(u) ? u : ''; }
+  // The map (Leaflet) and the room card's QR codes load only when a page shows them.
+  var LEAFLET = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min';
+  var loaded = {};
+  function loadOnce(url, make) {
+    if (!loaded[url]) loaded[url] = new Promise(function (ok, fail) {
+      var el = make(); el.onload = ok; el.onerror = function () { delete loaded[url]; fail(new Error('Could not load ' + url)); };
+      document.head.appendChild(el);
+    });
+    return loaded[url];
+  }
+  function loadScript(src) { return loadOnce(src, function () { var el = document.createElement('script'); el.src = src; return el; }); }
+  function loadCss(href) { return loadOnce(href, function () { var el = document.createElement('link'); el.rel = 'stylesheet'; el.href = href; return el; }); }
   function api(q) { return fetch('/api/stay?' + q).then(function (r) { return r.json(); }); }
   function post(b) { return fetch('/api/stay', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(Object.assign({ slug: CFG.slug }, b)) }).then(function (r) { return r.json(); }); }
   function placeLine(p) { if (!p) return ''; var bits = [p.suburb, p.city, p.region && p.region.split(', ')[0], p.province].filter(Boolean); var out = []; bits.forEach(function (b) { if (out.indexOf(b) < 0) out.push(b); }); return out.join(', '); }
@@ -465,7 +475,13 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
   }
   var map = null;
   function drawMap() {
-    var el = document.getElementById('map'); if (!el || !window.L) return;
+    var el = document.getElementById('map'); if (!el) return;
+    if (!window.L) {
+      Promise.all([loadCss(LEAFLET + '.css'), loadScript(LEAFLET + '.js')])
+        .then(function () { if (window.L) drawMap(); })
+        .catch(function (e) { console.error('stay.html: map not shown —', e.message); });
+      return;
+    }
     var d = S.d;
     if (map) { map.remove(); map = null; }
     map = L.map(el, { scrollWheelZoom: false });
@@ -506,6 +522,13 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
 
   // ---------- printable room card ----------
   function renderCard() {
+    if (typeof qrcode === 'undefined') {
+      loadScript('/qrcode.js').then(renderCard, function (e) { console.error('stay.html: QR codes not shown —', e.message); renderCardHtml(); });
+      return;
+    }
+    renderCardHtml();
+  }
+  function renderCardHtml() {
     var d = S.d, g = d.guest || {};
     var h = '<div class="cardpage"><div class="cardtools"><button type="button" class="btn" data-act="print">🖨️ Print this card</button><a class="btn g" href="' + esc(guestUrl()) + '" target="_blank" rel="noopener">Open the guest page</a></div>' +
       '<div class="rc"><h1>Welcome to ' + esc(d.name) + '</h1><p class="sub">We\'re glad you\'re here. Everything you need is one scan away.</p>' +

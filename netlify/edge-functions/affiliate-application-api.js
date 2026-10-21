@@ -1,5 +1,6 @@
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
 import { emailList, badEmails } from "./lib/emails.js";
+import { isAdminToken } from "./lib/admin-session.js";
 
 // Backs the public "Become an Affiliate" application form (affiliate-application.html)
 // and a matching "Applications" review tab in admin.html. Covers both Agent
@@ -36,15 +37,6 @@ function nl2br(v) {
 function genApplicationId() {
   const n = Math.floor(Math.random() * 900000) + 100000;
   return "AA-" + n;
-}
-
-async function verifyAdminToken(token) {
-  if (!token) return false;
-  const sessionStore = getStore({ name: "admin-sessions", consistency: "strong" });
-  const session = await sessionStore.get(token, { type: "json" });
-  if (!session) return false;
-  if (new Date(session.expiresAt).getTime() < Date.now()) return false;
-  return true;
 }
 
 async function sendNotificationEmail(to, subject, html) {
@@ -114,7 +106,7 @@ export default async (request, context) => {
     });
 
   const requireAdmin = async () => {
-    const authed = await verifyAdminToken(body.token);
+    const authed = await isAdminToken(body.token);
     if (!authed) return json({ error: "Not authenticated." }, 401);
     return null;
   };

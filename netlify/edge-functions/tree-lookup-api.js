@@ -22,7 +22,11 @@
 // the "tree-places" store. No property, activity, zone or affiliate record is
 // changed here.
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
-import { googleLookup, placeCoordinate, placeResortBacklog, keyOf, PLACES_STORE, ACTIVITY_KEY, PROPERTY_KEY, TREE_RULES, snFieldsFromPlace, placeText } from "./lib/tree.js";
+// The tree engine (lib/tree.js, 300KB of region data) is loaded only by the
+// admin POSTs (loadTree); the public GET just reads the live store.
+import { PLACES_STORE, ACTIVITY_KEY, PROPERTY_KEY, loadTree } from "./lib/tree-keys.js";
+import { isAdminToken } from "./lib/admin-session.js";
+import { purgeHookListCache } from "./lib/hook-cache.js";
 
 const MAX_POINTS = 25;
 const CONCURRENCY = 5;
@@ -34,14 +38,6 @@ function json(body, status = 200) {
   });
 }
 
-async function verifyAdminToken(token) {
-  if (!token) return false;
-  const sessionStore = getStore({ name: "admin-sessions", consistency: "strong" });
-  const session = await sessionStore.get(token, { type: "json" });
-  if (!session) return false;
-  return new Date(session.expiresAt).getTime() >= Date.now();
-}
-
 async function pool(items, fn) {
   const out = new Array(items.length);
   let n = 0;
@@ -50,7 +46,7 @@ async function pool(items, fn) {
   return out;
 }
 
-export default async (request) => {
+export default async (request, context) => {
   const places = getStore({ name: PLACES_STORE, consistency: "strong" });
 
   if (request.method === "GET") {
@@ -64,7 +60,8 @@ export default async (request) => {
 
   let body;
   try { body = await request.json(); } catch (e) { return json({ error: "Body must be JSON." }, 400); }
-  if (!(await verifyAdminToken(body.token))) return json({ error: "Your admin session has expired. Log in again." }, 401);
+  if (!(await isAdminToken(body.token))) return json({ error: "Your admin session has expired. Log in again." }, 401);
+  const { googleLookup, placeCoordinate, placeResortBacklog, keyOf, TREE_RULES, snFieldsFromPlace, placeText } = await loadTree();
 
   if (body.action === "seedProperties") {
     // The approved tree, keyed by ResortID, plus each property's current pin so
@@ -164,7 +161,13 @@ export default async (request) => {
         writes.push({ key, rec: next });
       }
     });
-    if (writes.length) await pool(writes, (w) => hookStore.setJSON(w.key, w.rec));
+    if (writes.length) {
+      await pool(writes, (w) => hookStore.setJSON(w.key, w.rec));
+      // The front stores' cached hook lists: one affiliate's, or (several, or
+      // admin's own hooks) every list at once (lib/hook-cache.js).
+      const affs = new Set(writes.map((w) => String(w.key).split(":")[0]));
+      await purgeHookListCache(context, affs.size === 1 ? [...affs][0] : "__admin__");
+    }
     return json({ ok: true, dryRun, checked, changes, unmatched, written: writes.length });
   }
 

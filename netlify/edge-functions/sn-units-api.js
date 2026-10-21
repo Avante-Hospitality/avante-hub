@@ -15,6 +15,20 @@ const BATCH = 35, PARALLEL = 4, BUDGET_MS = 25000, EVERY_MS = 182 * 864e5; // ab
 const CORS = { "access-control-allow-origin": "*", "access-control-allow-methods": "GET" }; // the hook builder reads it too
 const json = (o, status = 200, extra = {}) => new Response(JSON.stringify(o), { status, headers: { "content-type": "application/json", ...extra } });
 let cache = null; // { at, body }
+// The first full reading (sn-units.json, about 1MB) only changes with a
+// deploy, and each deploy starts new isolates: read and parsed once here,
+// not every time the 10-minute answer cache runs out.
+let seedPromise = null;
+function readSeed(origin) {
+  if (!seedPromise) {
+    seedPromise = fetch(new URL("/sn-units.json", origin))
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null);
+    // A failed read is tried again next time.
+    seedPromise.then((s) => { if (!s) seedPromise = null; });
+  }
+  return seedPromise.then((s) => s || { units: {} });
+}
 
 async function readOne(id) {
   const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 9000);
@@ -38,7 +52,7 @@ export default async (request) => {
     // counts as read on the day it was made.
     if (!live.readAt) {
       live.readAt = {};
-      let seed = {}; try { const r = await fetch(new URL("/sn-units.json", url.origin)); if (r.ok) seed = await r.json(); } catch (_) { /* none */ }
+      const seed = await readSeed(url.origin);
       const seedAt = seed.generated || live.at || new Date().toISOString();
       for (const id of Object.keys(seed.units || {})) live.readAt[id] = seedAt;
       for (const id of Object.keys(live.units)) live.readAt[id] = live.at || seedAt;
@@ -107,8 +121,7 @@ export default async (request) => {
   }
 
   if (cache && Date.now() - cache.at < 10 * 60 * 1000) return new Response(cache.body, { headers: { "content-type": "application/json", "cache-control": "public, max-age=600", ...CORS } });
-  let seed = { units: {} };
-  try { const r = await fetch(new URL("/sn-units.json", url.origin)); if (r.ok) seed = await r.json(); } catch (_) { /* live only */ }
+  const seed = await readSeed(url.origin);
   const live = (await store.get("all", { type: "json" }).catch(() => null)) || {};
   const body = JSON.stringify({ ok: true, generated: seed.generated || "", updated: live.at || "", units: Object.assign({}, seed.units || {}, live.units || {}) });
   cache = { at: Date.now(), body };

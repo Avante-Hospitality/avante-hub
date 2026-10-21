@@ -79,7 +79,7 @@
     $('dl').disabled=!(ok+bad); $('retry').disabled=running||!bad;
     return {ok:ok,bad:bad};
   }
-  fetch('tree-lookup-points.json',{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
+  fetch('tree-lookup-points.json').then(function(r){return r.json();}).then(function(d){
     d.points.forEach(function(p){ points.push(p.k); ids[p.k]=p.ids; });
     $('start').disabled=false; counts();
     if(Object.keys(results).length) msg('Picked up where the last run stopped.');

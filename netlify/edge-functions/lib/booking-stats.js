@@ -10,6 +10,10 @@
 // netlify/edge-functions/ so Netlify doesn't try to auto-discover it as its
 // own routed function (same reason hashtag-helper.js lives here too).
 
+import { mapWithConcurrency, readAllRecords, entriesFingerprint, AFFILIATES_STORE, TRANSACTIONS_STORE } from "./blob-records.js";
+// Re-exported so the existing importers of this file keep working.
+export { mapWithConcurrency };
+
 // Revenue channels — must stay in sync with CHANNEL_KEYS in admin-api.js /
 // auth-api.js. Only "accommodation" has a real StockNetwork report feeding
 // it right now; the others exist so the same stats/leaderboard code already
@@ -216,68 +220,108 @@ export function buildLeaderboard(channelStats, affiliatesById) {
 // ---- Blob store helpers ----
 
 // Netlify Blobs has no bulk-get — reading N affiliates or transactions means
-// N separate store.get() round trips. A plain for-loop awaiting each one in
-// turn serializes all of them end-to-end, which gets slow (and risks the
-// edge function's execution-time limit) as the affiliate list or the
-// transaction history grows. A small fixed-size worker pool keeps several
-// requests in flight at once without firing hundreds of them simultaneously.
-// A rejection from `fn` propagates out of Promise.all immediately, but the
-// other workers already mid-await keep running in the background — they
-// are not cancelled. That's fine for read-only lookups (worst case, a
-// result nobody reads), but a caller doing writes inside `fn` (e.g. one
-// row of a CSV import) must catch its own errors and record the failure
-// instead of throwing, so one bad item can't abort in-flight writes for
-// every other item still being processed.
-const DEFAULT_CONCURRENCY = 20;
-
-export async function mapWithConcurrency(items, fn, concurrency) {
-  concurrency = concurrency || DEFAULT_CONCURRENCY;
-  const results = new Array(items.length);
-  let next = 0;
-  async function worker() {
-    while (next < items.length) {
-      const i = next++;
-      results[i] = await fn(items[i], i);
-    }
-  }
-  const workers = [];
-  for (let i = 0; i < Math.min(concurrency, items.length); i++) workers.push(worker());
-  await Promise.all(workers);
-  return results;
-}
+// N separate store.get() round trips. lib/blob-records.js runs them a few at
+// a time and lets each edge isolate skip records that haven't changed since
+// it last read them (by etag).
 
 // Lists every key in `store` and fetches all of their records with bounded
 // concurrency, in one shot. A single record's fetch failing doesn't lose
 // the rest — it resolves to null there (filtered out by callers that want
-// a plain list, kept as a positional null by callers, like siteToAff below,
-// that need to line results back up with what they listed).
-export async function fetchAllRecords(store) {
-  const { blobs } = await store.list();
-  return mapWithConcurrency(blobs, (b) => store.get(b.key, { type: "json" }).catch(() => null));
+// a plain list, kept as a positional null by callers, like siteToAff in
+// admin-api.js, that need to line results back up with what they listed).
+// cacheName: the store's name, to reuse this isolate's unchanged records.
+export async function fetchAllRecords(store, cacheName) {
+  return readAllRecords(store, { cacheName: cacheName || "" });
 }
 
-// Shared by admin-api.js's `bookingStats` resource and auth-api.js's
-// `getMyBookingStats` action — both need the full affiliate directory and
-// every imported transaction, fetched and shaped the exact same way. One
-// copy means both benefit from the concurrency below the same way, and
-// can't drift apart on how these two stores get read.
-export async function loadAffiliatesAndTransactions(directoryStore, transactionsStore) {
-  // The affiliate directory and the transaction history are fully
-  // independent of each other — fetch both concurrently rather than
-  // waiting for all of one before starting the other.
-  const [affRecords, records] = await Promise.all([fetchAllRecords(directoryStore), fetchAllRecords(transactionsStore)]);
-
-  // Built as one final, ordered pass over the fetched results — not by
-  // mutating a shared object from inside each concurrent worker — so
-  // that if two directory records were ever somehow saved under the same
-  // affId, which one wins stays whichever came later in
-  // directoryStore.list()'s own order, the same every run, rather than
-  // depending on which of two concurrent fetches happened to resolve
-  // last.
+// Built as one final, ordered pass over the fetched results — not by
+// mutating a shared object from inside each concurrent worker — so that if
+// two directory records were ever somehow saved under the same affId, which
+// one wins stays whichever came later in directoryStore.list()'s own order,
+// the same every run.
+function byAffId(affRecords) {
   const affiliatesById = {};
   for (const rec of affRecords) {
     if (rec) affiliatesById[rec.affId] = rec;
   }
-
-  return { affiliatesById, records: records.filter(Boolean) };
+  return affiliatesById;
 }
+
+// Shared by admin-api.js's `bookingStats` resource and auth-api.js's
+// `getMyBookingStats` action (through loadBookingSummary below) — both need
+// the full affiliate directory and every imported transaction, fetched and
+// shaped the exact same way.
+export async function loadAffiliatesAndTransactions(directoryStore, transactionsStore) {
+  const [affRecords, records] = await Promise.all([
+    fetchAllRecords(directoryStore, AFFILIATES_STORE),
+    fetchAllRecords(transactionsStore, TRANSACTIONS_STORE),
+  ]);
+  return { affiliatesById: byAffId(affRecords), records: records.filter(Boolean) };
+}
+
+// Everything the Bookings dashboards show, computed from the two stores:
+//   { periods, stats, leaderboard[period][channel], affiliateNames,
+//     affiliateSiteNr, transactionCount }
+function computeBookingSummary(affiliatesById, records, now) {
+  const periods = periodBounds(now);
+  const stats = aggregateTransactions(records, periods);
+  const leaderboard = {};
+  for (const p of Object.keys(stats)) {
+    leaderboard[p] = {};
+    for (const ch of Object.keys(stats[p])) leaderboard[p][ch] = buildLeaderboard(stats[p][ch], affiliatesById);
+  }
+  const affiliateNames = {};
+  const affiliateSiteNr = {};
+  for (const affId of Object.keys(affiliatesById)) {
+    affiliateNames[affId] = affiliatesById[affId].name || affId;
+    affiliateSiteNr[affId] = affiliatesById[affId].siteNr || "";
+  }
+  return { periods, stats, leaderboard, affiliateNames, affiliateSiteNr, transactionCount: records.length };
+}
+
+// The summary above, kept so an affiliate opening My Dashboard doesn't make
+// the hub read every affiliate and every transaction each time. It is kept
+// (in this isolate, and in the `summaryStore` blob for other isolates) with a
+// fingerprint of both stores' keys and etags and the day it was computed for,
+// and used only while both still match — so any import, edit or new
+// affiliate, from anywhere, shows straight away, and the numbers are always
+// the ones a fresh computation gives. Only the two key listings are read when
+// nothing changed.
+const SUMMARY_KEY = "summary";
+const SUMMARY_VERSION = 1;
+let summaryMemo = null; // { key, summary }
+
+export async function loadBookingSummary(directoryStore, transactionsStore, summaryStore, now) {
+  now = now || new Date();
+  const day = JSON.stringify(periodBounds(now));
+  const [affEntries, txEntries] = await Promise.all([
+    listKeys(directoryStore),
+    listKeys(transactionsStore),
+  ]);
+  const [fa, ft] = await Promise.all([entriesFingerprint(affEntries), entriesFingerprint(txEntries)]);
+  const key = fa && ft ? SUMMARY_VERSION + ":" + day + ":" + fa + ":" + ft : "";
+  if (key && summaryMemo && summaryMemo.key === key) return summaryMemo.summary;
+  if (key && summaryStore) {
+    const kept = await summaryStore.get(SUMMARY_KEY, { type: "json" }).catch(() => null);
+    if (kept && kept.key === key && kept.summary) {
+      summaryMemo = { key, summary: kept.summary };
+      return kept.summary;
+    }
+  }
+  const { affiliatesById, records } = await loadAffiliatesAndTransactions(directoryStore, transactionsStore);
+  const summary = computeBookingSummary(affiliatesById, records, now);
+  if (key) {
+    summaryMemo = { key, summary };
+    // Best-effort: the numbers are already right without it.
+    if (summaryStore) await summaryStore.setJSON(SUMMARY_KEY, { key, at: now.toISOString(), summary }).catch(() => {});
+  }
+  return summary;
+}
+
+// Every key with its etag ({ key, etag }), without reading the records.
+async function listKeys(store) {
+  const { blobs = [] } = await store.list();
+  return blobs.map((b) => ({ key: b.key, etag: b.etag || "" }));
+}
+
+export const BOOKING_SUMMARY_STORE = "booking-stats-summary";

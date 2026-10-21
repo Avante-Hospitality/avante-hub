@@ -1,5 +1,7 @@
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
-import { placeResortBacklog, PLACES_STORE } from "./lib/tree.js";
+// The tree engine (lib/tree.js, 300KB of region data) is only needed by the
+// sync's placeTreeBacklog, so it is loaded there (loadTree), not on every GET.
+import { PLACES_STORE, loadTree } from "./lib/tree-keys.js";
 // When StockNetwork sends a new coordinate, the property's own NAME is
 // checked against the new pin (checkNameAgainstCoordinate), so a plainly
 // wrong StockNetwork coordinate gets flagged for review right away. Its place
@@ -8,6 +10,7 @@ import { checkNameAgainstCoordinate } from "./lib/name-check.js";
 import { estatesMap, estateNames, ESTATE_TYPES } from "./lib/estates.js";
 import { pickSite, siteFieldsOf } from "./lib/sn-feed.js";
 import { isAdminToken } from "./lib/admin-session.js";
+import { mapWithConcurrency } from "./lib/blob-records.js";
 
 // The old zone/town tags (before the location tree, 2026-10-07). Removed from
 // every row on each sync.
@@ -18,20 +21,6 @@ function stripOldZoneTags(resorts) {
 // Cleared when a property gets its first coordinate, so the tree placing and
 // name check below start fresh for it.
 const API_SYNC_CLEAR_ON_MOVE = ["country", "coordSuspicious", "coordSuspiciousNote", "coordSuggested"];
-
-async function mapWithConcurrency(items, limit, fn) {
-  const results = new Array(items.length);
-  let idx = 0;
-  async function worker() {
-    while (idx < items.length) {
-      const i = idx++;
-      results[i] = await fn(items[i], i);
-    }
-  }
-  const workers = Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, () => worker());
-  await Promise.all(workers);
-  return results;
-}
 
 // One raw Stock Network /api/1.0/resort row's informational fields. `snCountry`
 // (not `country`) keeps clear of the hub's own tree-computed country: the hub
@@ -287,7 +276,7 @@ async function handleApiSync(body, store, cors, opts = {}) {
         const LOOKUP_START_BUDGET_MS = 11000;
         const lookupsBeganAt = Date.now();
 
-        await mapWithConcurrency(targets, 8, async (i) => {
+        await mapWithConcurrency(targets, async (i) => {
           if (Date.now() - lookupsBeganAt > LOOKUP_START_BUDGET_MS) {
             nameCheckSkippedForTime++;
             return;
@@ -326,7 +315,7 @@ async function handleApiSync(body, store, cors, opts = {}) {
                 : null;
             coordFlaggedSuspicious++;
           }
-        });
+        }, 8);
 
       }
     }
@@ -383,10 +372,41 @@ async function placeTreeBacklog(resorts) {
   try {
     const apiKey = Deno.env.get("GOOGLE_GEOCODING_API_KEY") || "";
     if (!apiKey) return { skipped: "no api key" };
+    const { placeResortBacklog } = await loadTree();
     return await placeResortBacklog(getStore({ name: PLACES_STORE, consistency: "strong" }), resorts, apiKey, 6000);
   } catch (e) {
     return { error: String((e && e.message) || e) };
   }
+}
+
+// GET's answer, kept in this isolate (Jean asked for a faster hub,
+// 2026-10-21). The resort list (about 5,500 rows) is only downloaded from
+// Blobs again when its etag changed, and the answer only rebuilt when the
+// list or the estates map changed — so a change still shows straight away.
+// tag: a short version of the answer, sent as its ETag so a browser that
+// checks again gets "304 Not Modified" instead of the whole list.
+let resortListMemo = null; // { etag, record, estatesAt, text, tag }
+async function resortListBody(store, context) {
+  const got = await store.getWithMetadata("current", { type: "json", etag: resortListMemo ? resortListMemo.etag : undefined });
+  let record;
+  if (got && got.data === null && resortListMemo && got.etag === resortListMemo.etag) record = resortListMemo.record;
+  else record = got ? got.data : null;
+  const etag = (got && got.etag) || "";
+  // Each property's complex, resort or estate, where it has one: estate { n: name, t: type }.
+  const estates = (await estatesMap(context).catch(() => null)) || {};
+  const estatesAt = estates.at || "";
+  if (resortListMemo && etag && resortListMemo.etag === etag && resortListMemo.estatesAt === estatesAt && resortListMemo.text) return resortListMemo;
+  const est = estates.byResort || {};
+  const list = record && Array.isArray(record.resorts) ? record.resorts : [];
+  const resorts = list.map((r) => { const e = r && r.resortId && est[String(r.resortId).toLowerCase()]; return e ? { ...r, estate: { n: e.n, t: e.t } } : r; });
+  const updatedAt = (record && record.updatedAt) || null;
+  const text = JSON.stringify({ resorts, updatedAt, count: resorts.length });
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text)));
+  const tag = Array.from(digest.slice(0, 12), (x) => x.toString(16).padStart(2, "0")).join("");
+  const memo = { etag, record, estatesAt, text, tag };
+  // Without an etag from Blobs nothing can be told apart: don't keep it.
+  resortListMemo = etag ? memo : null;
+  return memo;
 }
 
 export default async (request, context) => {
@@ -407,17 +427,13 @@ export default async (request, context) => {
     if (request.method === "GET") {
       // The complexes, resorts and estates that exist, for the listing form (Jean, 2026-10-17).
       if (new URL(request.url).searchParams.get("estates")) {
-        return new Response(JSON.stringify({ ok: true, types: ESTATE_TYPES, estates: await estateNames() }), { headers: { "content-type": "application/json", "cache-control": "no-store", ...cors } });
+        return new Response(JSON.stringify({ ok: true, types: ESTATE_TYPES, estates: await estateNames(context) }), { headers: { "content-type": "application/json", "cache-control": "no-store", ...cors } });
       }
-      const record = await store.get("current", { type: "json" });
-      const list = record && Array.isArray(record.resorts) ? record.resorts : [];
-      // Each property's complex, resort or estate, where it has one: estate { n: name, t: type }.
-      const est = (await estatesMap().catch(() => null) || {}).byResort || {};
-      const resorts = list.map((r) => { const e = r && r.resortId && est[String(r.resortId).toLowerCase()]; return e ? { ...r, estate: { n: e.n, t: e.t } } : r; });
-      const updatedAt = (record && record.updatedAt) || null;
-      return new Response(JSON.stringify({ resorts, updatedAt, count: resorts.length }), {
-        headers: { "content-type": "application/json", ...cors },
-      });
+      const body = await resortListBody(store, context);
+      const etag = '"' + body.tag + '"';
+      const headers = { "content-type": "application/json", "cache-control": "public, max-age=300", etag, ...cors };
+      if ((request.headers.get("if-none-match") || "").split(/\s*,\s*/).includes(etag)) return new Response(null, { status: 304, headers });
+      return new Response(body.text, { headers });
     }
 
     if (request.method === "POST") {

@@ -1,6 +1,7 @@
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
 import { sha256Hex } from "./lib/image-hash.js";
 import { mergeIntoRecord, AI_SCAN_CACHE_FIELDS_CLEARED } from "./lib/record-merge.js";
+import { purgeHookListCache } from "./lib/hook-cache.js";
 
 const MAX_BYTES = 5 * 1024 * 1024;
 
@@ -16,8 +17,16 @@ export default async (request, context) => {
 }
 
   const url = new URL(request.url);
-  const aff = (url.searchParams.get("aff") || "").trim();
-  const hook = (url.searchParams.get("hook") || "").trim();
+  // /api/hook-image/v/<aff>/<hook>/<version> — the front store's long-cached
+  // copy of a hook's one fixed picture (the version comes from the hook
+  // list, lib/hook-cache.js hookImageVersion, and changes with the
+  // picture). GET only; no query string, so the Image CDN can resize it.
+  const versioned = url.pathname.match(/^\/api\/hook-image\/v\/([^/]+)\/([^/]+)\/[A-Za-z0-9]+\/?$/);
+  if (versioned && request.method !== "GET") {
+    return new Response(JSON.stringify({ error: "method not allowed" }), { status: 405, headers: { "content-type": "application/json", ...cors } });
+  }
+  const aff = versioned ? decodeURIComponent(versioned[1]).trim() : (url.searchParams.get("aff") || "").trim();
+  const hook = versioned ? decodeURIComponent(versioned[2]).trim() : (url.searchParams.get("hook") || "").trim();
   // Optional — only ever used to GET one of the extra gallery photos a
   // hook's Auto-build "Use this" step may have saved (see admin-api.js's
   // saveHookPhotos). Distinguish "no ?slot= at all" (every single-image
@@ -25,8 +34,8 @@ export default async (request, context) => {
   // below) from an explicit "?slot=0" (hook-landing.html's gallery asking
   // for its deterministic first frame, the cover, by index): both read
   // the same bare aff:hook key, but only the former should rotate.
-  const hasSlot = url.searchParams.has("slot");
-  const slot = (url.searchParams.get("slot") || "").trim();
+  const hasSlot = versioned ? true : url.searchParams.has("slot");
+  const slot = versioned ? "" : (url.searchParams.get("slot") || "").trim();
 
   if (!aff || !hook) {
     return new Response(JSON.stringify({ error: "missing aff or hook" }), {
@@ -128,6 +137,7 @@ export default async (request, context) => {
         };
         if (!readFailed) cleanupFields.galleryCount = 0;
         await mergeIntoRecord(hookStore, aff + ":" + hook, cleanupFields);
+        purgeHookListCache(context, aff); // front stores get the new picture version
       }
 
       return new Response(JSON.stringify({ ok: true }), {
@@ -220,8 +230,13 @@ export default async (request, context) => {
           const fields = { imageHash: hash, updatedAt: new Date().toISOString() };
           if (galleryCount > 0) fields.galleryCount = 0;
           await mergeIntoRecord(hookStore, key, fields);
+          purgeHookListCache(context, aff); // front stores get the new picture version
         } catch (e) {
-          // best-effort — the cover upload above already succeeded either way
+          // best-effort — the cover upload above already succeeded either way.
+          // Logged: if the record didn't get the new hash, the front store's
+          // long-cached picture (/api/hook-image/v/...) keeps the old one
+          // until this hook is saved again.
+          console.error("hook-image.js: upload saved but its record update failed —", String((e && e.message) || e));
         }
       }
 
@@ -258,7 +273,7 @@ export default async (request, context) => {
     if (!result) {
       return new Response(JSON.stringify({ error: "not found" }), {
         status: 404,
-        headers: { "content-type": "application/json", ...cors },
+        headers: { "content-type": "application/json", "cache-control": "no-store", ...cors },
 });
 }
 
@@ -266,7 +281,12 @@ export default async (request, context) => {
     return new Response(result.data, {
       headers: {
         "content-type": contentType,
-        "cache-control": "public, max-age=300",
+        // The versioned copy never changes, so browsers and Netlify's CDN keep
+        // it for a year. The plain URL may rotate gallery photos or change
+        // with the next upload, so the CDN never keeps it (same as before
+        // cache: "manual" below).
+        "cache-control": versioned ? "public, max-age=31536000, immutable" : "public, max-age=300",
+        "netlify-cdn-cache-control": versioned ? "public, s-maxage=31536000, immutable" : "no-store",
         ...cors,
 },
 });
@@ -278,4 +298,6 @@ export default async (request, context) => {
 }
 };
 
-export const config = { path: "/api/hook-image" };
+// cache: "manual" lets Netlify's CDN keep the versioned copy (the only
+// response that allows it, see above).
+export const config = { path: ["/api/hook-image", "/api/hook-image/v/*"], cache: "manual" };

@@ -527,16 +527,8 @@
   .sharekit-actions{ display:flex; gap:10px; margin-top:12px; }
   .sharekit-actions button{ flex:1; }
 </style>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
-<style>
-/* Full-screen master map (2026-10-04) — toggled by the map's own Full screen control; Esc exits. */
-#adminMapEl.map-fs{position:fixed !important; top:0; left:0; width:100vw !important; height:100vh !important; z-index:99999; border-radius:0 !important; margin:0;}
-.map-fs-btn{background:#fff; padding:6px 10px; font-weight:600; font-size:12.5px; font-family:inherit; cursor:pointer; border-radius:4px; box-shadow:0 1px 4px rgba(0,0,0,.35); border:0; color:#1a1a1a;}
-.map-fs-btn:hover{background:#f3f3ee;}
-</style>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.css">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.css">
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
+<!-- SheetJS (Excel files) is loaded on first use: load-script.js, AvanteSNExport.whenReady -->
+<script src="load-script.js"></script>
 <script src="sn-export.js"></script>
 <script src="listing-photo-library.js"></script>
 <link rel="stylesheet" href="photo-chooser.css">
@@ -1644,7 +1636,8 @@
               .then(function(r){ return r.json(); });
           },
           data: function(){
-            return mapPost('adminList').then(function(res){
+            // adminMapList (main admin script): one shared read of the list.
+            return (typeof adminMapList === 'function' ? adminMapList() : mapPost('adminList')).then(function(res){
               var d = res.data || {};
               return {
                 properties: (d.properties || []),
@@ -2577,6 +2570,49 @@
       window.location.href = 'admin-login.html';
     }
 
+    // ---------- Map & Activities list, read once (Jean, 2026-10-21: faster admin) ----------
+    // /api/map "adminList" reads every listing; the Master map, the Map &
+    // Activities tab, its photo upload and the CSV export all ask for it. It is
+    // read once and shared for a minute, and read again after anything on this
+    // page may have saved (any POST, PUT or DELETE request except the /api/map
+    // look-ups below, which only read) so a save always shows.
+    // Each caller gets its own copy: { status, data } like the other post helpers.
+    var ADMIN_MAP_LIST_MS = 60 * 1000;
+    var adminMapListCache = null; // { at, promise of { status, text } }
+    var MAP_READ_ONLY_ACTIONS = ['adminList', 'suggestPropertyCoordinates', 'stocknetworkReview', 'listMissingCoordinateProperties',
+      'listFlaggedInactiveProperties', 'listPendingNewStockNetworkProperties', 'listStockNetworkFieldFixes', 'searchPropertyPlaces',
+      'suggestCoordinates', 'nearbyActivities', 'activityDefaults', 'activityGoogle', 'findPlaceImages'];
+    function onlyReadsMap(input, init){
+      var url = String((input && input.url) || input || '');
+      if(!/^\/api\/map(\?|$)/.test(url.replace(location.origin, ''))) return false;
+      try { return MAP_READ_ONLY_ACTIONS.indexOf(JSON.parse(init.body).action) > -1; } catch(e){ return false; }
+    }
+    var pageFetch = window.fetch.bind(window);
+    window.fetch = function(input, init){
+      var method = String((init && init.method) || (input && input.method) || 'GET').toUpperCase();
+      var write = method !== 'GET' && method !== 'HEAD' && !onlyReadsMap(input, init);
+      if(write) adminMapListCache = null;
+      var res = pageFetch(input, init);
+      if(write) res.then(function(){ adminMapListCache = null; }, function(){ adminMapListCache = null; });
+      return res;
+    };
+    function adminMapList(){
+      if(!adminMapListCache || Date.now() - adminMapListCache.at > ADMIN_MAP_LIST_MS){
+        var entry = { at: Date.now(), promise: null };
+        entry.promise = pageFetch('/api/map', { method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ action: 'adminList', token: ADMIN_TOKEN }) })
+          .then(function(r){
+            if(r.status === 401){ goToLogin(); return Promise.reject(new Error('unauthenticated')); }
+            return r.text().then(function(t){ return { status: r.status, text: t }; });
+          });
+        // Only a good answer is shared; anything else is asked again next time.
+        entry.promise.then(function(x){ if(x.status !== 200 && adminMapListCache === entry) adminMapListCache = null; },
+          function(){ if(adminMapListCache === entry) adminMapListCache = null; });
+        adminMapListCache = entry;
+      }
+      return adminMapListCache.promise.then(function(x){ return { status: x.status, data: JSON.parse(x.text) }; });
+    }
+
     // "Post to Facebook" under each Default Hook (Jean, 2026-10-09): shows
     // exactly what will be posted, asks, then posts the hook's caption and
     // landing page link to the Avante Travel Page via /api/fb-post.
@@ -3421,20 +3457,7 @@
     // section's own IIFE) so both can call it. ~5,900 rows — cheap enough
     // to hold in memory and filter client-side, but real enough that
     // fetching it twice would be a wasteful, visible delay.
-    var __allResortsCache = null;
-    var __allResortsPromise = null;
-    function loadAllResorts(){
-      if(__allResortsCache) return Promise.resolve(__allResortsCache);
-      if(__allResortsPromise) return __allResortsPromise;
-      __allResortsPromise = window.AvanteResorts.load().then(function(data){
-        __allResortsCache = (data && Array.isArray(data.resorts)) ? data.resorts : [];
-        return __allResortsCache;
-      }).catch(function(){
-        __allResortsPromise = null; // allow a retry on next call rather than caching a failure
-        return [];
-      });
-      return __allResortsPromise;
-    }
+    function loadAllResorts(){ return window.AvanteResorts.list(); } // booking-links.js: loaded once per page
     // A stable per-row identity matching lib/resort-key.js's resortKey() on
     // the server — must stay in sync with that function. "" for a row with
     // no resortId (can't be matched/assigned reliably).
@@ -4794,13 +4817,12 @@
         // placed from each property's coordinates (tree-places.json, built from
         // Google + the Avante regions). Same tick-box behaviour as before: the
         // flat Set of resortKeys is the one source of truth.
+        // Placements and resort list: the page's shared, loaded-once copies (booking-links.js).
         return Promise.all([
-          fetch('tree-places.json').then(function(r){ return r.json(); }),
-          loadAllResorts(),
-          fetch('/api/tree-lookup?kind=properties').then(function(r){ return r.json(); }).catch(function(){ return {}; })
+          window.AvanteBooking.loadPlaces(),
+          loadAllResorts()
         ]).then(function(results){
-          // the hub's live placements (new or moved properties) win over the file
-          var places = Object.assign({}, (results[0] && results[0].places) || {}, (results[2] && results[2].properties) || {});
+          var places = results[0];
           var resorts = results[1] || [];
           containerEl.innerHTML = '';
           if(!resorts.length){
@@ -6082,7 +6104,8 @@
       // Shared by both downloadFlyerPng (saves a file) and
       // useFlyerAsHookPhoto (uploads it straight in as this hook's own ad
       // creative) — same pixels, two different next steps.
-      function rasterizeFlyerToPng(svg, onBlob, onError){
+      // type: 'image/png' (default) or 'image/jpeg' (0.85 quality, on white).
+      function rasterizeFlyerToPng(svg, onBlob, onError, type){
         try{
           var openTagEnd = svg.indexOf('>') + 1;
           var withStyle = svg.slice(0, openTagEnd) +
@@ -6095,12 +6118,13 @@
             var canvas = document.createElement('canvas');
             canvas.width = 1080; canvas.height = 1350;
             var ctx = canvas.getContext('2d');
+            if(type === 'image/jpeg'){ ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height); }
             ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
             URL.revokeObjectURL(url);
             canvas.toBlob(function(pngBlob){
               if(!pngBlob){ onError(); return; }
               onBlob(pngBlob);
-            }, 'image/png');
+            }, type || 'image/png', 0.85);
           };
           img.onerror = function(){ URL.revokeObjectURL(url); onError(); };
           img.src = url;
@@ -6138,12 +6162,13 @@
         if(!st || !st.svg) return;
         statusEl.textContent = 'Setting this as the hook’s photo…';
         statusEl.className = 'status show';
-        rasterizeFlyerToPng(st.svg, function(pngBlob){
-          uploadImage(n, pngBlob);
+        // JPEG: a fraction of the PNG's size, so front stores load it faster.
+        rasterizeFlyerToPng(st.svg, function(jpegBlob){
+          uploadImage(n, jpegBlob);
         }, function(){
           statusEl.textContent = 'Could not convert this flyer to an image in this browser — try Download PNG instead, then use Upload image on this hook.';
           statusEl.className = 'status show';
-        });
+        }, 'image/jpeg');
       }
 
       // ---------- Channel setup help (Property Affiliate → Channels) ----------
@@ -6453,8 +6478,6 @@
     explicitly.
   -->
   <script src="share-kit.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.js"></script>
   <script>
     // ---------- Applications (admin review of affiliate applications) ----------
     (function(){
@@ -6900,6 +6923,8 @@
         var bar = document.createElement('div');
         bar.style.cssText = 'display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;';
         var newCount = window.AvanteSNExport ? AvanteSNExport.countToSend(l, true) : 0;
+        // Get SheetJS ready while admin looks at the listing, so the first download is quick.
+        if(window.AvanteScripts) AvanteScripts.xlsx().catch(function(){});
         [['property', 'Property file for SN (.xlsx)'], ['stockx', 'Rates file \u2014 all future (.xlsx)'], ['stockc', 'Rates file \u2014 all future (.csv)'],
          ['newx', 'Rates file \u2014 only new/changed (' + newCount + ') (.xlsx)'], ['newc', 'Only new/changed (.csv)']].forEach(function(b){
           var btn = document.createElement('button');
@@ -6908,13 +6933,13 @@
             var nr = siteNrInput.value.trim();
             var sidEl = document.getElementById('propField_siteId');
             var l = Object.assign({}, lSaved, { siteId: (sidEl && sidEl.value.trim()) || lSaved.siteId || '' });
-            try {
+            AvanteSNExport.whenReady(function(){
               if(b[0] === 'property') { AvanteSNExport.downloadPropertyFile(l, nr); return; }
               var only = b[0] === 'newx' || b[0] === 'newc';
               if(!AvanteSNExport.countToSend(l, only)) { window.alert(only ? 'No new or changed future rates since they were last marked as sent.' : 'This listing has no future rates set.'); return; }
               if(b[0] === 'stockx' || b[0] === 'newx') AvanteSNExport.downloadStockXlsx(l, nr, only);
               else AvanteSNExport.downloadStockCsv(l, nr, only);
-            } catch(err){ window.alert(err.message); }
+            }).catch(function(err){ window.alert(err.message); });
           });
           bar.appendChild(btn);
         });
@@ -7081,12 +7106,12 @@
           var nr = siteNrInput.value.trim();
           var sidEl = document.getElementById('propField_siteId');
           var lx = Object.assign({}, lSaved, { siteId: (sidEl && sidEl.value.trim()) || lSaved.siteId || '' });
-          var files;
           st.textContent = '';
           if(!to){ st.textContent = 'Type the email address first.'; return; }
-          try {
-            files = AvanteSNExport.filesForEmail(lx, nr, { property: em.querySelector('#snEmailProp').checked, rates: em.querySelector('#snEmailRates').value, format: em.querySelector('#snEmailFmt').value });
-          } catch(err){ st.textContent = err.message; return; }
+          var opts = { property: em.querySelector('#snEmailProp').checked, rates: em.querySelector('#snEmailRates').value, format: em.querySelector('#snEmailFmt').value };
+          AvanteSNExport.whenReady(function(){ return AvanteSNExport.filesForEmail(lx, nr, opts); })
+            .then(function(files){ sendFiles(files); }, function(err){ st.textContent = err.message; });
+          function sendFiles(files){
           btn.disabled = true; btn.textContent = 'Sending\u2026';
           var withPhotos = em.querySelector('#snEmailPhotos').checked;
           propAdminPost('emailSNFiles', { listingId: l.listingId, to: to, siteNr: nr, files: files, note: em.querySelector('#snEmailNote').value.trim(), photosLink: withPhotos,
@@ -7104,6 +7129,7 @@
               if(d.entry) openPropertyDetailsModal(l.listingId);
             }
           }).catch(function(){ btn.disabled = false; btn.textContent = 'Send email'; st.textContent = 'No connection. Try again.'; });
+          }
         });
         // The hook builder's shared photo library (Jean, 2026-10-13): the
         // listing's photos are saved there, made the same way the hook
@@ -7713,7 +7739,7 @@
           formStatusEl.textContent = 'Uploading photo\u2026';
           formStatusEl.className = 'status show';
           uploadPhotosSequentially(id, newFiles).then(function(){
-            return mapAdminPost('adminList');
+            return adminMapList();
           }).then(function(res){
             var match = res.data && res.data.ok && (res.data.activities || []).find(function(a){ return a.id === id; });
             currentFormPhotoKeys = match ? (match.photoKeys || (match.photoKey ? [match.photoKey] : [])) : currentFormPhotoKeys;
@@ -9527,7 +9553,7 @@
       function loadActivities(){
         actStatusEl.textContent = 'Loading\u2026';
         actStatusEl.className = 'status show';
-        return mapAdminPost('adminList').then(function(res){
+        return adminMapList().then(function(res){
           actStatusEl.textContent = '';
           actStatusEl.className = 'status';
           if(res.data && res.data.ok){
@@ -9858,7 +9884,7 @@
       });
 
       document.getElementById('exportActivitiesBtn').addEventListener('click', function(){
-        mapAdminPost('adminList').then(function(res){
+        adminMapList().then(function(res){
           if(!res.data || !res.data.ok) return;
           var cols = ['id', 'name', 'area', 'country', 'price', 'contactLink', 'description', 'latitude', 'longitude', 'visible'];
           var lines = [cols.join(',')];

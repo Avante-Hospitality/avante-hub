@@ -1,5 +1,9 @@
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
-import { placeCoordinate, keyOf, sameSpot, provinceAt, nearestTownName, placeText, snFieldsFromPlace, PLACES_STORE, ACTIVITY_KEY, PROPERTY_KEY } from "./lib/tree.js";
+// The tree engine (lib/tree.js, with its 300KB of region data) is loaded only
+// by the actions that place pins (loadTree); the hub's map read doesn't need it.
+import { PLACES_STORE, ACTIVITY_KEY, PROPERTY_KEY, loadTree } from "./lib/tree-keys.js";
+import { isAdminToken } from "./lib/admin-session.js";
+import { allListings, readAllEntries, mapWithConcurrency } from "./lib/blob-records.js";
 // Same Google Places photo search admin-api.js's Event hook "Find area
 // photo"/"Find theme photo" pickers use (see lib/places-images.js) — reused
 // here for the Map & Activities form's own "Find photo" button, so Jean
@@ -139,31 +143,25 @@ function genUniqueActivityId(existingIds) {
   return id;
 }
 
-// Runs `fn` over `items` with at most `limit` calls in flight at once.
-// Still used for the (small, not expected to grow into the hundreds)
-// property-listings and map-visibility stores — see loadActivities above
-// for why activities themselves no longer use this pattern.
-async function mapWithConcurrency(items, limit, fn) {
-  const results = new Array(items.length);
-  let idx = 0;
-  async function worker() {
-    while (idx < items.length) {
-      const i = idx++;
-      results[i] = await fn(items[i], i);
-    }
-  }
-  const workers = Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, () => worker());
-  await Promise.all(workers);
-  return results;
+// The listings (in list order) and the ids admin hid from the map, both read
+// in parallel through lib/blob-records.js (unchanged records come from this
+// isolate's cache). A failed read fails the request, as before.
+const VISIBILITY_STORE = "map-visibility";
+async function listingsAndHiddenIds(listingsStore, visibilityStore) {
+  const [listings, vis] = await Promise.all([
+    allListings(listingsStore, { strict: true }),
+    readAllEntries(visibilityStore, { cacheName: VISIBILITY_STORE, strict: true }),
+  ]);
+  const hiddenIds = new Set(vis.filter((e) => e.value && e.value.hidden).map((e) => e.key));
+  return { listings, hiddenIds };
 }
-
-
 
 // New location tree (2026-10-07): place an activity in Country > Province >
 // Region > City > Suburb when it is added or its pin moves, in the
 // "tree-places" store the Explore page reads. Best-effort: never blocks a save.
 async function placeActivityInTree(record) {
   try {
+    const { placeCoordinate, keyOf, sameSpot } = await loadTree();
     const lat = parseFloat(record.latitude), lng = parseFloat(record.longitude);
     if (!record.id || !isFinite(lat) || !isFinite(lng) || (lat === 0 && lng === 0)) return;
     const apiKey = Deno.env.get("GOOGLE_GEOCODING_API_KEY") || "";
@@ -177,15 +175,6 @@ async function placeActivityInTree(record) {
     map[record.id] = r.place;
     await store.setJSON(ACTIVITY_KEY, map);
   } catch (e) { /* placement is retried by the lookup page's activity run */ }
-}
-
-async function verifyAdminToken(token) {
-  if (!token) return false;
-  const sessionStore = getStore({ name: "admin-sessions", consistency: "strong" });
-  const session = await sessionStore.get(token, { type: "json" });
-  if (!session) return false;
-  if (new Date(session.expiresAt).getTime() < Date.now()) return false;
-  return true;
 }
 
 function coverImageUrl(images) {
@@ -360,7 +349,7 @@ export default async (request, context) => {
 
   const listingsStore = getStore({ name: "property-listings", consistency: "strong" });
   const activitiesStore = getStore({ name: "map-activities", consistency: "strong" });
-  const visibilityStore = getStore({ name: "map-visibility", consistency: "strong" });
+  const visibilityStore = getStore({ name: VISIBILITY_STORE, consistency: "strong" });
   const resortListStore = getStore({ name: "resort-list", consistency: "strong" });
   // Raw Google reverse-geocode answers, one blob per (4-decimal) coordinate,
   // so a coordinate is only ever paid for once — see cachedReverseGeocode.
@@ -378,13 +367,7 @@ export default async (request, context) => {
 
   try {
     if (request.method === "GET") {
-      const { blobs } = await listingsStore.list();
-      const listings = await mapWithConcurrency(blobs, 25, (b) => listingsStore.get(b.key, { type: "json" }));
-      const { blobs: visBlobs } = await visibilityStore.list();
-      const visFlags = await mapWithConcurrency(visBlobs, 25, (b) => visibilityStore.get(b.key, { type: "json" }));
-      const hiddenIds = new Set(
-        visBlobs.filter((b, i) => visFlags[i] && visFlags[i].hidden).map((b) => b.key)
-      );
+      const { listings, hiddenIds } = await listingsAndHiddenIds(listingsStore, visibilityStore);
 
       const onboardedProperties = listings
         .filter((r) => r && r.status === "Listed")
@@ -419,17 +402,13 @@ export default async (request, context) => {
       return json({ error: "invalid JSON" }, 400);
     }
 
-    const authed = await verifyAdminToken(body.token);
+    const authed = await isAdminToken(body.token);
     if (!authed) return json({ error: "Not authenticated." }, 401);
 
     const action = body.action;
 
     if (action === "adminList") {
-      const { blobs } = await listingsStore.list();
-      const listings = await mapWithConcurrency(blobs, 25, (b) => listingsStore.get(b.key, { type: "json" }));
-      const { blobs: visBlobs } = await visibilityStore.list();
-      const visRecords = await mapWithConcurrency(visBlobs, 25, (b) => visibilityStore.get(b.key, { type: "json" }));
-      const hiddenIds = new Set(visBlobs.filter((b, i) => visRecords[i] && visRecords[i].hidden).map((b) => b.key));
+      const { listings, hiddenIds } = await listingsAndHiddenIds(listingsStore, visibilityStore);
 
       const listedListings = listings.filter((r) => r && r.status === "Listed");
       const onboardedProperties = listedListings.map((r) => toPropertyPin(r, hiddenIds.has(r.listingId))).filter(Boolean);
@@ -492,8 +471,7 @@ export default async (request, context) => {
       }
       const actionStartedAt = Date.now();
 
-      const { blobs: listingBlobs } = await listingsStore.list();
-      const listings = await mapWithConcurrency(listingBlobs, 25, (b) => listingsStore.get(b.key, { type: "json" }));
+      const listings = await allListings(listingsStore, { strict: true });
       const resortRecord = await resortListStore.get("current", { type: "json" });
       const resortList = (resortRecord && Array.isArray(resortRecord.resorts)) ? resortRecord.resorts : [];
 
@@ -534,7 +512,7 @@ export default async (request, context) => {
       const suggestions = [];
       let notFound = 0;
 
-      await mapWithConcurrency(page, 8, async (t) => {
+      await mapWithConcurrency(page, async (t) => {
         if (Date.now() - lookupsBeganAt > LOOKUP_START_BUDGET_MS) {
           skippedForTime++;
           return;
@@ -554,7 +532,7 @@ export default async (request, context) => {
         } else {
           notFound++;
         }
-      });
+      }, 8);
 
       const processed = page.length - skippedForTime;
       const nextOffset = offset + processed;
@@ -575,6 +553,7 @@ export default async (request, context) => {
     }
 
     if (action === "stocknetworkReview") {
+      const { keyOf, sameSpot, snFieldsFromPlace, placeText } = await loadTree();
       // Backs the "StockNetwork location review" card. Compares each
       // resort-list property's StockNetwork fields (from the nightly sync or a
       // CSV upload) with its place in the location tree (2026-10-07):
@@ -670,8 +649,7 @@ export default async (request, context) => {
       };
 
       if (source === "listing") {
-        const { blobs } = await listingsStore.list();
-        const listings = await mapWithConcurrency(blobs, 25, (b) => listingsStore.get(b.key, { type: "json" }));
+        const listings = await allListings(listingsStore, { strict: true });
         const missing = listings.filter((r) => r && noCoord(r));
         missing.sort((a, b) => (a.propertyName || "").localeCompare(b.propertyName || ""));
         return json({
@@ -933,6 +911,7 @@ export default async (request, context) => {
     }
 
     if (action === "applyPropertyCoordinate") {
+      const { placeCoordinate, placeText } = await loadTree();
       // The shared write path for "Accept suggested coordinate" (StockNetwork
       // review), "Use this" (Find & fix missing coordinates) and the Master
       // map's Fix coordinates: sets the property's coordinate and places it
@@ -990,6 +969,7 @@ export default async (request, context) => {
     }
 
     if (action === "exportLocations") {
+      const { placeCoordinate, keyOf, sameSpot, provinceAt, nearestTownName, snFieldsFromPlace } = await loadTree();
       // Backs the "Corrected StockNetwork file" tool and the SN cleanup
       // wizard. Given rows from a StockNetwork resort export ({ i, name,
       // resortId, siteId, lat, lng, csvCountry }), returns what each row's
@@ -1145,6 +1125,7 @@ export default async (request, context) => {
     }
 
     if (action === "snCleanupApply") {
+      const { placeCoordinate, keyOf, sameSpot, placeText } = await loadTree();
       // SN cleanup wizard, step 3 ("Place in hub"). For each { id, resortId,
       // lat, lng, pending } sets that coordinate on EVERY resort-list row
       // sharing the ResortID (one property can be listed under several
@@ -1220,7 +1201,7 @@ export default async (request, context) => {
         live.push({ n, id, resortId, idxs, lat, lng, pending });
       });
 
-      await mapWithConcurrency(live, 6, async (w) => {
+      await mapWithConcurrency(live, async (w) => {
         if (Date.now() - startedAt > LIVE_BUDGET_MS) { out[w.n] = { id: w.id, done: false }; return; }
         const res = await placeCoordinate(w.lat, w.lng, apiKey);
         writeRows(w.idxs, w.lat, w.lng, w.pending);
@@ -1231,7 +1212,7 @@ export default async (request, context) => {
         } else {
           out[w.n] = { id: w.id, done: true, status: "notPlaced", lookup: true, error: res.reason || "Couldn't place this coordinate" };
         }
-      });
+      }, 6);
 
       if (placedChanged) await placesStore.setJSON(PROPERTY_KEY, placed);
       if (changed) await resortListStore.setJSON("current", Object.assign({}, resortRecord, { resorts: resortList }));
@@ -1341,11 +1322,11 @@ export default async (request, context) => {
       // name-vs-coordinate confidence check resorts-api.js's nightly sync
       // now runs itself (Case B) — extracted here so both call sites share
       // one implementation instead of drifting apart.
-      const results = await mapWithConcurrency(items, 8, async (it) => {
+      const results = await mapWithConcurrency(items, async (it) => {
         const id = it && it.id;
         const r = await checkNameAgainstCoordinate(it && it.query, parseFloat(it && it.lat), parseFloat(it && it.lng), apiKey);
         return Object.assign({ id }, r);
-      });
+      }, 8);
       return json({ ok: true, results });
     }
 
@@ -1361,8 +1342,7 @@ export default async (request, context) => {
         return json({ error: "Could not find any usable rows (need an id or propertyName column, plus latitude and longitude)." }, 400);
       }
 
-      const { blobs } = await listingsStore.list();
-      const listings = await mapWithConcurrency(blobs, 25, (b) => listingsStore.get(b.key, { type: "json" }));
+      const listings = await allListings(listingsStore, { strict: true });
       const listed = listings.filter((r) => r && r.status === "Listed");
       const byId = new Map(listed.map((r) => [r.listingId, r]));
 

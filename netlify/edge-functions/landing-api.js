@@ -20,6 +20,7 @@ import { adminHookNumbers, validHookNumber, cleanEndDate } from "./lib/hook-mode
 import { isShortLink, resolveShortLink } from "./lib/short-link.js";
 import { generateHashtags } from "./lib/hashtag-helper.js";
 import { AI_SCAN_CACHE_FIELDS_CLEARED } from "./lib/record-merge.js";
+import { purgeHookListCache } from "./lib/hook-cache.js";
 
 export const LANDING_STORE = "landing-pages";
 const IMAGE_STORE = "landing-images";
@@ -81,7 +82,7 @@ function cleanContent(c) {
   };
 }
 
-export default async (request) => {
+export default async (request, context) => {
   const store = getStore({ name: LANDING_STORE, consistency: "strong" });
   const images = getStore({ name: IMAGE_STORE, consistency: "strong" });
   const url = new URL(request.url);
@@ -182,6 +183,7 @@ export default async (request) => {
       }
     }
     await hooks.setJSON(key, { ...existing, ...fields });
+    purgeHookListCache(context, "__admin__"); // a Default Hook changed: every front store's list
     return json({ ok: true, hook: n, landing: fields.landing });
   }
 

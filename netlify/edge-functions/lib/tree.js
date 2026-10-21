@@ -203,9 +203,8 @@ export async function placeCoordinate(lat, lng, apiKey) {
 }
 
 // ---------- the live placements store ----------
-export const PLACES_STORE = "tree-places";
-export const ACTIVITY_KEY = "activities";
-export const PROPERTY_KEY = "properties";
+import { PLACES_STORE, ACTIVITY_KEY, PROPERTY_KEY } from "./tree-keys.js";
+export { PLACES_STORE, ACTIVITY_KEY, PROPERTY_KEY };
 
 // Places the given resort rows that have no placement yet, or whose pin moved,
 // within a time budget. Returns counts. Saves once at the end.
