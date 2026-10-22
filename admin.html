@@ -1283,6 +1283,17 @@
         <div id="existingPropsHost" style="margin-top:10px;"></div>
       </div>
 
+      <div class="card" style="margin-top:20px;" id="copyPropCard">
+        <h3 style="margin-top:0">Copy a property's content (for testing)</h3>
+        <p class="hint">Copies the listing, photos, front store, location and library photos of one property onto another, so tests use real data (e.g. Little Gem 6019 into Property Testing 3). The second property keeps its own name, login, units, calendar, bookings and contact details. One-time copy: nothing changes on the first property.</p>
+        <div class="btn-row" style="gap:10px; flex-wrap:wrap;">
+          <div><label for="copyFromNr">Copy from Site Nr</label><input id="copyFromNr" value="6019" inputmode="numeric" style="max-width:140px;"></div>
+          <div><label for="copyToNr">Into Site Nr</label><input id="copyToNr" value="3" inputmode="numeric" style="max-width:140px;"></div>
+        </div>
+        <button class="primary" id="copyPropBtn" type="button" style="margin-top:10px;">Copy</button>
+        <div class="status" id="copyPropStatus"></div>
+      </div>
+
       <div class="card" style="margin-top:20px;">
         <label for="notificationEmailInput">Notify these email addresses when a new listing is submitted (separate several with commas)</label>
         <input id="notificationEmailInput" type="text" inputmode="email" placeholder="e.g. bookings@avantetravel.co.za, info@avantetravel.co.za">
@@ -7396,6 +7407,24 @@
         }).catch(function(){ host.innerHTML = '<div class="hint">Could not load.</div>'; });
       }
       document.getElementById('existingPropsBtn').addEventListener('click', loadExistingProps);
+      // Copy a property's content onto another, for testing (Jean, 2026-10-22).
+      document.getElementById('copyPropBtn').addEventListener('click', function(){
+        var from = document.getElementById('copyFromNr').value.trim(), to = document.getElementById('copyToNr').value.trim();
+        var st = document.getElementById('copyPropStatus'), btn = this, lines = [];
+        var say = function(t){ lines.push(t); st.innerHTML = lines.map(escapeHtml).join('<br>'); st.className = 'status show'; };
+        if(!from || !to || from === to){ say('Type two different Site Nrs.'); return; }
+        if(!window.confirm('Copy Site ' + from + "'s content onto Site " + to + '? Site ' + to + "'s listing, front store, location and photos are replaced (not its name, login, units, calendar or bookings).")) return;
+        btn.disabled = true; lines = [];
+        var part = function(name, extra){ return propAdminPost('copyPropertyContent', Object.assign({ from: from, to: to, part: name }, extra || {})).then(function(r){ var d = r.data || {}; if(!d.ok) throw new Error(d.error || 'Could not copy.'); return d; }); };
+        say('Copying the listing and its photos\u2026');
+        part('listing').then(function(d){ say(d.note || ('Listing ' + d.listingId + ': done, ' + d.photos + ' photo(s).')); say('Copying the front store\u2026'); return part('store'); })
+          .then(function(d){ say(d.note || ('Front store: done, ' + d.photos + ' photo(s), ' + d.activities + ' activit(ies).')); say('Copying the location\u2026'); return part('place'); })
+          .then(function(d){ say('Location: ' + (d.placed ? 'placed in the tree' : 'no tree place to copy') + (d.pinned ? ', pin moved.' : '.')); say('Copying the library photos\u2026');
+            var loop = function(offset){ return part('library', { offset: offset }).then(function(r){ if(r.note){ say(r.note); return; } lines[lines.length - 1] = 'Library photos: ' + r.offset + ' of ' + r.total + '\u2026'; st.innerHTML = lines.map(escapeHtml).join('<br>'); return r.done ? say('All done.') : loop(r.offset); }); };
+            return loop(0); })
+          .catch(function(e){ say(e.message || 'Could not copy.'); })
+          .then(function(){ btn.disabled = false; });
+      });
       // A name box that lists the hub's properties as you type (3+ letters).
       // out.__hits holds the rows; each button has data-ex-hit="<index>".
       (function(){

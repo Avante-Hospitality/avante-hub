@@ -10,7 +10,7 @@ import { SITE_REGISTER_STORE, SITE_STATUSES, DEFAULT_SN_SETUP_EMAILS, newEntry, 
   listSiteNrs, nextFreeSiteNr, findOpenRequest, requestSheetBase64, sheetFileName, setupEmail, confirmationEmail, welcomeEmail, READY_TO_SEND, CHANNEL_WELCOME_DEFAULT, PROPERTY_WELCOME_DEFAULT, fillWelcome, welcomeHtml } from "./lib/sn-site-register.js";
 import { readListingScreenshots } from "./lib/listing-reader.js";
 import { HOOKS_URL, makeHooksTicket } from "./lib/hooks-ticket.js";
-import { propertyTags, unitTag, libPost } from "./lib/photo-library.js";
+import { propertyTags, unitTag, libPost, libIndex, libImage } from "./lib/photo-library.js";
 import { isAdminToken } from "./lib/admin-session.js";
 import "../../listing-ready.js"; // globalThis.ListingReady: the Ready check, shared with the listing form
 import { isAffiliateSession } from "./lib/affiliate-session.js";
@@ -1501,6 +1501,145 @@ export default async (request, context) => {
         const last = sent.sendLog[sent.sendLog.length - 1];
         return last.ok ? json({ ok: true, entry: sent }) : json({ error: "Not sent: " + last.error, entry: sent }, 502);
       }
+    }
+
+    if (action === "copyPropertyContent") {
+      // Admin > Property Listings > "Copy a property's content" (Jean, 2026-10-22):
+      // test with real data — e.g. Little Gem (6019) into Property Testing (3).
+      // One-time copy of what the hub keeps (listing, photos, front store,
+      // location, library photos). The target keeps its own name, IDs, login,
+      // units, calendar and bookings, and its own contact details (no tests
+      // ever email or phone the real property). Done in parts so no request
+      // runs too long: part = "listing" | "store" | "place" | "library" (+ offset).
+      const denied = await requireAdmin();
+      if (denied) return denied;
+      const fromNr = clean(body.from, 20), toNr = clean(body.to, 20), part = clean(body.part, 20);
+      if (!fromNr || !toNr || fromNr === toNr) return json({ error: "Type two different Site Nrs." }, 400);
+      const paStore = getStore({ name: "property-affiliate", consistency: "strong" });
+      const props = (await readAllRecords(paStore, { prefix: "site:" })).filter((pr) => pr && pr.siteId);
+      const all = await allListings(store, { strict: true });
+      const srcPA = props.find((pr) => String(pr.site || "") === fromNr) || null;
+      const tgtPA = props.find((pr) => String(pr.site || "") === toNr) || null;
+      if (!tgtPA) return json({ error: "Site " + toNr + " isn't connected in Property Affiliate, so there's nothing to copy into." }, 404);
+      const lc = (v) => String(v || "").toLowerCase();
+      const srcL = all.find((r) => String(r.siteNr || "").trim() === fromNr) || (srcPA && all.find((r) => r.resortId && lc(r.resortId) === lc(srcPA.resortId))) || null;
+      const srcRid = lc((srcL && srcL.resortId) || (srcPA && srcPA.resortId));
+      const tgtRid = lc(tgtPA.resortId);
+      if (!srcL && !srcPA) return json({ error: "Nothing found for Site " + fromNr + "." }, 404);
+      const findTgtL = (list) => list.find((r) => (r.paSiteId && r.paSiteId === tgtPA.siteId) || (r.resortId && lc(r.resortId) === tgtRid) || String(r.siteNr || "").trim() === toNr) || null;
+
+      if (part === "listing") {
+        if (!srcL) return json({ ok: true, note: "Site " + fromNr + " has no listing — skipped." });
+        let tgtL = findTgtL(all);
+        if (!tgtL) {
+          const cur = await getStore({ name: "resort-list", consistency: "strong" }).get("current", { type: "json" }).catch(() => null);
+          const row = ((cur && cur.resorts) || []).find((r) => lc(r.resortId) === tgtRid) || {};
+          tgtL = await buildListingFromSn(tgtPA, row, { by: "admin" });
+        }
+        const before = Object.assign({}, tgtL);
+        // Not copied: who it is (IDs, name, login, status, logs) and the real property's people and papers.
+        const KEEP = new Set(["listingId", "status", "dateSubmitted", "dateUpdated", "siteNr", "siteId", "affId", "paSiteId", "resortId", "editToken", "photosToken",
+          "libraryPhotos", "existingOnSN", "channelProperty", "ratesFromChannel", "snFacilities", "snTypeCode", "bbid", "hostedSetup", "completedAt", "goLive", "stockFrom",
+          "history", "snSentSeasons", "snSentAt", "snEmailLog", "editLinkLog", "affiliateCreatedAt", "snSiteFields", "propertyName", "propertyName2",
+          "ownerFullName", "ownerIdPassport", "ownerEmail", "ownerPhone", "submittedBy", "affiliateAgentName", "affiliateCompany", "affiliateEmail", "affiliatePhone",
+          "contactName", "contactPhone", "contactEmail", "notifyWho", "telephone", "email", "agreementSigned", "signatoryName", "signatoryCapacity", "signatoryIdPassport",
+          "signatureDate", "signaturePlace", "documents", "images", "icalLink", "channelListingLink", "bookingLink", "infoLink"]);
+        for (const [k, v] of Object.entries(srcL)) if (!KEEP.has(k)) tgtL[k] = JSON.parse(JSON.stringify(v));
+        // Photos: real copies under the target's own listing, so deleting one never touches the other.
+        const files = getStore({ name: "property-listing-files", consistency: "strong" }), images = [];
+        let i = 0;
+        for (const im of srcL.images || []) {
+          const got = im && im.key ? await files.getWithMetadata(im.key, { type: "arrayBuffer" }).catch(() => null) : null;
+          if (!got || !got.data) continue;
+          const name = String((got.metadata && got.metadata.fileName) || im.fileName || "photo.jpg").replace(/[^\w.\-]+/g, "-").slice(-80);
+          const key = tgtL.listingId + "/image/" + Date.now() + "-" + (i++) + "-copy-" + name;
+          await files.set(key, got.data, { metadata: Object.assign({}, got.metadata || {}, { listingId: tgtL.listingId }) });
+          images.push(Object.assign({}, im, { key }));
+        }
+        tgtL.images = images;
+        tgtL.dateUpdated = new Date().toISOString();
+        addHistory(tgtL, "admin", "Copied the listing's content from Site " + fromNr + " (" + (srcL.propertyName || "") + ") for testing", before);
+        await store.setJSON(tgtL.listingId, tgtL);
+        await forgetEstates(context).catch(() => {});
+        return json({ ok: true, listingId: tgtL.listingId, photos: images.length });
+      }
+
+      if (part === "store") {
+        if (!srcPA) return json({ ok: true, note: "Site " + fromNr + " isn't connected in Property Affiliate — no front store to copy." });
+        const tgt = await paStore.get("site:" + tgtPA.siteId, { type: "json" });
+        const src = await paStore.get("site:" + srcPA.siteId, { type: "json" });
+        // Front store photos: real copies under the target's site.
+        const map = {}; let n = 0;
+        const { blobs } = await paStore.list({ prefix: "fsphoto:" + src.siteId + ":" });
+        for (const b of blobs || []) {
+          const id = b.key.slice(("fsphoto:" + src.siteId + ":").length);
+          const got = await paStore.getWithMetadata(b.key, { type: "arrayBuffer" }).catch(() => null); if (!got || !got.data) continue;
+          const nid = (id.startsWith("x-") ? "x-" : "") + "c" + Date.now().toString(36) + (n++);
+          await paStore.set("fsphoto:" + tgt.siteId + ":" + nid, got.data, { metadata: got.metadata || {} });
+          map[src.siteId + ":" + id] = tgt.siteId + ":" + nid;
+        }
+        const swap = (o) => { let t = JSON.stringify(o || {}); for (const [a, b2] of Object.entries(map)) t = t.split(encodeURIComponent(a)).join(encodeURIComponent(b2)).split(a).join(b2); return JSON.parse(t); };
+        const fs = swap(src.frontStore || {});
+        for (const k of ["on", "slug", "guestKey", "phone", "whatsapp", "email", "wifiName", "wifiPassword"]) { if (tgt.frontStore && k in tgt.frontStore) fs[k] = tgt.frontStore[k]; else delete fs[k]; }
+        tgt.frontStore = Object.assign({}, tgt.frontStore || {}, fs);
+        const st = JSON.parse(JSON.stringify(src.settings || {}));
+        for (const k of ["email", "phone", "contactName", "contactPhone", "contactEmail", "notifyWho"]) { if (tgt.settings && k in tgt.settings) st[k] = tgt.settings[k]; else delete st[k]; }
+        tgt.settings = Object.assign({}, tgt.settings || {}, st);
+        if (src.messages) tgt.messages = JSON.parse(JSON.stringify(src.messages));
+        tgt.updatedAt = new Date().toISOString();
+        await paStore.setJSON("site:" + tgt.siteId, tgt);
+        await paStore.delete("fsinfo:" + tgt.siteId).catch(() => {});
+        const acts = await paStore.get("act:" + src.siteId, { type: "json" }).catch(() => null);
+        if (Array.isArray(acts)) await paStore.setJSON("act:" + tgt.siteId, acts);
+        return json({ ok: true, photos: n, activities: Array.isArray(acts) ? acts.length : 0 });
+      }
+
+      if (part === "place") {
+        // Same place in the location tree and the same pin.
+        const placeStore = getStore({ name: PLACES_STORE, consistency: "strong" });
+        const pmap = (await placeStore.get(PROPERTY_KEY, { type: "json" }).catch(() => null)) || {};
+        const placeOf = (k) => k && Object.entries(pmap).find(([key]) => lc(key) === lc(k));
+        const hit = placeOf(srcRid) || (srcL && placeOf("listing:" + srcL.listingId));
+        const place = (hit && hit[1]) || (srcL && srcL.treePlace) || null;
+        if (place && tgtRid) { pmap[tgtPA.resortId] = JSON.parse(JSON.stringify(place)); await placeStore.setJSON(PROPERTY_KEY, pmap); }
+        const rl = getStore({ name: "resort-list", consistency: "strong" }), cur = await rl.get("current", { type: "json" }).catch(() => null);
+        let pinned = false;
+        if (cur && Array.isArray(cur.resorts)) {
+          const s1 = cur.resorts.find((r) => lc(r.resortId) === srcRid), t1 = cur.resorts.find((r) => lc(r.resortId) === tgtRid);
+          const lat = s1 ? s1.latitude : srcL && srcL.latitude, lng = s1 ? s1.longitude : srcL && srcL.longitude;
+          if (t1 && lat && lng) { t1.latitude = lat; t1.longitude = lng; delete t1.coordSuspicious; delete t1.coordSuggested; await rl.setJSON("current", cur); pinned = true; }
+        }
+        return json({ ok: true, placed: !!(place && tgtRid), pinned });
+      }
+
+      if (part === "library") {
+        // Library photos of the property: copies filed under the target only (each property sees only its own).
+        if (!srcRid || !tgtRid) return json({ ok: true, done: true, note: "No Resort ID to file photos under." });
+        const idx = await libIndex();
+        const mine = (it) => (it.tags || []).some((t) => lc(t.key) === "p:" + srcRid || lc(t.key).startsWith("u:" + srcRid + "|"));
+        const list = idx.items.filter(mine), offset = Math.max(0, parseInt(body.offset, 10) || 0), batch = list.slice(offset, offset + 6);
+        const retag = (tags) => (tags || []).filter((t) => !/^listing:/i.test(t.key)).map((t) => {
+          const k = lc(t.key);
+          if (k === "p:" + srcRid) return { key: "p:" + tgtRid, name: tgtPA.resortName || "Property Testing" };
+          if (k.startsWith("u:" + srcRid + "|")) return { key: "u:" + tgtRid + "|" + t.key.slice(("u:" + srcRid + "|").length), name: t.name };
+          return t;
+        });
+        const b64 = (buf) => { let s2 = ""; const u8 = new Uint8Array(buf); for (let j = 0; j < u8.length; j += 0x8000) s2 += String.fromCharCode.apply(null, u8.subarray(j, j + 0x8000)); return btoa(s2); };
+        let added = 0, failed = 0;
+        for (const it of batch) {
+          const item = { name: it.name, tags: retag(it.tags), src: "copy:" + it.id + ":" + tgtRid, source: it.source === "google" ? "google" : (it.source || "upload"), credit: it.credit || "", w: it.w, h: it.h, hash: it.hash || "", ref: it.ref || "" };
+          let r = null;
+          if (it.source === "google" && it.ref) r = await libPost({ op: "addRef", item: Object.assign(item, { src: "google:" + it.ref }) });
+          else {
+            const full = await libImage(it.id), th = await libImage(it.id, true);
+            if (full) r = await libPost({ op: "add", item, full: b64(full.data), thumb: th ? b64(th.data) : "" });
+          }
+          if (r && r.ok) added++; else failed++;
+        }
+        const next = offset + batch.length;
+        return json({ ok: true, total: list.length, added, failed, offset: next, done: next >= list.length });
+      }
+      return json({ error: "Unknown part." }, 400);
     }
 
     if (action === "existingProperties" || action === "createFromExisting") {
