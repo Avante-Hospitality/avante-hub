@@ -86,10 +86,12 @@ const EDITABLE_FIELDS = [
   "channelReviews", "hostName", "accessibility", "icalLink",
   // Contact person for bookings and queries, and who gets the hub's emails (Jean, 2026-10-14).
   "contactName", "contactPhone", "contactEmail", "notifyWho",
+  // For Stock Network's Activities / Experiences lists (Jean, 2026-10-22): names, separated by commas.
+  "activities", "experiences",
 ];
 
 const EDITABLE_FIELD_MAX = {
-  description: 4000, houseRules: 4000, moreInfo: 4000, areaInfo: 4000,
+  description: 4000, houseRules: 4000, moreInfo: 4000, areaInfo: 4000, activities: 1000, experiences: 1000,
   depositPolicyText: 2000, childPolicy: 1000,
   // Email fields hold several addresses, separated by commas.
   email: 600, ownerEmail: 600, contactEmail: 600, contactPhone: 200, telephone: 200, ownerPhone: 200,
@@ -429,6 +431,8 @@ function submittedFields(body) {
     description: clean(body.description, 4000),
     houseRules: clean(body.houseRules, 4000),
     moreInfo: clean(body.moreInfo, 4000),
+    activities: clean(body.activities, 1000),
+    experiences: clean(body.experiences, 1000),
     areaInfo: clean(body.areaInfo, 4000),
 
     depositPolicyText: clean(body.depositPolicyText, 2000),
@@ -1457,6 +1461,24 @@ export default async (request, context) => {
       }
       return json({ ok: true, waiting: waiting.length, setUp: done, ready: ready.map((e) => ({ siteNr: e.siteNr, name: e.propertyName, stockFrom: e.stockFrom })),
         feed: feed ? { at: feed.at, count: feed.count, saveError: feed.saveError } : null });
+    }
+
+    if (action === "listingBank") {
+      // Admin > a listing > Stock Network property file (Jean, 2026-10-22): the
+      // bank details of the affiliate linked to the listing (its hub Account
+      // Details), for the site's Bank/Address tab on Stock Network.
+      const denied = await requireAdmin();
+      if (denied) return denied;
+      const rec = await store.get(clean(body.listingId, 20), { type: "json" }).catch(() => null);
+      if (!rec) return json({ error: "not found" }, 404);
+      const dir = getStore({ name: "affiliates-directory", consistency: "strong" });
+      let a = rec.affId ? await dir.get(rec.affId, { type: "json" }).catch(() => null) : null;
+      if (!a && rec.siteNr) {
+        for (const { value } of await readAllEntries(dir, { cacheName: AFFILIATES_STORE })) {
+          if (value && String(value.siteNr || "").trim() === String(rec.siteNr).trim() && Array.isArray(value.types) && (value.types.includes("property") || value.types.includes("channel"))) { a = value; break; }
+        }
+      }
+      return json({ ok: true, affId: (a && a.affId) || "", bank: (a && a.bank) || null });
     }
 
     if (action === "commissionUpdate") {

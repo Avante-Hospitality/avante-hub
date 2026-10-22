@@ -22,7 +22,7 @@
 // submits).
 (function(){
   var STOCK_COLS = ['Country','Area','District','Resort','Complex','Nr of Units Available','Unit Number','From Date','To Date','Unit Size','Start day of weekend','Weekend Nights','Min Span Weekend','Weekend Rate','Weekend Rack Rate','Start day of midweek','Midweek nights','Min Span Midweek','Midweek Rate','Midweek Rack Rate','Start day of full week','Full week Nights','Min Span Full Week','Full week Rate','Full week Rack Rate','Min Span All nights','All Nights Rate','All Nights Rack Rate'];
-  var PROPERTY_COLS = ['Site Nr','SiteID','Resort','Property Type','Complex','Country','State','Area','District','City','City2','Suburb','Address','Latitude','Longitude','Coordinates checked with Google','Telephone','Email','Website','Checkin Time','Checkout Time','Supplier Rating','Tourism Board Rating','WiFi','Parking','Pet Allowance','Allow Same Day Booking','Smoking Allowed','Description','House Rules','Cancellation Policy','Deposit %','Deposit Due (days before arrival)','Child Policy','Accessibility','Owner','Owner Email','Owner Phone','Avante Listing ID','MANUAL Franchisor %','MANUAL Franchise %','Resort Name 2','Resort Booking Link','Rating Link'];
+  var PROPERTY_COLS = ['Site Nr','SiteID','Resort','Property Type','Complex','Country','State','Area','District','City','City2','Suburb','Address','Latitude','Longitude','Coordinates checked with Google','Telephone','Email','Website','Checkin Time','Checkout Time','Supplier Rating','Tourism Board Rating','WiFi','Parking','Pet Allowance','Allow Same Day Booking','Smoking Allowed','Description','House Rules','Cancellation Policy','Deposit %','Deposit Due (days before arrival)','Child Policy','Accessibility','Owner','Owner Email','Owner Phone','Avante Listing ID','MANUAL Franchisor %','MANUAL Franchise %','Resort Name 2','Resort Booking Link','Rating Link','Amenities','Activities','Experiences','Account Name','Bank','Account Type','Account Nr','Branch Number'];
   var UNIT_COLS = ['Site Nr','Resort','Unit Type','Nr of Units','Sleeps (Unit Size)','Max Adults','Children Allowed','Rate Basis','Rate Scheme','Description'];
 
   function s(v){ return v == null ? '' : String(v).trim(); }
@@ -30,6 +30,8 @@
     var a = listing.amenities || [];
     return a.some(function(x){ return x.available === 'Y' && items.indexOf(x.item) > -1; }) ? 'Y' : 'N';
   }
+  // "golf;  hiking,Whale watching" -> "golf, hiking, Whale watching"
+  function commaList(v){ return s(v).split(/\s*[,;\n]+\s*/).filter(Boolean).join(', '); }
   function unitFor(listing, name){
     var u = (listing.unitTypes || []).filter(function(x){ return s(x.name) === s(name); })[0];
     return u || (listing.unitTypes || [])[0] || {};
@@ -88,7 +90,7 @@
     });
   }
   function propertyRow(listing, siteNr){
-    var C = window.AvanteCommission, own = !!C && C.ownBookings(listing);
+    var C = window.AvanteCommission, own = !!C && C.ownBookings(listing), bank = listing.bank || {};
     return [
       s(siteNr || listing.siteNr), s(listing.siteId), s(listing.propertyName), s(listing.propertyType), s(listing.complexName),
       s(listing.country), s(listing.stateProvince), s(listing.area), s(listing.district), s(listing.city), s(listing.city2), s(listing.suburb),
@@ -102,7 +104,12 @@
       // Stock Network's split on the property's own bookings (commission.js).
       own ? C.FRANCHISOR : '', own ? C.FRANCHISE : '',
       // Fields on Stock Network's resort screen the listing already has (Jean, 2026-10-22).
-      s(listing.propertyName2), s(listing.bookingLink), s(listing.ratingLink)
+      s(listing.propertyName2), s(listing.bookingLink), s(listing.ratingLink),
+      // Stock Network's Amenities / Activities / Experiences: names, separated by commas.
+      (listing.amenities || []).filter(function(a){ return a && a.available === 'Y'; }).map(function(a){ return s(a.item); }).join(', '),
+      commaList(listing.activities), commaList(listing.experiences),
+      // The site's Bank/Address tab: the linked affiliate's bank details from the hub (admin adds listing.bank).
+      s(bank.accountHolder), s(bank.bankName), s(bank.accountType), s(bank.accountNumber), s(bank.branchCode)
     ];
   }
   function unitRowsFor(listing, siteNr){

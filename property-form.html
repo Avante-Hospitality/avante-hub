@@ -393,6 +393,10 @@
       <textarea id="pMoreInfo" rows="2"></textarea>
       <label for="pAreaInfo">Area info &amp; attractions</label>
       <textarea id="pAreaInfo" rows="2"></textarea>
+      <label for="pActivities">Activities (separate with commas)</label>
+      <input id="pActivities" placeholder="e.g. Golf, Hiking, Whale watching">
+      <label for="pExperiences">Experiences (separate with commas)</label>
+      <input id="pExperiences" placeholder="e.g. Wine tasting, Sunset cruise">
     </div>
   </section>
 
@@ -1723,6 +1727,8 @@
       channelReviews: $('pReviews').value.trim(),
       notIncluded: $('pNotIncluded').value.trim(),
       moreInfo: $('pMoreInfo').value.trim(),
+      activities: $('pActivities').value.trim(),
+      experiences: $('pExperiences').value.trim(),
       areaInfo: $('pAreaInfo').value.trim(),
       sourceChannel: channel,
       channelListingLink: $('channelLink').value.trim(),
@@ -1796,7 +1802,7 @@
   var KEY_MAP = { contactName:'contactName', contactPhone:'contactPhone', contactEmail:'contactEmail', notifyWho:'notifyWho', ownerName:'ownerFullName', ownerId:'ownerIdPassport', ownerEmail:'ownerEmail', ownerPhone:'ownerPhone', affName:'affiliateAgentName', affCompany:'affiliateCompany', affEmail:'affiliateEmail', affPhone:'affiliatePhone',
     pName:'propertyName', pName2:'propertyName2', pCountry:'country', pProvince:'stateProvince', pRegion:'region', pCity:'city', pSuburb:'suburb', pComplex:'complexName', pInEstate:'inEstate', pEstateType:'estateType', pArea:'area', pDistrict:'district', pCity2:'city2', pAddress:'streetAddress',
     pSiteNr:'siteNr', pSiteId:'siteId', pType:'propertyType', pHost:'hostName', pPhone:'telephone', pEmail:'email', pInfoLink:'infoLink', pBookingLink:'bookingLink', pCheckIn:'checkInTime', pCheckOut:'checkOutTime', pDesc:'description',
-    pRules:'houseRules', pAccess:'accessibility', pRating:'selfSupplierRating', pGrading:'tourismBoardGrading', pRatingLink:'ratingLink', pReviews:'channelReviews', pMoreInfo:'moreInfo', pAreaInfo:'areaInfo', pNotIncluded:'notIncluded',
+    pRules:'houseRules', pAccess:'accessibility', pRating:'selfSupplierRating', pGrading:'tourismBoardGrading', pRatingLink:'ratingLink', pReviews:'channelReviews', pMoreInfo:'moreInfo', pAreaInfo:'areaInfo', pActivities:'activities', pExperiences:'experiences', pNotIncluded:'notIncluded',
     depositText:'depositPolicyText', depositPct:'depositPct', depositDays:'depositDays', childPolicy:'childPolicy', icalLink:'icalLink', channelLink:'channelListingLink', pLat:'latitude', pLng:'longitude' };
   var RATES_FROM_CHANNEL = false, EXISTING_ON_SN = false;
   // A property not on a channel manager (Jean, 2026-10-17/19): once the Ready
