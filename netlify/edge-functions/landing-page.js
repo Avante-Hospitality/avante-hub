@@ -13,6 +13,8 @@ import { isShortLink, resolveShortLink } from "./lib/short-link.js";
 import { propertyTreeOpts, withTreePath } from "./lib/tree-place.js";
 
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+// A phone number as WhatsApp wants it: 071 605 0055 → 27716050055.
+const waNumber = (p) => { let d = String(p || "").replace(/\D/g, ""); if (d.startsWith("0") && d.length === 10) d = "27" + d.slice(1); return d.length >= 10 ? d : ""; };
 const isAff = (v) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(v || ""));
 // Today in South Africa (UTC+2), as YYYY-MM-DD.
 const todaySA = () => new Date(Date.now() + 2 * 3600e3).toISOString().slice(0, 10);
@@ -146,6 +148,15 @@ export default async (request) => {
   const firstProp = rec.current.kind === "property" ? (rec.current.pages.find((p) => p.props && p.props.length) || {}).props : null;
   if (!ownBook && firstProp && firstProp[0]) {
     try { propTree = await propertyTreeOpts(firstProp[0].resortId, url.origin, firstProp[0].name); } catch (e) { propTree = null; }
+  }
+  // No phone on the hook (Jean, 2026-10-22): WhatsApp still shows, to the contact
+  // number set in Admin (flyer settings), so Book now always has WhatsApp beside it.
+  if (!rec.current.whatsapp) {
+    try {
+      const cfg = await getStore({ name: "flyer-settings", consistency: "strong" }).get("config", { type: "json" });
+      const n = waNumber(cfg && cfg.contactPhone);
+      if (n) rec = { ...rec, current: { ...rec.current, whatsapp: n } };
+    } catch (e) { /* no WhatsApp button, as before */ }
   }
   // The same for every visitor with the same link (it depends only on the
   // path and ?a=; no cookies or sign-in): browsers and Netlify's CDN keep it
