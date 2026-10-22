@@ -1532,9 +1532,11 @@ export default async (request, context) => {
         if (!srcL) return json({ ok: true, note: "Site " + fromNr + " has no listing — skipped." });
         let tgtL = findTgtL(all);
         if (!tgtL) {
-          const cur = await getStore({ name: "resort-list", consistency: "strong" }).get("current", { type: "json" }).catch(() => null);
-          const row = ((cur && cur.resorts) || []).find((r) => lc(r.resortId) === tgtRid) || {};
-          tgtL = await buildListingFromSn(tgtPA, row, { by: "admin" });
+          // No listing yet: a bare one for the target (its content comes from the copy below; reading Stock Network here would make the request too long).
+          const now = new Date().toISOString();
+          tgtL = { listingId: genListingId(), status: "Listed", dateSubmitted: now, dateUpdated: now, propertyName: tgtPA.resortName || "Property Testing",
+            siteNr: toNr, siteId: tgtPA.siteId, affId: tgtPA.aff || "", paSiteId: tgtPA.siteId, resortId: tgtPA.resortId || "", editToken: genToken(),
+            agreementSigned: "Y", existingOnSN: "Y", history: [] };
         }
         const before = Object.assign({}, tgtL);
         // Not copied: who it is (IDs, name, login, status, logs) and the real property's people and papers.
@@ -1545,39 +1547,52 @@ export default async (request, context) => {
           "contactName", "contactPhone", "contactEmail", "notifyWho", "telephone", "email", "agreementSigned", "signatoryName", "signatoryCapacity", "signatoryIdPassport",
           "signatureDate", "signaturePlace", "documents", "images", "icalLink", "channelListingLink", "bookingLink", "infoLink"]);
         for (const [k, v] of Object.entries(srcL)) if (!KEEP.has(k)) tgtL[k] = JSON.parse(JSON.stringify(v));
-        // Photos: real copies under the target's own listing, so deleting one never touches the other.
-        const files = getStore({ name: "property-listing-files", consistency: "strong" }), images = [];
-        let i = 0;
-        for (const im of srcL.images || []) {
-          const got = im && im.key ? await files.getWithMetadata(im.key, { type: "arrayBuffer" }).catch(() => null) : null;
-          if (!got || !got.data) continue;
-          const name = String((got.metadata && got.metadata.fileName) || im.fileName || "photo.jpg").replace(/[^\w.\-]+/g, "-").slice(-80);
-          const key = tgtL.listingId + "/image/" + Date.now() + "-" + (i++) + "-copy-" + name;
-          await files.set(key, got.data, { metadata: Object.assign({}, got.metadata || {}, { listingId: tgtL.listingId }) });
-          images.push(Object.assign({}, im, { key }));
-        }
-        tgtL.images = images;
+        tgtL.images = [];
         tgtL.dateUpdated = new Date().toISOString();
         addHistory(tgtL, "admin", "Copied the listing's content from Site " + fromNr + " (" + (srcL.propertyName || "") + ") for testing", before);
         await store.setJSON(tgtL.listingId, tgtL);
         await forgetEstates(context).catch(() => {});
-        return json({ ok: true, listingId: tgtL.listingId, photos: images.length });
+        return json({ ok: true, listingId: tgtL.listingId, photos: (srcL.images || []).length });
+      }
+
+      if (part === "photos") {
+        // The listing's photos, 3 at a time (each request stays short): real copies under the
+        // target's own listing, so deleting one never touches the other.
+        if (!srcL) return json({ ok: true, done: true });
+        const tgtL = findTgtL(all); if (!tgtL) return json({ error: "Copy the listing first." }, 409);
+        const files = getStore({ name: "property-listing-files", consistency: "strong" });
+        const src = srcL.images || [], offset = Math.max(0, parseInt(body.offset, 10) || 0), batch = src.slice(offset, offset + 3);
+        tgtL.images = offset ? (tgtL.images || []) : [];
+        let i = offset;
+        for (const im of batch) {
+          const got = im && im.key ? await files.getWithMetadata(im.key, { type: "arrayBuffer" }).catch(() => null) : null;
+          i++; if (!got || !got.data) continue;
+          const name = String((got.metadata && got.metadata.fileName) || im.fileName || "photo.jpg").replace(/[^\w.\-]+/g, "-").slice(-80);
+          const key = tgtL.listingId + "/image/" + Date.now() + "-" + i + "-copy-" + name;
+          await files.set(key, got.data, { metadata: Object.assign({}, got.metadata || {}, { listingId: tgtL.listingId }) });
+          tgtL.images.push(Object.assign({}, im, { key }));
+        }
+        await store.setJSON(tgtL.listingId, tgtL);
+        return json({ ok: true, total: src.length, offset: offset + batch.length, done: offset + batch.length >= src.length });
       }
 
       if (part === "store") {
         if (!srcPA) return json({ ok: true, note: "Site " + fromNr + " isn't connected in Property Affiliate — no front store to copy." });
         const tgt = await paStore.get("site:" + tgtPA.siteId, { type: "json" });
         const src = await paStore.get("site:" + srcPA.siteId, { type: "json" });
-        // Front store photos: real copies under the target's site.
-        const map = {}; let n = 0;
+        // Front store photos: real copies under the target's site, a few per request
+        // (offset); the words and settings are copied with the last batch.
+        const map = (body.map && typeof body.map === "object") ? body.map : {}; let n = Object.keys(map).length;
         const { blobs } = await paStore.list({ prefix: "fsphoto:" + src.siteId + ":" });
-        for (const b of blobs || []) {
+        const offset = Math.max(0, parseInt(body.offset, 10) || 0), batch = (blobs || []).slice(offset, offset + 3);
+        for (const b of batch) {
           const id = b.key.slice(("fsphoto:" + src.siteId + ":").length);
           const got = await paStore.getWithMetadata(b.key, { type: "arrayBuffer" }).catch(() => null); if (!got || !got.data) continue;
           const nid = (id.startsWith("x-") ? "x-" : "") + "c" + Date.now().toString(36) + (n++);
           await paStore.set("fsphoto:" + tgt.siteId + ":" + nid, got.data, { metadata: got.metadata || {} });
           map[src.siteId + ":" + id] = tgt.siteId + ":" + nid;
         }
+        if (offset + batch.length < (blobs || []).length) return json({ ok: true, done: false, offset: offset + batch.length, total: (blobs || []).length, map });
         const swap = (o) => { let t = JSON.stringify(o || {}); for (const [a, b2] of Object.entries(map)) t = t.split(encodeURIComponent(a)).join(encodeURIComponent(b2)).split(a).join(b2); return JSON.parse(t); };
         const fs = swap(src.frontStore || {});
         for (const k of ["on", "slug", "guestKey", "phone", "whatsapp", "email", "wifiName", "wifiPassword"]) { if (tgt.frontStore && k in tgt.frontStore) fs[k] = tgt.frontStore[k]; else delete fs[k]; }
@@ -1591,7 +1606,7 @@ export default async (request, context) => {
         await paStore.delete("fsinfo:" + tgt.siteId).catch(() => {});
         const acts = await paStore.get("act:" + src.siteId, { type: "json" }).catch(() => null);
         if (Array.isArray(acts)) await paStore.setJSON("act:" + tgt.siteId, acts);
-        return json({ ok: true, photos: n, activities: Array.isArray(acts) ? acts.length : 0 });
+        return json({ ok: true, done: true, photos: n, activities: Array.isArray(acts) ? acts.length : 0 });
       }
 
       if (part === "place") {

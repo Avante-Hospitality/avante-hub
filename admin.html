@@ -7417,7 +7417,13 @@
         btn.disabled = true; lines = [];
         var part = function(name, extra){ return propAdminPost('copyPropertyContent', Object.assign({ from: from, to: to, part: name }, extra || {})).then(function(r){ var d = r.data || {}; if(!d.ok) throw new Error(d.error || 'Could not copy.'); return d; }); };
         say('Copying the listing and its photos\u2026');
-        part('listing').then(function(d){ say(d.note || ('Listing ' + d.listingId + ': done, ' + d.photos + ' photo(s).')); say('Copying the front store\u2026'); return part('store'); })
+        // Each part in small steps (offset) so no request runs too long.
+        var steps = function(name, extra, label){ var go = function(offset, carry){ return part(name, Object.assign({ offset: offset }, extra || {}, carry || {})).then(function(r){
+            if(r.note || r.done === undefined || r.done){ return r; }
+            lines[lines.length - 1] = label + ' ' + r.offset + ' of ' + r.total + '\u2026'; st.innerHTML = lines.map(escapeHtml).join('<br>');
+            return go(r.offset, r.map ? { map: r.map } : null); }); }; return go(0); };
+        part('listing').then(function(d){ say(d.note || ('Listing ' + d.listingId + ': copied.')); say('Copying its photos\u2026'); return steps('photos', null, 'Listing photos:'); })
+          .then(function(d){ say('Listing photos: done.'); say('Copying the front store\u2026'); return steps('store', null, 'Front store photos:'); })
           .then(function(d){ say(d.note || ('Front store: done, ' + d.photos + ' photo(s), ' + d.activities + ' activit(ies).')); say('Copying the location\u2026'); return part('place'); })
           .then(function(d){ say('Location: ' + (d.placed ? 'placed in the tree' : 'no tree place to copy') + (d.pinned ? ', pin moved.' : '.')); say('Copying the library photos\u2026');
             var loop = function(offset){ return part('library', { offset: offset }).then(function(r){ if(r.note){ say(r.note); return; } lines[lines.length - 1] = 'Library photos: ' + r.offset + ' of ' + r.total + '\u2026'; st.innerHTML = lines.map(escapeHtml).join('<br>'); return r.done ? say('All done.') : loop(r.offset); }); };
