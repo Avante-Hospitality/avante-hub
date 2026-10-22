@@ -262,8 +262,12 @@ export default async (request, context) => {
         // c: a Channel Property Affiliate (not also a Property Affiliate) — its calendar is in NightsBridge,
         // so its hooks' Book links go to Stock Network's booking page (Jean, 2026-10-20).
         const dr = await directoryStore.get(a, { type: "json" }).catch(() => null), types = (dr && Array.isArray(dr.types)) ? dr.types : [];
-        const c = types.indexOf("channel") > -1 && types.indexOf("property") === -1 ? 1 : 0;
-        return p && p.resortId ? [{ r: p.resortId, s: fs && fs.on && sl ? sl : "", c }] : [];
+        // Also when admin ticked Channel as well as Property, or the property is marked as a channel
+        // property, and it has no front store switched on: there's no calendar here to book on, so
+        // its Book links go to Stock Network like any affiliate's (Jean, 2026-10-22).
+        const store = fs && fs.on && sl ? sl : "";
+        const c = (types.indexOf("channel") > -1 && types.indexOf("property") === -1) || (!store && (types.indexOf("channel") > -1 || (p && p.channel))) ? 1 : 0;
+        return p && p.resortId ? [{ r: p.resortId, s: store, c }] : [];
       } catch (e) { return []; }
     }
 
