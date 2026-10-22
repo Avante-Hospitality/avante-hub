@@ -22,8 +22,9 @@ export async function makeHooksTicket(who) {
     // The master affiliate (site 36): its photo choices become everyone's main photos.
     ...(who.master ? { m: 1 } : {}),
     // A property affiliate's own property: its hooks' Book links open its own
-    // front store booking (Jean, 2026-10-15). [{ r: ResortID, s: front store link name }]
-    ...(Array.isArray(who.own) && who.own.length ? { own: who.own.slice(0, 3).map((o) => ({ r: String(o.r || "").slice(0, 40), s: String(o.s || "").slice(0, 60) })) } : {}),
+    // front store booking (Jean, 2026-10-15). [{ r: ResortID, s: front store link name,
+    // c: 1 for a channel property — its Book links go to Stock Network (2026-10-22: c was left out here)}]
+    ...(Array.isArray(who.own) && who.own.length ? { own: who.own.slice(0, 3).map((o) => ({ r: String(o.r || "").slice(0, 40), s: String(o.s || "").slice(0, 60), c: o.c ? 1 : 0 })) } : {}),
     exp: Date.now() + 5 * 60 * 1000,
     n: b64url(crypto.getRandomValues(new Uint8Array(9))),
   };
