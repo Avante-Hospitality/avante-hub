@@ -6,7 +6,7 @@ import { emailList, badEmails, emailText, recipients } from "./lib/emails.js";
 import { sendEmail } from "./lib/send-email.js";
 // SheetJS from its own CDN (the build SheetJS recommends for Deno).
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
-import { SITE_REGISTER_STORE, SITE_STATUSES, DEFAULT_SN_SETUP_EMAILS, newEntry, reserveNextSiteNr, reserveSiteNr, getSiteNr, saveSiteNr,
+import { SITE_REGISTER_STORE, SITE_STATUSES, DEFAULT_SN_SETUP_EMAILS, commissionSheetBase64, commissionEmail, newEntry, reserveNextSiteNr, reserveSiteNr, getSiteNr, saveSiteNr,
   listSiteNrs, nextFreeSiteNr, findOpenRequest, requestSheetBase64, sheetFileName, setupEmail, confirmationEmail, welcomeEmail, READY_TO_SEND, CHANNEL_WELCOME_DEFAULT, PROPERTY_WELCOME_DEFAULT, fillWelcome, welcomeHtml } from "./lib/sn-site-register.js";
 import { readListingScreenshots } from "./lib/listing-reader.js";
 import { HOOKS_URL, makeHooksTicket } from "./lib/hooks-ticket.js";
@@ -1459,6 +1459,47 @@ export default async (request, context) => {
         feed: feed ? { at: feed.at, count: feed.count, saveError: feed.saveError } : null });
     }
 
+    if (action === "commissionUpdate") {
+      // Admin > Site Nrs > "Commission for property affiliates" (Jean, 2026-10-22):
+      // every property and channel affiliate gets own bookings at 5% + VAT. The
+      // hub's own figures are already from commission.js; this brings saved
+      // channel listings in line and (send) emails Stock Network one sheet with
+      // Franchisor / Franchise for all of them.
+      const denied = await requireAdmin();
+      if (denied) return denied;
+      const own = String(globalThis.AvanteCommission.OWN);
+      const rows = [], seen = new Set();
+      const add = (r) => { const k = String(r.siteNr || r.affId || r.name).trim(); if (!k || seen.has(k)) return; seen.add(k); rows.push(r); };
+      const dirStore = getStore({ name: "affiliates-directory", consistency: "strong" });
+      for (const { key, value: a } of await readAllEntries(dirStore, { cacheName: AFFILIATES_STORE })) {
+        const types = (a && Array.isArray(a.types)) ? a.types : [];
+        if (!types.includes("property") && !types.includes("channel")) continue;
+        add({ siteNr: String(a.siteNr || "").trim(), affId: a.affId || key, name: a.name || "", kind: types.includes("channel") ? "Channel Property Affiliate" : "Property Affiliate" });
+      }
+      for (const e of await listSiteNrs(siteRegister())) {
+        if (e && e.propertyAffiliate && e.siteNr) add({ siteNr: String(e.siteNr), affId: "", name: e.propertyName || "", kind: (e.channelManager && e.channelManager !== "None yet" ? "Channel Property Affiliate" : "Property Affiliate") + (e.status === "Set up" ? "" : " (site " + String(e.status || "").toLowerCase() + ")") });
+      }
+      rows.sort((x, y) => (Number(x.siteNr) || 1e9) - (Number(y.siteNr) || 1e9));
+      // Saved channel listings that still say 4.95.
+      const listings = getStore({ name: "property-listings", consistency: "strong" });
+      let fixed = 0;
+      for (const { key, value: l } of await readAllEntries(listings)) {
+        if (!l || l.channelProperty !== "Y" || l.commissionPct === own) continue;
+        if (body.send === true) { const before = { commissionPct: l.commissionPct }; l.commissionPct = own; addHistory(l, "admin", "Own-booking commission set to " + own + "% + VAT", before); await listings.setJSON(key, l); }
+        fixed++;
+      }
+      if (body.send !== true) return json({ ok: true, rows, listingsToFix: fixed, emails: await getSnSetupEmails(), last: (await getSettings()).commissionUpdateLog || null });
+      if (!rows.length) return json({ error: "There are no property or channel affiliates yet." }, 400);
+      const to = emailText(clean(body.to, 600) || (await getSnSetupEmails()), 20);
+      const m = commissionEmail(rows);
+      let sent;
+      try { sent = await sendEmail({ to, subject: m.subject, html: m.html, attachments: [{ filename: "Avante_commission_update_" + new Date().toISOString().slice(0, 10) + ".xlsx", content: commissionSheetBase64(XLSX, rows) }], replyTo: "admin@avantehospitality.co.za" }); }
+      catch (e) { sent = { ok: false, error: "Could not make the sheet: " + String((e && e.message) || e) }; }
+      const log = { at: new Date().toISOString(), to, sites: rows.length, listingsFixed: fixed, ok: !!sent.ok, error: sent.ok ? undefined : sent.error };
+      await saveSettings({ commissionUpdateLog: log });
+      return sent.ok ? json({ ok: true, rows, log }) : json({ error: "Not sent: " + sent.error, rows, log }, 502);
+    }
+
     if (["siteNrList", "siteNrReserve", "siteNrUpdate", "siteNrSend", "snSetupSettings"].includes(action)) {
       const denied = await requireAdmin();
       if (denied) return denied;
@@ -1786,7 +1827,7 @@ export default async (request, context) => {
           email, telephone: phone || record.telephone || "", contactName: contactName || record.contactName || "", contactEmail: record.contactEmail || email, dateUpdated: now });
         // A channel property: own-booking commission (commission.js), rates from its channel manager. One not on
         // a channel manager keeps its own rates in the hub (a Property Affiliate).
-        if (!hosted) Object.assign(record, { channelProperty: "Y", ratesFromChannel: "Y", commissionPct: record.commissionPct || String(globalThis.AvanteCommission.OWN) });
+        if (!hosted) Object.assign(record, { channelProperty: "Y", ratesFromChannel: "Y", commissionPct: String(globalThis.AvanteCommission.OWN) });
         if (bbid && !record.bbid) record.bbid = bbid;
         // 2. Its affiliate (number = Site ID): Channel Property Affiliate, or Property Affiliate.
         const type = hosted ? "property" : "channel", typeName = hosted ? "Property" : "Channel Property";

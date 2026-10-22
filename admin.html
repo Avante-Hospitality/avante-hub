@@ -2309,6 +2309,15 @@
         <button class="primary" id="snrEmailsSave" type="button" style="margin-top:10px;">Save</button>
         <div class="status" id="snrEmailsStatus"></div>
       </div>
+
+      <div class="card" id="snrCommission">
+        <h2 class="section-heading" style="margin-top:0;">Commission for property affiliates</h2>
+        <p class="hint">Own bookings (the property's own hook builder and/or front store) are <b>5% + VAT</b>. Stock Network sets <b>Franchisor 5.75%</b> (Avante) and <b>Franchise 11.5%</b> (the property) on each property and channel affiliate's site. This emails Stock Network one sheet with all of them, to the set-up addresses above.</p>
+        <button class="btn-outline" id="snrCommCheck" type="button" style="margin-top:0;">Check the list</button>
+        <button class="primary" id="snrCommSend" type="button" style="margin-top:0;" disabled>Email Stock Network</button>
+        <div class="status" id="snrCommStatus"></div>
+        <div id="snrCommList" style="margin-top:10px;"></div>
+      </div>
     </section>
 
     <section class="panel" id="panel-snCleanup">
@@ -10966,6 +10975,25 @@
       propAdminPost('snSetupSettings', { emails: $('snrEmails').value.trim() }).then(function(res){
         var d = res.data || {}; say(st, d.ok ? 'Saved.' : (d.error || 'Could not save.')); if(d.ok) $('snrEmails').value = d.emails;
       }).catch(function(){ say(st, 'Could not save.'); });
+    });
+    // Commission for property affiliates (Jean, 2026-10-22).
+    function commList(d){
+      var rows = d.rows || [], last = d.last || d.log;
+      $('snrCommList').innerHTML = (rows.length ? '<div class="table-wrap"><table class="data-table"><thead><tr><th>Site Nr</th><th>Affiliate Nr</th><th>Property</th><th>Kind</th><th>Franchisor %</th><th>Franchise %</th></tr></thead><tbody>' +
+        rows.map(function(r){ return '<tr><td>' + escapeHtml(r.siteNr || '') + '</td><td>' + escapeHtml(r.affId || '') + '</td><td>' + escapeHtml(r.name || '') + '</td><td>' + escapeHtml(r.kind || '') + '</td><td>' + AvanteCommission.FRANCHISOR + '</td><td>' + AvanteCommission.FRANCHISE + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<p class="hint">No property or channel affiliates yet.</p>') +
+        (d.listingsToFix ? '<p class="hint">' + d.listingsToFix + ' channel listing(s) still say 4.95%: sending also sets them to 5%.</p>' : '') +
+        (last ? '<p class="hint">Last sent: ' + escapeHtml(new Date(last.at).toLocaleString('en-ZA')) + ' to ' + escapeHtml(last.to) + ', ' + last.sites + ' site(s)' + (last.ok ? ' \u2714' : ' \u2014 FAILED: ' + escapeHtml(last.error || '')) + '</p>' : '');
+      $('snrCommSend').disabled = !rows.length;
+    }
+    $('snrCommCheck').addEventListener('click', function(){
+      var st = $('snrCommStatus'); say(st, 'Reading\u2026');
+      propAdminPost('commissionUpdate', {}).then(function(res){ var d = res.data || {}; if(!d.ok){ say(st, d.error || 'Could not read the list.'); return; } say(st, (d.rows || []).length + ' property and channel affiliate(s).'); commList(d); })
+        .catch(function(){ say(st, 'Could not read the list.'); });
+    });
+    $('snrCommSend').addEventListener('click', function(){
+      var st = $('snrCommStatus'), btn = this; btn.disabled = true; say(st, 'Sending\u2026');
+      propAdminPost('commissionUpdate', { send: true }).then(function(res){ var d = res.data || {}; say(st, d.ok ? 'Sent to ' + d.log.to + ' \u2714' : (d.error || 'Not sent.')); if(d.rows) commList(d); btn.disabled = false; })
+        .catch(function(){ say(st, 'Not sent: lost the connection.'); btn.disabled = false; });
     });
     var tab = document.querySelector('.tab[data-panel="siteNrs"]'); if(tab) tab.addEventListener('click', load);
   })();

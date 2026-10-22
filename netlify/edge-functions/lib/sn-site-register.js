@@ -248,3 +248,29 @@ export function welcomeHtml(text, v) {
     return h ? "<p>" + h + "</p>" : "";
   }).join("");
 }
+
+// ---------- Commission update for every property affiliate (Jean, 2026-10-22) ----------
+// Own bookings went from 4.95% to 5% + VAT: Stock Network sets Franchisor 5.75%
+// (Avante) and Franchise 11.5% (the property) on each property affiliate's
+// site. One sheet and one email for all of them, from Admin > Site Nrs.
+export const COMMISSION_COLS = ["Site Nr", "Affiliate Nr", "Property", "Kind", "Franchisor %", "Franchise %"];
+export function commissionRow(r) {
+  return [r.siteNr ? (/^\d+$/.test(r.siteNr) ? Number(r.siteNr) : r.siteNr) : "", r.affId || "", r.name || "", r.kind || "", C.FRANCHISOR, C.FRANCHISE];
+}
+export function commissionSheetBase64(XLSX, rows) {
+  const ws = XLSX.utils.aoa_to_sheet([COMMISSION_COLS].concat(rows.map(commissionRow)));
+  ws["!cols"] = COMMISSION_COLS.map((h, i) => ({ wch: i === 2 ? 40 : Math.max(12, h.length + 4) }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Commission");
+  return XLSX.write(wb, { type: "base64", bookType: "xlsx" });
+}
+export function commissionEmail(rows) {
+  const subject = "Avante commission update: Franchisor " + C.FRANCHISOR + "% / Franchise " + C.FRANCHISE + "% on " + rows.length + " site" + (rows.length === 1 ? "" : "s");
+  const html = "<p>Hello,</p>" +
+    "<p>Avante's commission on a property affiliate's own bookings (made through the Avante hub with its own hook builder and/or front store) is now <b>" + C.OWN + "% + VAT</b> (was 4.95%).</p>" +
+    "<p>Please set these two fields on each site below (also in the attached sheet):<br><b>Franchisor " + C.FRANCHISOR + "%</b> (Avante) and <b>Franchise " + C.FRANCHISE + "%</b> (the property). The rate stays " + C.STANDARD_INCL + ".</p>" +
+    "<table cellpadding=\"4\" cellspacing=\"0\" border=\"1\" style=\"border-collapse:collapse;font-size:13px\"><tr>" + COMMISSION_COLS.map((h) => "<th>" + esc(h) + "</th>").join("") + "</tr>" +
+    rows.map((r) => "<tr>" + commissionRow(r).map((v) => "<td>" + esc(v) + "</td>").join("") + "</tr>").join("") + "</table>" +
+    "<p>Avante Travel</p>";
+  return { subject, html };
+}
