@@ -124,6 +124,29 @@
         [['both', 'Both (your email and the contact person)'], ['owner', 'Your email only'], ['contact', 'The contact person only']].map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === who ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') +
       '</select></div></div><p class="pa-hint">Several email addresses? Separate them with a comma.</p></fieldset>';
   }
+  // Nightly price per unit, with a different weekend price if the property
+  // has one (Jean, 2026-10-22). Days 0 = Monday ... 6 = Sunday, the night
+  // guests sleep there; weekend nights must follow each other (checked on save).
+  var DAY3 = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  function priceBlock(st) {
+    var on = !!st.weekendRates, wd = st.weekendDays || [4, 5];
+    return '<fieldset class="pa-fieldset pa-prices' + (on ? '' : ' pa-we-off') + '" style="margin-top:14px"><legend class="pa-label">Nightly channel price per unit (calendar links don\'t include prices)</legend>' +
+      '<label class="pa-check" style="display:flex;align-items:center;gap:10px;margin:4px 0 8px"><input id="pa-we-on" type="checkbox" data-act="weToggle"' + (on ? ' checked' : '') + ' style="width:18px;height:18px">Different price for weekends</label>' +
+      '<div class="pa-we-only"><p class="pa-label" style="margin:0 0 6px">Weekend nights</p><div class="pa-row" style="flex-wrap:wrap;gap:6px">' +
+        DAY3.map(function (n, i) { return '<button type="button" class="pa-chipbtn" data-act="weDay" data-d="' + i + '" aria-pressed="' + (wd.indexOf(i) > -1) + '">' + n + '</button>'; }).join('') +
+      '</div><p class="pa-hint">A night is the night guests sleep there: Fri = Friday night. Weekend nights must follow each other.</p></div><div class="pa-form">' +
+      S.channels.units.map(function (u) {
+        return '<div class="pa-field"><label class="pa-label" for="pa-pr-' + esc(u.name) + '" style="color:#0e2f44">' + esc(u.name) + '<span class="pa-we-only"> (midweek)</span></label><input id="pa-pr-' + esc(u.name) + '" data-price="' + esc(u.name) + '" type="number" min="0" value="' + esc((st.prices || {})[u.name] || '') + '" placeholder="Uses the Avante rate if empty"></div>' +
+          '<div class="pa-field pa-we-only"><label class="pa-label" for="pa-wpr-' + esc(u.name) + '" style="color:#0e2f44">' + esc(u.name) + ' (weekend)</label><input id="pa-wpr-' + esc(u.name) + '" data-wprice="' + esc(u.name) + '" type="number" min="0" value="' + esc((st.weekendPrices || {})[u.name] || '') + '" placeholder="Uses the midweek price if empty"></div>';
+      }).join('') + '</div></fieldset>';
+  }
+  function priceVals() {
+    var prices = {}, weekendPrices = {}, days = [];
+    root.querySelectorAll('[data-price]').forEach(function (el) { prices[el.dataset.price] = el.value; });
+    root.querySelectorAll('[data-wprice]').forEach(function (el) { weekendPrices[el.dataset.wprice] = el.value; });
+    root.querySelectorAll('[data-act="weDay"][aria-pressed="true"]').forEach(function (el) { days.push(+el.dataset.d); });
+    return { prices: prices, weekendPrices: weekendPrices, weekendRates: !!(document.getElementById('pa-we-on') || {}).checked, weekendDays: days };
+  }
   function contactVals() { return { contactName: val('pa-cn').trim(), contactPhone: val('pa-cp').trim(), contactEmail: val('pa-ce').trim(), notifyWho: val('pa-nw') || 'both' }; }
   function chTabs() { return ['book', 'rev'].concat(S.prop.activities ? ['acts'] : []); }
   function tabsFor() { return isCh() ? TABS.filter(function (v) { return chTabs().indexOf(v[0]) > -1; }) : TABS; }
@@ -360,8 +383,7 @@
           '<label class="pa-check pa-radio"><input type="radio" name="pa-cs-mode" value="date"' + (isDate ? ' checked' : '') + '><span><b>A set date</b><br><span class="pa-hint">The calendar opens on this date, and it is the first date that can be booked in the hub until it has passed (for example when you open for the season).</span>' +
           '<span style="display:block;margin-top:8px;max-width:220px"><input id="pa-cs-date" type="date" aria-label="Calendar start date" value="' + esc(cs.date || '') + '" min="' + today() + '"></span></span></label></fieldset>';
       })() +
-      '<p class="pa-label" style="margin:14px 0 6px">Nightly channel price per unit (calendar links don\'t include prices)</p><div class="pa-form">' +
-      S.channels.units.map(function (u) { return '<div class="pa-field"><label class="pa-label" for="pa-pr-' + esc(u.name) + '" style="color:#0e2f44">' + esc(u.name) + '</label><input id="pa-pr-' + esc(u.name) + '" data-price="' + esc(u.name) + '" type="number" min="0" value="' + esc((st.prices || {})[u.name] || '') + '" placeholder="Uses the Avante rate if empty"></div>'; }).join('') + '</div>' +
+      priceBlock(st) +
       '<label class="pa-check" style="display:flex;align-items:center;gap:10px;margin-top:14px"><input id="pa-auto" type="checkbox"' + (st.autoBook ? ' checked' : '') + ' style="width:18px;height:18px">Book other channels\' reservations onto Avante automatically</label>' +
       '<p class="pa-hint">Leave this off at first: new channel bookings then wait below for you to add them with one click, so you can check everything is right.</p>' +
       '<div class="pa-row" style="margin-top:12px"><button type="button" class="pa-btn" data-act="saveChannels">Save reservation settings</button></div></section>';
@@ -884,7 +906,7 @@
       '<p class="pa-hint" style="margin:0">' + (isCh() ? 'Each unit gets a card with a photo, sleeps and beds. Guests see the Avante price when they choose their dates.' : 'Each unit gets a card with a photo, sleeps, beds and its price a night (from Reservation settings).') + '</p>' + F.units.map(function (u, ix) {
         var x = ui[u.name] || {}, off = hidU.indexOf(u.name) >= 0;
         return '<div class="fs-unit' + (off ? ' off' : '') + '"><label class="pa-check"><input type="checkbox" data-fsunit="' + esc(u.name) + '"' + (off ? '' : ' checked') + '> <b>' + esc(u.name) + '</b>' + (u.size ? ' <span class="pa-hint">· ' + esc(u.size) + '</span>' : '') + '</label>' +
-          '<p class="pa-hint" style="margin:2px 0 6px">' + (u.price > 0 ? 'Price: ' + money(u.price) + ' a night' + (st.showPrices ? '' : ' (prices are switched off in step 7)') : (isCh() ? 'Price: the Avante price, shown when guests choose dates.' : 'No price yet: add it in Channels → Reservation settings.')) + '</p>' +
+          '<p class="pa-hint" style="margin:2px 0 6px">' + (u.price > 0 ? 'Price: ' + money(u.price) + ' a night' + (u.weekendPrice > 0 ? ', weekends ' + money(u.weekendPrice) : '') + (st.showPrices ? '' : ' (prices are switched off in step 7)') : (isCh() ? 'Price: the Avante price, shown when guests choose dates.' : 'No price yet: add it in Channels → Reservation settings.')) + '</p>' +
           '<div class="pa-form"><div class="pa-field"><label class="pa-label" for="fs-ub-' + ix + '">Beds</label><input id="fs-ub-' + ix + '" type="text" maxlength="80" data-fsui="' + esc(u.name) + '|beds" value="' + esc(x.beds) + '" placeholder="e.g. 1 queen, 2 singles"></div>' +
           '<div class="pa-field"><label class="pa-label" for="fs-ux-' + ix + '">One line about it</label><input id="fs-ux-' + ix + '" type="text" maxlength="300" data-fsui="' + esc(u.name) + '|blurb" value="' + esc(x.blurb) + '" placeholder="e.g. Private braai and dam views"></div></div>' +
           '<p class="pa-label" style="margin:8px 0 4px">Photo for this unit' + (x.photo ? '' : ' <span class="pa-hint" style="text-transform:none;letter-spacing:0">(none chosen: a gallery photo is used)</span>') + '</p>' +
@@ -1673,6 +1695,8 @@
     if (a === 'view') return setView(t.dataset.v);
     if (a.indexOf('act') === 0 && ACT_ACTIONS[a]) return ACT_ACTIONS[a](t);
     if (a === 'more') { S.more = !S.more; return render(); }
+    if (a === 'weToggle') { var pb = t.closest('.pa-prices'); if (pb) pb.classList.toggle('pa-we-off', !t.checked); return; }
+    if (a === 'weDay') { t.setAttribute('aria-pressed', String(t.getAttribute('aria-pressed') !== 'true')); return; }
     if (S.more && a !== 'more' && a !== 'hookbuilder') S.more = false;
     if (a === 'goStart') { S.searched = null; return loadAvailability(startDate()); }
     // Hook Builder (2026-10-08): opens the hook builder signed in with this hub login (hub.html's openHookBuilder).
@@ -1790,11 +1814,11 @@
       return api('channelHelp', { channels: chs, note: val('pa-chnote') }).then(function (d) { S.channels = d; S.msg = 'Thank you. Avante has your request and will connect your channels. They show "Connected" here when done.'; render(); window.scrollTo(0, 0); }).catch(function (e) { fail(e); window.scrollTo(0, 0); });
     }
     if (a === 'saveChannels') {
-      var prices = {}; root.querySelectorAll('[data-price]').forEach(function (el) { prices[el.dataset.price] = el.value; });
+      var pv = priceVals(), prices = pv.prices;
       var channels = {}; root.querySelectorAll('[data-imp]').forEach(function (el) { var p = el.dataset.imp.split('|'); (channels[p[0]] = channels[p[0]] || {})[p[1]] = el.value.trim(); });
       var pmEl = root.querySelector('input[name="pa-pm"]:checked');
       var csMode = root.querySelector('input[name="pa-cs-mode"]:checked');
-      return api('saveSettings', { calendarStart: { mode: csMode ? csMode.value : 'today', date: val('pa-cs-date') }, email: val('pa-se'), phone: val('pa-sp'), contactName: contactVals().contactName, contactPhone: contactVals().contactPhone, contactEmail: contactVals().contactEmail, notifyWho: contactVals().notifyWho, minStay: val('pa-sm'), autoBook: document.getElementById('pa-auto').checked, prices: prices, channels: channels,
+      return api('saveSettings', { calendarStart: { mode: csMode ? csMode.value : 'today', date: val('pa-cs-date') }, email: val('pa-se'), phone: val('pa-sp'), contactName: contactVals().contactName, contactPhone: contactVals().contactPhone, contactEmail: contactVals().contactEmail, notifyWho: contactVals().notifyWho, minStay: val('pa-sm'), autoBook: document.getElementById('pa-auto').checked, prices: prices, weekendPrices: pv.weekendPrices, weekendRates: pv.weekendRates, weekendDays: pv.weekendDays, channels: channels,
         payMode: pmEl ? pmEl.value : 'both', approveGuests: !!(document.getElementById('pa-appr') || {}).checked, bank: { bankName: val('pa-bn'), accountHolder: val('pa-bh'), accountNumber: val('pa-ba'), branchCode: val('pa-bb'), accountType: val('pa-bt'), note: val('pa-bx') } })
         .then(function (d) { S.channels = d; S.prop.settings = d.settings; if (d.firstBookable) S.prop.firstBookable = d.firstBookable; S.from = startDate(); S.searched = null; S.msg = 'Saved. The hub reads your channel links every 15 minutes.'; render(); window.scrollTo(0, 0); }).catch(function (e) { fail(e); window.scrollTo(0, 0); });
     }

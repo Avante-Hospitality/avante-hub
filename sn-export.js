@@ -38,8 +38,33 @@
   // browser's time zone can't push a date to the day before or add hours.
   function toSerial(iso){ var p = s(iso).split('-'); return p.length === 3 ? (Date.UTC(+p[0], +p[1] - 1, +p[2]) - Date.UTC(1899, 11, 30)) / 864e5 : ''; }
 
+  // Days of the week for weekend rates and closed nights (Jean, 2026-10-22):
+  // 0 = Monday ... 6 = Sunday, the night guests sleep there. The form cuts
+  // the rates into midweek and weekend periods; each is a plain row here.
+  var DAY_NAMES = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+  function dayOf(iso){ var p = s(iso).split('-'); return (new Date(Date.UTC(+p[0], +p[1] - 1, +p[2])).getUTCDay() + 6) % 7; }
+  function dayList(v){
+    var out = [];
+    (Array.isArray(v) ? v : s(v).split(',')).forEach(function(x){ var n = parseInt(x, 10); if(n >= 0 && n <= 6 && out.indexOf(n) < 0) out.push(n); });
+    return out.sort();
+  }
+  // The days as one run in a row round the week ({ start, nights }), or null.
+  // [4,5] -> Fri, 2 nights; [6,0] -> Sun, 2 nights; [1,3] -> null.
+  function dayRun(days){
+    days = dayList(days);
+    if(!days.length || days.length === 7) return days.length ? { start: 0, nights: 7 } : null;
+    var start = days.filter(function(d){ return days.indexOf((d + 6) % 7) < 0; });
+    if(start.length !== 1) return null;
+    return { start: start[0], nights: days.length };
+  }
+  // "Weekend · Closed Mon" — what admin shows next to a period.
+  function weekText(r){
+    var c = dayList(r.closedDays);
+    return [s(r.slot), c.length ? 'Closed ' + c.map(function(d){ return DAY_NAMES[d].slice(0, 3); }).join(', ') : ''].filter(Boolean).join(' · ');
+  }
+
   function todayIso(){ var d = new Date(), p = function(n){ return (n < 10 ? '0' : '') + n; }; return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()); }
-  function seasonKey(r){ return [s(r.unitTypeName), s(r.from), s(r.to), s(r.rackRate), s(r.minStay)].join('|'); }
+  function seasonKey(r){ return [s(r.unitTypeName), s(r.from), s(r.to), s(r.rackRate), s(r.minStay), s(r.slot)].join('|'); }
   // Seasons Stock Network needs: today onwards only (past rates stay on
   // record in the hub but are never re-sent). With onlyChanged, seasons
   // already sent to SN unchanged (listing.snSentSeasons, set by admin's
@@ -109,8 +134,8 @@
     XLSX.utils.book_append_sheet(wb, sheetWithDates(STOCK_COLS, stockRows(listing), [7, 8]), 'Stock');
     // Every rate season on record, past ones included, for reference.
     var today = todayIso(), sent = {}; (listing.snSentSeasons || []).forEach(function(r){ sent[seasonKey(r)] = true; });
-    var hist = (listing.rateSeasons || []).map(function(r){ return [s(r.unitTypeName), r.from, r.to, +r.nights || '', +r.minStay || '', +r.rackRate || '', +r.snRate || '', s(r.to) < today ? 'Past' : (sent[seasonKey(r)] ? 'Sent to SN' : 'Not sent yet')]; });
-    XLSX.utils.book_append_sheet(wb, sheetWithDates(['Unit Type','From','To','Nights','Min Stay','Rack Rate','SN Rate','Status'], hist, [1, 2]), 'All rates on record');
+    var hist = (listing.rateSeasons || []).map(function(r){ return [s(r.unitTypeName), r.from, r.to, +r.nights || '', +r.minStay || '', +r.rackRate || '', +r.snRate || '', weekText(r), s(r.to) < today ? 'Past' : (sent[seasonKey(r)] ? 'Sent to SN' : 'Not sent yet')]; });
+    XLSX.utils.book_append_sheet(wb, sheetWithDates(['Unit Type','From','To','Nights','Min Stay','Rack Rate','SN Rate','Slot / closed','Status'], hist, [1, 2]), 'All rates on record');
     return wb;
   }
   function stockWorkbook(listing, onlyChanged){
@@ -170,6 +195,11 @@
     whenReady: whenReady,
     filesForEmail: filesForEmail,
     STOCK_COLS: STOCK_COLS,
+    DAY_NAMES: DAY_NAMES,
+    dayOf: dayOf,
+    dayList: dayList,
+    dayRun: dayRun,
+    weekText: weekText,
     stockRows: stockRows,
     needSite: needSite,
     downloadPropertyFile: function(listing, siteNr){

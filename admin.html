@@ -7191,7 +7191,7 @@
           div.appendChild(head);
           Object.keys(h.changed || {}).forEach(function(k){
             var v = h.changed[k];
-            if(typeof v !== 'string') v = k === 'rateSeasons' || k === 'snSentSeasons' ? (v || []).map(function(r){ return (r.unitTypeName || '') + ' ' + r.from + '\u2192' + r.to + ' R' + r.rackRate; }).join('; ') || '(none)' : JSON.stringify(v).slice(0, 300);
+            if(typeof v !== 'string') v = k === 'rateSeasons' || k === 'snSentSeasons' ? (v || []).map(function(r){ return (r.unitTypeName || '') + ' ' + r.from + '\u2192' + r.to + ' R' + r.rackRate + (window.AvanteSNExport && AvanteSNExport.weekText(r) ? ' (' + AvanteSNExport.weekText(r) + ')' : ''); }).join('; ') || '(none)' : JSON.stringify(v).slice(0, 300);
             var line = document.createElement('div');
             line.style.color = '#5b6b76';
             line.textContent = k + ' was: ' + (v === '' ? '(empty)' : v);
@@ -7266,7 +7266,7 @@
             detailRow('Last updated', fmtPropDate(l.dateUpdated)) +
             detailRow('Coordinates checked with Google', l.coordsVerified === 'Y' ? ('Yes \u2014 ' + (l.coordsVerifiedPlace || '')) : 'No') +
             (l.screenshotsRead ? detailRow('Filled from screenshots', l.screenshotsRead + ' screenshot(s)') : '') +
-            ((l.rateSeasons || []).length ? detailRow('Rates (rack \u2192 SN)', l.rateSeasons.map(function(r){ return r.unitTypeName + ': ' + r.from + ' to ' + r.to + ', R' + r.rackRate + ' \u2192 R' + r.snRate + ', min ' + r.minStay; }).join(' | ')) : '') +
+            ((l.rateSeasons || []).length ? detailRow('Rates (rack \u2192 SN)', l.rateSeasons.map(function(r){ return r.unitTypeName + ': ' + r.from + ' to ' + r.to + ', R' + r.rackRate + ' \u2192 R' + r.snRate + ', min ' + r.minStay + (window.AvanteSNExport && AvanteSNExport.weekText(r) ? ' · ' + AvanteSNExport.weekText(r) : ''); }).join(' | ')) : '') +
             ((l.blockedNights || []).length ? detailRow('Blocked nights', l.blockedNights.length + ' night(s)') : '');
           // A property already on Stock Network (Jean, 2026-10-14): everything
           // Stock Network has is pulled in; what it doesn't have is marked here.

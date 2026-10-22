@@ -34,6 +34,21 @@ const PAY_MODES = ["both", "gateway", "eft"];
 const DEFAULT_AFFILIATE_PASSWORD = "0000"; // same default as auth-api.js
 
 export function slug(name) { return String(name || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""); }
+// Weekend prices (Jean, 2026-10-22). Days 0 = Monday ... 6 = Sunday, the
+// night guests sleep there. Weekend nights must follow each other (as in
+// Stock Network's rates file, sn-export.js).
+export function dayList(v) {
+  const out = [];
+  for (const p of Array.isArray(v) ? v : String(v == null ? "" : v).split(",")) { const n = parseInt(p, 10); if (n >= 0 && n <= 6 && !out.includes(n)) out.push(n); }
+  return out.sort();
+}
+export function daysInARow(days) { return days.length > 0 && (days.length === 7 || days.filter((d) => !days.includes((d + 6) % 7)).length === 1); }
+const dayOfIso = (iso) => (new Date(iso + "T00:00:00Z").getUTCDay() + 6) % 7;
+// The property's own price for a night of a unit (Reservation settings), or 0.
+export function nightPrice(settings, unit, iso) {
+  const s = settings || {}, mid = (s.prices || {})[unit] || 0, we = (s.weekendPrices || {})[unit] || 0;
+  return s.weekendRates && we > 0 && (s.weekendDays || [4, 5]).includes(dayOfIso(iso)) ? we : mid;
+}
 function eachNight(start, end) { const out = []; for (let d = start; d < end; d = addDays(d, 1)) out.push(d); return out; }
 function cleanStr(v, max = 200) { return typeof v === "string" ? v.trim().slice(0, max) : ""; }
 function isHttpsUrl(v) { try { const u = new URL(v); return u.protocol === "https:"; } catch (_) { return false; } }
@@ -901,6 +916,13 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
       prop.bankEnc = bk.accountNumber ? await encryptJSON(bk, encKey) : null;
     }
     if (body.prices && typeof body.prices === "object") { s.prices = {}; for (const u of prop.units) { const v = Number(body.prices[u.name]); if (v > 0) s.prices[u.name] = Math.round(v); } }
+    if (body.weekendPrices && typeof body.weekendPrices === "object") { s.weekendPrices = {}; for (const u of prop.units) { const v = Number(body.weekendPrices[u.name]); if (v > 0) s.weekendPrices[u.name] = Math.round(v); } }
+    if (body.weekendRates !== undefined) s.weekendRates = !!body.weekendRates;
+    if (body.weekendDays !== undefined) {
+      const wd = dayList(body.weekendDays);
+      if (s.weekendRates && !daysInARow(wd)) throw new PAError("Weekend nights must follow each other, e.g. Fri + Sat, or Thu + Fri + Sat.");
+      s.weekendDays = wd.length ? wd : [4, 5];
+    }
     prop.settings = s;
     if (body.channels && typeof body.channels === "object") {
       const ch = prop.channels || {};
@@ -1031,11 +1053,10 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     const s = prop.settings || {};
     if (!s.phone) { ev.status = "needs-settings"; ev.error = "Add a reservations phone number in Reservation settings."; return; }
     const label = CHANNELS[ev.channel];
-    const nights = nightsBetween(ev.start, ev.end);
     try {
       const res = await createOnSN(prop, client, [{ unit: ev.unit, start: ev.start, end: ev.end }], { fullName: label, email: listOf(s.email)[0] || "", cellphone: s.phone }, {
         reference: String(ev.uid).slice(0, 50), notes: label + " booking imported by the Avante hub" + (ev.summary ? " · " + ev.summary : ""),
-        amountFor: (it, stock) => (s.prices && s.prices[ev.unit] ? s.prices[ev.unit] * nights : stock.availability.rates.rate),
+        amountFor: (it, stock) => (s.prices && s.prices[ev.unit] ? eachNight(ev.start, ev.end).reduce((t, d) => t + nightPrice(s, ev.unit, d), 0) : stock.availability.rates.rate),
       });
       // No payment on Stock Network for channel bookings: Booked straight away, so SN's request rule can't cancel them.
       const st = await holdBooked(client, res, label + " booking (paid on the channel)");
@@ -1643,7 +1664,8 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     for (const b of (await store.list({ prefix: "fsphoto:" + prop.siteId + ":" })).blobs) if (!fsExtraKey(prop, b.key)) photos.push("/api/stay?photo=" + encodeURIComponent(b.key.slice(8)));
     const k = s.guestKey ? "/" + s.guestKey : "";
     return { settings: Object.assign({}, s, { guestKey: undefined }), url: baseUrl + "/stay/" + s.slug, guestUrl: baseUrl + "/stay/" + s.slug + "/guest" + k, cardUrl: baseUrl + "/stay/" + s.slug + "/card" + k,
-      stats, units: prop.units.map((u) => ({ name: u.name, size: u.size, price: ((prop.settings || {}).prices || {})[u.name] || 0 })), uploadedPhotos: photos,
+      stats, units: prop.units.map((u) => ({ name: u.name, size: u.size, price: ((prop.settings || {}).prices || {})[u.name] || 0,
+        weekendPrice: (prop.settings || {}).weekendRates ? (((prop.settings || {}).weekendPrices || {})[u.name] || 0) : 0 })), uploadedPhotos: photos,
       propertyEmail: (prop.settings && prop.settings.email) || "", propertyPhone: (prop.settings && prop.settings.phone) || "" };
   }
   // Own photos (JPG/PNG/WebP, max 4 MB), served by /api/stay?photo=<siteId>:<id>.
@@ -1699,7 +1721,8 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
       showActivities: s.showActivities, showOffers: s.showOffers, nearbyKm: s.nearbyKm || 30, minStay: minStayOf(prop), firstBookable: fsFirstNight(prop),
       contact: { phone: s.phone || st.phone || "", whatsapp: waNumber(s.whatsapp || s.phone || st.phone || ""), email: s.email || st.email || "" },
       units: fsUnits(prop).map((u) => { const x = (s.unitInfo || {})[u.name] || {}, pr = s.showPrices && st.prices && st.prices[u.name] > 0 ? st.prices[u.name] : 0;
-        return { name: u.name, size: u.size || "", photo: x.photo || "", beds: x.beds || "", blurb: x.blurb || "", price: pr }; }),
+        const wp = pr && st.weekendRates && st.weekendPrices && st.weekendPrices[u.name] > 0 ? st.weekendPrices[u.name] : 0;
+        return { name: u.name, size: u.size || "", photo: x.photo || "", beds: x.beds || "", blurb: x.blurb || "", price: pr, weekendPrice: wp, weekendDays: wp ? (st.weekendDays || [4, 5]) : undefined }; }),
       payMode: payMode(prop), approveGuests: !prop.channel && !!(prop.settings && prop.settings.approveGuests),
       headline: s.headline || "", highlights: s.highlights || [], priceFrom: fsPriceFrom(prop, s),
       rating: s.ratingValue ? { value: s.ratingValue, count: s.ratingCount || "", link: s.ratingLink || "" } : null,

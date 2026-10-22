@@ -331,7 +331,7 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
       (d.moreInfo ? '<h3 style="margin:18px 0 6px;font-size:17px">Good to know</h3><div class="text">' + esc(d.moreInfo) + '</div>' : '') + '</section>';
     if (d.units.length) h += '<section class="sec" id="units"><h2>Where you\'ll stay</h2><div class="units">' + d.units.map(function (u, i) {
       var img = safeUrl(u.photo) || ph[(i + 1) % Math.max(1, ph.length)] || '';
-      return '<article class="ucard"><div class="im" style="' + (img ? 'background-image:url(\'' + esc(img) + '\')' + bgPos(img) : '') + '">' + (u.price ? '<span class="pr">From ' + money(u.price) + ' a night</span>' : '') + '</div>' +
+      return '<article class="ucard"><div class="im" style="' + (img ? 'background-image:url(\'' + esc(img) + '\')' + bgPos(img) : '') + '">' + (u.price ? '<span class="pr">From ' + money(u.price) + ' a night' + (u.weekendPrice ? '<br><small>Weekends ' + money(u.weekendPrice) + '</small>' : '') + '</span>' : '') + '</div>' +
         '<div class="bd"><b>' + esc(u.name) + '</b>' + ((u.size || u.beds) ? '<span class="meta">' + esc([u.size, u.beds].filter(Boolean).join(' · ')) + '</span>' : '') +
         (u.blurb ? '<span style="font-size:14.5px">' + esc(u.blurb) + '</span>' : '') + '<button type="button" class="btn t sm" data-act="toBook">Check dates</button></div></article>'; }).join('') + '</div></section>';
     if (d.showOffers) h += offersHtml();

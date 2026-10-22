@@ -212,7 +212,7 @@ async function buildListingFromSn(pr, row, opts = {}) {
   const units = snUnits.length
     ? snUnits.map((u) => ({ name: u.name, numUnits: "1", maxOccupancy: u.maxGuests ? String(u.maxGuests) : "", description: u.description || u.roomType || "" }))
     : (pr.units || []).map((u) => ({ name: u.name, numUnits: "1", maxOccupancy: u.size ? String(u.size) : "",
-        description: st.prices && st.prices[u.name] ? "Hub price: R" + st.prices[u.name] + " a night" : "" }));
+        description: st.prices && st.prices[u.name] ? "Hub price: R" + st.prices[u.name] + " a night" + (st.weekendRates && st.weekendPrices && st.weekendPrices[u.name] ? ", weekends R" + st.weekendPrices[u.name] : "") : "" }));
   const now = new Date().toISOString();
   const listingId = genListingId();
   const record = Object.assign({ listingId, status: opts.status || "Listed", dateSubmitted: now, dateUpdated: now }, submittedFields({
@@ -326,7 +326,28 @@ function sanitizeRateSeasons(input) {
     minStay: clean(String((r && r.minStay) || ""), 4),
     rackRate: clean(String((r && r.rackRate) || ""), 12),
     snRate: clean(String((r && r.snRate) || ""), 12),
+    // Midweek / weekend periods (Jean, 2026-10-22): slot is "Midweek", "Weekend"
+    // or empty; the weekly pattern it came from is kept so the form can show it
+    // again. Days 0 = Monday ... 6 = Sunday.
+    slot: ["Midweek", "Weekend"].includes(r && r.slot) ? r.slot : "",
+    midweekRackRate: clean(String((r && r.midweekRackRate) || ""), 12),
+    midweekMinStay: clean(String((r && r.midweekMinStay) || ""), 4),
+    weekendRackRate: clean(String((r && r.weekendRackRate) || ""), 12),
+    weekendMinStay: clean(String((r && r.weekendMinStay) || ""), 4),
+    weekendDays: dayListText(r && r.weekendDays),
+    closedDays: dayListText(r && r.closedDays),
   }));
+}
+
+// "4,5" — days of the week (0 = Monday ... 6 = Sunday), each once, in order.
+function dayListText(v) {
+  const out = [];
+  for (const p of String(v == null ? "" : v).split(",")) { const n = parseInt(p, 10); if (n >= 0 && n <= 6 && !out.includes(n)) out.push(n); }
+  return out.sort().join(",");
+}
+function sanitizeWeekPattern(w) {
+  if (!w || typeof w !== "object") return { weekendRates: "N", weekendDays: "4,5", closedDays: "" };
+  return { weekendRates: w.weekendRates === "Y" ? "Y" : "N", weekendDays: dayListText(w.weekendDays), closedDays: dayListText(w.closedDays) };
 }
 
 function sanitizeDateList(input) {
@@ -382,6 +403,7 @@ function submittedFields(body) {
     screenshotsRead: clean(String(body.screenshotsRead || ""), 4),
     icalLink: clean(body.icalLink, 600),
     rateSeasons: sanitizeRateSeasons(body.rateSeasons),
+    weekPattern: sanitizeWeekPattern(body.weekPattern),
     blockedNights: sanitizeDateList(body.blockedNights),
     commissionPct: clean(String(body.commissionPct || ""), 8),
 

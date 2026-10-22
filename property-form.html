@@ -129,6 +129,13 @@
   .cal .d.u{ border:1.5px dashed #d3dde0; }
   .cal .d.r{ background:#e8ebf6; } .cal .d.r small.rk{ color:var(--indigo); font-weight:700; }
   .cal .d.b{ background:var(--red-soft); color:var(--red); } .cal .d.b span{ text-decoration:line-through; }
+  .cal .d.w{ background:#dff7f5; } .cal .d.w small.rk{ color:var(--teal-dark); font-weight:700; }
+  .cal .d.cl{ background:#eef1f3; color:#8a97a0; } .cal .d.cl span{ text-decoration:line-through; }
+  .daychips .chip{ padding:5px 11px; font-size:13px; }
+  .selbar .selweek{ flex-basis:100%; display:flex; flex-direction:column; gap:6px; }
+  .selbar .selweek > div, .selbar .selblock{ display:flex; flex-wrap:wrap; gap:6px 8px; align-items:center; }
+  .selbar select{ padding:5px 8px; width:auto; }
+  @media (max-width:700px){ .selbar{ position:static; } }
   .cal .d.x{ background:transparent; color:#c3ccd0; cursor:default; }
   .cal .d.sel{ border:2px solid var(--orange); background:var(--orange-soft); }
   .selbar{ position:sticky; top:62px; z-index:10; background:#fff; border:1.5px solid var(--orange); border-radius:10px; padding:10px 12px; margin-top:12px; display:flex; flex-wrap:wrap; gap:8px 16px; align-items:center; font-size:13px; }
@@ -137,6 +144,7 @@
   .legend{ display:flex; flex-wrap:wrap; gap:14px; font-size:12px; color:var(--muted); margin-top:8px; }
   .legend span::before{ content:""; display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:5px; vertical-align:-1px; background:#e8ebf6; }
   .legend span.u::before{ background:#fff; border:1px dashed #9aa; } .legend span.b::before{ background:var(--red-soft); } .legend span.s::before{ background:var(--orange-soft); border:1.5px solid var(--orange); } .legend span.p::before{ background:#eef1f3; } .cal .d.past{ background:#eef1f3; color:#9aa6ad; cursor:default; } .cal .d.past small.rk{ color:#8a97a0; } tr.past td{ color:#9aa6ad; }
+  .legend span.w::before{ background:#dff7f5; } .legend span.cl::before{ background:#eef1f3; }
   .legend span.c::before{ background:none; content:"R"; color:var(--red); font-weight:700; width:auto; height:auto; }
   .scroll{ overflow-x:auto; border:1px solid var(--line); border-radius:10px; margin-top:10px; }
   table{ border-collapse:collapse; width:100%; font-size:13px; }
@@ -461,8 +469,18 @@
   <section class="step" data-step="6" data-title="Calendar &amp; rates">
     <h2 class="step-title">7. Calendar &amp; rates</h2>
     <div class="card rates-note"><p class="note info" style="margin:0"><b>Nothing to fill in here.</b> Your rates and availability come from your channel manager (for example NightsBridge) through Avante, so they stay there. Go on to step 8.</p></div>
-    <p class="step-lede">Tap a first night and a last night, type the <b>rack rate</b> (the public price per night) and minimum stay, and tap <b>Apply rate</b>. Block nights that are already booked. Avante works out the rest for you.</p>
+    <p class="step-lede">Tap a first night and a last night, type the <b>rack rate</b> (the public price per night) and minimum stay, and tap <b>Apply rate</b>. Block nights that are already booked. Weekends cost more, or closed on some nights? Set the <b>Weekly pattern</b> first. Avante works out the rest for you.</p>
     <div data-shots="6"></div>
+    <div class="card" id="weekCard">
+      <h2 class="section-heading">Weekly pattern</h2>
+      <p class="hint">The property's normal week. You can change it for one season when you apply a rate.</p>
+      <label for="wpOn">Different rate for weekends?</label>
+      <select id="wpOn"><option value="N">No, the same rate every night</option><option value="Y">Yes, a weekend rate</option></select>
+      <div id="wpWeekendBox" style="margin-top:10px"><label>Weekend nights</label><div class="chips daychips" id="wpWeekend"></div></div>
+      <label style="margin-top:10px">Closed on</label><div class="chips daychips" id="wpClosed"></div>
+      <p class="hint">A night is the night guests sleep there: Fri = Friday night. Weekend nights must follow each other (e.g. Fri + Sat, or Thu + Fri + Sat). Closed nights are never sold.</p>
+      <div id="wpMsg"></div>
+    </div>
     <div class="card">
       <div class="row">
         <div><label for="calUnit">Unit type</label><select id="calUnit"></select></div>
@@ -472,9 +490,9 @@
       <div class="selbar" id="selBar"></div>
       <div class="btns" style="justify-content:space-between"><button type="button" class="btn-secondary btn-sm" id="calPrev">◀ Earlier</button><b id="calRange" style="font-size:14px"></b><button type="button" class="btn-secondary btn-sm" id="calNext">Later ▶</button></div>
       <div class="months" id="months"></div>
-      <div class="legend"><span>Rate set</span><span class="u">Open, no rate</span><span class="b">Booked / blocked</span><span class="s">Selected</span><span class="c">= price seen on the other channel</span><span class="p">Past (kept on record)</span></div>
+      <div class="legend"><span>Rate set</span><span class="w">Weekend rate</span><span class="cl">Closed</span><span class="u">Open, no rate</span><span class="b">Booked / blocked</span><span class="s">Selected</span><span class="c">= price seen on the other channel</span><span class="p">Past (kept on record)</span></div>
       <h3 class="section-heading" style="margin-top:18px; font-size:15px;">Seasons</h3>
-      <div class="scroll"><table><thead><tr><th>Unit</th><th>From</th><th>To</th><th class="num">Nights</th><th class="num">Min stay</th><th class="num">Rack (R)</th><th class="num">Avante rate (R)</th></tr></thead><tbody id="seasonRows"></tbody></table></div>
+      <div class="scroll"><table><thead><tr><th>Unit</th><th>From</th><th>To</th><th class="num">Nights</th><th class="num">Min stay</th><th class="num">Rack (R)</th><th class="num">Avante rate (R)</th><th>Slot</th><th>Closed</th></tr></thead><tbody id="seasonRows"></tbody></table></div>
       <div id="seasonNote"></div>
     </div>
   </section>
@@ -1216,9 +1234,15 @@
       var r = rs.unitTypeName ? rowFor(rs.unitTypeName) : unitRows()[0];
       var uid = r.getAttribute('data-uid'); RATES[uid] = RATES[uid] || {};
       var rack = Math.round(rs.rackRate), min = Math.max(1, Math.round(rs.minStay || 1));
-      eachDay(rs.from < TODAY ? TODAY : rs.from, rs.to, function(k){ if(overwrite || !RATES[uid][k]) RATES[uid][k] = { rack: rack, min: min }; });
+      // A weekend rate on the sheet (Jean, 2026-10-22): its nights, or the property's weekend nights.
+      var wr = Math.round(+rs.weekendRackRate || 0), wd = wr ? (dayListFromText(rs.weekendNights).length ? dayListFromText(rs.weekendNights) : WEEK.wd) : [];
+      if(wr && !SNX.dayRun(wd)) wd = WEEK.wd;
+      if(wr){ WEEK.on = true; if(wd !== WEEK.wd && !(f.rateSeasons || []).some(function(x){ return x !== rs && x.weekendNights && x.weekendNights !== rs.weekendNights; })) WEEK.wd = wd.slice(); }
+      var night = { rack: rack, min: min, wr: wr, wm: wr ? Math.max(1, Math.round(+rs.weekendMinStay || min)) : 0, wd: wr ? wd.join(',') : '', cd: WEEK.cd.join(',') };
+      eachDay(rs.from < TODAY ? TODAY : rs.from, rs.to, function(k){ if(overwrite || !RATES[uid][k]) RATES[uid][k] = Object.assign({}, night); });
       nSeason++; if(rs.note) notes.push(rs.note);
     });
+    if(nSeason) renderWeekCard();
     if(nSeason) done.push(nSeason + ' rate season' + (nSeason === 1 ? '' : 's') + ' put on the calendar (step 7)' + (notes.length ? ' — ' + notes.slice(0, 3).join('; ') : ''));
     // Amenities: tick the matches.
     var ticked = 0;
@@ -1337,7 +1361,7 @@
   // =====================================================================
   var RATES = {};     // unit uid -> { 'YYYY-MM-DD': { rack, min } }
   var BLOCKED = {};   // 'YYYY-MM-DD' -> true (booked on another channel / blocked)
-  var selA = null, selB = null, lastRack = '', lastMin = 2;
+  var selA = null, selB = null, lastRack = '', lastMin = 2, lastWRack = '', lastWMin = 2;
   var MONTHS_SHOWN = 6, monthOffset = 0, MIN_OFFSET = -12, MAX_OFFSET = 24 - MONTHS_SHOWN; // 12 months back (record) to 24 months ahead
   $('commNote').innerHTML = '<b>Rack rate in, Avante rate out.</b> Avante\'s commission is ' + COMMISSION + '% plus VAT on it (' + COMM_TOTAL + '% in total), so the Avante rate is the rack rate less ' + COMM_TOTAL + '%, rounded to the rand.';
   function calUnit(){ return $('calUnit').value; }
@@ -1345,21 +1369,85 @@
   function selRange(){ if(!selA || !selB) return null; var a = selA < selB ? selA : selB, b = selA < selB ? selB : selA, n = 0; eachDay(a, b, function(){ n++; }); return [a, b, n]; }
   function fmtL(s){ return new Date(s + 'T00:00:00').toLocaleDateString('en-ZA', { day:'numeric', month:'short', year:'numeric' }); }
   function fmtSN(s){ var p = s.split('-'); return p[2] + '/' + p[1] + '/' + p[0]; }
+
+  // ---- Weekly pattern (Jean, 2026-10-22): weekend rates and closed nights ----
+  // Days 0 = Monday ... 6 = Sunday (the night guests sleep there). The rules
+  // for Stock Network's weekend / midweek columns live in sn-export.js.
+  var SNX = window.AvanteSNExport, DAY3 = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  var WEEK = { on: false, wd: [4, 5], cd: [] };   // the property's normal week
+  var SEL_WEEK = null;                              // this selection's own copy
+  // "Fri, Sat" / "Friday and Saturday" / "Thu-Sat" -> [4, 5] (from a rate sheet).
+  function dayListFromText(t){
+    var txt = String(t || '').toLowerCase(), found = [];
+    DAY3.forEach(function(n, i){ if(txt.indexOf(n.toLowerCase()) > -1) found.push(i); });
+    var m = txt.match(/(mon|tue|wed|thu|fri|sat|sun)[a-z]*\s*(?:-|–|to|till|until)\s*(mon|tue|wed|thu|fri|sat|sun)/);
+    if(m){ var a = DAY3.map(function(x){ return x.toLowerCase(); }).indexOf(m[1]), b = DAY3.map(function(x){ return x.toLowerCase(); }).indexOf(m[2]); found = []; for(var d = a; ; d = (d + 1) % 7){ found.push(d); if(d === b || found.length > 7) break; } }
+    return SNX.dayList(found);
+  }
+  function copyWeek(w){ return { on: w.on, wd: w.wd.slice(), cd: w.cd.slice() }; }
+  function dayNames(l){ return l.map(function(d){ return DAY3[d]; }).join(', '); }
+  function dayChips(list, attr, off){ return DAY3.map(function(n, i){ var dis = off && off.indexOf(i) > -1; return '<button type="button" class="chip' + (list.indexOf(i) > -1 ? ' on' : '') + '" ' + attr + '="' + i + '"' + (dis ? ' disabled title="Closed"' : '') + ' aria-pressed="' + (list.indexOf(i) > -1) + '">' + n + '</button>'; }).join(''); }
+  // Tapping a day: weekend nights must stay in a row; a closed night can't be a weekend night.
+  function toggleDay(w, kind, d){
+    if(kind === 'wd'){
+      var n = w.wd.indexOf(d) > -1 ? w.wd.filter(function(x){ return x !== d; }) : w.wd.concat([d]);
+      if(n.length && !SNX.dayRun(n)) return 'Weekend nights must follow each other, e.g. Fri + Sat, or Thu + Fri + Sat.';
+      w.wd = SNX.dayList(n);
+    } else {
+      w.cd = SNX.dayList(w.cd.indexOf(d) > -1 ? w.cd.filter(function(x){ return x !== d; }) : w.cd.concat([d]));
+      if(w.cd.length === 7) { w.cd = w.cd.filter(function(x){ return x !== d; }); return 'The property can\'t be closed every night.'; }
+      var keep = w.wd.filter(function(x){ return w.cd.indexOf(x) < 0; });
+      if(keep.length && !SNX.dayRun(keep)) return 'That would split the weekend. Untick the weekend night first.';
+      w.wd = keep;
+    }
+    return '';
+  }
+  function renderWeekCard(msg){
+    $('wpOn').value = WEEK.on ? 'Y' : 'N';
+    $('wpWeekendBox').style.display = WEEK.on ? '' : 'none';
+    $('wpWeekend').innerHTML = dayChips(WEEK.wd, 'data-wd', WEEK.cd);
+    $('wpClosed').innerHTML = dayChips(WEEK.cd, 'data-cd');
+    $('wpMsg').innerHTML = msg ? '<p class="note warn">' + esc(msg) + '</p>' : (WEEK.on && !WEEK.wd.length ? '<p class="note warn">Tap the weekend nights.</p>' : '');
+  }
+  $('wpOn').addEventListener('change', function(){ WEEK.on = this.value === 'Y'; if(SEL_WEEK) SEL_WEEK.on = WEEK.on; renderWeekCard(); renderCalendar(); });
+  $('weekCard').addEventListener('click', function(e){
+    var b = e.target.closest('[data-wd],[data-cd]'); if(!b) return;
+    var kind = b.hasAttribute('data-wd') ? 'wd' : 'cd';
+    var msg = toggleDay(WEEK, kind, +b.getAttribute('data-' + kind));
+    if(!msg && selB) SEL_WEEK = copyWeek(WEEK);
+    renderWeekCard(msg); renderCalendar();
+  });
+  // A night on the calendar: { rack, min } plus, with a weekly pattern,
+  // wr / wm (weekend rack rate and min stay), wd (weekend nights "4,5") and cd (closed nights "0").
+  function nightInfo(r, k){
+    if(!r) return null;
+    var d = SNX.dayOf(k), closed = !!r.cd && SNX.dayList(r.cd).indexOf(d) > -1, we = !closed && !!r.wr && SNX.dayList(r.wd).indexOf(d) > -1;
+    return { closed: closed, weekend: we, price: we ? r.wr : r.rack, min: we ? (r.wm || r.min) : r.min };
+  }
+
   function renderCalendar(){
     var rows = unitRows();
     var prev = calUnit();
     $('calUnit').innerHTML = rows.map(function(r, i){ var uid = r.getAttribute('data-uid'); return '<option value="' + uid + '"' + (uid === prev ? ' selected' : '') + '>' + esc(unitName(r, i)) + '</option>'; }).join('');
     var uid = calUnit(); RATES[uid] = RATES[uid] || {};
-    var sel = selRange();
+    var sel = selRange(), W = SEL_WEEK || WEEK;
     var chIn = 0; if(sel) eachDay(sel[0], sel[1], function(k){ if(CHANNEL_PRICES[k]) chIn++; });
+    var netTxt = function(v){ return +v ? 'Avante rate R' + netRate(+v).toLocaleString('en-ZA') : ''; };
     $('selBar').innerHTML = sel
       ? '<span><b>' + fmtL(sel[0]) + ' – ' + fmtL(sel[1]) + '</b> · ' + sel[2] + ' night' + (sel[2] === 1 ? '' : 's') + '</span>' +
-        '<label>Rack rate (R) <input id="selRack" type="number" inputmode="numeric" value="' + esc(lastRack) + '"></label>' +
+        '<label>' + (W.on ? 'Midweek rate (R)' : 'Rack rate (R)') + ' <input id="selRack" type="number" inputmode="numeric" value="' + esc(lastRack) + '"></label>' +
         '<label>Min stay <input id="selMin" type="number" inputmode="numeric" style="width:70px" value="' + esc(lastMin) + '"></label>' +
-        '<span id="selNet" style="font-weight:700;color:var(--indigo)">' + (lastRack ? 'Avante rate R' + netRate(+lastRack).toLocaleString('en-ZA') : '') + '</span>' +
+        '<span id="selNet" style="font-weight:700;color:var(--indigo)">' + netTxt(lastRack) + '</span>' +
+        (W.on ? '<label>Weekend rate (R) <input id="selWRack" type="number" inputmode="numeric" value="' + esc(lastWRack) + '"></label>' +
+          '<label>Min stay <input id="selWMin" type="number" inputmode="numeric" style="width:70px" value="' + esc(lastWMin) + '"></label>' +
+          '<span id="selWNet" style="font-weight:700;color:var(--teal-dark)">' + netTxt(lastWRack) + '</span>' : '') +
+        '<div class="selweek">' + (W.on ? '<div><span>Weekend nights for these dates:</span><span class="chips daychips">' + dayChips(W.wd, 'data-swd', W.cd) + '</span></div>' : '') +
+          '<div><span>Closed on:</span><span class="chips daychips">' + dayChips(W.cd, 'data-scd') + '</span></div></div>' +
         '<span class="btns" style="margin:0"><button type="button" class="btn-navy btn-sm" data-cal="apply">Apply rate</button>' +
         (chIn ? '<button type="button" class="btn-orange btn-sm" data-cal="usech">Use ' + esc(channel || 'channel') + ' price (' + chIn + ' nights)</button>' : '') +
-        '<button type="button" class="btn-secondary btn-sm" data-cal="clear">Clear rate</button><button type="button" class="btn-secondary btn-sm" data-cal="block">Block</button><button type="button" class="btn-secondary btn-sm" data-cal="open">Open</button><button type="button" class="btn-secondary btn-sm" data-cal="cancel">Cancel</button></span>'
+        '<button type="button" class="btn-secondary btn-sm" data-cal="clear">Clear rate</button><button type="button" class="btn-secondary btn-sm" data-cal="block">Block</button><button type="button" class="btn-secondary btn-sm" data-cal="open">Open</button><button type="button" class="btn-secondary btn-sm" data-cal="cancel">Cancel</button></span>' +
+        '<span class="selblock"><label for="selDow">Block every</label><select id="selDow">' + SNX.DAY_NAMES.map(function(n, i){ return '<option value="' + i + '">' + n + '</option>'; }).join('') + '</select><span>in these dates</span><button type="button" class="btn-secondary btn-sm" data-cal="blockdow">Block weekday</button></span>' +
+        '<div id="selMsg" style="flex-basis:100%"></div>'
       : '<span>' + (selA ? '<b>Start ' + fmtL(selA) + '.</b> Now tap the last night.' : 'Tap the first night of a season, or of nights to block.') + '</span>';
     var html = '', start = new Date(); start.setDate(1); start.setMonth(start.getMonth() + monthOffset);
     var last = new Date(start.getFullYear(), start.getMonth() + MONTHS_SHOWN - 1, 1);
@@ -1370,46 +1458,65 @@
       html += '<div class="month"><h4>' + first.toLocaleDateString('en-ZA', { month:'long', year:'numeric' }) + '</h4><div class="cal">' + ['M','T','W','T','F','S','S'].map(function(d){ return '<div class="h">' + d + '</div>'; }).join('');
       for(var i = 0; i < off; i++) html += '<div></div>';
       for(var d = 1; d <= days; d++){
-        var k = isoLocal(new Date(first.getFullYear(), first.getMonth(), d)), r = RATES[uid][k], b = BLOCKED[k], past = k < TODAY;
+        var k = isoLocal(new Date(first.getFullYear(), first.getMonth(), d)), r = RATES[uid][k], ni = nightInfo(r, k), b = BLOCKED[k], past = k < TODAY;
         var insel = sel ? (k >= sel[0] && k <= sel[1]) : k === selA;
-        html += '<button type="button" class="d ' + (past ? (r ? 'past' : 'x') : b ? 'b' : r ? 'r' : 'u') + (insel ? ' sel' : '') + '"' + (past ? ' disabled' : ' data-day="' + k + '"') + ' title="' + (past && r ? 'Past: R' + r.rack + ' (kept on record)' : '') + '"><span>' + d + '</span><small class="rk">' + (b && !past ? '—' : r ? r.rack : '') + '</small>' + (CHANNEL_PRICES[k] && !b && !past ? '<small class="ch">' + CHANNEL_PRICES[k] + '</small>' : '') + '</button>';
+        var cls = past ? (r ? 'past' : 'x') : b ? 'b' : ni && ni.closed ? 'cl' : ni && ni.weekend ? 'r w' : r ? 'r' : 'u';
+        var label = b && !past ? '—' : ni && ni.closed ? 'closed' : r ? ni.price : '';
+        var tip = past && r ? 'Past: R' + ni.price + ' (kept on record)' : ni && !b ? (ni.closed ? 'Closed' : (ni.weekend ? 'Weekend: ' : '') + 'R' + ni.price + ', min ' + ni.min) : '';
+        html += '<button type="button" class="d ' + cls + (insel ? ' sel' : '') + '"' + (past ? ' disabled' : ' data-day="' + k + '"') + ' title="' + esc(tip) + '"><span>' + d + '</span><small class="rk">' + label + '</small>' + (CHANNEL_PRICES[k] && !b && !past ? '<small class="ch">' + CHANNEL_PRICES[k] + '</small>' : '') + '</button>';
       }
       html += '</div></div>';
     }
     $('months').innerHTML = html;
     renderSeasons();
   }
-  $('calUnit').addEventListener('change', function(){ selA = selB = null; renderCalendar(); });
+  $('calUnit').addEventListener('change', function(){ selA = selB = null; SEL_WEEK = null; renderCalendar(); });
   $('calPrev').addEventListener('click', function(){ monthOffset = Math.max(MIN_OFFSET, monthOffset - 3); renderCalendar(); });
   $('calNext').addEventListener('click', function(){ monthOffset = Math.min(MAX_OFFSET, monthOffset + 3); renderCalendar(); });
   $('months').addEventListener('click', function(e){
     var b = e.target.closest('[data-day]'); if(!b) return;
     var k = b.getAttribute('data-day');
-    if(!selA || selB){ selA = k; selB = null; } else selB = k;
+    if(!selA || selB){ selA = k; selB = null; SEL_WEEK = null; } else { selB = k; SEL_WEEK = copyWeek(WEEK); }
     renderCalendar();
   });
   $('selBar').addEventListener('input', function(e){
     if(e.target.id === 'selRack'){ lastRack = e.target.value; $('selNet').textContent = +lastRack ? 'Avante rate R' + netRate(+lastRack).toLocaleString('en-ZA') : ''; }
     if(e.target.id === 'selMin') lastMin = e.target.value;
+    if(e.target.id === 'selWRack'){ lastWRack = e.target.value; $('selWNet').textContent = +lastWRack ? 'Avante rate R' + netRate(+lastWRack).toLocaleString('en-ZA') : ''; }
+    if(e.target.id === 'selWMin') lastWMin = e.target.value;
   });
   $('selBar').addEventListener('click', function(e){
+    var chip = e.target.closest('[data-swd],[data-scd]');
+    if(chip){
+      var kind = chip.hasAttribute('data-swd') ? 'wd' : 'cd', msg = toggleDay(SEL_WEEK, kind, +chip.getAttribute(kind === 'wd' ? 'data-swd' : 'data-scd'));
+      renderCalendar(); if(msg) $('selMsg').innerHTML = '<p class="note warn" style="margin:0">' + esc(msg) + '</p>';
+      return;
+    }
     var b = e.target.closest('[data-cal]'); if(!b) return;
-    var act = b.getAttribute('data-cal'), sel = selRange(), uid = calUnit(), R = RATES[uid];
+    var act = b.getAttribute('data-cal'), sel = selRange(), uid = calUnit(), R = RATES[uid], W = SEL_WEEK || WEEK;
     if(act === 'apply'){
       var rack = +$('selRack').value, min = +$('selMin').value || 1;
       if(!rack){ $('selRack').focus(); return; }
-      lastRack = rack; lastMin = min;
-      eachDay(sel[0], sel[1], function(k){ R[k] = { rack: rack, min: min }; });
+      var wr = W.on && W.wd.length ? +($('selWRack') || {}).value : 0, wm = W.on ? (+($('selWMin') || {}).value || min) : 0;
+      if(W.on && W.wd.length && !wr){ $('selWRack').focus(); return; }
+      lastRack = rack; lastMin = min; if(wr){ lastWRack = wr; lastWMin = wm; }
+      var night = { rack: rack, min: min, wr: wr || 0, wm: wr ? wm : 0, wd: wr ? W.wd.join(',') : '', cd: W.cd.join(',') };
+      eachDay(sel[0], sel[1], function(k){ R[k] = Object.assign({}, night); });
     }
     if(act === 'usech'){ var mn = +$('selMin').value || 1; lastMin = mn; eachDay(sel[0], sel[1], function(k){ if(CHANNEL_PRICES[k]) R[k] = { rack: CHANNEL_PRICES[k], min: mn }; }); }
     if(act === 'clear') eachDay(sel[0], sel[1], function(k){ delete R[k]; });
     if(act === 'block') eachDay(sel[0], sel[1], function(k){ BLOCKED[k] = true; });
+    if(act === 'blockdow'){ var dow = +$('selDow').value; eachDay(sel[0], sel[1], function(k){ if(SNX.dayOf(k) === dow) BLOCKED[k] = true; }); }
     if(act === 'open') eachDay(sel[0], sel[1], function(k){ delete BLOCKED[k]; });
-    selA = selB = null;
+    selA = selB = null; SEL_WEEK = null;
     renderCalendar();
   });
-  // Each run of open nights with the same rack rate and minimum stay is
-  // one season (one Stock Network row). A blocked night splits a season.
+  // The rate periods (one Stock Network row each). Jean, 2026-10-22: with a
+  // weekend rate, the season is cut at every change between midweek and
+  // weekend nights, so each midweek slot and each weekend slot is its own
+  // period with its own rate and minimum stay. Without one, a run of nights
+  // with the same rate is one period. Blocked and closed nights are never in
+  // a period.
   function seasons(){
     var out = [];
     unitRows().forEach(function(row, idx){
@@ -1418,21 +1525,32 @@
       if(!keys.length) return;
       var cur = null;
       eachDay(keys[0], keys[keys.length - 1], function(k){
-        var r = R[k], ok = r && (!BLOCKED[k] || k < TODAY);
-        if(ok && cur && cur.rack === r.rack && cur.min === r.min){ cur.to = k; cur.nights++; }
-        else { if(cur) out.push(cur); cur = ok ? { row: row, unitTypeName: unitName(row, idx), from: k, to: k, nights: 1, rack: r.rack, min: r.min } : null; }
+        var r = R[k], ni = nightInfo(r, k), ok = r && !ni.closed && (!BLOCKED[k] || k < TODAY);
+        var slot = ok && r.wr && SNX.dayList(r.wd).length ? (ni.weekend ? 'Weekend' : 'Midweek') : '';
+        var key = ok ? [ni.price, ni.min, slot, r.rack, r.min, r.wr || 0, r.wm || 0, r.wd || '', r.cd || ''].join('|') : '';
+        if(ok && cur && cur.key === key){ cur.to = k; cur.nights++; }
+        else { if(cur) out.push(cur); cur = ok ? { key: key, row: row, unitTypeName: unitName(row, idx), from: k, to: k, nights: 1, rack: ni.price, min: ni.min, slot: slot, r: r } : null; }
       });
       if(cur) out.push(cur);
     });
     return out;
   }
+  // A period as it is saved on the listing (and given to sn-export.js). The
+  // weekly pattern it came from is kept too, so the form can show it again.
+  function seasonOut(s){
+    var r = s.r, o = { unitTypeName: s.unitTypeName, from: s.from, to: s.to, nights: s.nights, minStay: s.min, rackRate: s.rack, snRate: netRate(s.rack), slot: s.slot, closedDays: r.cd || '' };
+    if(s.slot) Object.assign(o, { midweekRackRate: r.rack, midweekMinStay: r.min, weekendRackRate: r.wr, weekendMinStay: r.wm || r.min, weekendDays: r.wd });
+    return o;
+  }
   function renderSeasons(){
     var s = seasons();
-    $('seasonRows').innerHTML = s.length ? s.map(function(x){ return '<tr' + (x.to < TODAY ? ' class="past" title="Past — kept on record"' : '') + '><td>' + esc(x.unitTypeName) + (x.to < TODAY ? ' (past)' : '') + '</td><td>' + fmtL(x.from) + '</td><td>' + fmtL(x.to) + '</td><td class="num">' + x.nights + '</td><td class="num">' + x.min + '</td><td class="num">' + x.rack.toLocaleString('en-ZA') + '</td><td class="num"><b>' + netRate(x.rack).toLocaleString('en-ZA') + '</b></td></tr>'; }).join('')
-      : '<tr><td colspan="7" class="hint">No rates set yet.</td></tr>';
+    $('seasonRows').innerHTML = s.length ? s.map(function(x){ return '<tr' + (x.to < TODAY ? ' class="past" title="Past — kept on record"' : '') + '><td>' + esc(x.unitTypeName) + (x.to < TODAY ? ' (past)' : '') + '</td><td>' + fmtL(x.from) + '</td><td>' + fmtL(x.to) + '</td><td class="num">' + x.nights + '</td><td class="num">' + x.min + '</td><td class="num">' + x.rack.toLocaleString('en-ZA') + '</td><td class="num"><b>' + netRate(x.rack).toLocaleString('en-ZA') + '</b></td>' +
+      '<td>' + esc(x.slot) + '</td><td>' + esc(dayNames(SNX.dayList(x.r.cd))) + '</td></tr>'; }).join('')
+      : '<tr><td colspan="9" class="hint">No rates set yet.</td></tr>';
     var nCh = Object.keys(CHANNEL_PRICES).length;
     $('seasonNote').innerHTML = nCh ? '<p class="note warn">' + nCh + ' night' + (nCh === 1 ? '' : 's') + ' show the price seen on ' + esc(channel || 'the other channel') + ' in red. That price may include the channel\'s own fees — set the rack rate the property actually wants.</p>' : '';
   }
+  renderWeekCard();
 
   // =====================================================================
   // GOOGLE PHOTOS
@@ -1616,7 +1734,8 @@
       allowSameDayBooking: $('sameDay').checked ? 'Y' : 'N',
       icalLink: $('icalLink').value.trim(),
       commissionPct: String(COMM_TOTAL),
-      rateSeasons: seasons().map(function(s){ return { unitTypeName: s.unitTypeName, from: s.from, to: s.to, nights: s.nights, minStay: s.min, rackRate: s.rack, snRate: netRate(s.rack) }; }),
+      rateSeasons: seasons().map(seasonOut),
+      weekPattern: { weekendRates: WEEK.on ? 'Y' : 'N', weekendDays: WEEK.wd.join(','), closedDays: WEEK.cd.join(',') },
       blockedNights: Object.keys(BLOCKED).sort().slice(-800),
       unitTypes: unitTypes,
       amenities: amenities,
@@ -1797,8 +1916,13 @@
       if(!/^\d{4}-\d{2}-\d{2}$/.test(rs.from || '') || !/^\d{4}-\d{2}-\d{2}$/.test(rs.to || '')) return;
       var row = unitRows().filter(function(r, i){ return unitName(r, i) === rs.unitTypeName; })[0] || unitRows()[0];
       var uid = row.getAttribute('data-uid'); RATES[uid] = RATES[uid] || {};
-      eachDay(rs.from, rs.to, function(k){ RATES[uid][k] = { rack: +rs.rackRate, min: +rs.minStay || 1 }; });
+      var wr = +rs.weekendRackRate || 0, night = { rack: +(wr ? rs.midweekRackRate || rs.rackRate : rs.rackRate), min: +(wr ? rs.midweekMinStay || rs.minStay : rs.minStay) || 1, wr: wr, wm: wr ? (+rs.weekendMinStay || +rs.minStay || 1) : 0,
+        wd: wr ? SNX.dayList(rs.weekendDays).join(',') : '', cd: SNX.dayList(rs.closedDays).join(',') };
+      eachDay(rs.from, rs.to, function(k){ RATES[uid][k] = Object.assign({}, night); });
     });
+    var wp = L.weekPattern || {};
+    WEEK = { on: wp.weekendRates === 'Y', wd: wp.weekendDays !== undefined ? SNX.dayList(wp.weekendDays) : [4, 5], cd: SNX.dayList(wp.closedDays) };
+    renderWeekCard();
     BLOCKED = {}; (L.blockedNights || []).forEach(function(k){ BLOCKED[k] = true; });
     RATES_FROM_CHANNEL = L.ratesFromChannel === 'Y';
     EXISTING_ON_SN = L.existingOnSN === 'Y';

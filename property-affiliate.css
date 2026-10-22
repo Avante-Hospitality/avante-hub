@@ -316,3 +316,6 @@ button.pa-block:hover, button.pa-block:focus-visible{ outline:2px solid var(--te
 .fs-oprow .grow{ flex:1 1 180px; min-width:0; }
 .fs-optag{ flex:none; font:700 11.5px 'Montserrat',sans-serif; padding:3px 8px; border-radius:999px; background:#fff; border:1.5px solid var(--line,#e3e9e8); color:var(--pa-ink); }
 .fs-swap{ flex:1 1 100%; margin-top:4px; }
+/* Weekend prices in Reservation settings (2026-10-22) */
+.pa-prices.pa-we-off .pa-we-only{ display:none; }
+.pa-chipbtn[aria-pressed="true"]{ background:#0e2f44; border-color:#0e2f44; color:#fff; }
