@@ -2,9 +2,8 @@
 // go.avantetravel.co.za/l/<name>[?a=<affiliate id>]
 //
 // Shows the hook's pages 2+ (published from the hook builder, see
-// landing-api.js) with everything clickable: each property's Book button,
-// the pages' own Book now / phone / email spots, and a WhatsApp button to
-// Avante. Bookings go out under the affiliate whose link it is (?a=), else
+// landing-api.js) with the pages' phone / email spots clickable, and one
+// Book now plus a WhatsApp button to Avante at the bottom of the screen. Bookings go out under the affiliate whose link it is (?a=), else
 // whoever published the page, else Avante — so the right person is credited.
 // Once the offer's end date has passed, or if the page doesn't exist, the
 // visitor goes straight to that affiliate's storefront.
@@ -61,13 +60,12 @@ function page(rec, agent, origin, ownBook, propTree) {
       const pct = (v, of) => ((v / of) * 100).toFixed(3) + "%";
       return `<a class="spot" href="${esc(href)}" ${/^https?:/i.test(href) ? 'target="_blank" rel="noopener"' : ""} aria-label="${esc(a.label || "Open")}" style="left:${pct(a.x, p.w)};top:${pct(a.y, p.h)};width:${pct(a.w, p.w)};height:${pct(a.h, p.h)}"></a>`;
     }).join("");
-    // One "Book now" under every page (Jean, 2026-10-08): StockNetwork with
-    // everything available for the hook's dates (a property hook: that property).
-    const props = `<div class="props"><a class="book" href="${esc(allBook)}" target="_blank" rel="noopener">Book now<span>›</span></a></div>`;
-    return `<section class="pg" style="--ar:${(p.w / p.h).toFixed(4)}"><div class="pgimg"><img src="${esc(img(p.img))}" width="${p.w}" height="${p.h}" alt="${esc(c.title)} — page ${i + 2}" loading="lazy">${spots}</div>${props}</section>`;
+    // No Book now under each page (Jean, 2026-10-22): there's one, next to
+    // WhatsApp at the bottom of the screen.
+    return `<section class="pg" style="--ar:${(p.w / p.h).toFixed(4)}"><div class="pgimg"><img src="${esc(img(p.img))}" width="${p.w}" height="${p.h}" alt="${esc(c.title)} — page ${i + 2}" loading="lazy">${spots}</div></section>`;
   }).join("");
-  // Page 1 (the hook itself, as seen on Facebook) comes first, also with Book now.
-  const coverHtml = c.cover ? `<section class="pg" style="--ar:${c.coverW && c.coverH ? (c.coverW / c.coverH).toFixed(4) : "0.8"}"><div class="pgimg"><img src="${esc(img(c.cover))}" alt="${esc(c.title)} — page 1" loading="eager"></div><div class="props"><a class="book" href="${esc(allBook)}" target="_blank" rel="noopener">Book now<span>›</span></a></div></section>` : "";
+  // Page 1 (the hook itself, as seen on Facebook) comes first.
+  const coverHtml = c.cover ? `<section class="pg" style="--ar:${c.coverW && c.coverH ? (c.coverW / c.coverH).toFixed(4) : "0.8"}"><div class="pgimg"><img src="${esc(img(c.cover))}" alt="${esc(c.title)} — page 1" loading="eager"></div></section>` : "";
   const title = c.title || "Avante Travel";
   // Faded photos of the area down both sides on a computer (Jean, 2026-10-08):
   // the hook's own photos, slowly changing. Phones don't show them.
@@ -98,11 +96,6 @@ main{max-width:760px;margin:0 auto;padding:10px 16px 120px}
 @media (min-width:700px){html{scroll-snap-type:y proximity}main{max-width:1100px}
 .pg{width:min(100%,calc((100vh - 270px) * var(--ar,0.8)));min-width:320px;scroll-snap-align:start;scroll-margin-top:72px}}.pgimg{position:relative;border-radius:14px;overflow:hidden;box-shadow:0 6px 22px rgba(14,47,68,.14);background:#fff}
 .pgimg img{display:block;width:100%;height:auto}.spot{position:absolute;display:block;border-radius:8px}.spot:focus-visible{outline:3px solid var(--teal)}
-.props{display:grid;gap:8px;margin-top:10px}
-.book{display:flex;justify-content:center;gap:10px;align-items:center;background:var(--navy);color:#fff;text-decoration:none;font-family:Montserrat,sans-serif;font-weight:700;font-size:15px;padding:14px 16px;border-radius:12px}
-.book span{color:var(--teal);font-size:22px;line-height:1}
-.booknow{position:absolute;z-index:2;display:flex;align-items:center;justify-content:center;background:var(--teal);color:var(--navy);text-decoration:none;font-family:Montserrat,sans-serif;font-weight:800;font-size:clamp(9px,2.2vw,15px);border-radius:999px;box-shadow:0 2px 8px rgba(14,47,68,.25);white-space:nowrap}
-.booknow:active{transform:scale(.97)}.booknow::after{content:"";position:absolute;inset:-10px -6px}
 .bar{position:fixed;left:0;right:0;bottom:0;z-index:6;display:flex;gap:10px;padding:12px 16px calc(12px + env(safe-area-inset-bottom));background:rgba(255,255,255,.96);border-top:1px solid #e3e9e8;justify-content:center}
 .bar a{flex:1;max-width:360px;text-align:center;text-decoration:none;font-family:Montserrat,sans-serif;font-weight:800;font-size:15px;padding:14px 12px;border-radius:999px}
 .wa{background:#25D366;color:#fff}.bk{background:var(--teal);color:var(--navy)}
@@ -121,7 +114,7 @@ footer{text-align:center;color:#6b7c87;font-size:12px;padding:8px 16px 0}
 <header><div class="brand">AVANTE<span>TRAVEL</span></div>${wa ? `<a class="hb" href="${esc(wa)}" target="_blank" rel="noopener">Ask us</a>` : ""}</header>
 ${scenesHtml}<div class="intro"><h1>${esc(title)}</h1>${c.dates ? `<p>${esc(c.dates)}</p>` : ""}</div>
 <main>${coverHtml}${pagesHtml}<footer>Bookings are made securely through Avante Travel.</footer></main>
-<div class="bar">${wa ? `<a class="wa" href="${esc(wa)}" target="_blank" rel="noopener">WhatsApp us</a>` : ""}</div>
+<div class="bar">${wa ? `<a class="wa" href="${esc(wa)}" target="_blank" rel="noopener">WhatsApp us</a>` : ""}<a class="bk" href="${esc(allBook)}" target="_blank" rel="noopener">Book now ›</a></div>
 ${sc.length > 2 ? `<script>(function(){var t=0;setInterval(function(){if(document.hidden)return;t++;document.querySelectorAll(".side").forEach(function(s){var im=s.querySelectorAll("img");if(im.length<2)return;im.forEach(function(x,i){x.classList.toggle("on",i===t%im.length)})})},6500)})();</script>` : ""}
 </body></html>`;
 }
