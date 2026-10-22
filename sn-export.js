@@ -22,7 +22,7 @@
 // submits).
 (function(){
   var STOCK_COLS = ['Country','Area','District','Resort','Complex','Nr of Units Available','Unit Number','From Date','To Date','Unit Size','Start day of weekend','Weekend Nights','Min Span Weekend','Weekend Rate','Weekend Rack Rate','Start day of midweek','Midweek nights','Min Span Midweek','Midweek Rate','Midweek Rack Rate','Start day of full week','Full week Nights','Min Span Full Week','Full week Rate','Full week Rack Rate','Min Span All nights','All Nights Rate','All Nights Rack Rate'];
-  var PROPERTY_COLS = ['Site Nr','SiteID','Resort','Property Type','Complex','Country','State','Area','District','City','City2','Suburb','Address','Latitude','Longitude','Coordinates checked with Google','Telephone','Email','Website','Checkin Time','Checkout Time','Supplier Rating','Tourism Board Rating','WiFi','Parking','Pet Allowance','Allow Same Day Booking','Smoking Allowed','Description','House Rules','Cancellation Policy','Deposit %','Deposit Due (days before arrival)','Child Policy','Accessibility','Owner','Owner Email','Owner Phone','Avante Listing ID','Franchisor %','Franchise %'];
+  var PROPERTY_COLS = ['Site Nr','SiteID','Resort','Property Type','Complex','Country','State','Area','District','City','City2','Suburb','Address','Latitude','Longitude','Coordinates checked with Google','Telephone','Email','Website','Checkin Time','Checkout Time','Supplier Rating','Tourism Board Rating','WiFi','Parking','Pet Allowance','Allow Same Day Booking','Smoking Allowed','Description','House Rules','Cancellation Policy','Deposit %','Deposit Due (days before arrival)','Child Policy','Accessibility','Owner','Owner Email','Owner Phone','Avante Listing ID','MANUAL Franchisor %','MANUAL Franchise %','Resort Name 2','Resort Booking Link','Rating Link'];
   var UNIT_COLS = ['Site Nr','Resort','Unit Type','Nr of Units','Sleeps (Unit Size)','Max Adults','Children Allowed','Rate Basis','Rate Scheme','Description'];
 
   function s(v){ return v == null ? '' : String(v).trim(); }
@@ -100,7 +100,9 @@
       s(listing.description), s(listing.houseRules), s(listing.depositPolicyText), s(listing.depositPct), s(listing.depositDays),
       s(listing.childPolicy), s(listing.accessibility), s(listing.ownerFullName), s(listing.ownerEmail), s(listing.ownerPhone), s(listing.listingId),
       // Stock Network's split on the property's own bookings (commission.js).
-      own ? C.FRANCHISOR : '', own ? C.FRANCHISE : ''
+      own ? C.FRANCHISOR : '', own ? C.FRANCHISE : '',
+      // Fields on Stock Network's resort screen the listing already has (Jean, 2026-10-22).
+      s(listing.propertyName2), s(listing.bookingLink), s(listing.ratingLink)
     ];
   }
   function unitRowsFor(listing, siteNr){

@@ -24,7 +24,7 @@ import "../../../commission.js"; // globalThis.AvanteCommission
 const C = globalThis.AvanteCommission;
 export const SN_SETUP_RATE = C.STANDARD_INCL;
 export const DEFAULT_SN_SETUP_EMAILS = "nb@stocknetwork.co.za, admin@avantehospitality.co.za, liason@avantehospitality.co.za";
-export const REQUEST_COLS = ["SiteID", "BBID", "Name", "Contact", "Phone No", "Email", "Description", "Area", "District", "Rate", "TripAdvisor Search Link", "Suburb", "Franchisor %", "Franchise %"];
+export const REQUEST_COLS = ["SiteID", "BBID", "Name", "Contact", "Phone No", "Email", "Description", "Area", "District", "Rate", "TripAdvisor Search Link", "Suburb", "MANUAL Franchisor %", "MANUAL Franchise %"];
 // Spare: reserved, sheet not sent yet or not answered. Ready to send: a
 // property not on a channel manager finished its listing and got its Site Nr
 // then (Jean, 2026-10-19); admin sends its files to Stock Network from the
@@ -165,7 +165,7 @@ export function setupEmail(e) {
     (e.channelManager === "NightsBridge" ? " and import it from NightsBridge (BBID " + esc(e.bbid) + ")" : "") + ". The sheet is attached.</p>" +
     "<p><b>System:</b> " + system + "<br><b>Contact:</b> " + esc(e.contactName) + " · " + esc(e.phone) + " · " + esc(e.email) + "</p>" +
     (e.propertyAffiliate
-      ? "<p><b>Property affiliate: yes.</b> The rate on the sheet is the standard " + SN_SETUP_RATE + ". Once the site is up, please set <b>Franchisor " + C.FRANCHISOR + "%</b> (Avante) and <b>Franchise " + C.FRANCHISE + "%</b> (the property) for its own bookings (also in the sheet).</p>"
+      ? "<p><b>Property affiliate: yes.</b> The rate on the sheet is the standard " + SN_SETUP_RATE + ". Once the site is up, please set the <b>MANUAL</b> row on the site's Rates tab: <b>Franchisor " + C.FRANCHISOR + "</b> (Avante) and <b>Franchise " + C.FRANCHISE + "</b> (the property), ticked, for its own bookings (also in the sheet).</p>"
       : "<p>Property affiliate: no. Rate on the sheet: " + SN_SETUP_RATE + ".</p>") +
     (e.note ? "<p>" + esc(e.note).replace(/\n/g, "<br>") + "</p>" : "") +
     "<p>Avante Travel</p>";
@@ -253,7 +253,7 @@ export function welcomeHtml(text, v) {
 // Own bookings went from 4.95% to 5% + VAT: Stock Network sets Franchisor 5.75%
 // (Avante) and Franchise 11.5% (the property) on each property affiliate's
 // site. One sheet and one email for all of them, from Admin > Site Nrs.
-export const COMMISSION_COLS = ["Site Nr", "Affiliate Nr", "Property", "Kind", "Franchisor %", "Franchise %"];
+export const COMMISSION_COLS = ["Site Nr", "Affiliate Nr", "Property", "Kind", "MANUAL Franchisor %", "MANUAL Franchise %"];
 export function commissionRow(r) {
   return [r.siteNr ? (/^\d+$/.test(r.siteNr) ? Number(r.siteNr) : r.siteNr) : "", r.affId || "", r.name || "", r.kind || "", C.FRANCHISOR, C.FRANCHISE];
 }
@@ -268,7 +268,7 @@ export function commissionEmail(rows) {
   const subject = "Avante commission update: Franchisor " + C.FRANCHISOR + "% / Franchise " + C.FRANCHISE + "% on " + rows.length + " site" + (rows.length === 1 ? "" : "s");
   const html = "<p>Hello,</p>" +
     "<p>Avante's commission on a property affiliate's own bookings (made through the Avante hub with its own hook builder and/or front store) is now <b>" + C.OWN + "% + VAT</b> (was 4.95%).</p>" +
-    "<p>Please set these two fields on each site below (also in the attached sheet):<br><b>Franchisor " + C.FRANCHISOR + "%</b> (Avante) and <b>Franchise " + C.FRANCHISE + "%</b> (the property). The rate stays " + C.STANDARD_INCL + ".</p>" +
+    "<p>Please set the <b>MANUAL</b> row on each site's Rates tab below (also in the attached sheet):<br><b>Franchisor " + C.FRANCHISOR + "</b> (Avante) and <b>Franchise " + C.FRANCHISE + "</b> (the property), ticked. The rate stays " + C.STANDARD_INCL + ".</p>" +
     "<table cellpadding=\"4\" cellspacing=\"0\" border=\"1\" style=\"border-collapse:collapse;font-size:13px\"><tr>" + COMMISSION_COLS.map((h) => "<th>" + esc(h) + "</th>").join("") + "</tr>" +
     rows.map((r) => "<tr>" + commissionRow(r).map((v) => "<td>" + esc(v) + "</td>").join("") + "</tr>").join("") + "</table>" +
     "<p>Avante Travel</p>";
