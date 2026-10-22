@@ -55,6 +55,8 @@
     try { u = new URL(raw); } catch (e) { return null; }
     var seg = u.pathname.split('/').filter(Boolean);
     var kind = '', id = '';
+    // A channel property's own Stock Network link (avch=1) is left as it is (Jean, 2026-10-22).
+    if (u.hostname === SN_HOST && u.searchParams.get('avch') === '1') return null;
     if (u.hostname === SN_HOST && seg.length === 2 && seg[0] === 'ui') { kind = 'sn'; id = seg[1]; }
     else if (/^(www\.)?avantetravel\.co\.za$/.test(u.hostname) && seg.length === 2 && seg[0] === 'holiday-builder' && /\.php$/i.test(seg[1])) { kind = 'hb'; id = seg[1].replace(/\.php$/i, ''); }
     else return null;

@@ -35,6 +35,8 @@
 export const STOCKNETWORK_HOST = "stock.stocknetwork.co.za";
 export const HOLIDAY_BUILDER_HOST = "avantetravel.co.za";
 export const HOLIDAY_BUILDER_BASE = "https://avantetravel.co.za/holiday-builder/";
+// Marks a channel property's Stock Network booking link (see parseBookingLink).
+export const CHANNEL_MARK = "avch";
 
 // Jean's own real StockNetwork site GUID — also the slug of the Avante
 // Travel company page on the holiday builder. Used as the placeholder site
@@ -124,6 +126,10 @@ export function parseBookingLink(rawUrl) {
   const segments = u.pathname.split("/").filter(Boolean);
   let seg = "";
   let kind = "";
+  // A channel property's own booking link (Jean, 2026-10-22) goes straight to Stock
+  // Network on purpose and is marked avch=1: it's left exactly as it is, never
+  // converted to the holiday builder or given another affiliate's ID.
+  if (u.hostname === STOCKNETWORK_HOST && u.searchParams.get(CHANNEL_MARK) === "1") return null;
   if (u.hostname === STOCKNETWORK_HOST && segments.length === 2 && segments[0] === "ui") {
     kind = "sn";
     seg = segments[1];
