@@ -9,8 +9,9 @@
 //
 // The sheet has Stock Network's own Request_pull_area columns in their order
 // (Jean's Upload_15.10.26.xlsx), without City2: SN keeps City2 as it is.
-// Rate is 17.25 when a property is first created on Stock Network; a channel
-// property affiliate's 4.95% sits in a different SN field, set later.
+// Rate is 17.25 (15% + VAT) when a property is first created on Stock
+// Network. A property affiliate also gets the Franchisor / Franchise split for
+// its own bookings (commission.js), in two extra columns and in the email.
 //
 // Plain ESM with the store and SheetJS passed in, so it runs in the edge
 // function and in tests. The store must come from @netlify/blobs v10 or later:
@@ -19,9 +20,11 @@
 
 export const SITE_REGISTER_STORE = "sn-site-register";
 export const FIRST_SITE_NR = 6023;
-export const SN_SETUP_RATE = 17.25;
+import "../../../commission.js"; // globalThis.AvanteCommission
+const C = globalThis.AvanteCommission;
+export const SN_SETUP_RATE = C.STANDARD_INCL;
 export const DEFAULT_SN_SETUP_EMAILS = "nb@stocknetwork.co.za, admin@avantehospitality.co.za, liason@avantehospitality.co.za";
-export const REQUEST_COLS = ["SiteID", "BBID", "Name", "Contact", "Phone No", "Email", "Description", "Area", "District", "Rate", "TripAdvisor Search Link", "Suburb"];
+export const REQUEST_COLS = ["SiteID", "BBID", "Name", "Contact", "Phone No", "Email", "Description", "Area", "District", "Rate", "TripAdvisor Search Link", "Suburb", "Franchisor %", "Franchise %"];
 // Spare: reserved, sheet not sent yet or not answered. Ready to send: a
 // property not on a channel manager finished its listing and got its Site Nr
 // then (Jean, 2026-10-19); admin sends its files to Stock Network from the
@@ -124,7 +127,8 @@ export function newEntry(f) {
 export function requestRow(e) {
   // BBID as a number like SN's sheet, unless that would drop a leading zero.
   return [e.siteNr, e.bbid ? (/^[1-9]\d{0,14}$/.test(e.bbid) ? Number(e.bbid) : e.bbid) : "", e.propertyName, e.contactName, e.phone, e.email,
-    e.description || e.propertyName, e.area, e.district, SN_SETUP_RATE, "", e.suburb];
+    e.description || e.propertyName, e.area, e.district, SN_SETUP_RATE, "", e.suburb,
+    e.propertyAffiliate ? C.FRANCHISOR : "", e.propertyAffiliate ? C.FRANCHISE : ""];
 }
 
 // "Upload_15.10.26_site6023_Kloof_Lane.xlsx" (dd.mm.yy, like Jean's sheets).
@@ -161,7 +165,7 @@ export function setupEmail(e) {
     (e.channelManager === "NightsBridge" ? " and import it from NightsBridge (BBID " + esc(e.bbid) + ")" : "") + ". The sheet is attached.</p>" +
     "<p><b>System:</b> " + system + "<br><b>Contact:</b> " + esc(e.contactName) + " · " + esc(e.phone) + " · " + esc(e.email) + "</p>" +
     (e.propertyAffiliate
-      ? "<p><b>Property affiliate: yes.</b> Once the site is up, please set the channel property commission field to <b>4.95%</b>. The rate on the sheet is the standard " + SN_SETUP_RATE + ".</p>"
+      ? "<p><b>Property affiliate: yes.</b> The rate on the sheet is the standard " + SN_SETUP_RATE + ". Once the site is up, please set <b>Franchisor " + C.FRANCHISOR + "%</b> (Avante) and <b>Franchise " + C.FRANCHISE + "%</b> (the property) for its own bookings (also in the sheet).</p>"
       : "<p>Property affiliate: no. Rate on the sheet: " + SN_SETUP_RATE + ".</p>") +
     (e.note ? "<p>" + esc(e.note).replace(/\n/g, "<br>") + "</p>" : "") +
     "<p>Avante Travel</p>";

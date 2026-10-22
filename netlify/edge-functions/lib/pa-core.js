@@ -20,6 +20,7 @@ import { parseIcs, buildIcs, nightsToRanges } from "./ical.js";
 import { encryptJSON, decryptJSON, randomToken, sha256Hex } from "./pa-crypto.js";
 import { emailList as listOf, badEmails, recipients } from "./emails.js";
 import { allListings, readAllEntries } from "./blob-records.js";
+import "../../../commission.js"; // globalThis.AvanteCommission: Avante's commission rates
 
 export const CHANNELS = { bcom: "Booking.com", airbnb: "Airbnb", lekke: "LekkeSlaap" };
 const CONNECT_DAYS = [14];               // connect reads only the first 14 days; later days load as the calendar moves (Jean: keep SN calls light)
@@ -236,7 +237,8 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
       await setJSON("site:" + prop.siteId, prop);
     }
   }
-  const CHANNEL_COMMISSION = 4.95;
+  // Avante's commission on the property's own bookings, as the property sees it (commission.js).
+  const OWN_COMMISSION = globalThis.AvanteCommission.OWN;
 
   // Who gets the hub's emails about the property (Jean, 2026-10-14): its own
   // email (settings.email), its contact person for bookings and queries
@@ -323,7 +325,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
   function publicProperty(p) {
     const settings = p.channel ? Object.assign({}, p.settings || {}, { payMode: "gateway", approveGuests: false, minStay: 1, calendarStart: { mode: "today", date: "" } }) : p.settings;
     return { siteId: p.siteId, site: p.site, resortId: p.resortId, resortName: p.resortName, units: p.units, settings, connectedAt: p.createdAt, demoAllowed: ["3"].includes(String(p.site)), firstBookable: firstBookable(p),
-      channel: !!p.channel, commissionPct: p.channel ? (+p.commissionPct > 0 ? +p.commissionPct : CHANNEL_COMMISSION) : undefined,
+      channel: !!p.channel, commissionPct: OWN_COMMISSION,
       activities: !p.channel || !!p.chActs };
   }
 

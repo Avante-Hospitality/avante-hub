@@ -529,6 +529,7 @@
 </style>
 <!-- SheetJS (Excel files) is loaded on first use: load-script.js, AvanteSNExport.whenReady -->
 <script src="load-script.js"></script>
+<script src="commission.js"></script>
 <script src="sn-export.js"></script>
 <script src="listing-photo-library.js"></script>
 <link rel="stylesheet" href="photo-chooser.css">
@@ -6982,7 +6983,7 @@
           var sentTo = (l.editLinkLog || []).filter(function(x){ return x.ok; });
           el.innerHTML = '<div style="font-weight:700; margin-bottom:6px;">Let the property complete its listing</div>' +
             (l.existingOnSN === 'Y' ? '<div class="hint" style="margin:0 0 6px;">Already on Stock Network (Site Nr ' + escapeHtml(l.siteNr || '?') + '). Made from what the hub and Stock Network had; the missing fields still need filling in.</div>' : '') +
-            (l.channelProperty === 'Y' ? '<div class="hint" style="margin:0 0 6px;"><b>Channel Property Affiliate.</b> Commission on bookings from its hooks: ' + escapeHtml(l.commissionPct || '4.95') + '% + VAT (' + (Math.round((+l.commissionPct || 4.95) * 115) / 100).toFixed(2) + '%). Guests pay through Avante\'s payment gateway.</div>' : '') +
+            (AvanteCommission.ownBookings(l) ? '<div class="hint" style="margin:0 0 6px;"><b>' + (l.channelProperty === 'Y' ? 'Channel Property Affiliate' : 'Property Affiliate') + '.</b> Commission ' + AvanteCommission.STANDARD + '% + VAT. Own bookings (its hook builder / front store): Franchisor ' + AvanteCommission.FRANCHISOR + '% (Avante) / Franchise ' + AvanteCommission.FRANCHISE + '% (property)' + (l.channelProperty === 'Y' ? '. Guests pay through Avante\'s payment gateway.' : '.') + '</div>' : '') +
             '<label style="display:block; font-size:13px; margin:0 0 8px;"><input type="checkbox" id="elRatesCh"' + (l.ratesFromChannel === 'Y' ? ' checked' : '') + '> Rates and availability come from a channel manager (e.g. NightsBridge): no calendar or rates in the form</label>' +
             '<label class="hint" for="elTo" style="display:block; margin:0 0 3px;">Email the edit link to (several: separate with commas)</label>' +
             '<input id="elTo" type="text" style="width:100%;" value="' + escapeHtml(listingRecipients(l)) + '">' +
@@ -7501,7 +7502,7 @@
               '<label for="acwPhone">Phone</label><input id="acwPhone" type="tel" value="' + escapeHtml(W.contact.phone) + '">' +
               '<label for="acwContact">Contact person (optional)</label><input id="acwContact" value="' + escapeHtml(W.contact.contactName) + '">';
           } else if(W.step === 3){
-            h += '<p class="acw-what">One tap: the hub makes or links its listing, makes its ' + (W.login.hosted ? 'Property Affiliate (number ' + escapeHtml(W.login.siteId) + ', Hook Builder on)' : 'Channel Property Affiliate (number ' + escapeHtml(W.login.siteId) + ', 4.95% + VAT, Hook Builder on)') + ' and connects it with its Avante login.</p>' +
+            h += '<p class="acw-what">One tap: the hub makes or links its listing, makes its ' + (W.login.hosted ? 'Property Affiliate (number ' + escapeHtml(W.login.siteId) + ', Hook Builder on)' : 'Channel Property Affiliate (number ' + escapeHtml(W.login.siteId) + ', ' + AvanteCommission.ownText + ' on own bookings, Hook Builder on)') + ' and connects it with its Avante login.</p>' +
               '<ul class="acw-list"><li>' + escapeHtml(p.name) + ' · Site Nr ' + escapeHtml(W.login.siteNr) + '</li><li>' + escapeHtml(W.contact.email) + (W.contact.phone ? ' · ' + escapeHtml(W.contact.phone) : '') + '</li></ul>' +
               (W.result ? '<ul class="acw-list">' + W.result.done.map(function(d){ return '<li class="' + (/NOT/.test(d) ? 'acw-err' : 'acw-ok') + '">' + escapeHtml(d) + '</li>'; }).join('') + '</ul>' : '') +
               (!W.result || !W.result.connected ? (W.result ? '<p class="acw-what">Not connected yet, so no welcome email. Check the login in step 2, then tap <b>Try again</b>.</p>' : '') +

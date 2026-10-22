@@ -12,6 +12,7 @@ import { readListingScreenshots } from "./lib/listing-reader.js";
 import { HOOKS_URL, makeHooksTicket } from "./lib/hooks-ticket.js";
 import { propertyTags, unitTag, libPost, libIndex, libImage } from "./lib/photo-library.js";
 import { isAdminToken } from "./lib/admin-session.js";
+import "../../commission.js"; // globalThis.AvanteCommission: Avante's commission rates
 import "../../listing-ready.js"; // globalThis.ListingReady: the Ready check, shared with the listing form
 import { isAffiliateSession } from "./lib/affiliate-session.js";
 import { createPropertyAffiliate } from "./lib/affiliates.js";
@@ -233,8 +234,8 @@ async function buildListingFromSn(pr, row, opts = {}) {
     snFacilities: sn.ok ? sn.facilities.slice(0, 80) : [],
     // Channel properties (NightsBridge etc.): rates and availability come
     // from their channel manager through Stock Network — no calendar or
-    // rates in the hub, and commission on hub bookings is 4.95% + VAT.
-    channelProperty: pr.channel ? "Y" : "", ratesFromChannel: pr.channel ? "Y" : "", commissionPct: pr.channel ? "4.95" : "",
+    // rates in the hub; Avante's commission on its own bookings is in commission.js.
+    channelProperty: pr.channel ? "Y" : "", ratesFromChannel: pr.channel ? "Y" : "", commissionPct: pr.channel ? String(globalThis.AvanteCommission.OWN) : "",
   });
   // Everything else Stock Network's feed has (type, phone, email, links, times…).
   const fromFeed = await fillListingFromFeed(record).catch(() => []);
@@ -997,9 +998,9 @@ export default async (request, context) => {
         "agreementRespondedAt", "snSentSeasons", "snSentAt", "snEmailLog", "photosToken", "libraryPhotos", "existingOnSN", "paSiteId", "resortId", "editLinkLog", "affiliateCreatedAt", "snSiteFields", "bbid", "channelProperty", "ratesFromChannel", "snFacilities", "agreementSigned", "signatoryName", "signatoryCapacity",
         "signatoryIdPassport", "signatureDate", "signaturePlace", "coordsVerifiedAt"];
       Object.keys(incoming).forEach((k) => { if (KEEP.indexOf(k) === -1) record[k] = incoming[k]; });
-      // A channel property's commission (4.95% + VAT on hub bookings) is set by
-      // Avante, not by the form's default.
-      if (before.channelProperty === "Y") record.commissionPct = before.commissionPct || "4.95";
+      // A channel property's commission (its own bookings, commission.js) is
+      // Avante's, not the form's default.
+      if (before.channelProperty === "Y") record.commissionPct = String(globalThis.AvanteCommission.OWN);
       // A property still completing its first listing (not on a platform, Jean
       // 2026-10-19) sets its own location; after that it's locked.
       const ownsLocation = isAdmin || before.hostedSetup === "completing";
@@ -1288,7 +1289,7 @@ export default async (request, context) => {
       } else if (wantsAffiliate && !already && !hostedPrev && !(site && site.listingId)) {
         const now = new Date().toISOString(), listingId = genListingId();
         record = Object.assign({ listingId, status: "Requested", dateSubmitted: now, dateUpdated: now }, submittedFields({ propertyName, email: contact.email, telephone: contact.phone, submittedBy: "Owner" }),
-          { editToken: genToken(), agreementSigned: "Y", channelProperty: cm !== "None yet" ? "Y" : "", ratesFromChannel: cm !== "None yet" ? "Y" : "", commissionPct: cm !== "None yet" ? "4.95" : "",
+          { editToken: genToken(), agreementSigned: "Y", channelProperty: cm !== "None yet" ? "Y" : "", ratesFromChannel: cm !== "None yet" ? "Y" : "", commissionPct: cm !== "None yet" ? String(globalThis.AvanteCommission.OWN) : "",
             needsTreePlace: loc.place ? "" : "Y", hostedSetup: hosted ? "completing" : "",
             siteNr: site ? String(site.siteNr) : "" }, extra);
         if (loc.place) { record.latitude = String(loc.lat); record.longitude = String(loc.lng); await applyTreePlace(record, loc.place, false); }
@@ -1783,9 +1784,9 @@ export default async (request, context) => {
         const before = { siteNr: record.siteNr || "", siteId: record.siteId || "", email: record.email || "", telephone: record.telephone || "" };
         Object.assign(record, { siteNr, siteId, affId: siteId, resortId: record.resortId || rid, existingOnSN: "Y",
           email, telephone: phone || record.telephone || "", contactName: contactName || record.contactName || "", contactEmail: record.contactEmail || email, dateUpdated: now });
-        // A channel property: 4.95% + VAT, rates from its channel manager. One not on
+        // A channel property: own-booking commission (commission.js), rates from its channel manager. One not on
         // a channel manager keeps its own rates in the hub (a Property Affiliate).
-        if (!hosted) Object.assign(record, { channelProperty: "Y", ratesFromChannel: "Y", commissionPct: record.commissionPct || "4.95" });
+        if (!hosted) Object.assign(record, { channelProperty: "Y", ratesFromChannel: "Y", commissionPct: record.commissionPct || String(globalThis.AvanteCommission.OWN) });
         if (bbid && !record.bbid) record.bbid = bbid;
         // 2. Its affiliate (number = Site ID): Channel Property Affiliate, or Property Affiliate.
         const type = hosted ? "property" : "channel", typeName = hosted ? "Property" : "Channel Property";

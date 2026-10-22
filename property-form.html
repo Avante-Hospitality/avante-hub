@@ -191,6 +191,7 @@
 <!-- Spreadsheets (Excel rate sheets in, Stock Network files out) and Word documents:
      SheetJS and mammoth load the first time a file needs them (load-script.js). -->
 <script src="load-script.js"></script>
+<script src="commission.js"></script>
 <script src="sn-export.js"></script>
 <script src="listing-ready.js"></script>
 <script src="listing-photo-library.js"></script>
@@ -643,7 +644,7 @@
   // Avante's commission on every booking: 15% plus VAT on it = 17.25%.
   // The property only lists its rack rate; the Stock Network rate is the
   // rack rate less this.
-  var COMMISSION = 15, VAT = 15;
+  var COMMISSION = AvanteCommission.STANDARD, VAT = AvanteCommission.VAT;   // commission.js
   var COMM_TOTAL = +(COMMISSION * (1 + VAT/100)).toFixed(4);
   var netRate = function(rack){ return Math.round(rack * (1 - COMM_TOTAL/100)); };
 

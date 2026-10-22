@@ -39,6 +39,7 @@
     <div class="ht-card ht-new" aria-label="What's new">
       <h2>What's new</h2>
       <ul>
+        <li><time>22 Oct 2026</time> Commission: own bookings are now <b>5% + VAT</b> (was 4.95%). For property affiliates (channel and not), the Stock Network set-up sheet and the property file have two new columns, <b>Franchisor %</b> = 5.75 (Avante) and <b>Franchise %</b> = 11.5 (the property), and the set-up email asks SN to set them. The property itself only sees 5% + VAT. A listing shows <b>Commission 15% + VAT. Own bookings: Franchisor 5.75% / Franchise 11.5%</b>.</li>
         <li><time>22 Oct 2026</time> Property Listings: new <b>Copy a property's content (for testing)</b>. Copies one property's listing, photos, front store, location and library photos onto another (e.g. Little Gem into Property Testing).</li>
         <li><time>22 Oct 2026</time> Listings can have <b>weekend rates</b> and <b>closed nights</b> (set by the property in the form's <b>Weekly pattern</b>). With weekend rates, the rates are cut at every change between midweek and weekend: each midweek stretch and each weekend is its own row in the rates file, with its own rate and min stay. <b>Rates (rack → SN)</b> marks each one, e.g. <i>Weekend · Closed Mon</i>. Closed and blocked nights get no row. Without weekend rates it stays one period per rate.</li>
         <li><time>20 Oct 2026</time> New <b>Magnifier</b>: tap <b>Aa</b> at the bottom left, then tap any small text to see it big. See <a href="#magnifier">Magnifier</a>.</li>
@@ -314,13 +315,13 @@
       <ol class="steps">
         <li>First, in <span class="tab">Affiliates</span>, tick <span class="field">Channel Property Affiliate</span> and type its Site Nr.</li>
         <li>In <span class="tab">Property Listings</span>, tap <span class="btn g">Show properties</span>. It shows <b>Channel property</b> next to the name. Tap <span class="btn">Create listing</span>.</li>
-        <li>The listing is filled in from Stock Network. It shows the commission (4.95% + VAT) and that guests pay through Avante's payment gateway.</li>
+        <li>The listing is filled in from Stock Network. It shows the commission (15% + VAT; own bookings Franchisor 5.75% / Franchise 11.5%) and that guests pay through Avante's payment gateway.</li>
         <li>Email the edit link as above. The property has no calendar or rates to fill in.</li>
         <li>In <b>Send the files by email</b>, the rates file can only be <b>Don't send</b>: their rates come from the channel manager.</li>
         <li>The property connects in its hub (<span class="tab">Channel Property</span>) with its Stock Network login, Site Nr and Site ID, like any property affiliate. It then sees only <b>Bookings</b> and <b>Reviews</b>; guests always pay on the Stock Network payment page.</li>
         <li>Ready for Activities? In <span class="tab">Affiliates</span>, tap <span class="btn g">Edit</span> on its row. Under <b>Channel Property: also give them</b>, tick <span class="field">Activities</span>. Tap <span class="btn">Save Affiliate</span>. It sees it the next time it opens its hub. Untick to take it away again.</li>
         <li>No front store for a channel property. In <span class="tab">Affiliate Marketing</span> it copies its <b>Promotions embed link — no header, for embedding on your own website</b> and puts it on its website. Every offer there books through the hub's booking links, so the hub only books for a channel property through hook builder links.</li>
-        <li>Set its real commission in Stock Network. The hub only shows 4.95% + VAT as the default.</li>
+        <li>In Stock Network, set the site's <b>Franchisor</b> field to 5.75 and <b>Franchise</b> to 11.5.</li>
       </ol>
       <div class="tip">Untick <span class="field">Channel Property Affiliate</span> (or tick <span class="field">Property Affiliate</span>) and the property gets the full Property Affiliate screens again the next time it opens the hub.</div>
       <h3>Requests from the "List your property" page</h3>
@@ -443,7 +444,7 @@
         <li>Stock found? It says <b>Ready to go live (stock from …)</b>, the listing notes it too, and you get an email <b>Ready to go live</b>.</li>
       </ol>
       <div class="tip">Don't want to wait for the hour? Tap <span class="btn g">Check Stock Network now</span> at the top of <span class="tab">Site Nrs</span>. The answer shows under the button.</div>
-      <div class="tip">Ticked Property Affiliate? The email asks Stock Network to set the channel property commission field to <b>4.95%</b> once the site is up. The sheet's Rate stays 17.25.</div>
+      <div class="tip">Ticked Property Affiliate? The sheet gets <b>Franchisor %</b> 5.75 and <b>Franchise %</b> 11.5, and the email asks Stock Network to set those fields once the site is up. The sheet's Rate stays 17.25.</div>
       <div class="tip">Area, District and Suburb come from the hub location tree. With a listing: from the listing's pin (grey, can't be typed). Without a listing: from where Google finds the property by its name. If Google can't find it, they stay empty: fill them in and send again (below).</div>
       <div class="tip">After <span class="btn g">Check Stock Network now</span> the answer also says <b>Stock Network's list read now: … properties</b>. A <b>WARNING</b> that the hub couldn't save that list means the check still worked, but tell Claude. The hourly check emails you about it once a day.</div>
       <h3>Check or change a Site Nr, and send it again</h3>
@@ -483,7 +484,7 @@
         <li>Came with <span class="btn g">Find it with its Avante login</span> and the hub asks for its <span class="field">ResortID</span>? Paste it. It is the last column of Stock Network's resort file.</li>
         <li>Check <span class="field">Property name</span>. Tap <span class="btn">Use this ResortID</span>.</li>
         <li><b>3 Contact details:</b> check the <span class="field">Email</span>, <span class="field">Phone</span> and <span class="field">Contact person</span>. Tap <span class="btn">Next</span>.</li>
-        <li><b>4 Activate:</b> tap <span class="btn">Activate</span>. The hub makes or links its listing, makes its Channel Property Affiliate (4.95% + VAT, Hook Builder on) and connects it. Each line shows ✔ when done.</li>
+        <li><b>4 Activate:</b> tap <span class="btn">Activate</span>. The hub makes or links its listing, makes its Channel Property Affiliate (5% + VAT on own bookings, Hook Builder on) and connects it. Each line shows ✔ when done.</li>
         <li>A red <b>NOT connected</b> line? Tap <span class="btn g">Back</span>, check the login, then tap <span class="btn">Try again</span>. The welcome email only comes once it is connected.</li>
         <li><b>5 Welcome email:</b> check <span class="field">Send to</span>. The <span class="field">Subject</span> and <span class="field">Email</span> show the email filled in for this property: change them here if you want (only for this property).</li>
         <li>Tap <span class="btn">Send</span>. The property gets the email with its affiliate number and login link.</li>
