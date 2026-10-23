@@ -68,6 +68,10 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
 .fld label{ font:700 11.5px 'Montserrat',sans-serif; text-transform:uppercase; letter-spacing:.06em; color:var(--teal-d); }
 .fld input,.fld select,.fld textarea{ width:100%; min-height:46px; border:1.5px solid #d8d3ca; border-radius:10px; padding:0 12px; font:15px 'Noto Sans',sans-serif; color:var(--ink); background:#fff; }
 .fld textarea{ padding:10px 12px; min-height:70px; }
+/* How will you pay? — two choices, each a round button with its words beside it (not the text box styling) */
+.payby label{ display:flex; align-items:center; gap:10px; min-height:44px; font:500 15px 'Noto Sans',sans-serif; text-transform:none; letter-spacing:0; color:var(--ink); cursor:pointer; }
+.payby input{ width:20px; height:20px; min-height:0; margin:0; padding:0; flex:0 0 auto; border:0; accent-color:#0aa89f; }
+.payby legend{ font:700 15px 'Montserrat',sans-serif; color:var(--ink); margin-bottom:4px; }
 .res{ display:flex; flex-direction:column; gap:10px; margin-top:14px; }
 .unit{ border:1.5px solid var(--line); border-radius:14px; padding:12px 14px; display:flex; flex-wrap:wrap; gap:8px 12px; align-items:center; }
 .unit .u{ flex:1 1 150px; min-width:0; }
@@ -466,9 +470,9 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
         '<div class="f2"><div class="fld"><label for="pad">Adults</label><select id="pad">' + [1,2,3,4,5,6,7,8,9,10].map(function (n) { return '<option' + (n === S.adults ? ' selected' : '') + '>' + n + '</option>'; }).join('') + '</select></div>' +
         '<div class="fld"><label for="pch">Children</label><select id="pch">' + [0,1,2,3,4,5,6].map(function (n) { return '<option' + (n === S.children ? ' selected' : '') + '>' + n + '</option>'; }).join('') + '</select></div></div>' +
         '<div class="fld" style="margin-top:10px"><label for="gn">Anything we should know? (optional)</label><textarea id="gn" rows="2"></textarea></div>' +
-        (d.payMode === 'both' && !d.approveGuests ? '<fieldset class="fld" style="margin-top:10px;border:none;padding:0"><legend style="font-weight:700;margin-bottom:6px">How will you pay?</legend>' +
-          '<label style="display:flex;gap:8px;align-items:center;min-height:40px"><input type="radio" name="payby" value="gateway"' + (S.payBy !== 'eft' ? ' checked' : '') + '> Pay now online (card or Instant EFT)</label>' +
-          '<label style="display:flex;gap:8px;align-items:center;min-height:40px"><input type="radio" name="payby" value="eft"' + (S.payBy === 'eft' ? ' checked' : '') + '> EFT to the property\'s bank account</label></fieldset>' : '') +
+        (d.payMode === 'both' && !d.approveGuests ? '<fieldset class="fld payby" style="margin-top:10px;border:none;padding:0"><legend>How will you pay?</legend>' +
+          '<label><input type="radio" name="payby" value="gateway"' + (S.payBy !== 'eft' ? ' checked' : '') + '> Pay now online (card or Instant EFT)</label>' +
+          '<label><input type="radio" name="payby" value="eft"' + (S.payBy === 'eft' ? ' checked' : '') + '> EFT to the property\'s bank account</label></fieldset>' : '') +
         '<div class="hp" aria-hidden="true"><label>Website <input id="website" tabindex="-1" autocomplete="off"></label></div>' +
         '<button type="button" class="btn t" style="width:100%;margin-top:14px" data-act="book"' + (S.busy ? ' disabled' : '') + '>' + (S.busy === 'book' ? 'Booking…' : (d.approveGuests ? 'Send booking request' : 'Confirm booking') + (r.total ? ' · ' + money(r.total) : '')) + '</button>' +
         '<p class="muted" style="margin-top:8px">' + (d.approveGuests ? 'This sends a booking request. ' + esc(d.name) + ' confirms it, then you get the payment details by email.' : 'You\'ll see how to pay straight after booking, and get it by email.' + (d.payMode !== 'eft' ? ' Online payments must be made within the payment time, or the booking is cancelled.' : '')) + '</p>';
