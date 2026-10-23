@@ -47,15 +47,7 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
 .lead{ color:var(--muted); margin:-6px 0 14px; }
 .text{ white-space:pre-line; }
 .book{ position:sticky; top:76px; box-shadow:0 18px 50px rgba(14,47,68,.10); }
-/* From a Book link (Jean, 2026-10-23): on a computer the page stays at the calendar and the
-   Book your stay frame, fixed beside it, scrolls on its own. "Back to the page" lets the page scroll again. */
 #calsec{ scroll-margin-top:90px; }
-.bkback{ display:none; margin:0 0 12px; }
-@media (min-width:901px){
-  html.bookmode{ overflow:hidden; }
-  html.bookmode .book{ max-height:calc(100vh - 96px); overflow-y:auto; overscroll-behavior:contain; }
-  html.bookmode .bkback{ display:inline-flex; }
-}
 .book h2{ font-size:20px; margin-bottom:4px; }
 .bkbusy{ display:none; margin-top:10px; font-weight:700; }
 /* The guest's details form, over the page */
@@ -282,7 +274,7 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
       // with one unit (or the link's unit) the guest's details open straight away.
       if (CFG.mode === 'store' && location.hash === '#book') {
         S.autoPick = true;
-        setBookMode(true);
+        S.linkModal = true;
         var go = function () { var t = document.querySelector('[data-act="calCheck"],[data-act="quote"]'); if (t) t.click(); };
         setTimeout(go, 300);
       }
@@ -361,15 +353,25 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
     app.innerHTML = h;
     drawCal(); drawMap();
   }
-  // The Book your stay frame, with "Back to the page" on top while the page is held at the calendar.
+  // From a Book link (Jean, 2026-10-23): the free units open over the page, like the guest's
+  // details form; picking one opens Your booking, whose Change comes back to this list.
+  // The units chosen in the list, as one booking: { unit: "A, B", units: [...], total }.
+  var MAX_UNITS = 4;
+  function chosen(u) { return (S.sel || []).indexOf(u) > -1; }
+  function pickOf(names) {
+    var rs = names.map(function (n) { return ((S.quote && S.quote.results) || []).find(function (r) { return r.unit === n; }); }).filter(Boolean);
+    var total = rs.every(function (r) { return r.total; }) ? rs.reduce(function (a, r) { return a + r.total; }, 0) : 0;
+    return { unit: rs.map(function (r) { return r.unit; }).join(', '), units: rs.map(function (r) { return r.unit; }), total: total };
+  }
+  function linkOpen() { return !!(S.linkModal && (S.quote || S.booked)); }
   function bookHtml() {
     var inner = bookInner();
-    return S.pick ? inner : '<button type="button" class="btn g sm bkback" data-act="unbookmode">‹ Back to the page</button>' + inner;
-  }
-  var DESKTOP = window.matchMedia ? window.matchMedia('(min-width:901px)') : { matches: false };
-  function setBookMode(on) {
-    document.documentElement.classList.toggle('bookmode', !!on && DESKTOP.matches);
-    if (!on && location.hash === '#book') history.replaceState(null, '', location.pathname + location.search);
+    if (S.pick || !linkOpen()) return inner;
+    var q = S.quote;
+    return '<div class="bkm" role="dialog" aria-modal="true" aria-label="Choose your unit"><button type="button" class="bkx" data-act="closelink" aria-label="Close">×</button>' +
+      (S.booked ? inner : '<h2>Choose your unit</h2>' + (q ? '<div class="muted" style="margin-bottom:4px">' + esc(nice(q.checkIn) + ' – ' + nice(q.checkOut)) + '</div>' : '') +
+        inner.replace(/^<h2>Book your stay<\/h2>/, '') +
+        '<button type="button" class="btn g" style="width:100%;margin-top:14px" data-act="changedates">Change dates</button>') + '</div>';
   }
   function bookInner() {
     var d = S.d;
@@ -399,8 +401,11 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
       if (q.tooShort) h += '<div class="err">The minimum stay is ' + q.minStay + ' nights. Choose a later check-out.</div>';
       else h += q.results.length ? q.results.map(function (r) {
         return '<div class="unit"><div class="u"><b>' + esc(r.unit) + '</b><div class="muted">' + esc(r.size || '') + (r.rate ? ' · ' + money(r.rate) + ' per night' : '') + '</div></div>' + (r.total ? '<span class="p">' + money(r.total) + '</span>' : '') +
-          '<button type="button" class="btn t sm" data-act="pick" data-u="' + esc(r.unit) + '">Book this unit</button></div>';
+          (chosen(r.unit) ? '<button type="button" class="btn t sm" data-act="toggle" data-u="' + esc(r.unit) + '" aria-pressed="true">✓ Chosen</button>' : '<button type="button" class="btn g sm" data-act="toggle" data-u="' + esc(r.unit) + '" aria-pressed="false">Choose</button>') + '</div>';
       }).join('') : '<div class="err">Nothing is free for all of those nights. Try other dates' + (S.d.showCalendar ? ' (see the calendar)' : '') + ', or contact us.</div>';
+      // One booking for every unit chosen (Jean, 2026-10-23: more than one at a time, up to 4).
+      if ((S.sel || []).length) { var sp = pickOf(S.sel); h += '<button type="button" class="btn t" style="width:100%;margin-top:12px" data-act="pickSel">Book ' + sp.units.length + (sp.units.length === 1 ? ' unit' : ' units') + (sp.total ? ' · ' + money(sp.total) : '') + '</button>'; }
+      else if (q.results.length > 1) h += '<div class="muted" style="margin-top:8px">Choose one or more units, then book them together.</div>';
       h += '</div>';
     }
     if (S.pick) {
@@ -426,8 +431,8 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
   }
   // Phones: when the calendar is on the page, its date picker and the bottom bar do the booking,
   // so the Book your stay form is hidden; the card only shows for results, errors and the guest form.
-  function bookCls() { return 'card book' + (S.d && S.d.showCalendar ? ' oncal' : '') + (S.busy || S.err || S.quote || S.pick || S.booked ? '' : ' idle') + (S.pick ? ' asmodal' : ''); }
-  function drawBook() { var el = document.getElementById('book'); if (el) { el.className = bookCls(); el.innerHTML = bookHtml(); } document.body.style.overflow = S.pick ? 'hidden' : ''; drawCalPick(); }
+  function bookCls() { return 'card book' + (S.d && S.d.showCalendar ? ' oncal' : '') + (S.busy || S.err || S.quote || S.pick || S.booked ? '' : ' idle') + (S.pick || linkOpen() ? ' asmodal' : ''); }
+  function drawBook() { var el = document.getElementById('book'); if (el) { el.className = bookCls(); el.innerHTML = bookHtml(); } document.body.style.overflow = S.pick || linkOpen() ? 'hidden' : ''; drawCalPick(); }
   function drawCal() {
     var el = document.getElementById('cal'); if (!el) return;
     var d = S.d, m = S.month, y = +m.slice(0, 4), mo = +m.slice(5, 7) - 1, data = S.monthData[m];
@@ -613,7 +618,7 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
       var qb = bk && bk.querySelector('[data-act="quote"]'); if (qb) qb.click(); return;
     }
     if (a === 'quote') {
-      syncForm(); S.err = ''; S.pick = null;
+      syncForm(); S.err = ''; S.pick = null; S.sel = [];
       if (!S.ci || !S.co || S.co <= S.ci) { S.err = 'Choose a check-out after the check-in.'; return drawBook(); }
       S.busy = 'quote'; drawBook();
       return post({ action: 'quote', checkIn: S.ci, checkOut: S.co }).then(function (r) {
@@ -627,16 +632,24 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
         // From a hook or flyer link: with one unit free (or the unit the link names) go straight to the details form.
         if (fromLink && S.quote) {
           var res = S.quote.results || [], want = S.linkUnit && res.find(function (x) { return x.unit.toLowerCase() === S.linkUnit.toLowerCase(); });
-          if (want || res.length === 1) S.pick = want || res[0];
+          if (want || res.length === 1) { S.sel = [(want || res[0]).unit]; S.pick = pickOf(S.sel); }
         }
         S.autoPick = false; drawBook();
         // From a link, always land on the result: the details form, the units to pick from, or why nothing is free.
-        if (fromLink) { var bk2 = document.documentElement.classList.contains('bookmode') ? document.getElementById('calsec') || document.getElementById('book') : document.getElementById('book'); if (bk2) bk2.scrollIntoView({ behavior: 'smooth', block: 'start' }); var gf = S.pick && document.getElementById('gf'); if (gf) setTimeout(function () { gf.focus({ preventScroll: true }); }, 400); }
+        if (fromLink) { var bk2 = S.linkModal ? null : document.getElementById('book'); if (bk2) bk2.scrollIntoView({ behavior: 'smooth', block: 'start' }); var gf = S.pick && document.getElementById('gf'); if (gf) setTimeout(function () { gf.focus({ preventScroll: true }); }, 400); }
       }).catch(function () { S.busy = false; S.err = 'Couldn\'t check right now. Try again.'; drawBook(); });
     }
-    if (a === 'pick') { S.pick = S.quote.results.find(function (r) { return r.unit === t.getAttribute('data-u'); }); drawBook(); var f = document.getElementById('gf'); if (f) f.focus(); return; }
+    if (a === 'toggle') {
+      var u = t.getAttribute('data-u'); S.sel = (S.sel || []).slice(); S.err = '';
+      if (chosen(u)) S.sel = S.sel.filter(function (x) { return x !== u; });
+      else if (S.sel.length >= MAX_UNITS) S.err = 'You can book up to ' + MAX_UNITS + ' units at once. For more, please contact us.';
+      else S.sel.push(u);
+      return drawBook();
+    }
+    if (a === 'pickSel') { if (!(S.sel || []).length) return; S.pick = pickOf(S.sel); drawBook(); var f = document.getElementById('gf'); if (f) f.focus(); return; }
     if (a === 'unpick') { S.pick = null; return drawBook(); }
-    if (a === 'unbookmode') { setBookMode(false); return; }
+    if (a === 'closelink') { S.linkModal = false; if (location.hash === '#book') history.replaceState(null, '', location.pathname + location.search); return drawBook(); }
+    if (a === 'changedates') { S.linkModal = false; drawBook(); var cs = document.getElementById('calsec') || document.getElementById('book'); if (cs) cs.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
     if (a === 'book') {
       var g = { first: val('gf').trim(), last: val('gl').trim(), email: val('ge').trim(), cellphone: val('gc').trim() };
       S.err = '';
@@ -646,10 +659,10 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
       if (S.err) { var keep = { gf: val('gf'), gl: val('gl'), ge: val('ge'), gc: val('gc'), gn: val('gn') }; drawBook(); Object.keys(keep).forEach(function (k) { var el = document.getElementById(k); if (el) el.value = keep[k]; }); return; }
       if (document.getElementById('pad')) { S.adults = +val('pad') || S.adults; S.children = +val('pch') || 0; }
       S.busy = 'book'; t.disabled = true; t.textContent = 'Booking…';
-      return post({ action: 'book', checkIn: S.quote.checkIn, checkOut: S.quote.checkOut, unit: S.pick.unit, guest: g, adults: S.adults, children: S.children, notes: val('gn'), website: val('website'), payBy: (document.querySelector('input[name="payby"]:checked') || {}).value }).then(function (r) {
+      return post({ action: 'book', checkIn: S.quote.checkIn, checkOut: S.quote.checkOut, units: S.pick.units, guest: g, adults: S.adults, children: S.children, notes: val('gn'), website: val('website'), payBy: (document.querySelector('input[name="payby"]:checked') || {}).value }).then(function (r) {
         S.busy = false;
         if (!r.ok) { S.err = r.error || 'The booking didn\'t go through.'; t.disabled = false; t.textContent = 'Confirm booking'; var er = document.querySelector('#book .err'); if (er) er.remove(); t.insertAdjacentHTML('afterend', '<div class="err" role="alert">' + esc(S.err) + '</div>'); return; }
-        S.booked = r; S.quote = null; S.pick = null; S.monthData = {}; drawBook(); loadMonth(); document.getElementById('book').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        S.booked = r; S.quote = null; S.pick = null; S.sel = []; S.monthData = {}; drawBook(); loadMonth(); document.getElementById('book').scrollIntoView({ behavior: 'smooth', block: 'start' });
       }).catch(function () { S.busy = false; t.disabled = false; t.textContent = 'Confirm booking'; });
     }
     if (a === 'again') { S.booked = null; return drawBook(); }
