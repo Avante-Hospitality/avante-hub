@@ -43,7 +43,7 @@ export default async (request, context) => {
       if (photo) {
         const p = await core.frontPhoto(photo);
         if (!p) return new Response("Not found", { status: 404, headers: cors });
-        return new Response(p.data, { headers: { "content-type": p.type, "x-content-type-options": "nosniff", "cache-control": "public, max-age=86400", ...cors } });
+        return new Response(p.data, { headers: { "content-type": p.type, "x-content-type-options": "nosniff", "cache-control": "public, max-age=86400", "netlify-vary": "query=photo", ...cors } });
       }
       // A Google photo (by its reference) or a photo from the shared photo library,
       // for things to do (lib/act-photos.js). Browsers keep them a day.
@@ -53,14 +53,18 @@ export default async (request, context) => {
         // Only Avante's own Google photos (the ones in the library).
         const img = await libGooglePhoto(gref, env("GOOGLE_PLACES_API_KEY")).catch(() => null);
         if (!img) return new Response("Not found", { status: 404, headers: cors });
-        return new Response(img.data, { headers: { "content-type": img.type, "cache-control": "public, max-age=86400", ...cors } });
+        // Google's photos are never kept by Netlify's CDN (Google's terms): only the visitor's browser, for a day.
+        return new Response(img.data, { headers: { "content-type": img.type, "cache-control": "public, max-age=86400", "netlify-cdn-cache-control": "no-store", ...cors } });
       }
       if (lid) {
         if (!LIBID.test(lid)) return new Response("Bad photo", { status: 400, headers: cors });
         // &th=1: the library's thumbnail (photo chooser grids).
         const img = await libImage(lid, url.searchParams.get("th") === "1").catch(() => null);
         if (!img) return new Response("Not found", { status: 404, headers: cors });
-        return new Response(img.data, { headers: { "content-type": img.type, "cache-control": "public, max-age=604800", ...cors } });
+        // A library photo never changes under its id, so Netlify's CDN keeps it for 30 days and
+        // serves it without this function or the library being asked again (Jean, 2026-10-23).
+        return new Response(img.data, { headers: { "content-type": img.type, "cache-control": "public, max-age=604800",
+          "netlify-cdn-cache-control": "public, durable, s-maxage=2592000", "netlify-vary": "query=libphoto|th", ...cors } });
       }
       const prop = await core.propertyBySlug(url.searchParams.get("slug") || "");
       if (!prop) return json({ ok: false, error: "This page isn't available." }, 404);
@@ -103,4 +107,5 @@ export default async (request, context) => {
   }
 };
 
-export const config = { path: "/api/stay" };
+// cache: "manual": the CDN may keep the photos this function marks as keepable; the page data is no-store.
+export const config = { path: "/api/stay", cache: "manual" };

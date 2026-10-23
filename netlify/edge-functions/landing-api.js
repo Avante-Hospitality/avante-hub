@@ -92,7 +92,10 @@ export default async (request, context) => {
     if (!isKey(key)) return new Response("Not found", { status: 404 });
     const rec = await images.getWithMetadata(key, { type: "arrayBuffer" });
     if (!rec || !rec.data) return new Response("Not found", { status: 404 });
-    return new Response(rec.data, { headers: { "content-type": (rec.metadata && rec.metadata.type) || "image/jpeg", "cache-control": "public, max-age=31536000, immutable" } });
+    // A published picture never changes (publishing again makes new ones), so Netlify's CDN
+    // keeps it and serves it without running this function again (Jean, 2026-10-23: cost and speed).
+    return new Response(rec.data, { headers: { "content-type": (rec.metadata && rec.metadata.type) || "image/jpeg", "cache-control": "public, max-age=31536000, immutable",
+      "netlify-cdn-cache-control": "public, durable, s-maxage=31536000, immutable", "netlify-vary": "query=img" } });
   }
   if (request.method !== "POST") return json({ ok: false, error: "Use GET or POST." }, 405);
 
@@ -208,4 +211,5 @@ export default async (request, context) => {
   return json({ ok: false, error: "Unknown request." }, 400);
 };
 
-export const config = { path: "/api/landing" };
+// cache: "manual": the CDN may keep what this function says it may (only the pictures; everything else is no-store).
+export const config = { path: "/api/landing", cache: "manual" };
