@@ -48,6 +48,14 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
 .text{ white-space:pre-line; }
 .book{ position:sticky; top:76px; box-shadow:0 18px 50px rgba(14,47,68,.10); }
 #calsec{ scroll-margin-top:90px; }
+/* Choose your unit (from a Book link): one line per unit, ticked to book (Jean, 2026-10-23) */
+.u1{ display:flex; align-items:center; gap:10px; padding:12px 14px; border:1.5px solid var(--line); border-radius:12px; margin-top:8px; cursor:pointer; background:#fff; }
+.u1 input{ width:20px; height:20px; margin:0; flex:0 0 auto; accent-color:#0aa89f; }
+.u1 b{ flex:0 0 auto; }
+.u1 .muted{ flex:1; min-width:0; font-size:14px; }
+.u1 .p{ font-weight:800; white-space:nowrap; }
+.u1.on{ border-color:#0DCDC2; background:#eafaf8; }
+.u1h{ font-size:17px; margin:18px 0 6px; }
 .book h2{ font-size:20px; margin-bottom:4px; }
 .bkbusy{ display:none; margin-top:10px; font-weight:700; }
 /* The guest's details form, over the page */
@@ -367,11 +375,40 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
   function bookHtml() {
     var inner = bookInner();
     if (S.pick || !linkOpen()) return inner;
-    var q = S.quote;
     return '<div class="bkm" role="dialog" aria-modal="true" aria-label="Choose your unit"><button type="button" class="bkx" data-act="closelink" aria-label="Close">×</button>' +
-      (S.booked ? inner : '<h2>Choose your unit</h2>' + (q ? '<div class="muted" style="margin-bottom:4px">' + esc(nice(q.checkIn) + ' – ' + nice(q.checkOut)) + '</div>' : '') +
-        inner.replace(/^<h2>Book your stay<\/h2>/, '') +
-        '<button type="button" class="btn g" style="width:100%;margin-top:14px" data-act="changedates">Change dates</button>') + '</div>';
+      (S.booked ? inner : linkFrameHtml()) + '</div>';
+  }
+  // A unit's size, short: "4 sleeper", else "1 bedroom".
+  function shortSize(sz) {
+    sz = String(sz || ''); var m = sz.match(/(\d+)\s*-?\s*sleeper/i); if (m) return m[1] + ' sleeper';
+    var b = sz.match(/(\d+)\s*bedrooms?/i); return b ? b[1] + (b[1] === '1' ? ' bedroom' : ' bedrooms') : sz.replace(/^sleeper\s*/i, '');
+  }
+  // From a Book link (Jean, 2026-10-23): the free units, one line each with a tick box, and the
+  // guest's details under them, all in one frame. Confirm with nothing ticked asks to select one.
+  function linkFrameHtml() {
+    var q = S.quote, h = '<h2>Choose your unit</h2><div class="muted">' + esc(nice(q.checkIn) + ' – ' + nice(q.checkOut)) + ' · ' + nights(q.checkIn, q.checkOut) + ' nights</div>';
+    var shown = S.onlyUnits && !S.showAll ? q.results.filter(function (r) { return S.onlyUnits.indexOf(r.unit) > -1; }) : q.results;
+    if (q.tooShort) h += '<div class="err">The minimum stay is ' + q.minStay + ' nights. Choose a later check-out.</div>';
+    else if (!shown.length) h += '<div class="err">Nothing is free for all of those nights. Try other dates, or contact us.</div>';
+    else {
+      h += '<div class="u1list" id="u1list">' + shown.map(function (r) {
+        var on = chosen(r.unit);
+        return '<label class="u1' + (on ? ' on' : '') + '"><input type="checkbox" data-act="toggle" data-u="' + esc(r.unit) + '"' + (on ? ' checked' : '') + '><b>' + esc(r.unit) + '</b><span class="muted">' + esc(shortSize(r.size)) + '</span>' + (r.total ? '<span class="p">' + money(r.total) + '</span>' : '') + '</label>';
+      }).join('') + '</div>';
+      if (shown.length < q.results.length) h += '<button type="button" class="btn g sm" style="margin-top:8px" data-act="showall">Show all ' + q.results.length + ' free units</button>';
+      if (S.err) h += '<div class="err" role="alert">' + esc(S.err) + '</div>';
+      h += '<h3 class="u1h">Your details</h3>' + guestForm(pickOf(S.sel || []));
+    }
+    return h + '<button type="button" class="btn g" style="width:100%;margin-top:10px" data-act="changedates">Change dates</button>';
+  }
+  // The guest's typed details, kept while the frame is drawn again.
+  var FORM_IDS = ['gf', 'gl', 'ge', 'gc', 'gn', 'pad', 'pch'];
+  function redrawKeeping() {
+    var keep = {}; FORM_IDS.forEach(function (k) { var el = document.getElementById(k); if (el) keep[k] = el.value; });
+    var pb = (document.querySelector('input[name="payby"]:checked') || {}).value;
+    drawBook();
+    FORM_IDS.forEach(function (k) { var el = document.getElementById(k); if (el && keep[k] != null) el.value = keep[k]; });
+    if (pb) { var r = document.querySelector('input[name="payby"][value="' + pb + '"]'); if (r) r.checked = true; }
   }
   function bookInner() {
     var d = S.d;
@@ -413,8 +450,17 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
     }
     if (S.pick) {
       var r = S.pick;
-      h += '<div class="unit" style="margin-top:14px"><div class="u"><b>' + esc(r.unit) + '</b><div class="muted">' + esc(nice(S.quote.checkIn)) + ' – ' + esc(nice(S.quote.checkOut)) + '</div></div>' + (r.total ? '<span class="p">' + money(r.total) + '</span>' : '') + '<button type="button" class="btn g sm" data-act="unpick">Change</button></div>' +
-        '<div class="f2"><div class="fld"><label for="gf">First name</label><input id="gf" autocomplete="given-name"></div><div class="fld"><label for="gl">Last name</label><input id="gl" autocomplete="family-name"></div></div>' +
+      h += '<div class="unit" style="margin-top:14px"><div class="u"><b>' + esc(r.unit) + '</b><div class="muted">' + esc(nice(S.quote.checkIn)) + ' – ' + esc(nice(S.quote.checkOut)) + '</div></div>' + (r.total ? '<span class="p">' + money(r.total) + '</span>' : '') + '<button type="button" class="btn g sm" data-act="unpick">Change</button></div>' + guestForm(r);
+    }
+    // The guest's details open as their own form over the page (like the hub's booking form), Jean 2026-10-15.
+    if (S.pick) h = '<div class="bkm" role="dialog" aria-modal="true" aria-label="Your booking"><button type="button" class="bkx" data-act="unpick" aria-label="Close">×</button><h2>Your booking</h2>' +
+      h.replace(/^<h2>Book your stay<\/h2>/, '') + '</div>';
+    return h;
+  }
+  // The guest's details and the Confirm button (r: the units chosen, as pickOf gives them).
+  function guestForm(r) {
+    var d = S.d;
+    return '<div class="f2"><div class="fld"><label for="gf">First name</label><input id="gf" autocomplete="given-name"></div><div class="fld"><label for="gl">Last name</label><input id="gl" autocomplete="family-name"></div></div>' +
         '<div class="fld" style="margin-top:10px"><label for="ge">Email</label><input id="ge" type="email" autocomplete="email"></div>' +
         '<div class="fld" style="margin-top:10px"><label for="gc">Cellphone</label><input id="gc" type="tel" autocomplete="tel"></div>' +
         '<div class="f2"><div class="fld"><label for="pad">Adults</label><select id="pad">' + [1,2,3,4,5,6,7,8,9,10].map(function (n) { return '<option' + (n === S.adults ? ' selected' : '') + '>' + n + '</option>'; }).join('') + '</select></div>' +
@@ -426,11 +472,6 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
         '<div class="hp" aria-hidden="true"><label>Website <input id="website" tabindex="-1" autocomplete="off"></label></div>' +
         '<button type="button" class="btn t" style="width:100%;margin-top:14px" data-act="book"' + (S.busy ? ' disabled' : '') + '>' + (S.busy === 'book' ? 'Booking…' : (d.approveGuests ? 'Send booking request' : 'Confirm booking') + (r.total ? ' · ' + money(r.total) : '')) + '</button>' +
         '<p class="muted" style="margin-top:8px">' + (d.approveGuests ? 'This sends a booking request. ' + esc(d.name) + ' confirms it, then you get the payment details by email.' : 'You\'ll see how to pay straight after booking, and get it by email.' + (d.payMode !== 'eft' ? ' Online payments must be made within the payment time, or the booking is cancelled.' : '')) + '</p>';
-    }
-    // The guest's details open as their own form over the page (like the hub's booking form), Jean 2026-10-15.
-    if (S.pick) h = '<div class="bkm" role="dialog" aria-modal="true" aria-label="Your booking"><button type="button" class="bkx" data-act="unpick" aria-label="Close">×</button><h2>Your booking</h2>' +
-      h.replace(/^<h2>Book your stay<\/h2>/, '') + '</div>';
-    return h;
   }
   // Phones: when the calendar is on the page, its date picker and the bottom bar do the booking,
   // so the Book your stay form is hidden; the card only shows for results, errors and the guest form.
@@ -639,7 +680,7 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
           var mine = names.length ? res.filter(function (x) { return names.indexOf(x.unit.toLowerCase()) > -1; }) : [];
           S.onlyUnits = mine.length ? mine.map(function (x) { return x.unit; }) : null;
           var list = mine.length ? mine : res;
-          if (list.length === 1) { S.sel = [list[0].unit]; S.pick = pickOf(S.sel); }
+          if (list.length === 1) { S.sel = [list[0].unit]; if (!S.linkModal) S.pick = pickOf(S.sel); } // the frame: ticked
         }
         S.autoPick = false; drawBook();
         // From a link, always land on the result: the details form, the units to pick from, or why nothing is free.
@@ -651,7 +692,7 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
       if (chosen(u)) S.sel = S.sel.filter(function (x) { return x !== u; });
       else if (S.sel.length >= MAX_UNITS) S.err = 'You can book up to ' + MAX_UNITS + ' units at once. For more, please contact us.';
       else S.sel.push(u);
-      return drawBook();
+      return redrawKeeping();
     }
     if (a === 'showall') { S.showAll = true; return drawBook(); }
     if (a === 'pickSel') { if (!(S.sel || []).length) return; S.pick = pickOf(S.sel); drawBook(); var f = document.getElementById('gf'); if (f) f.focus(); return; }
@@ -661,13 +702,15 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
     if (a === 'book') {
       var g = { first: val('gf').trim(), last: val('gl').trim(), email: val('ge').trim(), cellphone: val('gc').trim() };
       S.err = '';
+      var chosenUnits = S.pick ? S.pick.units : (S.sel || []).slice();
+      if (!chosenUnits.length) { S.err = 'Please select a unit first.'; redrawKeeping(); var ul = document.getElementById('u1list'); if (ul) ul.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
       if (!g.first || !g.last) S.err = 'Enter your first and last name.';
       else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(g.email)) S.err = 'Enter a valid email address.';
       else if (g.cellphone.replace(/\D/g, '').length < 9) S.err = 'Enter your cellphone number.';
-      if (S.err) { var keep = { gf: val('gf'), gl: val('gl'), ge: val('ge'), gc: val('gc'), gn: val('gn') }; drawBook(); Object.keys(keep).forEach(function (k) { var el = document.getElementById(k); if (el) el.value = keep[k]; }); return; }
+      if (S.err) { redrawKeeping(); var er0 = document.querySelector('#book .err'); if (er0) er0.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
       if (document.getElementById('pad')) { S.adults = +val('pad') || S.adults; S.children = +val('pch') || 0; }
       S.busy = 'book'; t.disabled = true; t.textContent = 'Booking…';
-      return post({ action: 'book', checkIn: S.quote.checkIn, checkOut: S.quote.checkOut, units: S.pick.units, guest: g, adults: S.adults, children: S.children, notes: val('gn'), website: val('website'), payBy: (document.querySelector('input[name="payby"]:checked') || {}).value }).then(function (r) {
+      return post({ action: 'book', checkIn: S.quote.checkIn, checkOut: S.quote.checkOut, units: chosenUnits, guest: g, adults: S.adults, children: S.children, notes: val('gn'), website: val('website'), payBy: (document.querySelector('input[name="payby"]:checked') || {}).value }).then(function (r) {
         S.busy = false;
         if (!r.ok) { S.err = r.error || 'The booking didn\'t go through.'; t.disabled = false; t.textContent = 'Confirm booking'; var er = document.querySelector('#book .err'); if (er) er.remove(); t.insertAdjacentHTML('afterend', '<div class="err" role="alert">' + esc(S.err) + '</div>'); return; }
         S.booked = r; S.quote = null; S.pick = null; S.sel = []; S.monthData = {}; drawBook(); loadMonth(); document.getElementById('book').scrollIntoView({ behavior: 'smooth', block: 'start' });
