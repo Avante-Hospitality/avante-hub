@@ -10,6 +10,7 @@
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
 import { correctBookingLinkSiteId, ADMIN_MASTER_SITE_GUID, holidayBuilderUrl, toHolidayBuilderUrl } from "./lib/booking-link.js";
 import { isShortLink, resolveShortLink } from "./lib/short-link.js";
+import { AFFILIATES_STORE } from "./lib/blob-records.js";
 import { propertyTreeOpts, withTreePath } from "./lib/tree-place.js";
 
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -151,12 +152,13 @@ export default async (request) => {
   }
   // No phone on the hook (Jean, 2026-10-22): WhatsApp still shows, to the contact
   // number set in Admin (flyer settings), so Book now always has WhatsApp beside it.
+  // Then the affiliate's own phone (the one whose link it is, from the hub's affiliate list), so
+  // a page always has WhatsApp next to Book now (Jean, 2026-10-23).
   if (!rec.current.whatsapp) {
-    try {
-      const cfg = await getStore({ name: "flyer-settings", consistency: "strong" }).get("config", { type: "json" });
-      const n = waNumber(cfg && cfg.contactPhone);
-      if (n) rec = { ...rec, current: { ...rec.current, whatsapp: n } };
-    } catch (e) { /* no WhatsApp button, as before */ }
+    let n = "";
+    try { const cfg = await getStore({ name: "flyer-settings", consistency: "strong" }).get("config", { type: "json" }); n = waNumber(cfg && cfg.contactPhone); } catch (e) { /* next */ }
+    if (!n) try { const dr = await getStore({ name: AFFILIATES_STORE, consistency: "strong" }).get(agent, { type: "json" }); n = waNumber(dr && (dr.whatsapp || dr.phone)); } catch (e) { /* no WhatsApp button */ }
+    if (n) rec = { ...rec, current: { ...rec.current, whatsapp: n } };
   }
   // The same for every visitor with the same link (it depends only on the
   // path and ?a=; no cookies or sign-in): browsers and Netlify's CDN keep it
