@@ -398,8 +398,11 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
     if (S.quote && !S.pick) {
       var q = S.quote;
       h += '<div class="res" aria-live="polite"><b style="font-family:Montserrat,sans-serif">' + (q.results.length ? q.results.length + (q.results.length === 1 ? ' unit' : ' units') + ' free · ' : '') + nights(q.checkIn, q.checkOut) + ' nights</b>';
+      // A hook about one unit (unit=…): only that unit, with the others one tap away.
+      var shown = S.onlyUnits && !S.showAll ? q.results.filter(function (r) { return S.onlyUnits.indexOf(r.unit) > -1; }) : q.results;
+      if (shown.length < q.results.length && !q.tooShort) h += '<div class="muted" style="margin-top:6px">Showing the unit from this offer. <button type="button" class="btn g sm" data-act="showall">Show all ' + q.results.length + ' free units</button></div>';
       if (q.tooShort) h += '<div class="err">The minimum stay is ' + q.minStay + ' nights. Choose a later check-out.</div>';
-      else h += q.results.length ? q.results.map(function (r) {
+      else h += shown.length ? shown.map(function (r) {
         return '<div class="unit"><div class="u"><b>' + esc(r.unit) + '</b><div class="muted">' + esc(r.size || '') + (r.rate ? ' · ' + money(r.rate) + ' per night' : '') + '</div></div>' + (r.total ? '<span class="p">' + money(r.total) + '</span>' : '') +
           (chosen(r.unit) ? '<button type="button" class="btn t sm" data-act="toggle" data-u="' + esc(r.unit) + '" aria-pressed="true">✓ Chosen</button>' : '<button type="button" class="btn g sm" data-act="toggle" data-u="' + esc(r.unit) + '" aria-pressed="false">Choose</button>') + '</div>';
       }).join('') : '<div class="err">Nothing is free for all of those nights. Try other dates' + (S.d.showCalendar ? ' (see the calendar)' : '') + ', or contact us.</div>';
@@ -618,7 +621,7 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
       var qb = bk && bk.querySelector('[data-act="quote"]'); if (qb) qb.click(); return;
     }
     if (a === 'quote') {
-      syncForm(); S.err = ''; S.pick = null; S.sel = [];
+      syncForm(); S.err = ''; S.pick = null; S.sel = []; S.showAll = false;
       if (!S.ci || !S.co || S.co <= S.ci) { S.err = 'Choose a check-out after the check-in.'; return drawBook(); }
       S.busy = 'quote'; drawBook();
       return post({ action: 'quote', checkIn: S.ci, checkOut: S.co }).then(function (r) {
@@ -631,8 +634,12 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
         }
         // From a hook or flyer link: with one unit free (or the unit the link names) go straight to the details form.
         if (fromLink && S.quote) {
-          var res = S.quote.results || [], want = S.linkUnit && res.find(function (x) { return x.unit.toLowerCase() === S.linkUnit.toLowerCase(); });
-          if (want || res.length === 1) { S.sel = [(want || res[0]).unit]; S.pick = pickOf(S.sel); }
+          // unit=A or unit=A,B (a hook about one unit type): only those units are offered.
+          var res = S.quote.results || [], names = S.linkUnit ? S.linkUnit.toLowerCase().split(',').map(function (x) { return x.trim(); }).filter(Boolean) : [];
+          var mine = names.length ? res.filter(function (x) { return names.indexOf(x.unit.toLowerCase()) > -1; }) : [];
+          S.onlyUnits = mine.length ? mine.map(function (x) { return x.unit; }) : null;
+          var list = mine.length ? mine : res;
+          if (list.length === 1) { S.sel = [list[0].unit]; S.pick = pickOf(S.sel); }
         }
         S.autoPick = false; drawBook();
         // From a link, always land on the result: the details form, the units to pick from, or why nothing is free.
@@ -646,6 +653,7 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
       else S.sel.push(u);
       return drawBook();
     }
+    if (a === 'showall') { S.showAll = true; return drawBook(); }
     if (a === 'pickSel') { if (!(S.sel || []).length) return; S.pick = pickOf(S.sel); drawBook(); var f = document.getElementById('gf'); if (f) f.focus(); return; }
     if (a === 'unpick') { S.pick = null; return drawBook(); }
     if (a === 'closelink') { S.linkModal = false; if (location.hash === '#book') history.replaceState(null, '', location.pathname + location.search); return drawBook(); }
