@@ -18,6 +18,7 @@ import { isAffiliateSession } from "./lib/affiliate-session.js";
 import { createPropertyAffiliate } from "./lib/affiliates.js";
 import { SNClient } from "./lib/sn-client.js";
 import { readResortInfo, copySnPhotos } from "./lib/sn-resort-info.js";
+import { feedSurvey, pageSurvey } from "./lib/sn-field-survey.js";
 import { findSetUps, feedRowByResort, fillFromFeed, typeNames, learnTypeName, typeCodeOf } from "./lib/sn-feed.js";
 import { forwardGeocode, reverseGeocode } from "./lib/geocode.js";
 import { searchPlacePhotos, searchPlaceCandidates } from "./lib/places-images.js";
@@ -1565,6 +1566,34 @@ export default async (request, context) => {
         const last = sent.sendLog[sent.sendLog.length - 1];
         return last.ok ? json({ ok: true, entry: sent }) : json({ error: "Not sent: " + last.error, entry: sent }, 502);
       }
+    }
+
+    // Stock Network field survey (Jean, 2026-10-24), read-only, admin only:
+    // part "feed" = every field in SN's property feed across all properties
+    // (no new SN call); part "page" = the sections on one property's public SN
+    // page; part "api" = one of SN's read calls for one property (call:
+    // v2search, v1paged or resortinfo), through sn-availability.mjs.
+    if (action === "snFieldSurvey") {
+      const denied = await requireAdmin();
+      if (denied) return denied;
+      const part = clean(body.part, 10), resortId = clean(body.resortId, 40).toLowerCase();
+      if (part === "feed") {
+        const idx = await getStore({ name: "sn-feed", consistency: "strong" }).get("resort-index", { type: "json" }).catch(() => null);
+        if (!idx) return json({ error: "The hub hasn't read Stock Network's property list yet." }, 404);
+        return json({ ok: true, ...feedSurvey(idx) });
+      }
+      if (part === "page") return json({ ok: true, page: await pageSurvey(resortId) });
+      if (part === "api") {
+        const row = await feedRowByResort(resortId).catch(() => null);
+        const day = (ms) => new Date(ms).toISOString().slice(0, 10);
+        const r = await fetch(new URL(request.url).origin + "/api/sn-availability", { method: "POST",
+          headers: { "content-type": "application/json", "x-pa-sync-secret": Deno.env.get("PA_SYNC_SECRET") || "" },
+          body: JSON.stringify({ op: "fields", call: clean(body.call, 12), ids: [resortId], area: (row && (row.area || row.district)) || clean(body.area, 80),
+            checkIn: clean(body.checkIn, 10) || day(Date.now() + 30 * 864e5), checkOut: clean(body.checkOut, 10) || day(Date.now() + 32 * 864e5),
+            extra: body.extra && typeof body.extra === "object" ? body.extra : undefined }) }).then((x) => x.json()).catch((e) => ({ error: String(e.message || e) }));
+        return json({ ok: true, api: r });
+      }
+      return json({ error: "part must be feed, page or api" }, 400);
     }
 
     if (action === "copyPropertyContent") {

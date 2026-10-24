@@ -5,10 +5,10 @@
 // NightsBridge feeds Stock Network, so this is how the hub gets its details
 // without asking the property to type them again.
 //   readResortInfo(resortId) -> { ok, name, about, attractions, facilities[], units[{name, roomType, maxGuests, description}], photos[] }
-const RESORT_INFO = "https://old.stocknetwork.co.za/ResortInfo.aspx";
+export const RESORT_INFO = "https://old.stocknetwork.co.za/ResortInfo.aspx";
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-const decode = (s) => String(s || "")
+export const decode = (s) => String(s || "")
   .replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]*>/g, " ")
   .replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/&#39;|&rsquo;|&apos;/gi, "'").replace(/&quot;/gi, '"')
   .replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/[ \t]+/g, " ").replace(/\s*\n\s*/g, "\n").trim();
