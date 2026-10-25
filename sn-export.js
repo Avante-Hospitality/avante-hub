@@ -156,6 +156,11 @@
     return openSeasons(listing).filter(function(r){ return s(r.to) >= today && !(onlyChanged && sent[seasonKey(r)]); })
       .map(function(r){ return s(r.from) < today ? Object.assign({}, r, { from: today }) : r; });
   }
+  // Stock Network's To Date is the day the guest LEAVES, not the last night
+  // (Jean, 2026-10-25: the last night of every period came through closed on
+  // SN, e.g. Thu 29 Oct after 25-29 Oct midweek). A period's `to` is its last
+  // night, so the file gives the day after.
+  function snToDate(lastNight){ return nextDay(lastNight); }
   // One row per rate season (and unit type), in SN's stock upload layout.
   function stockRows(listing, onlyChanged){
     return seasonsToSend(listing, onlyChanged).map(function(r){
@@ -163,7 +168,7 @@
       var row = []; for(var i = 0; i < 28; i++) row.push('');
       row[0] = s(listing.country); row[1] = s(listing.area); row[2] = s(listing.district) || s(listing.suburb);
       row[3] = s(listing.propertyName); row[4] = s(r.unitTypeName); row[5] = +s(u.numUnits) || 1; row[6] = s(r.unitTypeName);
-      row[7] = r.from; row[8] = r.to; row[9] = +s(u.maxOccupancy) || '';
+      row[7] = r.from; row[8] = snToDate(r.to); row[9] = +s(u.maxOccupancy) || '';
       row[25] = +r.minStay || 1; row[26] = +r.snRate || ''; row[27] = +r.rackRate || '';
       return row;
     });
@@ -286,6 +291,7 @@
     whenReady: whenReady,
     filesForEmail: filesForEmail,
     STOCK_COLS: STOCK_COLS,
+    snToDate: snToDate,
     DAY_NAMES: DAY_NAMES,
     dayOf: dayOf,
     dayList: dayList,

@@ -1573,14 +1573,14 @@
   // =====================================================================
   // REVIEW — ready check and the Stock Network stock file
   // =====================================================================
-  var SN_COLS = ['Country','Area','District','Resort','Complex','Nr of Units Available','Unit Number','From Date','To Date','Unit Size','Start day of weekend','Weekend Nights','Min Span Weekend','Weekend Rate','Weekend Rack Rate','Start day of midweek','Midweek nights','Min Span Midweek','Midweek Rate','Midweek Rack Rate','Start day of full week','Full week Nights','Min Span Full Week','Full week Rate','Full week Rack Rate','Min Span All nights','All Nights Rate','All Nights Rack Rate'];
+  var SN_COLS = SNX.STOCK_COLS;   // sn-export.js
   function snRows(){
     return seasons().filter(function(s){ return s.to >= TODAY; }).map(function(s){
       if(s.from < TODAY) s = Object.assign({}, s, { from: TODAY });
       var r = []; for(var i = 0; i < 28; i++) r.push('');
       r[0] = $('pCountry').value.trim(); r[1] = $('pArea').value.trim(); r[2] = $('pDistrict').value.trim() || $('pSuburb').value.trim();
       r[3] = $('pName').value.trim(); r[4] = s.unitTypeName; r[5] = s.row.querySelector('.pu-numUnits').value.trim() || '1'; r[6] = s.unitTypeName;
-      r[7] = fmtSN(s.from); r[8] = fmtSN(s.to); r[9] = s.row.querySelector('.pu-maxOcc').value.trim();
+      r[7] = fmtSN(s.from); r[8] = fmtSN(SNX.snToDate(s.to)); r[9] = s.row.querySelector('.pu-maxOcc').value.trim();
       r[25] = s.min; r[26] = netRate(s.rack); r[27] = s.rack;
       return r;
     });
