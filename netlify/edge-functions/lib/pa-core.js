@@ -915,10 +915,9 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
       s.calendarStart = { mode, date: mode === "date" ? date : "" };
     }
     if (body.payMode !== undefined) s.payMode = PAY_MODES.includes(body.payMode) ? body.payMode : "both";
-    // The owner has been through Reservation settings and Guest payments once
-    // (Admin > Set up shows "The owner's part" done, Jean 2026-10-25).
+    // The owner has saved Reservation settings and Guest payments (one Save in
+    // Channels) at least once (Admin > Set up shows "The owner's part" done, Jean 2026-10-25).
     if (body.calendarStart !== undefined && !s.setupBookings) s.setupBookings = now().toISOString();
-    if (body.payMode !== undefined && !s.setupPayments) s.setupPayments = now().toISOString();
     if (body.approveGuests !== undefined) s.approveGuests = !!body.approveGuests;
     if (body.bank && typeof body.bank === "object") {
       const bk = { bankName: cleanStr(body.bank.bankName, 60), accountHolder: cleanStr(body.bank.accountHolder, 100), accountNumber: cleanStr(body.bank.accountNumber, 30).replace(/[^0-9 -]/g, ""), branchCode: cleanStr(body.bank.branchCode, 20), accountType: cleanStr(body.bank.accountType, 30), note: cleanStr(body.bank.note, 200) };

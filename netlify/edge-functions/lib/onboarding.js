@@ -87,7 +87,7 @@ export function onboardingSteps(c) {
     const todo = (c.readyTodo || []).filter((t) => !/^Coordinates|^Placed in the hub|^Rates set/.test(t));
     const noCheckIn = !has(l.checkInTime);
     if (!todo.length && !noCheckIn) set("listing", "done");
-    else if (l.helpRequest || l.hostedSetup !== "completing") set("listing", "you", (todo.concat(noCheckIn ? ["Check-in time"] : [])).join(", "));
+    else if (l.helpRequest || l.fillChoice === "avante" || l.hostedSetup !== "completing") set("listing", "you", (todo.concat(noCheckIn ? ["Check-in time"] : [])).join(", "));
     else set("listing", "owner", "The owner is filling it in: " + todo.slice(0, 3).join(", ") + (todo.length > 3 ? "…" : ""));
   }
 
@@ -101,13 +101,13 @@ export function onboardingSteps(c) {
   // Hosted: rates on the calendar.
   if (path === "hosted") {
     const n = (l.rateSeasons || []).length;
-    set("rates", n ? "done" : (l.hostedSetup === "completing" && !l.helpRequest ? "owner" : "you"), n ? "" : "No rates yet");
+    set("rates", n ? "done" : (l.hostedSetup === "completing" && !l.helpRequest && l.fillChoice !== "avante" ? "owner" : "you"), n ? "" : "No rates yet");
   }
 
   // Channel: the Site Nr and Stock Network's set-up sheet.
   if (path === "channel") {
     if (!e && !has(l.siteNr)) set("siteNr", "you", "No Site Nr yet");
-    else if (e && e.status === "Failed") set("siteNr", "you", "The set-up sheet didn't send");
+    else if (e && Array.isArray(e.sendLog) && e.sendLog.length && !e.sendLog[e.sendLog.length - 1].ok) set("siteNr", "you", "The set-up sheet didn't send");
     else if (e && (e.status === "Spare" || e.status === "Ready to send")) set("siteNr", "you", "Send the set-up sheet");
     else set("siteNr", "done");
     // Check the site Stock Network made.
@@ -158,8 +158,7 @@ export function onboardingSteps(c) {
     if (!c.hasPassword) left.push("choose a password");
     if (path === "hosted") {
       const s = (pa && pa.settings) || {};
-      if (!s.setupBookings) left.push("how they take bookings");
-      if (!s.setupPayments) left.push("how guests pay");
+      if (!s.setupBookings) left.push("save how they take bookings and how guests pay (Channels)");
     }
     set("owner", left.length ? "owner" : "done", left.length ? "To do: " + left.join(", ") : "");
   }

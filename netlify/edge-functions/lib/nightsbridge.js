@@ -29,13 +29,13 @@ export async function nightsbridgeProperty(bbid, fetchImpl = fetch) {
   const id = cleanBbid(bbid);
   if (!id) return { ok: false, error: "A NightsBridge number (BBID) is only digits, e.g. 26762." };
   const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), TIMEOUT_MS);
-  let res;
+  let res, d;
   try {
     res = await fetchImpl(NB_API + id, { headers: { accept: "application/json", origin: "https://book.nightsbridge.com", referer: "https://book.nightsbridge.com/" + id }, signal: ctl.signal });
+    d = await res.json().catch(() => null);
   } catch (e) {
     return { ok: false, error: "NightsBridge didn't answer. Try again in a minute." };
   } finally { clearTimeout(timer); }
-  const d = await res.json().catch(() => null);
   const c = d && d.data && d.data.contentrs;
   if (!res.ok || !c || !c.name) return { ok: false, notFound: true, error: "NightsBridge has no property with number " + id + ". Check the number." };
   const str = (v, n) => String(v == null ? "" : v).replace(/\s+/g, " ").trim().slice(0, n);

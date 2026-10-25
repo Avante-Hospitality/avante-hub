@@ -99,7 +99,7 @@
   function propStep(){
     var nb = S.nb;
     $('propSub').textContent = S.how === 'channel' ? 'Your photos, rooms and rates come from ' + cm() + '. We filled in what it shows: check it and add who handles bookings.' : 'Who Avante talks to, and where your property is.';
-    if(nb && !form.__prefilled){
+    if(nb && S.how === 'channel' && !form.__prefilled){
       form.__prefilled = true;
       if(!val('pname')) $('pname').value = nb.name || '';
       if(!val('cname')) $('cname').value = nb.contact || '';
@@ -116,8 +116,8 @@
       S.map = L.map('map', { scrollWheelZoom: false }).setView([c.lat, c.lng], S.pin ? 15 : 5);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap contributors' }).addTo(S.map);
       S.map.on('click', function(e){ setPin(e.latlng.lat, e.latlng.lng); });
+      if(S.pin) setPin(S.pin.lat, S.pin.lng, true);
     } else S.map.invalidateSize();
-    if(S.pin) setPin(S.pin.lat, S.pin.lng, true);
   }
   function setPin(lat, lng, center){
     S.pin = { lat: Math.round(lat * 1e6) / 1e6, lng: Math.round(lng * 1e6) / 1e6 };
@@ -204,7 +204,7 @@
       propertyAffiliate: true, acceptTerms: true,
       lat: S.pin ? S.pin.lat : null, lng: S.pin ? S.pin.lng : null,
       fillChoice: channel ? '' : ((form.querySelector('input[name=fill]:checked') || {}).value || 'avante'),
-      channelInvites: Object.keys(($('calCards').__done) || {}).filter(function(k){ return $('calCards').__done[k]; })
+      channelInvites: channel ? [] : icalPicked().filter(function(k){ return ($('calCards').__done || {})[k]; })
     };
     S.busy = true; next.textContent = 'Sending…'; render();
     post(body).then(function(d){

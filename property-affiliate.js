@@ -202,8 +202,7 @@
     if (isCh()) return '';
     var st = S.prop.settings || {}, ch = S.channels;
     var items = [
-      [!!st.setupBookings, 'How you take bookings', 'Check-in, minimum stay, and whether you approve each guest first.'],
-      [!!st.setupPayments, 'How guests pay you', 'Card payments through Avante, or EFT to your bank account.']
+      [!!st.setupBookings, 'How you take bookings and how guests pay you', 'Your calendar start, minimum stay, approving guests, and card payments or EFT. Check them and tap Save once.']
     ];
     if (ch) items.push([!!((ch.linkedUnits || []).length || ch.channelHelp), 'Link your other channels', 'Invite Avante on Airbnb, Booking.com or LekkeSlaap, so you are never double-booked. Skip it if you are not on them.']);
     var left = items.filter(function (x) { return !x[0]; });

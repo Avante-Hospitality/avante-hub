@@ -579,13 +579,14 @@ async function requestLocation(body, propertyName) {
 // its Site Nrs entry, its row in Stock Network's list, its affiliate, whether
 // the owner has a password, and its Property Affiliate connection and channels.
 // lib/onboarding.js works out each step from it.
-async function onboardingContext(record) {
+// shared.resortList: Stock Network's list, read once by the caller for many listings.
+async function onboardingContext(record, shared = {}) {
   const paStore = getStore({ name: "property-affiliate", consistency: "strong" });
   const affId = String(record.affId || record.siteId || "").trim();
   const rid = String(record.resortId || "").trim().toLowerCase();
   const [entry, list, aff, auth, pa] = await Promise.all([
     record.siteNr ? getSiteNr(siteRegister(), record.siteNr).catch(() => null) : null,
-    rid ? getStore({ name: "resort-list", consistency: "strong" }).get("current", { type: "json" }).catch(() => null) : null,
+    !rid ? null : shared.resortList !== undefined ? shared.resortList : getStore({ name: "resort-list", consistency: "strong" }).get("current", { type: "json" }).catch(() => null),
     affId ? getStore({ name: AFFILIATES_STORE, consistency: "strong" }).get(affId, { type: "json" }).catch(() => null) : null,
     affId ? getStore({ name: "affiliate-auth", consistency: "strong" }).get(affId, { type: "json" }).catch(() => null) : null,
     affId ? paStore.get("site:" + affId, { type: "json" }).catch(() => null) : null,
@@ -2103,7 +2104,7 @@ export default async (request, context) => {
         aff: ctx.aff ? { affId: ctx.aff.affId, types: ctx.aff.types || [], email: ctx.aff.email || "", revenueShare: ctx.aff.revenueShare || {} } : null,
         hasPassword: ctx.hasPassword,
         pa: pa ? { connected: pa.connected, siteId: pa.siteId, units: pa.units, channelLinks: pa.channelLinks, pendingChannelBookings: pa.pendingChannelBookings, pendingEvents: pa.pendingEvents,
-          channelHelp: pa.channelHelp, slug: pa.slug, setupBookings: !!(pa.settings && pa.settings.setupBookings), setupPayments: !!(pa.settings && pa.settings.setupPayments) } : null,
+          channelHelp: pa.channelHelp, slug: pa.slug, setupBookings: !!(pa.settings && pa.settings.setupBookings) } : null,
         listedChannels: listedChannels(record) });
     }
 
@@ -2111,12 +2112,14 @@ export default async (request, context) => {
     if (action === "onboardingAll") {
       const denied = await requireAdmin();
       if (denied) return denied;
-      const all = (await allListings(store)).filter((r) => r && r.status !== "Rejected" && !r.liveAt);
+      // Live ones are done: Go live sets liveAt; listings Listed before Set up existed count as live too.
+      const all = (await allListings(store)).filter((r) => r && r.status !== "Rejected" && r.status !== "Listed" && !r.liveAt);
+      const resortList = await getStore({ name: "resort-list", consistency: "strong" }).get("current", { type: "json" }).catch(() => null);
       const rows = [];
       // A few at a time: each one reads several stores.
       for (let i = 0; i < all.length; i += 6) {
         const part = await Promise.all(all.slice(i, i + 6).map(async (r) => {
-          const st = onboardingSteps(await onboardingContext(r));
+          const st = onboardingSteps(await onboardingContext(r, { resortList }));
           return { listingId: r.listingId, propertyName: r.propertyName || "", path: st.path, done: st.done, total: st.total, outstanding: st.outstanding };
         }));
         rows.push(...part);

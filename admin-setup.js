@@ -202,7 +202,7 @@
       case 'owner':
         h = head(s, 'What the owner does in their own hub. Each takes a minute or two.') + '<div class="obw-box">' +
           row('Chose a password', yes(D.hasPassword)) +
-          (D.path === 'hosted' ? row('How they take bookings (Reservation settings)', yes(D.pa && D.pa.setupBookings)) + row('How guests pay (Guest payments)', yes(D.pa && D.pa.setupPayments)) : '') + '</div>' +
+          (D.path === 'hosted' ? row('Saved how they take bookings and how guests pay (Channels)', yes(D.pa && D.pa.setupBookings)) : '') + '</div>' +
           '<div class="obw-btns">' + btn('ownerReminder', 'Send a reminder') + '</div>';
         break;
       case 'golive':
