@@ -65,6 +65,85 @@
     return [s(r.slot), c.length ? 'Closed ' + c.map(function(d){ return DAY_NAMES[d].slice(0, 3); }).join(', ') : ''].filter(Boolean).join(' · ');
   }
 
+  // A night's price on a day: { closed, weekend, price, min } (null without a rate).
+  // r: { rack, min } plus, with a weekly pattern, wr / wm (weekend rack rate and
+  // min stay), wd (weekend nights "4,5") and cd (closed nights "0").
+  function nightInfo(r, k){
+    if(!r) return null;
+    var d = dayOf(k), closed = !!r.cd && dayList(r.cd).indexOf(d) > -1, we = !closed && !!r.wr && dayList(r.wd).indexOf(d) > -1;
+    return { closed: closed, weekend: we, price: we ? r.wr : r.rack, min: we ? (r.wm || r.min) : r.min };
+  }
+  function nextDay(iso){ var p = s(iso).split('-'), d = new Date(Date.UTC(+p[0], +p[1] - 1, +p[2] + 1)); return d.toISOString().slice(0, 10); }
+  function eachNight(from, to, fn){ for(var k = from; k <= to; k = nextDay(k)) fn(k); }
+  // The night a saved period stands for (the form's calendar shape).
+  function nightOf(rs){
+    var wr = +rs.weekendRackRate || 0;
+    return { rack: +(wr ? rs.midweekRackRate || rs.rackRate : rs.rackRate), min: +(wr ? rs.midweekMinStay || rs.minStay : rs.minStay) || 1, wr: wr,
+      wm: wr ? (+rs.weekendMinStay || +rs.minStay || 1) : 0, wd: wr ? dayList(rs.weekendDays).join(',') : '', cd: dayList(rs.closedDays).join(',') };
+  }
+  function nightKey(n){ return [n.rack, n.min, n.wr, n.wm, n.wd, n.cd].join('|'); }
+
+  // Saved periods -> { unit type: { 'YYYY-MM-DD': night } }.
+  // Nights booked on another channel (listing.blockedNights) stay OPEN on
+  // Avante (Jean, 2026-10-25): the property is set up with everything
+  // available, and once its channel calendars are linked (iCal) only their
+  // bookings close nights. Listings saved before this left those nights out
+  // of their periods; a gap of booked nights between two periods with the
+  // same rates gets those rates back.
+  function ratesFromSeasons(seasons, blockedNights){
+    var booked = {}; (blockedNights || []).forEach(function(k){ booked[k] = true; });
+    var byUnit = {};
+    (seasons || []).forEach(function(rs){
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(s(rs.from)) || !/^\d{4}-\d{2}-\d{2}$/.test(s(rs.to))) return;
+      (byUnit[s(rs.unitTypeName)] = byUnit[s(rs.unitTypeName)] || []).push(rs);
+    });
+    var out = {};
+    Object.keys(byUnit).forEach(function(unit){
+      var list = byUnit[unit].sort(function(a, b){ return s(a.from) < s(b.from) ? -1 : 1; }), R = out[unit] = {};
+      list.forEach(function(rs, i){
+        var n = nightOf(rs);
+        eachNight(s(rs.from), s(rs.to), function(k){ R[k] = Object.assign({}, n); });
+        var next = list[i + 1];
+        if(!next || nightKey(nightOf(next)) !== nightKey(n)) return;
+        var gap = [], allBooked = true;
+        for(var k = nextDay(s(rs.to)); k < s(next.from); k = nextDay(k)){ gap.push(k); if(!booked[k] && !nightInfo(n, k).closed) allBooked = false; }
+        if(gap.length && allBooked) gap.forEach(function(k){ R[k] = Object.assign({}, n); });
+      });
+    });
+    return out;
+  }
+  // One unit's nights -> its rate periods (one Stock Network row each).
+  // Jean, 2026-10-22: with a weekend rate, the run is cut at every change
+  // between midweek and weekend nights, so each midweek slot and each
+  // weekend slot is its own period with its own rate and minimum stay.
+  // Without one, a run of nights with the same rate is one period. Closed
+  // nights are never in a period; nights booked elsewhere are (see above).
+  function periodsOf(R, unitTypeName){
+    var keys = Object.keys(R || {}).sort(), out = [], cur = null;
+    if(!keys.length) return out;
+    eachNight(keys[0], keys[keys.length - 1], function(k){
+      var r = R[k], ni = nightInfo(r, k), ok = r && !ni.closed;
+      var slot = ok && r.wr && dayList(r.wd).length ? (ni.weekend ? 'Weekend' : 'Midweek') : '';
+      var key = ok ? [ni.price, ni.min, slot, r.rack, r.min, r.wr || 0, r.wm || 0, r.wd || '', r.cd || ''].join('|') : '';
+      if(ok && cur && cur.key === key){ cur.to = k; cur.nights++; }
+      else { if(cur) out.push(cur); cur = ok ? { key: key, unitTypeName: unitTypeName, from: k, to: k, nights: 1, rack: ni.price, min: ni.min, slot: slot, r: r } : null; }
+    });
+    if(cur) out.push(cur);
+    return out;
+  }
+  // A period as it is saved on the listing and sent to Stock Network.
+  function seasonOut(p){
+    var r = p.r, o = { unitTypeName: p.unitTypeName, from: p.from, to: p.to, nights: p.nights, minStay: p.min, rackRate: p.rack, snRate: window.AvanteCommission.netRate(p.rack), slot: p.slot, closedDays: r.cd || '' };
+    if(p.slot) Object.assign(o, { midweekRackRate: r.rack, midweekMinStay: r.min, weekendRackRate: r.wr, weekendMinStay: r.wm || r.min, weekendDays: r.wd });
+    return o;
+  }
+  // The listing's periods with every night open (booked nights included).
+  function openSeasons(listing){
+    var R = ratesFromSeasons(listing.rateSeasons, listing.blockedNights), out = [];
+    Object.keys(R).forEach(function(unit){ out = out.concat(periodsOf(R[unit], unit).map(seasonOut)); });
+    return out;
+  }
+
   function todayIso(){ var d = new Date(), p = function(n){ return (n < 10 ? '0' : '') + n; }; return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()); }
   function seasonKey(r){ return [s(r.unitTypeName), s(r.from), s(r.to), s(r.rackRate), s(r.minStay), s(r.slot)].join('|'); }
   // Seasons Stock Network needs: today onwards only (past rates stay on
@@ -74,7 +153,7 @@
   function seasonsToSend(listing, onlyChanged){
     var today = todayIso();
     var sent = {}; (listing.snSentSeasons || []).forEach(function(r){ sent[seasonKey(r)] = true; });
-    return (listing.rateSeasons || []).filter(function(r){ return s(r.to) >= today && !(onlyChanged && sent[seasonKey(r)]); })
+    return openSeasons(listing).filter(function(r){ return s(r.to) >= today && !(onlyChanged && sent[seasonKey(r)]); })
       .map(function(r){ return s(r.from) < today ? Object.assign({}, r, { from: today }) : r; });
   }
   // One row per rate season (and unit type), in SN's stock upload layout.
@@ -146,7 +225,7 @@
     XLSX.utils.book_append_sheet(wb, sheetWithDates(STOCK_COLS, stockRows(listing), [7, 8]), 'Stock');
     // Every rate season on record, past ones included, for reference.
     var today = todayIso(), sent = {}; (listing.snSentSeasons || []).forEach(function(r){ sent[seasonKey(r)] = true; });
-    var hist = (listing.rateSeasons || []).map(function(r){ return [s(r.unitTypeName), r.from, r.to, +r.nights || '', +r.minStay || '', +r.rackRate || '', +r.snRate || '', weekText(r), s(r.to) < today ? 'Past' : (sent[seasonKey(r)] ? 'Sent to SN' : 'Not sent yet')]; });
+    var hist = openSeasons(listing).map(function(r){ return [s(r.unitTypeName), r.from, r.to, +r.nights || '', +r.minStay || '', +r.rackRate || '', +r.snRate || '', weekText(r), s(r.to) < today ? 'Past' : (sent[seasonKey(r)] ? 'Sent to SN' : 'Not sent yet')]; });
     XLSX.utils.book_append_sheet(wb, sheetWithDates(['Unit Type','From','To','Nights','Min Stay','Rack Rate','SN Rate','Slot / closed','Status'], hist, [1, 2]), 'All rates on record');
     return wb;
   }
@@ -212,6 +291,11 @@
     dayList: dayList,
     dayRun: dayRun,
     weekText: weekText,
+    nightInfo: nightInfo,
+    ratesFromSeasons: ratesFromSeasons,
+    periodsOf: periodsOf,
+    seasonOut: seasonOut,
+    openSeasons: openSeasons,
     stockRows: stockRows,
     needSite: needSite,
     downloadPropertyFile: function(listing, siteNr){

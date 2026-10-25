@@ -6928,7 +6928,7 @@
           list.appendChild(row);
         });
         host.appendChild(list);
-        var seasons = (l.rateSeasons || []).length;
+        var seasons = window.AvanteSNExport ? AvanteSNExport.openSeasons(l).length : (l.rateSeasons || []).length;
         var editBtn = document.createElement('button');
         editBtn.type = 'button'; editBtn.className = 'btn-outline'; editBtn.style.marginTop = '10px';
         editBtn.textContent = 'Open full form to edit (units, amenities, rates)';
@@ -7324,8 +7324,8 @@
             detailRow('Last updated', fmtPropDate(l.dateUpdated)) +
             detailRow('Coordinates checked with Google', l.coordsVerified === 'Y' ? ('Yes \u2014 ' + (l.coordsVerifiedPlace || '')) : 'No') +
             (l.screenshotsRead ? detailRow('Filled from screenshots', l.screenshotsRead + ' screenshot(s)') : '') +
-            ((l.rateSeasons || []).length ? detailRow('Rates (rack \u2192 SN)', l.rateSeasons.map(function(r){ return r.unitTypeName + ': ' + r.from + ' to ' + r.to + ', R' + r.rackRate + ' \u2192 R' + r.snRate + ', min ' + r.minStay + (window.AvanteSNExport && AvanteSNExport.weekText(r) ? ' · ' + AvanteSNExport.weekText(r) : ''); }).join(' | ')) : '') +
-            ((l.blockedNights || []).length ? detailRow('Blocked nights', l.blockedNights.length + ' night(s)') : '');
+            ((l.rateSeasons || []).length ? detailRow('Rates (rack \u2192 SN)', (window.AvanteSNExport ? AvanteSNExport.openSeasons(l) : l.rateSeasons).map(function(r){ return r.unitTypeName + ': ' + r.from + ' to ' + r.to + ', R' + r.rackRate + ' \u2192 R' + r.snRate + ', min ' + r.minStay + (window.AvanteSNExport && AvanteSNExport.weekText(r) ? ' · ' + AvanteSNExport.weekText(r) : ''); }).join(' | ')) : '') +
+            ((l.blockedNights || []).length ? detailRow('Booked on other channels', l.blockedNights.length + ' night(s), open on Avante: the channel calendar link (iCal) closes them') : '');
           // A property already on Stock Network (Jean, 2026-10-14): everything
           // Stock Network has is pulled in; what it doesn't have is marked here.
           var onSn = !!l.resortId;

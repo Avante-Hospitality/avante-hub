@@ -474,7 +474,7 @@
   <section class="step" data-step="6" data-title="Calendar &amp; rates">
     <h2 class="step-title">7. Calendar &amp; rates</h2>
     <div class="card rates-note"><p class="note info" style="margin:0"><b>Nothing to fill in here.</b> Your rates and availability come from your channel manager (for example NightsBridge) through Avante, so they stay there. Go on to step 8.</p></div>
-    <p class="step-lede">Tap a first night and a last night, type the <b>rack rate</b> (the public price per night) and minimum stay, and tap <b>Apply rate</b>. Block nights that are already booked. Weekends cost more, or closed on some nights? Set the <b>Weekly pattern</b> first. Avante works out the rest for you.</p>
+    <p class="step-lede">Tap a first night and a last night, type the <b>rack rate</b> (the public price per night) and minimum stay, and tap <b>Apply rate</b>. Nights already booked on another channel keep their rate: Avante opens everything, and the channel calendar link (iCal) closes the booked nights. Weekends cost more, or closed on some nights? Set the <b>Weekly pattern</b> first. Avante works out the rest for you.</p>
     <div data-shots="6"></div>
     <div class="card" id="weekCard">
       <h2 class="section-heading">Weekly pattern</h2>
@@ -495,7 +495,7 @@
       <div class="selbar" id="selBar"></div>
       <div class="btns" style="justify-content:space-between"><button type="button" class="btn-secondary btn-sm" id="calPrev">◀ Earlier</button><b id="calRange" style="font-size:14px"></b><button type="button" class="btn-secondary btn-sm" id="calNext">Later ▶</button></div>
       <div class="months" id="months"></div>
-      <div class="legend"><span>Rate set</span><span class="w">Weekend rate</span><span class="cl">Closed</span><span class="u">Open, no rate</span><span class="b">Booked / blocked</span><span class="s">Selected</span><span class="c">= price seen on the other channel</span><span class="p">Past (kept on record)</span></div>
+      <div class="legend"><span>Rate set</span><span class="w">Weekend rate</span><span class="cl">Closed</span><span class="u">Open, no rate</span><span class="b">Booked on another channel (stays open)</span><span class="s">Selected</span><span class="c">= price seen on the other channel</span><span class="p">Past (kept on record)</span></div>
       <h3 class="section-heading" style="margin-top:18px; font-size:15px;">Seasons</h3>
       <div class="scroll"><table><thead><tr><th>Unit</th><th>From</th><th>To</th><th class="num">Nights</th><th class="num">Min stay</th><th class="num">Rack (R)</th><th class="num">Avante rate (R)</th><th>Slot</th><th>Closed</th></tr></thead><tbody id="seasonRows"></tbody></table></div>
       <div id="seasonNote"></div>
@@ -1424,11 +1424,7 @@
   });
   // A night on the calendar: { rack, min } plus, with a weekly pattern,
   // wr / wm (weekend rack rate and min stay), wd (weekend nights "4,5") and cd (closed nights "0").
-  function nightInfo(r, k){
-    if(!r) return null;
-    var d = SNX.dayOf(k), closed = !!r.cd && SNX.dayList(r.cd).indexOf(d) > -1, we = !closed && !!r.wr && SNX.dayList(r.wd).indexOf(d) > -1;
-    return { closed: closed, weekend: we, price: we ? r.wr : r.rack, min: we ? (r.wm || r.min) : r.min };
-  }
+  var nightInfo = SNX.nightInfo;   // sn-export.js
 
   function renderCalendar(){
     var rows = unitRows();
@@ -1466,8 +1462,8 @@
         var k = isoLocal(new Date(first.getFullYear(), first.getMonth(), d)), r = RATES[uid][k], ni = nightInfo(r, k), b = BLOCKED[k], past = k < TODAY;
         var insel = sel ? (k >= sel[0] && k <= sel[1]) : k === selA;
         var cls = past ? (r ? 'past' : 'x') : b ? 'b' : ni && ni.closed ? 'cl' : ni && ni.weekend ? 'r w' : r ? 'r' : 'u';
-        var label = b && !past ? '—' : ni && ni.closed ? 'closed' : r ? ni.price : '';
-        var tip = past && r ? 'Past: R' + ni.price + ' (kept on record)' : ni && !b ? (ni.closed ? 'Closed' : (ni.weekend ? 'Weekend: ' : '') + 'R' + ni.price + ', min ' + ni.min) : '';
+        var label = ni && ni.closed ? 'closed' : r ? ni.price : (b && !past ? '—' : '');
+        var tip = past && r ? 'Past: R' + ni.price + ' (kept on record)' : (b && !past ? 'Booked on another channel. Stays open on Avante: the channel calendar link closes it. ' : '') + (ni ? (ni.closed ? 'Closed' : (ni.weekend ? 'Weekend: ' : '') + 'R' + ni.price + ', min ' + ni.min) : (b && !past ? 'No rate yet: give it the same rate as the nights around it.' : ''));
         html += '<button type="button" class="d ' + cls + (insel ? ' sel' : '') + '"' + (past ? ' disabled' : ' data-day="' + k + '"') + ' title="' + esc(tip) + '"><span>' + d + '</span><small class="rk">' + label + '</small>' + (CHANNEL_PRICES[k] && !b && !past ? '<small class="ch">' + CHANNEL_PRICES[k] + '</small>' : '') + '</button>';
       }
       html += '</div></div>';
@@ -1511,42 +1507,26 @@
     if(act === 'usech'){ var mn = +$('selMin').value || 1; lastMin = mn; eachDay(sel[0], sel[1], function(k){ if(CHANNEL_PRICES[k]) R[k] = { rack: CHANNEL_PRICES[k], min: mn }; }); }
     if(act === 'clear') eachDay(sel[0], sel[1], function(k){ delete R[k]; });
     if(act === 'block') eachDay(sel[0], sel[1], function(k){ BLOCKED[k] = true; });
-    if(act === 'blockdow'){ var dow = +$('selDow').value; eachDay(sel[0], sel[1], function(k){ if(SNX.dayOf(k) === dow) BLOCKED[k] = true; }); }
+    // A weekday the property closes in these dates (e.g. every Wednesday in winter) is a
+    // closed night, not a booking: it stays out of Stock Network's file (Jean, 2026-10-25).
+    if(act === 'blockdow'){ var dow = +$('selDow').value; eachDay(sel[0], sel[1], function(k){ if(SNX.dayOf(k) === dow && R[k]) R[k] = Object.assign({}, R[k], { cd: SNX.dayList((R[k].cd ? R[k].cd + ',' : '') + dow).join(',') }); }); }
     if(act === 'open') eachDay(sel[0], sel[1], function(k){ delete BLOCKED[k]; });
     selA = selB = null; SEL_WEEK = null;
     renderCalendar();
   });
-  // The rate periods (one Stock Network row each). Jean, 2026-10-22: with a
-  // weekend rate, the season is cut at every change between midweek and
-  // weekend nights, so each midweek slot and each weekend slot is its own
-  // period with its own rate and minimum stay. Without one, a run of nights
-  // with the same rate is one period. Blocked and closed nights are never in
-  // a period.
+  // The rate periods (one Stock Network row each): sn-export.js cuts them.
+  // Nights booked on another channel stay in them (Jean, 2026-10-25): the
+  // property is set up with everything open; its channel calendar links
+  // (iCal) close the booked nights.
   function seasons(){
     var out = [];
     unitRows().forEach(function(row, idx){
-      var uid = row.getAttribute('data-uid'), R = RATES[uid] || {};
-      var keys = Object.keys(R).sort();   // past rates included: they stay on record
-      if(!keys.length) return;
-      var cur = null;
-      eachDay(keys[0], keys[keys.length - 1], function(k){
-        var r = R[k], ni = nightInfo(r, k), ok = r && !ni.closed && (!BLOCKED[k] || k < TODAY);
-        var slot = ok && r.wr && SNX.dayList(r.wd).length ? (ni.weekend ? 'Weekend' : 'Midweek') : '';
-        var key = ok ? [ni.price, ni.min, slot, r.rack, r.min, r.wr || 0, r.wm || 0, r.wd || '', r.cd || ''].join('|') : '';
-        if(ok && cur && cur.key === key){ cur.to = k; cur.nights++; }
-        else { if(cur) out.push(cur); cur = ok ? { key: key, row: row, unitTypeName: unitName(row, idx), from: k, to: k, nights: 1, rack: ni.price, min: ni.min, slot: slot, r: r } : null; }
-      });
-      if(cur) out.push(cur);
+      var name = unitName(row, idx);
+      SNX.periodsOf(RATES[row.getAttribute('data-uid')] || {}, name).forEach(function(p){ p.row = row; out.push(p); });
     });
     return out;
   }
-  // A period as it is saved on the listing (and given to sn-export.js). The
-  // weekly pattern it came from is kept too, so the form can show it again.
-  function seasonOut(s){
-    var r = s.r, o = { unitTypeName: s.unitTypeName, from: s.from, to: s.to, nights: s.nights, minStay: s.min, rackRate: s.rack, snRate: netRate(s.rack), slot: s.slot, closedDays: r.cd || '' };
-    if(s.slot) Object.assign(o, { midweekRackRate: r.rack, midweekMinStay: r.min, weekendRackRate: r.wr, weekendMinStay: r.wm || r.min, weekendDays: r.wd });
-    return o;
-  }
+  var seasonOut = SNX.seasonOut;
   function renderSeasons(){
     var s = seasons();
     $('seasonRows').innerHTML = s.length ? s.map(function(x){ return '<tr' + (x.to < TODAY ? ' class="past" title="Past — kept on record"' : '') + '><td>' + esc(x.unitTypeName) + (x.to < TODAY ? ' (past)' : '') + '</td><td>' + fmtL(x.from) + '</td><td>' + fmtL(x.to) + '</td><td class="num">' + x.nights + '</td><td class="num">' + x.min + '</td><td class="num">' + x.rack.toLocaleString('en-ZA') + '</td><td class="num"><b>' + netRate(x.rack).toLocaleString('en-ZA') + '</b></td>' +
@@ -1919,13 +1899,10 @@
     Array.prototype.forEach.call(document.querySelectorAll('.amenity-check'), function(cb){ cb.checked = !!on[cb.getAttribute('data-cat') + '|' + cb.getAttribute('data-item')]; });
     // Rates (past ones included) and blocked nights
     RATES = {};
-    (L.rateSeasons || []).forEach(function(rs){
-      if(!/^\d{4}-\d{2}-\d{2}$/.test(rs.from || '') || !/^\d{4}-\d{2}-\d{2}$/.test(rs.to || '')) return;
-      var row = unitRows().filter(function(r, i){ return unitName(r, i) === rs.unitTypeName; })[0] || unitRows()[0];
-      var uid = row.getAttribute('data-uid'); RATES[uid] = RATES[uid] || {};
-      var wr = +rs.weekendRackRate || 0, night = { rack: +(wr ? rs.midweekRackRate || rs.rackRate : rs.rackRate), min: +(wr ? rs.midweekMinStay || rs.minStay : rs.minStay) || 1, wr: wr, wm: wr ? (+rs.weekendMinStay || +rs.minStay || 1) : 0,
-        wd: wr ? SNX.dayList(rs.weekendDays).join(',') : '', cd: SNX.dayList(rs.closedDays).join(',') };
-      eachDay(rs.from, rs.to, function(k){ RATES[uid][k] = Object.assign({}, night); });
+    var byUnit = SNX.ratesFromSeasons(L.rateSeasons, L.blockedNights);
+    Object.keys(byUnit).forEach(function(unit){
+      var row = unitRows().filter(function(r, i){ return unitName(r, i) === unit; })[0] || unitRows()[0];
+      var uid = row.getAttribute('data-uid'); RATES[uid] = Object.assign(RATES[uid] || {}, byUnit[unit]);
     });
     var wp = L.weekPattern || {};
     WEEK = { on: wp.weekendRates === 'Y', wd: wp.weekendDays !== undefined ? SNX.dayList(wp.weekendDays) : [4, 5], cd: SNX.dayList(wp.closedDays) };
