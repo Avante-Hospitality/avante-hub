@@ -10,6 +10,7 @@ import { stayPayload, resortInfo } from "./lib/stay-payload.js";
 import { treeAreaList } from "./lib/tree-place.js";
 import { libraryPhotos, googlePhotos } from "./lib/act-photos.js";
 import { searchPlacePhotos } from "./lib/places-images.js";
+import { reviewsConfig } from "./lib/review-app.js";
 
 const cors = { "access-control-allow-origin": "*", "access-control-allow-methods": "POST, OPTIONS", "access-control-allow-headers": "content-type, x-pa-sync-secret" };
 const json = (obj, status = 200) => new Response(JSON.stringify(obj), { status, headers: { "content-type": "application/json", "cache-control": "no-store", ...cors } });
@@ -41,7 +42,7 @@ export default async (request) => {
     encKey: env("PA_ENC_KEY"),
     baseUrl: new URL(request.url).origin,
     // Avante Reviews app: review links for after-stay messages.
-    reviews: { baseUrl: env("REVIEWS_BASE_URL"), secret: env("REVIEWS_SYNC_SECRET"), tenant: env("REVIEWS_TENANT") || "avante" },
+    reviews: reviewsConfig(),
     // Same stores auth-api.js uses: the affiliate's password hash and profile.
     affiliates: {
       getAuth: (aff) => getStore({ name: "affiliate-auth", consistency: "strong" }).get(aff, { type: "json" }),

@@ -7011,7 +7011,7 @@
               var b = this, st2 = ca.querySelector('#elAffStatus'); b.disabled = true; st2.textContent = 'Creating\u2026';
               propAdminPost('createAffiliateFromListing', { listingId: l.listingId }).then(function(res){
                 b.disabled = false; var d2 = res.data || {};
-                st2.textContent = d2.ok ? 'Affiliate ' + d2.affId + ' created \u2714 Check its revenue share in Affiliates.' : (d2.error || 'Could not create it.');
+                st2.textContent = d2.ok ? 'Affiliate ' + d2.affId + ' created \u2714 ' + (d2.rating ? d2.rating + '. ' : '') + 'Check its revenue share in Affiliates.' : (d2.error || 'Could not create it.');
               });
             });
           }
@@ -7034,6 +7034,32 @@
               else st.textContent = (res.data && res.data.error) || 'Could not send.';
             });
           });
+        }
+
+        // Reviews (Jean, 2026-10-25): the rating link comes from the review app
+        // by itself when the property is activated; nobody copies it by hand.
+        // The review app finds the property's Google listing; a match it isn't
+        // sure of waits here for admin to confirm.
+        if(l.resortId){
+          var rv = document.createElement('div');
+          rv.style.cssText = 'margin-top:14px; padding:12px; border:1px solid #d6e3e1; border-radius:10px;';
+          var cand = l.ratingGoogle === 'needs_confirm' && l.ratingGoogleCandidate;
+          var gWords = { matched: 'Found on Google', linked: 'Found on Google', confirmed: 'Google listing confirmed', needs_confirm: 'Check the Google match below', not_found: 'Not found on Google: Avante reviews only', no_key: 'Google lookup is off in the review app' };
+          rv.innerHTML = '<div style="font-weight:700; margin-bottom:6px;">Reviews</div>' +
+            (l.ratingLink ? '<div class="hint" style="margin:0 0 4px;">Rating link: <a href="' + escapeHtml(l.ratingLink) + '" target="_blank" rel="noopener">open it</a> \u00b7 ' + escapeHtml(gWords[l.ratingGoogle] || '') + '</div><div class="hint" style="margin:0 0 6px;">Shows Google\u2019s rating until the property has 3 Avante reviews, then Avante\u2019s own. It goes to Stock Network in the property file.</div>'
+              : '<div class="hint" style="margin:0 0 6px;">No rating link yet. It comes from the review app when the property is activated' + (l.ratingLinkError ? ' (last try: ' + escapeHtml(l.ratingLinkError) + ')' : '') + '.</div>') +
+            (cand ? '<div style="margin:6px 0; padding:8px; background:#fff8e6; border-radius:8px;"><b>Is this the property on Google?</b><br>' + escapeHtml(cand.name || '') + '<br><span class="hint" style="margin:0">' + escapeHtml(cand.address || '') + (cand.distance_km != null ? ' \u00b7 ' + escapeHtml(String(cand.distance_km)) + ' km from its pin' : '') + '</span><div style="margin-top:6px; display:flex; gap:8px; flex-wrap:wrap;"><button type="button" class="btn-outline" id="rvYes">Yes, that\u2019s it</button></div></div>' : '') +
+            '<div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;"><button type="button" class="btn-outline" id="rvGet">' + (l.ratingLink ? 'Check the rating link again' : 'Get the rating link') + '</button><span class="hint" id="rvStatus" style="margin:0"></span></div>';
+          host.appendChild(rv);
+          var rvAsk = function(confirmId){
+            var st = rv.querySelector('#rvStatus'); st.textContent = 'Asking the review app\u2026';
+            propAdminPost('getRatingLink', { listingId: l.listingId, confirmPlaceId: confirmId || '' }).then(function(res){
+              var d = res.data || {};
+              if(d.ok) openPropertyDetailsModal(l.listingId); else st.textContent = d.error || 'Could not get it.';
+            });
+          };
+          rv.querySelector('#rvGet').addEventListener('click', function(){ rvAsk(''); });
+          if(cand) rv.querySelector('#rvYes').addEventListener('click', function(){ rvAsk(cand.place_id); });
         }
 
         // Photos on the listing: add or delete (Jean, 2026-10-13). The photo

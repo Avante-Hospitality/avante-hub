@@ -34,13 +34,14 @@
   <main class="ht-main">
     <h1>Hub admin, step by step</h1>
     <p class="ht-lead">For Avante Travel staff. Every admin tab, one small step at a time.</p>
-    <p class="ht-updated">Last updated: 22 October 2026</p>
+    <p class="ht-updated">Last updated: 25 October 2026</p>
 
     <div class="ht-card ht-new" aria-label="What's new">
       <h2>What's new</h2>
       <ul>
         <li><time>22 Oct 2026</time> The Stock Network <b>property file</b> also has <b>Amenities</b>, <b>Activities</b> and <b>Experiences</b> (each in one column, separated by commas) and the linked affiliate's <b>bank details</b> from its hub Account Details (Account Name, Bank, Account Type, Account Nr, Branch Number). A listing has two new boxes: <span class="field">Activities (separate with commas)</span> and <span class="field">Experiences (separate with commas)</span>.</li>
         <li><time>22 Oct 2026</time> The Stock Network property file also has <b>Resort Name 2</b>, <b>Resort Booking Link</b> and <b>Rating Link</b> (from the listing), and the Franchisor / Franchise split is named as Stock Network's <b>MANUAL</b> row on the site's Rates tab. Type, Status, bank details, unit codes, amenities and activities are still set up by hand in Stock Network.</li>
+        <li><time>25 Oct 2026</time> <b>Rating links</b> now come from the review app by themselves: <span class="btn">Activate</span> and <span class="btn g">Create the affiliate</span> fetch the property's rating link and find it on Google. Nobody copies a link or a Google Place ID by hand any more. A listing's new <b>Reviews</b> box shows the link; if Google's match isn't certain, it asks <b>Is this the property on Google?</b>. See <a href="#ratingLink">Rating link</a>.</li>
         <li><time>22 Oct 2026</time> <span class="tab">Site Nrs</span> → <b>Commission for property affiliates</b>: <span class="btn g">Check the list</span> and <span class="btn">Email Stock Network</span> send SN one sheet with Franchisor 5.75% / Franchise 11.5% for every property and channel affiliate already set up. See <a href="#siteNrs">Site Nrs</a>.</li>
         <li><time>22 Oct 2026</time> Commission: own bookings are now <b>5% + VAT</b> (was 4.95%). For property affiliates (channel and not), the Stock Network set-up sheet and the property file have two new columns, <b>Franchisor %</b> = 5.75 (Avante) and <b>Franchise %</b> = 11.5 (the property), and the set-up email asks SN to set them. The property itself only sees 5% + VAT. A listing shows <b>Commission 15% + VAT. Own bookings: Franchisor 5.75% / Franchise 11.5%</b>.</li>
         <li><time>22 Oct 2026</time> Property Listings: new <b>Copy a property's content (for testing)</b>. Copies one property's listing, photos, front store, location and library photos onto another (e.g. Little Gem into Property Testing).</li>
@@ -496,7 +497,7 @@
         <li>Came with <span class="btn g">Find it with its Avante login</span> and the hub asks for its <span class="field">ResortID</span>? Paste it. It is the last column of Stock Network's resort file.</li>
         <li>Check <span class="field">Property name</span>. Tap <span class="btn">Use this ResortID</span>.</li>
         <li><b>3 Contact details:</b> check the <span class="field">Email</span>, <span class="field">Phone</span> and <span class="field">Contact person</span>. Tap <span class="btn">Next</span>.</li>
-        <li><b>4 Activate:</b> tap <span class="btn">Activate</span>. The hub makes or links its listing, makes its Channel Property Affiliate (5% + VAT on own bookings, Hook Builder on) and connects it. Each line shows ✔ when done.</li>
+        <li><b>4 Activate:</b> tap <span class="btn">Activate</span>. The hub makes or links its listing, makes its Channel Property Affiliate (5% + VAT on own bookings, Hook Builder on), gets its rating link from the review app and connects it. Each line shows ✔ when done.</li>
         <li>A red <b>NOT connected</b> line? Tap <span class="btn g">Back</span>, check the login, then tap <span class="btn">Try again</span>. The welcome email only comes once it is connected.</li>
         <li><b>5 Welcome email:</b> check <span class="field">Send to</span>. The <span class="field">Subject</span> and <span class="field">Email</span> show the email filled in for this property: change them here if you want (only for this property).</li>
         <li>Tap <span class="btn">Send</span>. The property gets the email with its affiliate number and login link.</li>
@@ -504,6 +505,15 @@
       </ol>
       <div class="tip">The property never needs its Avante login: you connected it in step 4. It logs in to the hub, taps <b>Forgot your password?</b> to choose a password, and finds <span class="tab">Hook Builder ↗</span> and <span class="tab">Activities</span> ready.</div>
       <div class="tip"><span class="btn g">Back</span> goes to the step before. On a phone the pop-up fills the screen.</div>
+      <h3 id="ratingLink">Rating link (reviews)</h3>
+      <p>Every property gets a rating link from the review app. It shows the property's Google rating until it has 3 Avante reviews, then Avante's own. It goes to Stock Network in the property file. You don't copy it: <span class="btn">Activate</span> and <span class="btn g">Create the affiliate</span> fetch it.</p>
+      <ol class="steps">
+        <li>Tap <span class="tab">Property Listings</span>, then <span class="btn g">View</span> on the listing.</li>
+        <li>Find the <b>Reviews</b> box. It shows <b>Rating link: open it</b> and what Google said.</li>
+        <li>It says <b>Is this the property on Google?</b> Check the name and address. Right? Tap <span class="btn g">Yes, that's it</span>. Wrong? Leave it: the property shows Avante reviews only.</li>
+        <li>No rating link yet, or you want to check it? Tap <span class="btn g">Get the rating link</span> (or <span class="btn g">Check the rating link again</span>).</li>
+      </ol>
+      <div class="tip">The Reviews box shows once the listing has its ResortID. The review app adds the property itself if it's new.</div>
       <h3>Change the welcome email for every channel property</h3>
       <ol class="steps">
         <li>Tap <span class="tab">Property Listings</span> and scroll to <b>Channel property welcome email</b>.</li>

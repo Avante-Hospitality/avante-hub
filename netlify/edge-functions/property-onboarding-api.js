@@ -16,6 +16,7 @@ import "../../commission.js"; // globalThis.AvanteCommission: Avante's commissio
 import "../../listing-ready.js"; // globalThis.ListingReady: the Ready check, shared with the listing form
 import { isAffiliateSession } from "./lib/affiliate-session.js";
 import { createPropertyAffiliate } from "./lib/affiliates.js";
+import { fetchRatingLink, applyRatingLink, GOOGLE_MATCH } from "./lib/review-app.js";
 import { SNClient } from "./lib/sn-client.js";
 import { readResortInfo, copySnPhotos } from "./lib/sn-resort-info.js";
 import { feedSurvey, pageSurvey } from "./lib/sn-field-survey.js";
@@ -462,6 +463,17 @@ function submittedFields(body) {
 // listing or its rates are edited. Kept on the record, newest last, capped.
 const HISTORY_MAX = 200;
 const NO_HISTORY_KEYS = ["dateUpdated", "history", "editToken", "agreementToken"];
+
+// Asks the review app for the listing's rating link and puts it on the record
+// (not saved here). Returns one line for admin, like the other Activate steps.
+async function ratingLinkStep(record, now, confirmPlaceId = "") {
+  const r = await fetchRatingLink(record, { confirmPlaceId });
+  applyRatingLink(record, r, now);
+  if (!r.ok) return "Rating link NOT added: " + r.error;
+  addHistory(record, "admin", "Rating link from the review app (" + (GOOGLE_MATCH[r.google] || r.google) + ")");
+  return "Rating link added (" + (GOOGLE_MATCH[r.google] || r.google) + ")";
+}
+
 function addHistory(record, by, action, before) {
   const entry = { at: new Date().toISOString(), by: by, action: action };
   if (before) {
@@ -1896,6 +1908,8 @@ export default async (request, context) => {
           } else done.push("Affiliate " + siteId + " already there");
         }
         addHistory(record, "admin", "Activated as a " + (hosted ? "property" : "channel property") + " (Site Nr " + siteNr + ")", before);
+        // Its rating link from the review app (Jean, 2026-10-25): never copied by hand.
+        done.push(await ratingLinkStep(record, now));
         await store.setJSON(record.listingId, record);
         context.waitUntil(retagListingPhotos(record).catch(() => null));
         // 3. Connect it in Property Affiliate with its Avante login.
@@ -1968,8 +1982,22 @@ export default async (request, context) => {
       const now = made.aff.createdAt, aff = made.aff;
       record.affId = affId; record.affiliateCreatedAt = now; record.dateUpdated = now;
       record.history = (Array.isArray(record.history) ? record.history : []).concat([{ at: now, by: "admin", action: "Affiliate " + affId + " created (" + aff.types[0] + ")" }]).slice(-HISTORY_MAX);
+      const rating = record.resortId ? await ratingLinkStep(record, now) : "";
       await store.setJSON(listingId, record);
-      return json({ ok: true, affId });
+      return json({ ok: true, affId, rating });
+    }
+
+    if (action === "getRatingLink") {
+      // Admin > listing > Reviews: fetch the rating link again, or confirm
+      // the Google listing the review app suggested (Jean, 2026-10-25).
+      const denied = await requireAdmin();
+      if (denied) return denied;
+      const listingId = clean(body.listingId, 20);
+      const record = listingId && await store.get(listingId, { type: "json" });
+      if (!record) return json({ error: "not found" }, 404);
+      const step = await ratingLinkStep(record, new Date().toISOString(), clean(body.confirmPlaceId, 255));
+      await store.setJSON(listingId, record);
+      return record.ratingLinkError ? json({ error: record.ratingLinkError }, 502) : json({ ok: true, step });
     }
 
     if (action === "setRatesFromChannel") {
