@@ -319,3 +319,9 @@ button.pa-block:hover, button.pa-block:focus-visible{ outline:2px solid var(--te
 /* Weekend prices in Reservation settings (2026-10-22) */
 .pa-prices.pa-we-off .pa-we-only{ display:none; }
 .pa-chipbtn[aria-pressed="true"]{ background:#0e2f44; border-color:#0e2f44; color:#fff; }
+
+/* Finish setting up (Jean, 2026-10-25) */
+.pa .pa-setup{ border:2px solid #0DCDC2; background:#f4fbfa; }
+.pa .pa-setup-row{ display:flex; gap:12px; align-items:flex-start; margin-top:10px; }
+.pa .pa-setup-dot{ width:26px; height:26px; flex:none; border-radius:50%; border:2px solid #0e2f44; display:inline-flex; align-items:center; justify-content:center; font-weight:800; font-size:13px; color:#fff; }
+.pa .pa-setup-dot.done{ background:#0e2f44; }

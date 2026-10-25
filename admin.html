@@ -102,6 +102,45 @@
   .acw-ok{ color:var(--teal-dark); font-weight:700; } .acw-err{ color:#b42318; font-weight:600; }
   .acw-list{ margin:6px 0 0; padding-left:18px; font-size:13.5px; }
   @media (max-width:560px){ #acwOverlay{ padding:0; } .acw-card{ max-width:none; max-height:none; height:100%; border-radius:0; } .acw-foot{ border-radius:0; position:sticky; bottom:0; } }
+  /* Set up: adding a property step by step (Jean, 2026-10-25; admin-setup.js). Under the other pop-ups, which open on top of it. */
+  #obwOverlay{ z-index:90; }
+  .modal-card.obw-card{ max-width:1080px; width:100%; padding:0; display:flex; flex-direction:column; height:calc(100vh - 40px); max-height:900px; }
+  .obw-head{ padding:18px 22px 14px; border-bottom:1px solid var(--line); display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; }
+  .obw-head h2{ margin:0; font-size:20px; color:var(--navy); } .obw-head .hint{ margin:2px 0 0; }
+  .obw-headr{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  #obwProgress{ display:flex; flex-direction:column; align-items:flex-end; gap:5px; font-size:13px; color:var(--muted); }
+  .obw-bar{ display:block; width:170px; height:8px; border-radius:4px; background:#e7ebeb; overflow:hidden; } .obw-bar span{ display:block; height:100%; background:var(--teal); }
+  .obw-body{ flex:1; display:flex; min-height:0; }
+  .obw-rail{ width:290px; flex:none; border-right:1px solid var(--line); background:var(--mint); padding:12px 10px; overflow-y:auto; }
+  .obw-all .obw-rail{ display:none; }
+  .obw-step{ display:flex; align-items:center; gap:10px; width:100%; min-height:54px; margin:0 0 4px; padding:8px 10px; border-radius:12px; border:2px solid transparent; background:transparent; text-align:left; cursor:pointer; font:inherit; }
+  .obw-step.on{ background:#fff; border-color:var(--teal); }
+  .obw-n{ width:28px; height:28px; flex:none; border-radius:50%; border:2px solid var(--navy); box-sizing:border-box; display:inline-flex; align-items:center; justify-content:center; font-weight:700; font-size:13px; color:var(--navy); }
+  .obw-n.done{ background:var(--navy); color:#fff; }
+  .obw-st{ display:flex; flex-direction:column; gap:3px; } .obw-st b{ color:var(--navy); font-size:14px; }
+  .obw-chip{ align-self:flex-start; font-size:12px; font-weight:700; border-radius:6px; padding:2px 8px; }
+  .obw-done{ color:#08776f; padding-left:0; } .obw-you{ background:#fff4e5; color:#6b3a00; } .obw-owner{ background:#e8eefc; color:#1d3f8a; } .obw-wait{ background:#e7ebeb; color:#4a5558; } .obw-later{ color:var(--muted); padding-left:0; font-weight:600; }
+  .obw-railnote{ margin:10px 6px 0; }
+  .obw-main{ flex:1; min-width:0; overflow-y:auto; padding:22px 28px; }
+  .obw-main h3{ margin:0 0 4px; font-size:19px; color:var(--navy); display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .obw-note{ margin:0 0 12px; padding:8px 12px; border-radius:8px; background:#fff4e5; color:#6b3a00; font-weight:600; font-size:13.5px; }
+  .obw-box{ border:1px solid var(--line); border-radius:12px; margin:0 0 12px; overflow:hidden; } .obw-box > b{ display:block; padding:10px 14px 0; color:var(--navy); }
+  .obw-warnbox{ background:#fff4e5; border-color:#f1c27d; padding:12px 14px; }
+  .obw-row{ display:flex; justify-content:space-between; align-items:center; gap:14px; padding:10px 14px; border-bottom:1px solid var(--line); font-size:14px; }
+  .obw-row:last-child{ border-bottom:0; } .obw-row > span:last-child{ text-align:right; }
+  .obw-row.obw-warn, td.obw-warn{ background:#fff4e5; color:#6b3a00; }
+  .obw-yes{ color:#08776f; } .obw-no{ color:#6b3a00; }
+  .obw-btns{ display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin:6px 0 14px; } .obw-btns button, .obw-out button, .obw-prophead button, #obwBack, #obwNext{ margin:0; min-height:44px; height:auto; padding:10px 18px; width:auto; }
+  .obw-tbl{ width:100%; border-collapse:collapse; margin:0 0 12px; font-size:14px; } .obw-tbl th, .obw-tbl td{ text-align:left; padding:9px 12px; border:1px solid var(--line); } .obw-tbl th{ background:var(--mint); color:var(--navy); }
+  td.obw-yes{ font-weight:700; }
+  .obw-out{ display:flex; align-items:center; gap:14px; border:1px solid var(--line); border-radius:12px; padding:12px 14px; margin:0 0 8px; }
+  .obw-out button{ margin:0; min-height:44px; } .obw-what{ flex:1; display:flex; flex-direction:column; gap:2px; } .obw-what b{ color:var(--navy); } .obw-what small{ color:var(--muted); }
+  .obw-out-sm{ border:0; border-top:1px solid var(--line); border-radius:0; margin:0; }
+  .obw-prop{ border:1px solid var(--line); border-radius:12px; margin:0 0 12px; overflow:hidden; } .obw-prop .hint{ padding:0 14px; }
+  .obw-prophead{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:12px 14px; background:var(--mint); } .obw-prophead b{ color:var(--navy); font-size:15px; } .obw-prophead button{ margin:0 0 0 auto; }
+  .obw-chan{ padding:4px 14px 12px; border-top:1px solid var(--line); } .obw-chan .obw-row{ padding:8px 0; border:0; } .obw-chan input{ width:100%; margin:2px 0 6px; } .obw-chan .hint{ display:block; margin:4px 0 0; }
+  .obw-copy{ display:flex; gap:8px; } .obw-copy input{ flex:1; background:var(--mint); } .obw-copy button{ margin:2px 0 6px; }
+  @media (max-width:760px){ #obwOverlay{ padding:0; } .modal-card.obw-card{ height:100%; max-height:none; border-radius:0; } .obw-body{ flex-direction:column; } .obw-rail{ width:auto; max-height:34vh; border-right:0; border-bottom:1px solid var(--line); } .obw-main{ padding:16px; } }
   .modal-card{
     width:100%; max-width:420px;
     background:#fff;
@@ -597,6 +636,17 @@
         <button type="button" class="modal-btn-secondary" id="pwCancelBtn">Cancel</button>
         <button type="button" class="modal-btn-primary" id="pwSaveBtn">Save Password</button>
       </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="obwOverlay" role="dialog" aria-modal="true" aria-labelledby="obwTitle">
+    <div class="modal-card obw-card">
+      <div class="obw-head">
+        <div><div class="hint" style="margin:0; font-weight:700; letter-spacing:1px; color:var(--teal-dark);">SET UP A PROPERTY</div><h2 id="obwTitle"></h2><p class="hint" id="obwSub"></p></div>
+        <div class="obw-headr"><div id="obwProgress"></div><button type="button" class="primary" id="obwOutstanding" style="margin:0;">What's outstanding?</button><button type="button" class="btn-outline" id="obwClose" style="margin:0;" aria-label="Close">Close</button></div>
+      </div>
+      <div class="obw-body"><nav class="obw-rail" id="obwRail" aria-label="Steps"></nav><div class="obw-main" id="obwMain"></div></div>
+      <div class="acw-foot"><button type="button" class="btn-outline" id="obwBack">Back</button><span class="hint" style="margin:auto 0;">Everything saves as you go.</span><button type="button" class="primary" id="obwNext">Next step</button></div>
     </div>
   </div>
 
@@ -1330,6 +1380,7 @@
       <div class="card" style="margin-top:20px;">
         <div class="btn-row" style="margin-top:0;">
           <button class="btn-outline" id="refreshPropertyListingsBtn">Refresh</button>
+          <button class="primary" id="outstandingAllBtn" type="button" style="margin-top:0;">What's outstanding? (all properties)</button>
           <button class="btn-outline" id="libAllBtn" type="button" title="Puts every listing's photos in the photo library, filed under the property and its unit types">Put all listing photos in the photo library</button>
         </div>
         <div class="status" id="propertyListingsStatus"></div>
@@ -6799,6 +6850,12 @@
           viewBtn.textContent = 'View';
           viewBtn.addEventListener('click', function(){ openPropertyDetailsModal(l.listingId); });
           tdActions.appendChild(viewBtn);
+          // Set up: the property's steps in one pop-up (Jean, 2026-10-25; admin-setup.js).
+          var setupBtn = document.createElement('button');
+          setupBtn.type = 'button'; setupBtn.className = 'primary btn-small'; setupBtn.style.marginLeft = '6px';
+          setupBtn.textContent = l.liveAt ? 'Steps' : 'Set up';
+          setupBtn.addEventListener('click', function(){ window.openPropertySetup(l.listingId); });
+          tdActions.appendChild(setupBtn);
           tr.appendChild(tdActions);
 
           tableBody.appendChild(tr);
@@ -6830,6 +6887,7 @@
           });
         }).catch(function(){ btn.disabled = false; st.textContent = 'Stopped: no connection. Run it again; nothing is doubled.'; });
       });
+      window.refreshPropertyListings = function(){ return loadPropertyListings(); };
       function loadPropertyListings(){
         statusEl.textContent = 'Loading\u2026';
         statusEl.className = 'status show';
@@ -7616,6 +7674,8 @@
         document.getElementById('acwOpenBtn').addEventListener('click', function(){ open(); });
         // Admin > Site Nrs > Activate: a property not on a channel manager, once Stock Network has set it up (Jean, 2026-10-19).
         // Not found on Stock Network's list yet: straight to its login, which finds it (Jean, 2026-10-20).
+        // Admin > Set up > Connect it (Jean, 2026-10-25): straight to the login step for this listing's property.
+        window.openActivateFor = function(p){ open({ hosted: !!p.hosted, prop: p.resortId ? { resortId: p.resortId, name: p.name, externalResortCode: p.bbid || '' } : { byLogin: true, resortId: '', name: '' }, findName: p.name || '' }); };
         window.openActivateProperty = function(e){ open({ hosted: true, prop: e.resortId ? { resortId: e.resortId, name: e.snName || e.propertyName } : { byLogin: true, resortId: '', name: '' }, findName: e.propertyName || '' }); };
       })();
       document.getElementById('existingPropsHost').addEventListener('click', function(e){
@@ -11035,6 +11095,8 @@
     var tab = document.querySelector('.tab[data-panel="siteNrs"]'); if(tab) tab.addEventListener('click', load);
   })();
 </script>
+  <script src="admin-setup.js"></script>
+  <script>document.getElementById('outstandingAllBtn').addEventListener('click', function(){ window.openOutstandingAll(); });</script>
   <script src="how-to-links.js" data-guide="how-to-admin.html" defer></script>
   <script src="site-search.js" data-guides="how-to-admin.html" defer></script>
   <script src="magnify.js" defer></script>

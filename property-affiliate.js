@@ -162,7 +162,7 @@
     var howTo = !connected ? 'how-to-property.html#connect' : S.view === 'onb' ? 'how-to.html#property' : isCh() ? 'how-to-property.html#channel' : 'how-to-property.html#' + ({ avail: 'avail', book: 'book', guests: 'guests', acts: 'acts', msgs: 'msgs', front: 'frontstore', chan: 'chan', rev: 'rev' }[S.view] || 'tabs');
     if (connected && isCh() && chTabs().indexOf(S.view) === -1 && S.view !== 'onb') S.view = 'book';
     h += '<header class="pa-top"><span class="pa-kicker">' + (connected && isCh() ? 'Channel Property' : 'Property Affiliate') + '</span>' + (connected ? '<b class="pa-propname">' + esc(S.prop.resortName || 'Your property') + '</b><span class="pa-hint pa-top-meta">' + (S.prop.units.length ? S.prop.units.length + ' units · ' : '') + 'Site Nr ' + esc(S.prop.site) +
-      (S.prop.commissionPct ? ' · Avante commission on your own bookings ' + esc(S.prop.commissionPct) + '% + VAT' : '') + '</span>' : '') +
+      (S.prop.commissionPct ? ' · Bookings through the Avante marketing tool: ' + esc(S.prop.commissionPct) + '% + VAT, all fees included' : '') + '</span>' : '') +
       '<a class="pa-howto" href="' + howTo + '" target="_blank" rel="noopener" aria-label="How to use this screen (opens the guide in a new tab)">❓ How to</a></header>';
     var inMore = S.view === 'onb';
     h += '<nav class="pa-tabbar" aria-label="Property Affiliate sections"><div class="pa-tabscroll">' + tabsFor().map(function (v) {
@@ -180,7 +180,7 @@
     if (S.view === 'onb') h += '';
     else if (!connected && S.opening) h += '<div class="pa-card pa-hint" role="status">Opening ' + esc((S.prop && S.prop.resortName) || 'your property') + '…</div>';
     else if (!connected) h += viewConnect();
-    else if (S.view === 'avail') h += viewAvail();
+    else if (S.view === 'avail') h += viewFinishSetup() + viewAvail();
     else if (S.view === 'chan') h += viewChan();
     else if (S.view === 'book') h += viewBookings();
     else if (S.view === 'guests') h += viewGuests();
@@ -193,6 +193,24 @@
     root.innerHTML = h;
     if (onboarding) onboarding.style.display = S.view === 'onb' ? '' : 'none';
     pvAfterRender();
+  }
+
+  // "Finish setting up" (Jean, 2026-10-25): the owner's own steps, shown on the
+  // calendar until they are done. Avante's Admin > Set up shows the same ones
+  // under "The owner's part". Not for a channel property (its channel manager does these).
+  function viewFinishSetup() {
+    if (isCh()) return '';
+    var st = S.prop.settings || {}, ch = S.channels;
+    var items = [
+      [!!st.setupBookings, 'How you take bookings', 'Check-in, minimum stay, and whether you approve each guest first.'],
+      [!!st.setupPayments, 'How guests pay you', 'Card payments through Avante, or EFT to your bank account.']
+    ];
+    if (ch) items.push([!!((ch.linkedUnits || []).length || ch.channelHelp), 'Link your other channels', 'Invite Avante on Airbnb, Booking.com or LekkeSlaap, so you are never double-booked. Skip it if you are not on them.']);
+    var left = items.filter(function (x) { return !x[0]; });
+    if (!left.length) return '';
+    return '<div class="pa-card pa-setup"><p class="pa-h2">Finish setting up</p><p class="pa-hint">' + (items.length - left.length) + ' of ' + items.length + ' done. Each takes a minute or two, all in <b>Channels</b>.</p>' +
+      items.map(function (x) { return '<div class="pa-setup-row"><span class="pa-setup-dot' + (x[0] ? ' done' : '') + '" aria-hidden="true">' + (x[0] ? '✓' : '') + '</span><span><b>' + esc(x[1]) + '</b><br><span class="pa-hint">' + esc(x[2]) + '</span></span></div>'; }).join('') +
+      '<button type="button" class="pa-btn" data-act="view" data-v="chan" style="margin-top:10px">Set it up in Channels</button></div>';
   }
 
   // Kept for the views that used it: the slim header already shows the property.

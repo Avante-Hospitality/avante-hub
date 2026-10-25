@@ -23,6 +23,10 @@ import { allListings, readAllEntries } from "./blob-records.js";
 import "../../../commission.js"; // globalThis.AvanteCommission: Avante's commission rates
 
 export const CHANNELS = { bcom: "Booking.com", airbnb: "Airbnb", lekke: "LekkeSlaap" };
+// The address properties invite on their channels, set in Admin > Property
+// Listings > Channel setup help (kept in the property-affiliate store).
+export const CHANNEL_HELP_KEY = "admincfg:channelHelp";
+export const CHANNEL_HELP_DEFAULT = "admin@avantehospitality.co.za";
 const CONNECT_DAYS = [14];               // connect reads only the first 14 days; later days load as the calendar moves (Jean: keep SN calls light)
 const HORIZON_DAYS = 365;               // full read: at connect, and every SYNC_FULL_MS for channel-linked properties
 const SYNC_NEAR_DAYS = 60;              // every 15-minute sync reads only this far ahead
@@ -911,6 +915,10 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
       s.calendarStart = { mode, date: mode === "date" ? date : "" };
     }
     if (body.payMode !== undefined) s.payMode = PAY_MODES.includes(body.payMode) ? body.payMode : "both";
+    // The owner has been through Reservation settings and Guest payments once
+    // (Admin > Set up shows "The owner's part" done, Jean 2026-10-25).
+    if (body.calendarStart !== undefined && !s.setupBookings) s.setupBookings = now().toISOString();
+    if (body.payMode !== undefined && !s.setupPayments) s.setupPayments = now().toISOString();
     if (body.approveGuests !== undefined) s.approveGuests = !!body.approveGuests;
     if (body.bank && typeof body.bank === "object") {
       const bk = { bankName: cleanStr(body.bank.bankName, 60), accountHolder: cleanStr(body.bank.accountHolder, 100), accountNumber: cleanStr(body.bank.accountNumber, 30).replace(/[^0-9 -]/g, ""), branchCode: cleanStr(body.bank.branchCode, 20), accountType: cleanStr(body.bank.accountType, 30), note: cleanStr(body.bank.note, 200) };
@@ -961,10 +969,9 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
   // ---------- "Let Avante set up my channels" (2026-10-13, Jean) ----------
   // The property invites Avante on each channel (Airbnb co-host, Booking.com extranet user,
   // LekkeSlaap user), then taps one button; the hub emails the people set in admin.
-  const CHANNEL_HELP_DEFAULT = "admin@avantehospitality.co.za";
   function emailList(v) { return String(v || "").split(/[,;\s]+/).map((e) => e.trim().toLowerCase()).filter((e) => validEmail(e)).slice(0, 10); }
   async function channelHelpConfig() {
-    const c = (await getJSON("admincfg:channelHelp").catch(() => null)) || {};
+    const c = (await getJSON(CHANNEL_HELP_KEY).catch(() => null)) || {};
     const invite = emailList(c.inviteEmail)[0] || CHANNEL_HELP_DEFAULT;
     const notify = emailList(c.notifyEmails);
     return { inviteEmail: invite, notifyEmails: notify.length ? notify : [CHANNEL_HELP_DEFAULT] };

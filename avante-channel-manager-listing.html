@@ -3,353 +3,158 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Avante Hospitality — List Your Property (Channel Manager)</title>
-
+<title>List your property with Avante</title>
 <!--
-  ============================================================================
-  BEFORE THIS GOES LIVE — Jean:
-
-  1. (Done 2026-10-13) The form now sends to the hub (/api/property-onboarding,
-     action "listingRequest") instead of Formspree. A NightsBridge property's
-     BBID is looked up in the hub's Stock Network list (External Resort Code);
-     when found, its listing is built from Stock Network. Every request is
-     emailed to the address set in Admin > Property Listings.
-     (2026-10-15) A property not yet on Stock Network gets the next Site Nr
-     from Admin > Site Nrs and SN's Request_pull_area sheet is emailed to the
-     SN set-up addresses there; the property gets a confirmation. A listing
-     (Requested) is made only when "I also want to become an Avante Property
-     Affiliate" is ticked. The terms box starts unticked.
-
-  2. (Done 2026-10-17) TERMS & CONDITIONS: the box shows the one Avante
-     terms page (terms-and-conditions.html?embed=1). It covers every kind of
-     property (15% plus VAT; 5% plus VAT on its own bookings); there is no separate
-     listing agreement.
-
-  3. This is intended to be the quick campaign-email link for the ~3,500+
-     NightsBridge/eRes-NebulaCRS properties you're inviting to list. Its
-     thank-you screen links to avante-loyalty-program.html so a property can
-     opt into the Loyalty Program right after submitting — update that link
-     if the two files end up hosted at different paths.
-  ============================================================================
+  List your property (Jean, 2026-10-25): short pop-up steps, two paths.
+   - On a channel manager (NightsBridge, eRes): the BBID is checked on
+     NightsBridge itself (/api/property-onboarding nbLookup), then only what
+     Avante can't get from it: who handles bookings, the owner, the pin, terms.
+   - No channel manager: where else it is listed, the property and its pin,
+     how its listing gets filled in (Avante from screenshots/files, or itself),
+     the calendar invites for its other channels, terms. Then straight on to
+     its listing (the step-by-step form).
+  Sends action "listingRequest" (property-onboarding-api.js). The property
+  never sees the words Stock Network.
 -->
-
-<script src="https://cdn.tailwindcss.com"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet">
-<style>
-    :root{ --navy:#2C3E50; --logo-navy:#273A85; --indigo:#1425BE; --orange:#ED8B00; }
-    body{ font-family:'Source Sans 3', sans-serif; color:var(--navy); }
-    h1,h2,h3,h4,.font-display{ font-family:'Playfair Display', serif; }
-    .form-input:focus, .form-checkbox:focus, .form-radio:focus{
-        outline:2px solid transparent; outline-offset:2px;
-        box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--indigo);
-    }
-    #success-message{ transition:opacity .5s ease-in-out; }
-    .hidden-section{ display:none; }
-    .brand-btn{ background:var(--indigo); }
-    .brand-btn:hover{ background:#0f1c93; }
-    .accent{ color:var(--orange); }
-    .step-badge{ background:var(--indigo); }
-</style>
-<style>
-  /* Phones: text boxes at 16px so iPhones don't zoom in when one is tapped
-     (that zoom is what makes a page stop fitting the screen). */
-  @media (max-width: 700px){
-    input:not([type=checkbox]):not([type=radio]):not([type=range]), select, textarea{ font-size:16px !important; }
-  }
-</style>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Noto+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="list-your-property.css">
 </head>
-<body class="bg-gray-100 flex items-center justify-center min-h-screen p-4 sm:p-6 lg:p-8">
-<div class="w-full max-w-2xl mx-auto bg-white p-8 sm:p-10 lg:p-12 rounded-2xl shadow-lg border border-gray-100">
+<body>
+<main class="lyp-page">
+  <header class="lyp-intro">
+    <img src="img/logo-full.png" alt="Avante Hospitality" class="lyp-logo">
+    <h1>List your property with Avante</h1>
+    <p>A few short steps. On NightsBridge or eRes? Your rooms, rates and calendar come from there, so there's very little to type.</p>
+  </header>
 
-    <header class="text-center mb-8">
-        <img src="img/logo-full.png" alt="Avante Hospitality" style="height:64px; width:auto; margin:0 auto 18px;">
-        <span class="step-badge inline-block text-white text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full mb-4">Every kind of property</span>
-        <h1 class="text-3xl sm:text-4xl font-bold tracking-tight" style="color:var(--navy)">List Your Property with Avante Hospitality</h1>
-        <p class="mt-3 text-base text-gray-600">
-            Give us a few details and Avante gets your property listed. On NightsBridge or
-            eRes/NebulaCRS? Add your reference and we pick up the rest from there.
-        </p>
-        <p class="mt-2 text-sm text-gray-600">
-            Learn more at <a href="http://www.avantehospitality.co.za" target="_blank" rel="noopener noreferrer" class="font-medium hover:underline" style="color:var(--indigo)">www.avantehospitality.co.za</a>.
-        </p>
-    </header>
-
-    <form id="listing-form" class="space-y-6">
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-                <label for="property-name" class="block text-sm font-medium text-gray-700 mb-1">Property Name</label>
-                <input type="text" id="property-name" name="property_name" required class="form-input w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm">
-            </div>
-            <div>
-                <label for="contact-person" class="block text-sm font-medium text-gray-700 mb-1">Contact Person</label>
-                <input type="text" id="contact-person" name="contact_person" required class="form-input w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm">
-            </div>
-            <div>
-                <label for="phone" class="block text-sm font-medium text-gray-700 mb-1">Contact Number</label>
-                <input type="tel" id="phone" name="phone" required class="form-input w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm">
-            </div>
-            <div>
-                <label for="email" class="block text-sm font-medium text-gray-700 mb-1">Email Address (several: separate with commas)</label>
-                <input type="text" inputmode="email" id="email" name="email" required class="form-input w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm">
-            </div>
-        </div>
-
-        <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Which system does your property use?</label>
-            <div class="flex flex-wrap gap-6">
-                <label class="flex items-center cursor-pointer">
-                    <input type="radio" name="channel_manager" value="NightsBridge" required id="cm-nightsbridge" class="form-radio h-4 w-4 channel-manager-radio" style="accent-color:var(--indigo)">
-                    <span class="ml-2 text-sm text-gray-800 font-medium">NightsBridge</span>
-                </label>
-                <label class="flex items-center cursor-pointer">
-                    <input type="radio" name="channel_manager" value="eRes/NebulaCRS" id="cm-eres" class="form-radio h-4 w-4 channel-manager-radio" style="accent-color:var(--indigo)">
-                    <span class="ml-2 text-sm text-gray-800 font-medium">eRes/NebulaCRS</span>
-                </label>
-                <label class="flex items-center cursor-pointer">
-                    <input type="radio" name="channel_manager" value="None yet" id="cm-none" class="form-radio h-4 w-4 channel-manager-radio" style="accent-color:var(--indigo)">
-                    <span class="ml-2 text-sm text-gray-800 font-medium">Not on a platform</span>
-                </label>
-            </div>
-
-            <div id="none-wrap" class="hidden-section mt-3 p-3 rounded-lg text-sm" style="background:#EEF0FC; color:var(--navy)">
-                No problem. Submit your details and we'll email you a link to complete your listing (rooms, rates, photos). Once it's complete, our team gets your property set up and listed.
-            </div>
-            <div id="bbid-wrap" class="hidden-section mt-3">
-                <label for="bbid" class="block text-sm font-medium text-gray-700 mb-1">NightsBridge BBID Number</label>
-                <input type="text" id="bbid" name="bbid" class="form-input w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm">
-            </div>
-            <div id="eres-ref-wrap" class="hidden-section mt-3">
-                <label for="eres-ref" class="block text-sm font-medium text-gray-700 mb-1">eRes/NebulaCRS Property Reference</label>
-                <input type="text" id="eres-ref" name="eres_reference" class="form-input w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm">
-            </div>
-        </div>
-
-        <fieldset id="channels-box">
-            <legend class="block text-sm font-medium text-gray-700 mb-2">Where is your property listed now? Tick all that apply.</legend>
-            <div class="flex flex-wrap gap-x-6 gap-y-2">
-                <label class="flex items-center cursor-pointer"><input type="checkbox" name="channels" value="None" class="form-checkbox h-4 w-4 rounded channel-check" style="accent-color:var(--indigo)"><span class="ml-2 text-sm text-gray-800 font-medium">None</span></label>
-                <label class="flex items-center cursor-pointer"><input type="checkbox" name="channels" value="Booking.com" class="form-checkbox h-4 w-4 rounded channel-check" style="accent-color:var(--indigo)"><span class="ml-2 text-sm text-gray-800 font-medium">Booking.com</span></label>
-                <label class="flex items-center cursor-pointer"><input type="checkbox" name="channels" value="Airbnb" class="form-checkbox h-4 w-4 rounded channel-check" style="accent-color:var(--indigo)"><span class="ml-2 text-sm text-gray-800 font-medium">Airbnb</span></label>
-                <label class="flex items-center cursor-pointer"><input type="checkbox" name="channels" value="LekkeSlaap" class="form-checkbox h-4 w-4 rounded channel-check" style="accent-color:var(--indigo)"><span class="ml-2 text-sm text-gray-800 font-medium">LekkeSlaap</span></label>
-                <label class="flex items-center cursor-pointer"><input type="checkbox" name="channels" value="Other" id="channel-other" class="form-checkbox h-4 w-4 rounded channel-check" style="accent-color:var(--indigo)"><span class="ml-2 text-sm text-gray-800 font-medium">Other</span></label>
-            </div>
-            <div id="channel-other-wrap" class="hidden-section mt-3">
-                <label for="channel-other-text" class="block text-sm font-medium text-gray-700 mb-1">Which other website or channel?</label>
-                <input type="text" id="channel-other-text" maxlength="200" class="form-input w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm" placeholder="e.g. TripAdvisor, SafariNow, our own website">
-            </div>
-            <p id="channels-error" class="hidden mt-2 text-sm text-red-600">Tick where your property is listed now, or tick None.</p>
-        </fieldset>
-
-        <div id="affiliate-box" class="relative flex items-start p-4 rounded-xl" style="border:2px solid var(--indigo); background:#EEF0FC">
-            <div class="flex h-6 items-center">
-                <input id="property-affiliate" name="property_affiliate" type="checkbox" class="form-checkbox h-5 w-5 rounded border-gray-300" style="accent-color:var(--indigo)">
-            </div>
-            <div class="ml-3 text-sm leading-6">
-                <label for="property-affiliate" class="font-semibold text-gray-900 cursor-pointer">I also want to become an Avante Property Affiliate</label>
-                <p class="text-gray-700">Your own booking page, promotions and guest reviews. Avante's commission on bookings you get this way is 5% + VAT. You can also do this later.</p>
-            </div>
-        </div>
-
-        <div class="relative flex items-start p-4 rounded-xl border border-gray-200 bg-gray-50">
-            <div class="flex h-6 items-center">
-                <input id="accept-terms" name="accept_terms" type="checkbox" required class="form-checkbox h-5 w-5 rounded border-gray-300" style="accent-color:var(--indigo)">
-            </div>
-            <div class="ml-3 text-sm leading-6">
-                <label for="accept-terms" class="font-medium text-gray-900 cursor-pointer">
-                    I accept the Avante Hospitality Terms &amp; Conditions.
-                </label>
-                <button type="button" id="open-terms" class="block mt-1 underline font-semibold text-sm" style="color:var(--indigo)">View Terms &amp; Conditions</button>
-            </div>
-        </div>
-
-        <div class="pt-4 border-t border-gray-200 text-center">
-            <button type="submit" id="submit-btn" class="brand-btn w-full sm:w-auto text-white font-bold py-3 px-12 rounded-lg shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 transition-transform transform hover:scale-105 active:scale-95">Submit</button>
-            <p id="error-message" class="hidden mt-4 text-sm text-red-600"></p>
-            <p class="mt-6 text-sm text-gray-500">Questions? Email <a href="mailto:info@avantehospitality.co.za" class="font-medium hover:underline" style="color:var(--indigo)">info@avantehospitality.co.za</a></p>
-        </div>
-    </form>
-
-    <div id="success-message" class="hidden opacity-0 mt-8 space-y-4">
-        <div class="p-6 rounded-xl text-center space-y-2" style="background:#eef7f0; border:1px solid #b7ddc0; color:#1e4b2b">
-            <h3 class="font-bold text-xl font-display">Thank you!</h3>
-            <p class="text-sm">Your details have been sent to Avante.</p>
-            <p id="found-note" class="text-sm hidden" style="margin-top:8px; font-weight:600"></p>
-        </div>
-        <div class="p-6 rounded-xl text-center space-y-3" style="background:#EEF0FC; border:1px solid #c9cff5">
-            <h4 class="font-bold text-lg font-display" style="color:var(--navy)">Want to be a Featured Resort?</h4>
-            <p class="text-sm text-gray-700">Join the Avante Loyalty Program to feature your property across all our platforms and offer members a rate discount.</p>
-            <a href="avante-loyalty-program.html" class="brand-btn inline-block text-white font-semibold py-2 px-6 rounded-lg hover:opacity-90 transition">Join the Loyalty Program</a>
-        </div>
+  <form id="lyp" class="lyp-sheet" novalidate aria-labelledby="lypStepTitle">
+    <div class="lyp-head">
+      <span class="lyp-kicker" id="lypStepNo">STEP 1</span>
+      <div class="lyp-bar"><span id="lypBar"></span></div>
     </div>
+
+    <div class="lyp-body">
+      <!-- 1. How do you take bookings now? -->
+      <section data-step="how">
+        <h2 id="lypStepTitle">How do you take bookings now?</h2>
+        <label class="lyp-choice"><input type="radio" name="how" value="channel"><span><b>I use a channel manager</b><small>NightsBridge or eRes. Your rates and calendar come from it: nothing to type.</small></span></label>
+        <label class="lyp-choice"><input type="radio" name="how" value="none"><span><b>I don't use one</b><small>Avante gives you your own booking calendar.</small></span></label>
+
+        <div class="lyp-when" data-when="channel">
+          <label for="cm">Channel manager</label>
+          <select id="cm"><option value="NightsBridge">NightsBridge</option><option value="eRes/NebulaCRS">eRes / NebulaCRS</option></select>
+          <div class="lyp-when" data-when-cm="NightsBridge">
+            <label for="bbid">Your NightsBridge number (BBID)</label>
+            <input id="bbid" inputmode="numeric" autocomplete="off" placeholder="e.g. 26762">
+            <div id="nbFound" class="lyp-found" hidden></div>
+          </div>
+          <div class="lyp-when" data-when-cm="eRes/NebulaCRS">
+            <label for="eres">Your eRes / NebulaCRS property reference</label>
+            <input id="eres" autocomplete="off">
+          </div>
+        </div>
+
+        <div class="lyp-when" data-when="none">
+          <p class="lyp-label">Where else are you listed? Tap all that apply</p>
+          <div class="lyp-chips" id="chips">
+            <button type="button" class="lyp-chip" data-ch="Airbnb" aria-pressed="false">Airbnb</button>
+            <button type="button" class="lyp-chip" data-ch="Booking.com" aria-pressed="false">Booking.com</button>
+            <button type="button" class="lyp-chip" data-ch="LekkeSlaap" aria-pressed="false">LekkeSlaap</button>
+            <button type="button" class="lyp-chip" data-ch="Other" aria-pressed="false">Other</button>
+            <button type="button" class="lyp-chip" data-ch="None" aria-pressed="false">Nowhere else yet</button>
+          </div>
+          <div class="lyp-when" data-when-other><label for="other">Which other website?</label><input id="other" maxlength="200" placeholder="e.g. SafariNow, our own website"></div>
+          <p class="lyp-note" id="chNote" hidden></p>
+        </div>
+      </section>
+
+      <!-- 2. The property, who handles bookings, the owner, the pin -->
+      <section data-step="prop" hidden>
+        <h2>About your property</h2>
+        <p class="lyp-sub" id="propSub"></p>
+        <label for="pname">Property name</label>
+        <input id="pname" maxlength="200" autocomplete="organization">
+        <div class="lyp-when" data-when="none">
+          <label for="ptown">Town or suburb</label>
+          <div class="lyp-inline"><input id="ptown" maxlength="120" placeholder="e.g. Waterkloof Glen, Pretoria"><button type="button" class="lyp-btn2" id="findPin">Find it on the map</button></div>
+          <div id="pinHits"></div>
+        </div>
+        <p class="lyp-label">Is the pin on your property? Drag it if it's in the wrong spot</p>
+        <div id="map" class="lyp-map" role="img" aria-label="Map with your property's pin"></div>
+        <p class="lyp-sub" id="pinText"></p>
+        <label for="cname">Who handles bookings and questions?</label>
+        <input id="cname" maxlength="120" autocomplete="name">
+        <label for="cemail">Their email (several: separate with commas)</label>
+        <input id="cemail" inputmode="email" autocomplete="email">
+        <label for="cphone">Their phone / WhatsApp</label>
+        <input id="cphone" type="tel" autocomplete="tel">
+        <label for="oname">Owner's name</label>
+        <input id="oname" maxlength="120">
+        <label for="ophone">Owner's phone</label>
+        <input id="ophone" type="tel">
+      </section>
+
+      <!-- 3 (no channel manager). Rooms, photos and rates -->
+      <section data-step="fill" hidden>
+        <h2>Your rooms, photos and rates</h2>
+        <p class="lyp-sub">Pick the easiest for you.</p>
+        <label class="lyp-choice"><input type="radio" name="fill" value="avante" checked><span><b>Let Avante fill it in <em class="lyp-tag">Easiest</em></b><small id="fillAvanteText">Send us screenshots of your listing and calendar, or your rate sheet (Word, Excel or PDF). We read them and fill in your listing.</small></span></label>
+        <label class="lyp-choice"><input type="radio" name="fill" value="self"><span><b>I'll fill it in myself</b><small>Rooms, photos, then your midweek and weekend rates on a calendar. About 15 minutes.</small></span></label>
+      </section>
+
+      <!-- 4 (no channel manager, on other channels). Calendar invites -->
+      <section data-step="cal" hidden>
+        <h2>Link your calendars</h2>
+        <p class="lyp-sub">Avante does the linking, so you're never double-booked. You only invite Avante on each site.</p>
+        <div class="lyp-copy"><span id="inviteEmail">admin@avantehospitality.co.za</span><button type="button" class="lyp-btn2" id="copyInvite">Copy</button></div>
+        <div id="calCards"></div>
+        <p class="lyp-sub">Stuck? Leave it for now: we'll send you these steps by email too.</p>
+      </section>
+
+      <!-- Last. Terms -->
+      <section data-step="terms" hidden>
+        <h2>Avante's terms</h2>
+        <div class="lyp-offer">
+          <span class="lyp-kicker">With Avante's free marketing tool</span>
+          <b>Only <span data-own></span></b>
+          <p>Make your own promotions with the Avante marketing tool. Every booking that comes through them costs you only <span data-own></span>, and that <strong>includes all card and transaction fees</strong>.</p>
+        </div>
+        <div class="lyp-offer lyp-offer2"><b data-std></b><p>on bookings Avante's other platforms and partners make for you.</p></div>
+        <p class="lyp-sub">No set-up fee. You can stop any time; bookings already made are honoured.</p>
+        <label class="lyp-check"><input type="checkbox" id="terms"><span>I accept the <button type="button" class="lyp-link" id="openTerms">Avante Terms &amp; Conditions</button></span></label>
+      </section>
+
+      <!-- Done -->
+      <section data-step="done" hidden class="lyp-done">
+        <span class="lyp-tick" aria-hidden="true">&#10003;</span>
+        <h2>Thank you!</h2>
+        <p id="doneText"></p>
+        <a class="lyp-btn" id="doneLink" hidden href="#">Carry on</a>
+      </section>
+
+      <p class="lyp-err" id="err" role="alert" hidden></p>
+    </div>
+
+    <div class="lyp-foot" id="foot">
+      <button type="button" class="lyp-btn2" id="back">Back</button>
+      <button type="button" class="lyp-btn" id="next">Next</button>
+    </div>
+  </form>
+  <p class="lyp-help">Questions? Email <a href="mailto:info@avantehospitality.co.za">info@avantehospitality.co.za</a></p>
+</main>
+
+<div class="lyp-modal" id="termsModal" hidden role="dialog" aria-modal="true" aria-labelledby="termsTitle">
+  <div class="lyp-modal-card">
+    <div class="lyp-modal-head"><h2 id="termsTitle">Avante Terms &amp; Conditions</h2><button type="button" class="lyp-btn2" id="closeTerms">Close</button></div>
+    <iframe src="terms-and-conditions.html?embed=1" title="Avante Terms &amp; Conditions" loading="lazy"></iframe>
+  </div>
 </div>
 
-<!-- Terms & Conditions Modal -->
-<div id="terms-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-    <div class="bg-white rounded-2xl shadow-xl max-w-2xl w-full max-h-[80vh] flex flex-col">
-        <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-            <h3 class="text-xl font-semibold font-display" style="color:var(--navy)">Avante Hospitality Terms &amp; Conditions</h3>
-            <button type="button" id="close-terms" class="text-gray-400 hover:text-gray-600 text-2xl leading-none" aria-label="Close">&times;</button>
-        </div>
-        <div class="px-2 py-2 text-sm text-gray-700">
-            <!-- The one Avante terms page, for every kind of property (Jean, 2026-10-17). -->
-            <iframe src="terms-and-conditions.html?embed=1" title="Avante Hospitality Terms &amp; Conditions" loading="lazy" style="width:100%; height:60vh; border:0"></iframe>
-        </div>
-        <div class="px-6 py-4 border-t border-gray-200 text-right">
-            <button type="button" id="acknowledge-terms" class="brand-btn text-white font-semibold py-2 px-6 rounded-lg">Close</button>
-        </div>
-    </div>
-</div>
-
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-
-    const form = document.getElementById('listing-form');
-    const submitBtn = document.getElementById('submit-btn');
-    const errorMessage = document.getElementById('error-message');
-    const successMessage = document.getElementById('success-message');
-
-    // Terms modal
-    const termsModal = document.getElementById('terms-modal');
-    document.getElementById('open-terms').addEventListener('click', () => termsModal.classList.remove('hidden'));
-    document.getElementById('close-terms').addEventListener('click', () => termsModal.classList.add('hidden'));
-    document.getElementById('acknowledge-terms').addEventListener('click', () => termsModal.classList.add('hidden'));
-
-    // Where it is listed now: None can't go with a channel; Other asks which.
-    const channelChecks = Array.from(document.querySelectorAll('.channel-check'));
-    const otherWrap = document.getElementById('channel-other-wrap');
-    const otherText = document.getElementById('channel-other-text');
-    const channelsError = document.getElementById('channels-error');
-    channelChecks.forEach((cb) => cb.addEventListener('change', () => {
-        if (cb.checked && cb.value === 'None') channelChecks.forEach((o) => { if (o !== cb) o.checked = false; });
-        if (cb.checked && cb.value !== 'None') channelChecks.find((o) => o.value === 'None').checked = false;
-        const other = document.getElementById('channel-other').checked;
-        otherWrap.classList.toggle('hidden-section', !other);
-        otherText.required = other;
-        if (!other) otherText.value = '';
-        channelsError.classList.add('hidden');
-    }));
-
-    // Channel manager toggle
-    const bbidWrap = document.getElementById('bbid-wrap');
-    const bbidInput = document.getElementById('bbid');
-    const eresWrap = document.getElementById('eres-ref-wrap');
-    const eresInput = document.getElementById('eres-ref');
-    const noneWrap = document.getElementById('none-wrap');
-
-    document.querySelectorAll('.channel-manager-radio').forEach((radio) => {
-        radio.addEventListener('change', () => {
-            if (radio.value === 'NightsBridge' && radio.checked) {
-                bbidWrap.classList.remove('hidden-section');
-                bbidInput.required = true;
-                eresWrap.classList.add('hidden-section');
-                eresInput.required = false;
-                eresInput.value = '';
-                noneWrap.classList.add('hidden-section');
-            } else if (radio.value === 'eRes/NebulaCRS' && radio.checked) {
-                eresWrap.classList.remove('hidden-section');
-                eresInput.required = true;
-                bbidWrap.classList.add('hidden-section');
-                bbidInput.required = false;
-                bbidInput.value = '';
-                noneWrap.classList.add('hidden-section');
-            }
-            // Not on a platform: always a full Avante listing, so the tick box isn't needed (Jean, 2026-10-17).
-            if (radio.checked) document.getElementById('affiliate-box').style.display = radio.value === 'None yet' ? 'none' : '';
-            if (radio.value === 'None yet' && radio.checked) {
-                noneWrap.classList.remove('hidden-section');
-                bbidWrap.classList.add('hidden-section');
-                bbidInput.required = false;
-                bbidInput.value = '';
-                eresWrap.classList.add('hidden-section');
-                eresInput.required = false;
-                eresInput.value = '';
-            }
-        });
-    });
-
-    form.addEventListener('submit', async function (event) {
-        event.preventDefault();
-        errorMessage.classList.add('hidden');
-        const channels = channelChecks.filter((cb) => cb.checked).map((cb) => cb.value);
-        if (!channels.length) { channelsError.classList.remove('hidden'); document.getElementById('channels-box').scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
-
-        const propertyName = document.getElementById('property-name').value;
-        const channelManager = document.querySelector('.channel-manager-radio:checked')?.value || '';
-        const payload = {
-            action: 'listingRequest',
-            propertyName: propertyName,
-            contactPerson: document.getElementById('contact-person').value,
-            phone: document.getElementById('phone').value,
-            email: document.getElementById('email').value,
-            channelManager: channelManager,
-            bbid: channelManager === 'NightsBridge' ? bbidInput.value : '',
-            eresRef: channelManager === 'eRes/NebulaCRS' ? eresInput.value : '',
-            channels: channels,
-            channelsOther: channels.includes('Other') ? otherText.value.trim() : '',
-            acceptTerms: document.getElementById('accept-terms').checked,
-            propertyAffiliate: document.getElementById('property-affiliate').checked
-        };
-
-        submitBtn.disabled = true;
-        submitBtn.textContent = 'Submitting…';
-
-        try {
-            const response = await fetch('/api/property-onboarding', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-            const data = await response.json().catch(() => ({}));
-            if (response.ok && data.ok) {
-                const found = document.getElementById('found-note');
-                let note = '';
-                if (data.found) {
-                    note = data.already
-                        ? 'We found ' + data.name + ' on Avante\'s booking system, and Avante already has its listing.'
-                        : data.listing
-                            ? 'We found ' + data.name + ' on Avante\'s booking system and filled in your listing from it. Avante will check it and email you a link to complete the last few details.'
-                            : 'We found ' + data.name + ' on Avante\'s booking system, so it is already set up there.';
-                } else if (channelManager === 'None yet' && data.listing) {
-                    note = data.linkSent
-                        ? 'We\'ve emailed you a link to complete your listing (rooms, rates, photos and more). Once it\'s complete, it goes to Avante and you get your Avante Site Nr.'
-                        : 'Your listing is made, but we couldn\'t email you the link to complete it just now. Avante will send it to you.';
-                } else if (data.siteNr && data.repeat) {
-                    note = 'You asked before, so nothing was sent again. Your Avante Site Nr is ' + data.siteNr + ' and Avante is setting your property up.' +
-                        (data.listing ? ' Once you are set up, Avante will email you a link to complete your Property Affiliate listing.' : '');
-                } else if (data.siteNr) {
-                    note = 'Your details have gone to Avante to set your property up. Your Avante Site Nr is ' + data.siteNr + '. We\'ve emailed you a copy.' +
-                        (data.listing ? ' Once you are set up, Avante will email you a link to complete your Property Affiliate listing.' : '');
-                }
-                if (note && found) {
-                    found.textContent = note;
-                    found.classList.remove('hidden');
-                }
-                // Not on a platform: straight on to the step-by-step listing (Jean, 2026-10-19).
-                if (data.continueLink) {
-                    if (found) { found.textContent = 'Thank you! Let\'s complete your listing now, step by step. It saves every time you tap Next, and the link is in your email too.'; found.classList.remove('hidden'); }
-                    setTimeout(function () { location.href = data.continueLink; }, 2500);
-                }
-                form.style.display = 'none';
-                successMessage.classList.remove('hidden');
-                setTimeout(() => successMessage.classList.remove('opacity-0'), 10);
-            } else {
-                errorMessage.textContent = data.error || 'Something went wrong sending your submission. Please try again or email info@avantehospitality.co.za directly.';
-                errorMessage.classList.remove('hidden');
-                submitBtn.disabled = false;
-                submitBtn.textContent = 'Submit';
-                return;
-            }
-        } catch (err) {
-            errorMessage.textContent = 'Something went wrong sending your submission. Please try again or email info@avantehospitality.co.za directly.';
-            errorMessage.classList.remove('hidden');
-            submitBtn.disabled = false;
-            submitBtn.textContent = 'Submit';
-        }
-    });
-});
-</script>
+<script src="commission.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="list-your-property.js"></script>
 </body>
 </html>

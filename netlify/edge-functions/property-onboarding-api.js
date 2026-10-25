@@ -17,6 +17,9 @@ import "../../listing-ready.js"; // globalThis.ListingReady: the Ready check, sh
 import { isAffiliateSession } from "./lib/affiliate-session.js";
 import { createPropertyAffiliate } from "./lib/affiliates.js";
 import { fetchRatingLink, applyRatingLink, GOOGLE_MATCH } from "./lib/review-app.js";
+import { CHANNELS as PA_CHANNELS, CHANNEL_HELP_KEY, CHANNEL_HELP_DEFAULT } from "./lib/pa-core.js";
+import { onboardingSteps, pathOf, listedChannels } from "./lib/onboarding.js";
+import { nightsbridgeProperty } from "./lib/nightsbridge.js";
 import { SNClient } from "./lib/sn-client.js";
 import { readResortInfo, copySnPhotos } from "./lib/sn-resort-info.js";
 import { feedSurvey, pageSurvey } from "./lib/sn-field-survey.js";
@@ -306,7 +309,7 @@ function validCoord(lat, lng) {
 // admin login), and the screenshot / Google helpers below cost money per
 // call — so each visitor gets a daily allowance per helper. Admin sessions
 // (token) are not limited.
-const DAILY_LIMITS = { readScreenshots: 40, lookupLocation: 120, verifyCoordinates: 120, findPhotos: 40, listingRequest: 10 };
+const DAILY_LIMITS = { readScreenshots: 40, lookupLocation: 120, verifyCoordinates: 120, findPhotos: 40, listingRequest: 10, nbLookup: 40 };
 async function overDailyLimit(kind, request, context) {
   try {
     const ip = (context && context.ip) || request.headers.get("x-nf-client-connection-ip") || "unknown";
@@ -470,6 +473,7 @@ async function ratingLinkStep(record, now, confirmPlaceId = "") {
   const r = await fetchRatingLink(record, { confirmPlaceId });
   applyRatingLink(record, r, now);
   if (!r.ok) return "Rating link NOT added: " + r.error;
+  await ratingLinkToFrontStore(record.affId || record.siteId, r.ratingLink);
   addHistory(record, "admin", "Rating link from the review app (" + (GOOGLE_MATCH[r.google] || r.google) + ")");
   return "Rating link added (" + (GOOGLE_MATCH[r.google] || r.google) + ")";
 }
@@ -517,6 +521,93 @@ async function saveSettings(patch) {
 
 // ---------- Stock Network set-up (Site Nr register, Jean 2026-10-15) ----------
 const siteRegister = () => getStoreV10({ name: SITE_REGISTER_STORE, consistency: "strong" });
+
+// The front store's reviews link is the rating link too, unless the property
+// typed its own (Jean, 2026-10-25: nobody copies it by hand).
+async function ratingLinkToFrontStore(siteId, link) {
+  if (!siteId || !link) return;
+  const paStore = getStore({ name: "property-affiliate", consistency: "strong" });
+  const prop = await paStore.get("site:" + siteId, { type: "json" }).catch(() => null);
+  if (!prop || prop.channel || (prop.frontStore && prop.frontStore.ratingLink)) return;
+  prop.frontStore = Object.assign({}, prop.frontStore || {}, { ratingLink: link });
+  await paStore.setJSON("site:" + siteId, prop).catch(() => {});
+}
+
+// What the step-by-step List your property page adds to a new listing (Jean,
+// 2026-10-25): the owner, the pin the property confirmed (placed in the hub's
+// tree with Google), how it wants its listing filled in, the channels it
+// invited Avante on, and what NightsBridge shows for its BBID.
+async function applyRequestExtras(record, body, nbProperty) {
+  const ownerName = clean(body.ownerName, 120), ownerPhone = clean(body.ownerPhone, 60);
+  if (ownerName && !record.ownerFullName) record.ownerFullName = ownerName;
+  if (ownerPhone && !record.ownerPhone) record.ownerPhone = ownerPhone;
+  if (body.fillChoice === "avante" || body.fillChoice === "self") record.fillChoice = body.fillChoice;
+  const invites = (Array.isArray(body.channelInvites) ? body.channelInvites : []).filter((c) => ["Airbnb", "Booking.com", "LekkeSlaap"].includes(c));
+  if (invites.length) record.channelInvites = { at: new Date().toISOString(), channels: invites };
+  if (nbProperty) {
+    const p = nbProperty;
+    record.nb = { name: p.name, stars: p.stars, starsSource: p.starsSource, checkIn: p.checkIn, checkOut: p.checkOut, type: p.type, rooms: p.rooms, bookingPage: p.bookingPage, at: new Date().toISOString() };
+    if (p.stars && !record.selfSupplierRating) record.selfSupplierRating = p.stars;
+    if (p.checkIn && !record.checkInTime) record.checkInTime = p.checkIn;
+    if (p.checkOut && !record.checkOutTime) record.checkOutTime = p.checkOut;
+    if (p.type && !record.propertyType) record.propertyType = p.type;
+  }
+  // The pin the property confirmed (or NightsBridge's): placed in the hub tree by Google.
+  const lat = Number(body.lat), lng = Number(body.lng);
+  if (validCoord(lat, lng)) {
+    // Already placed from this same pin (requestLocation): no second Google call.
+    const samePin = record.treePlace && Number(record.latitude) === lat && Number(record.longitude) === lng;
+    const place = samePin ? null : await placeInTree(lat, lng);
+    record.latitude = String(lat); record.longitude = String(lng);
+    if (samePin || place) { record.coordsVerified = "Y"; record.needsTreePlace = ""; }
+    if (place) await applyTreePlace(record, place, false);
+  }
+}
+
+// A new request's place names for Stock Network's sheet: from the pin the
+// page sent (the property confirmed it), else Google's guess by name.
+async function requestLocation(body, propertyName) {
+  const lat = Number(body.lat), lng = Number(body.lng);
+  if (validCoord(lat, lng)) {
+    const place = await placeInTree(lat, lng).catch(() => null);
+    if (place) { const f = await treeFields(place); return { area: f.area, district: f.district, suburb: f.suburb, place, lat, lng }; }
+  }
+  return guessSnLocation(propertyName);
+}
+
+// Everything Admin > Set up needs to know about one listing (Jean, 2026-10-25):
+// its Site Nrs entry, its row in Stock Network's list, its affiliate, whether
+// the owner has a password, and its Property Affiliate connection and channels.
+// lib/onboarding.js works out each step from it.
+async function onboardingContext(record) {
+  const paStore = getStore({ name: "property-affiliate", consistency: "strong" });
+  const affId = String(record.affId || record.siteId || "").trim();
+  const rid = String(record.resortId || "").trim().toLowerCase();
+  const [entry, list, aff, auth, pa] = await Promise.all([
+    record.siteNr ? getSiteNr(siteRegister(), record.siteNr).catch(() => null) : null,
+    rid ? getStore({ name: "resort-list", consistency: "strong" }).get("current", { type: "json" }).catch(() => null) : null,
+    affId ? getStore({ name: AFFILIATES_STORE, consistency: "strong" }).get(affId, { type: "json" }).catch(() => null) : null,
+    affId ? getStore({ name: "affiliate-auth", consistency: "strong" }).get(affId, { type: "json" }).catch(() => null) : null,
+    affId ? paStore.get("site:" + affId, { type: "json" }).catch(() => null) : null,
+  ]);
+  const snRow = rid ? (((list && list.resorts) || []).find((r) => String(r.resortId || "").toLowerCase() === rid) || null) : null;
+  let paInfo = null;
+  if (pa) {
+    const events = (await paStore.get("chan:" + pa.siteId, { type: "json" }).catch(() => null)) || {};
+    const today = new Date().toISOString().slice(0, 10);
+    const pending = Object.values(events).filter((ev) => ev && ev.status !== "booked" && ev.status !== "removed" && String(ev.end || "") > today);
+    const links = {};
+    for (const u of Object.values(pa.channels || {})) for (const [key, c] of Object.entries(u || {})) {
+      const label = PA_CHANNELS[key];
+      if (label && c && c.importUrl) links[label] = (links[label] || 0) + 1;
+    }
+    paInfo = { connected: !!pa.credsEnc, settings: pa.settings || {}, channelLinks: links, pendingChannelBookings: pending.length, pendingEvents: pending.slice(0, 20),
+      channelHelp: pa.channelHelp || null, units: (pa.units || []).map((u) => u.name), channels: pa.channels || {}, feedToken: pa.feedToken || "", siteId: pa.siteId, slug: (pa.frontStore && pa.frontStore.slug) || "" };
+  }
+  const readyTodo = globalThis.ListingReady.todo(Object.assign({}, record, { treePlaced: !!record.treePlace, editing: true }));
+  return { listing: record, entry, snRow, aff, hasPassword: !!(auth && auth.passwordHash), pa: paInfo, readyTodo };
+}
+
 async function getSnSetupEmails() {
   return (await getSettings()).snSetupEmails || DEFAULT_SN_SETUP_EMAILS;
 }
@@ -1200,6 +1291,7 @@ export default async (request, context) => {
           coordsVerified: r.coordsVerified || "N",
           existingOnSN: r.existingOnSN || "",
           dateSubmitted: r.dateSubmitted,
+          liveAt: r.liveAt || "",
           dateUpdated: r.dateUpdated,
         }))
         .sort((a, b) => new Date(b.dateSubmitted) - new Date(a.dateSubmitted));
@@ -1222,6 +1314,23 @@ export default async (request, context) => {
       if (!r) return json({ ok: true, listing: null });
       if (!r.editToken) { r.editToken = genToken(); await store.setJSON(r.listingId, r); }
       return json({ ok: true, listing: { listingId: r.listingId, key: r.editToken, propertyName: r.propertyName || "" } });
+    }
+
+    if (action === "listingPageInfo") {
+      // The step-by-step List your property page: the address properties invite on their channels.
+      const c = await getStore({ name: "property-affiliate", consistency: "strong" }).get(CHANNEL_HELP_KEY, { type: "json" }).catch(() => null);
+      return json({ ok: true, inviteEmail: emailList((c && c.inviteEmail) || "")[0] || CHANNEL_HELP_DEFAULT });
+    }
+
+    if (action === "nbLookup") {
+      // List your property (Jean, 2026-10-25): the BBID a property types is
+      // checked on NightsBridge itself, as Stock Network won't have a new
+      // property yet. Only what the page shows back is returned.
+      if (await overDailyLimit("nbLookup", request, context)) return json({ error: "Too many lookups from this connection today. Please email info@avantehospitality.co.za." }, 429);
+      const r = await nightsbridgeProperty(body.bbid);
+      if (!r.ok) return json({ ok: false, notFound: !!r.notFound, error: r.error }, r.notFound ? 404 : 502);
+      const p = r.property;
+      return json({ ok: true, property: { bbid: p.bbid, name: p.name, suburb: p.suburb, address: p.address, contact: p.contact, phone: p.phone || p.cell, email: p.email, lat: p.lat, lng: p.lng, stars: p.stars, starsSource: p.starsSource, type: p.type } });
     }
 
     if (action === "listingRequest") {
@@ -1257,6 +1366,9 @@ export default async (request, context) => {
       if (badEmails(contact.email).length || !emailList(contact.email).length) return json({ error: "\"" + (badEmails(contact.email)[0] || contact.email) + "\" doesn't look like an email address. Separate several addresses with a comma." }, 400);
       if (body.acceptTerms !== true) return json({ error: "Accept the Terms & Conditions first." }, 400);
       if (cm === "NightsBridge" && !bbid) return json({ error: "Type your NightsBridge BBID number." }, 400);
+      // What NightsBridge shows for the BBID (Jean, 2026-10-25): its pin is used when the page sent none.
+      const nb = cm === "NightsBridge" ? await nightsbridgeProperty(bbid).catch(() => null) : null;
+      if (nb && nb.ok && !validCoord(Number(body.lat), Number(body.lng)) && nb.property.lat != null) { body.lat = nb.property.lat; body.lng = nb.property.lng; }
       const norm = (v) => String(v || "").trim().toLowerCase().replace(/^0+/, "");
       let row = null, already = null;
       if (cm === "NightsBridge") {
@@ -1276,7 +1388,7 @@ export default async (request, context) => {
         hostedPrev = (await allListings(store))
           .find((r) => r && r.hostedSetup === "completing" && same(r.propertyName, propertyName) && same(r.contactEmail || r.email, emailText(contact.email))) || null;
         repeat = !!hostedPrev;
-        if (!hostedPrev) loc = await guessSnLocation(propertyName);
+        if (!hostedPrev) loc = await requestLocation(body, propertyName);
       }
       // Not on Stock Network yet: reserve the Site Nr and send the sheet.
       if (!row && !hosted) {
@@ -1286,7 +1398,7 @@ export default async (request, context) => {
           repeat = true;
           if (wantsAffiliate && !site.propertyAffiliate) { site.propertyAffiliate = true; await saveSiteNr(siteRegister(), site); }
         } else {
-          loc = await guessSnLocation(propertyName);
+          loc = await requestLocation(body, propertyName);
           const entry = newEntry({ propertyName, bbid, channelManager: cm, eresRef, contactName: contact.name, phone: contact.phone, email: emailText(contact.email),
             area: loc.area, district: loc.district, suburb: loc.suburb, propertyAffiliate: wantsAffiliate, note: "Listed on now: " + listedOn });
           entry.siteNr = await reserveNextSiteNr(siteRegister(), entry);
@@ -1314,6 +1426,7 @@ export default async (request, context) => {
           (site ? "; Site Nr " + site.siteNr + " reserved" + (site.status === "Sent" ? ", sheet sent to Stock Network" : ", sheet NOT sent") : hosted ? "; Site Nr given when the listing is complete" : "") + ")");
       }
       if (record) {
+        await applyRequestExtras(record, body, nb && nb.ok ? nb.property : null);
         await store.setJSON(record.listingId, record);
         if (site) { site.listingId = record.listingId; await saveSiteNr(siteRegister(), site); }
       }
@@ -1921,6 +2034,7 @@ export default async (request, context) => {
           connected = !!(d.ok && d.property); if (!connected) connectError = d.error || "not connected";
         } catch (e) { connectError = String((e && e.message) || e); }
         done.push(connected ? "Connected in Property Affiliate" : "NOT connected: " + connectError);
+        if (connected && record.ratingLink) await ratingLinkToFrontStore(siteId, record.ratingLink);
         // 4. Its Site Nrs entry: set up, with its Site ID (the hourly check can't get that).
         if (entry) {
           Object.assign(entry, { status: "Set up", setUpAt: entry.setUpAt || now, resortId: entry.resortId || rid, snSiteId: siteId, snName: entry.snName || name,
@@ -1961,6 +2075,127 @@ export default async (request, context) => {
       if (!sent.ok) return json({ error: "Not sent: " + (sent.error || "unknown reason") }, 502);
       const entry = await regEntryOf(a.siteNr);
       if (entry && !entry.welcomeSentAt) { entry.welcomeSentAt = new Date().toISOString(); await saveSiteNr(siteRegister(), entry); }
+      return json({ ok: true });
+    }
+
+    // ---------- Admin > Property Listings > Set up (Jean, 2026-10-25) ----------
+    // One property's steps (lib/onboarding.js) with what each step's pop-up shows.
+    if (action === "onboarding") {
+      const denied = await requireAdmin();
+      if (denied) return denied;
+      const record = await store.get(clean(body.listingId, 20), { type: "json" }).catch(() => null);
+      if (!record) return json({ error: "not found" }, 404);
+      const ctx = await onboardingContext(record);
+      const st = onboardingSteps(ctx);
+      const e = ctx.entry, row = ctx.snRow, pa = ctx.pa;
+      return json({ ok: true, ...st,
+        listing: { listingId: record.listingId, propertyName: record.propertyName || "", status: record.status || "Requested", siteNr: record.siteNr || "", siteId: record.siteId || "", resortId: record.resortId || "",
+          bbid: record.bbid || "", channelManager: record.channelManager || "", listedOn: record.listedOn || "", contactName: record.contactName || "", contactEmail: record.contactEmail || record.email || "",
+          contactPhone: record.contactPhone || record.telephone || "", ownerFullName: record.ownerFullName || "", ownerPhone: record.ownerPhone || "", latitude: record.latitude || "", longitude: record.longitude || "",
+          coordsVerified: record.coordsVerified || "", treePlaceText: record.treePlaceText || "", area: record.area || "", district: record.district || "", suburb: record.suburb || "", city: record.city || "", stateProvince: record.stateProvince || "",
+          checkInTime: record.checkInTime || "", selfSupplierRating: record.selfSupplierRating || "", ratingLink: record.ratingLink || "", ratingGoogle: record.ratingGoogle || "", ratingGoogleCandidate: record.ratingGoogleCandidate || null,
+          rateSeasons: (record.rateSeasons || []).length, ratesFromChannel: record.ratesFromChannel || "", blockedNights: (record.blockedNights || []).length, snSentAt: record.snSentAt || "", hostedSetup: record.hostedSetup || "",
+          helpRequest: record.helpRequest ? { at: record.helpRequest.at } : null, channelInvites: record.channelInvites || null, siteVerifiedAt: record.siteVerifiedAt || "", locationSentAt: record.locationSentAt || "", liveAt: record.liveAt || "",
+          nb: record.nb || null, snEmailLog: (record.snEmailLog || []).slice(-3).map((x) => ({ at: x.at, to: x.to, ok: x.ok, files: x.files })), readyTodo: ctx.readyTodo },
+        entry: e ? { siteNr: e.siteNr, status: e.status, goLive: e.goLive || "", stockFrom: e.stockFrom || "", bbid: e.bbid || "", propertyName: e.propertyName || "", snName: e.snName || "", snSiteId: e.snSiteId || "", needsLogin: !!e.needsLogin, sendLog: (e.sendLog || []).slice(-3) } : null,
+        sn: row ? { name: row.name || "", siteId: row.siteId || "", externalResortCode: row.externalResortCode || "", area: row.area || "", district: row.district || "", suburb: row.suburb || "", city: row.city || "", state: row.state || "",
+          supplierRating: row.supplierRating || "", tourismBoardRating: row.tourismBoardRating || "" } : null,
+        aff: ctx.aff ? { affId: ctx.aff.affId, types: ctx.aff.types || [], email: ctx.aff.email || "", revenueShare: ctx.aff.revenueShare || {} } : null,
+        hasPassword: ctx.hasPassword,
+        pa: pa ? { connected: pa.connected, siteId: pa.siteId, units: pa.units, channelLinks: pa.channelLinks, pendingChannelBookings: pa.pendingChannelBookings, pendingEvents: pa.pendingEvents,
+          channelHelp: pa.channelHelp, slug: pa.slug, setupBookings: !!(pa.settings && pa.settings.setupBookings), setupPayments: !!(pa.settings && pa.settings.setupPayments) } : null,
+        listedChannels: listedChannels(record) });
+    }
+
+    // Every listing still being set up, with what's left (Property Listings > What's outstanding?).
+    if (action === "onboardingAll") {
+      const denied = await requireAdmin();
+      if (denied) return denied;
+      const all = (await allListings(store)).filter((r) => r && r.status !== "Rejected" && !r.liveAt);
+      const rows = [];
+      // A few at a time: each one reads several stores.
+      for (let i = 0; i < all.length; i += 6) {
+        const part = await Promise.all(all.slice(i, i + 6).map(async (r) => {
+          const st = onboardingSteps(await onboardingContext(r));
+          return { listingId: r.listingId, propertyName: r.propertyName || "", path: st.path, done: st.done, total: st.total, outstanding: st.outstanding };
+        }));
+        rows.push(...part);
+      }
+      rows.sort((a, b) => (b.outstanding.filter((o) => o.status === "you").length - a.outstanding.filter((o) => o.status === "you").length) || a.propertyName.localeCompare(b.propertyName));
+      return json({ ok: true, listings: rows });
+    }
+
+    // The small things the Set up pop-up does itself.
+    if (action === "onboardingDo") {
+      const denied = await requireAdmin();
+      if (denied) return denied;
+      const listingId = clean(body.listingId, 20);
+      const record = await store.get(listingId, { type: "json" }).catch(() => null);
+      if (!record) return json({ error: "not found" }, 404);
+      const op = clean(body.op, 30), now = new Date().toISOString();
+      if (op === "verifySite") {
+        // Admin checked that the site Stock Network made is this property.
+        addHistory(record, "admin", "Checked the site on Stock Network: the right one (Site ID " + (record.siteId || "?") + ")", { siteVerifiedAt: record.siteVerifiedAt || "" });
+        record.siteVerifiedAt = now;
+      } else if (op === "wrongSite") {
+        const what = clean(body.note, 600) || "The site Stock Network set up doesn't match this property.";
+        const notifyTo = await getNotificationEmail();
+        const to = emailList((await getSnSetupEmails()) || "").filter((x) => !/@avantehospitality\./i.test(x)).slice(0, 3);
+        const sent = to.length ? await sendEmail({ to, subject: "Please check: " + (record.propertyName || "") + (record.siteNr ? " (Site Nr " + record.siteNr + ")" : ""),
+          html: "<p>Hello,</p><p>The site set up for <b>" + escapeHtml(record.propertyName || "") + "</b>" + (record.bbid ? " (NightsBridge BBID " + escapeHtml(record.bbid) + ")" : "") + (record.siteNr ? ", Site Nr " + escapeHtml(record.siteNr) : "") +
+            " doesn't look right to us.</p><p>" + escapeHtml(what) + "</p><p>Avante Travel</p>", replyTo: notifyTo || undefined }) : { ok: false, error: "No Stock Network address under Site Nrs" };
+        addHistory(record, "admin", "Asked Stock Network to check the site: " + what + (sent.ok ? "" : " (email NOT sent: " + sent.error + ")"));
+        if (!sent.ok) { record.dateUpdated = now; await store.setJSON(listingId, record); return json({ error: "Not sent: " + sent.error }, 502); }
+      } else if (op === "sendLocation") {
+        // The hub's place names (its tree is master) go to Stock Network on the set-up sheet.
+        const entry = record.siteNr ? await getSiteNr(siteRegister(), record.siteNr).catch(() => null) : null;
+        if (!entry) return json({ error: "This property has no Site Nrs entry, so the sheet can't go. Send the property file from the listing instead (View > Send the files by email)." }, 400);
+        const sent = await sendSnSetupSheet(entry, "Admin: location from the hub's tree");
+        const last = sent.sendLog[sent.sendLog.length - 1];
+        if (!last.ok) return json({ error: "Not sent: " + last.error }, 502);
+        addHistory(record, "admin", "Location (Area, District, Suburb from the hub's tree) sent to Stock Network", { locationSentAt: record.locationSentAt || "" });
+        record.locationSentAt = now;
+      } else if (op === "checkPin") {
+        // The pin checked with Google and placed in the hub tree (it is the master for location).
+        const place = await placeInTree(record.latitude, record.longitude);
+        if (!place) return json({ error: "Google couldn't place this pin. Open the listing and move the pin onto the property." }, 400);
+        addHistory(record, "admin", "Pin checked with Google and placed in the hub tree", { coordsVerified: record.coordsVerified || "" });
+        record.coordsVerified = "Y"; record.needsTreePlace = "";
+        await applyTreePlace(record, place, false);
+      } else if (op === "setStars") {
+        const stars = /^[1-5] Star$/.test(String(body.stars || "")) ? body.stars : "";
+        if (!stars) return json({ error: "Pick 1 to 5 stars." }, 400);
+        addHistory(record, "admin", "Star rating set to " + stars, { selfSupplierRating: record.selfSupplierRating || "" });
+        record.selfSupplierRating = stars;
+      } else if (op === "setCheckIn") {
+        const t = /^\d{1,2}:\d{2}$/.test(String(body.checkInTime || "")) ? body.checkInTime : "";
+        if (!t) return json({ error: "Type the check-in time like 14:00." }, 400);
+        addHistory(record, "admin", "Check-in time set to " + t, { checkInTime: record.checkInTime || "" });
+        record.checkInTime = t;
+      } else if (op === "goLive") {
+        const st = onboardingSteps(await onboardingContext(record));
+        const open = st.steps.filter((s) => s.id !== "golive" && s.status !== "done");
+        if (open.length) return json({ error: "Not ready yet: " + open.map((s) => s.title).join(", ") + "." }, 400);
+        addHistory(record, "admin", "Went live", { status: record.status || "", liveAt: "" });
+        record.liveAt = now; record.status = "Listed";
+      } else if (op === "ownerReminder") {
+        // The owner's open steps, with their login link.
+        const st = onboardingSteps(await onboardingContext(record));
+        const own = st.outstanding.filter((o) => o.status === "owner");
+        if (!own.length) return json({ error: "Nothing is waiting on the owner." }, 400);
+        const to = emailList(record.contactEmail || record.email || record.ownerEmail, 5);
+        if (!to.length) return json({ error: "The listing has no email address for the owner." }, 400);
+        const affId = record.affId || record.siteId || "";
+        const link = new URL(request.url).origin + (affId ? "/login.html?aff=" + encodeURIComponent(affId) : "/login.html");
+        const sent = await sendEmail({ to, subject: "Finish setting up " + (record.propertyName || "your property") + " with Avante",
+          html: "<p>Hello,</p><p>Just a few things left to finish setting up <b>" + escapeHtml(record.propertyName || "your property") + "</b> with Avante:</p><ul>" +
+            own.map((o) => "<li>" + escapeHtml(o.what) + "</li>").join("") + "</ul><p><a href=\"" + link + "\">Open my Avante hub</a></p>" +
+            "<p>Stuck? Reply to this email and Avante will help, or do it for you.</p><p>Avante Hospitality</p>" });
+        if (!sent.ok) return json({ error: "Not sent: " + sent.error }, 502);
+        addHistory(record, "admin", "Reminder to the owner emailed (" + own.length + " step(s))");
+      } else return json({ error: "Unknown step action." }, 400);
+      record.dateUpdated = now;
+      await store.setJSON(listingId, record);
       return json({ ok: true });
     }
 

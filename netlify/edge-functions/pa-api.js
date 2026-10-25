@@ -11,6 +11,7 @@ import { treeAreaList } from "./lib/tree-place.js";
 import { libraryPhotos, googlePhotos } from "./lib/act-photos.js";
 import { searchPlacePhotos } from "./lib/places-images.js";
 import { reviewsConfig } from "./lib/review-app.js";
+import { isAdminToken } from "./lib/admin-session.js";
 
 const cors = { "access-control-allow-origin": "*", "access-control-allow-methods": "POST, OPTIONS", "access-control-allow-headers": "content-type, x-pa-sync-secret" };
 const json = (obj, status = 200) => new Response(JSON.stringify(obj), { status, headers: { "content-type": "application/json", "cache-control": "no-store", ...cors } });
@@ -67,6 +68,25 @@ export default async (request) => {
     // Hub login: is this affiliate a property affiliate, and open its property on this device.
     if (a === "affStatus") return json(Object.assign({ ok: true }, await core.affStatus(body.aff)));
     if (a === "resume") return json(Object.assign({ ok: true }, await core.resume(body.aff, body.password)));
+    // Admin > Property Listings > Set up > Channels (Jean, 2026-10-25): Avante
+    // links a property's channel calendars itself, without logging in as the
+    // property. An admin login, and only the channel actions.
+    if (body.adminSite) {
+      if (!(await isAdminToken(body.adminToken))) return json({ ok: false, error: "Not authenticated." }, 401);
+      const ADMIN_ACTIONS = ["channels", "saveChannelLinks", "channelEvents", "addChannelEvent", "syncNow"];
+      if (ADMIN_ACTIONS.indexOf(a) < 0) return json({ ok: false, error: "Admin can't do that here." }, 403);
+      const siteId = String(body.adminSite).trim().slice(0, 64);
+      const prop = await getStore({ name: "property-affiliate", consistency: "strong" }).get("site:" + siteId, { type: "json" }).catch(() => null);
+      if (!prop || !prop.credsEnc) return json({ ok: false, error: "This property isn't connected yet: do Connect it first." }, 404);
+      if (prop.channel) return json({ ok: false, error: "A channel property's calendar comes from its channel manager." }, 403);
+      switch (a) {
+        case "channels": return json(Object.assign({ ok: true }, await core.channelsView(prop)));
+        case "saveChannelLinks": return json(Object.assign({ ok: true }, await core.saveSettings(prop, { channels: body.channels || {} })));
+        case "channelEvents": return json(Object.assign({ ok: true }, await core.channelEvents(prop)));
+        case "addChannelEvent": return json(Object.assign({ ok: true }, await core.addChannelEvent(prop, body.unit, body.channel, body.uid)));
+        case "syncNow": return json({ ok: true, result: await core.syncProperty(prop) });
+      }
+    }
     const t0 = Date.now();
     // Opening: start reading the saved grid while the login is checked (token carries the site id).
     const preSite = a === "open" ? core.siteOfToken(body.token) : null;
