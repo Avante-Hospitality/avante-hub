@@ -224,5 +224,22 @@
     }).catch(function(){ S.busy = false; showErr('No connection. Please try again.'); render(); });
   }
 
+  // Links in Avante's invite emails (Jean, 2026-10-26):
+  //   ?bbid=26762  picks "I use a channel manager", NightsBridge, fills in the
+  //                number and looks it up, so the owner only taps "Yes, that's me".
+  //   ?how=none    picks "I don't use one".
+  (function(){
+    var q = new URLSearchParams(location.search);
+    var bb = (q.get('bbid') || '').replace(/\D/g, '').replace(/^0+/, '').slice(0, 9);
+    var how = bb ? 'channel' : (q.get('how') === 'none' ? 'none' : q.get('how') === 'channel' ? 'channel' : '');
+    if(!how) return;
+    var radio = form.querySelector('input[name="how"][value="' + how + '"]');
+    if(radio) radio.checked = true;
+    S.how = how;
+    if(bb){ $('cm').value = 'NightsBridge'; $('bbid').value = bb; }
+    render();
+    if(bb) lookupBbid();
+  })();
+
   render();
 })();
