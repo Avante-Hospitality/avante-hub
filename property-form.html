@@ -235,7 +235,7 @@
 
     <div class="card">
       <h2 class="section-heading">Where is the property listed now?</h2>
-      <p class="hint">Pick the channel you'll take screenshots from. Not on any channel? Choose that and fill in each step yourself.</p>
+      <p class="hint">Pick the channel you'll take screenshots from. Not on any channel? Choose that: you can still fill each step from screenshots of the property's own website or another booking site, or fill it in yourself.</p>
       <div class="chips" id="channelChips"></div>
       <label for="channelLink">Link to the listing on that channel (optional)</label>
       <input id="channelLink" type="url" placeholder="https://www.lekkeslaap.co.za/akkommodasie/...">
@@ -991,8 +991,8 @@
     1: 'the listing: top of the page, description, rooms, amenities, reviews, host and price',
     3: 'the map or address part of the listing',
     4: 'the description, house rules, check-in times and cancellation policy',
-    5: 'every page of the full amenities list, and the rooms / beds section',
-    6: 'the channel\'s host calendar showing prices, one screenshot per month'
+    5: 'every page of the full amenities list, the rooms / beds section, or the unit details page',
+    6: 'the host calendar showing prices (one screenshot per month), or a rates table'
   };
   function shotZoneHtml(step){
     var list = SHOTS[step] || [];
@@ -1026,11 +1026,14 @@
     holder.setAttribute('data-mode', mode);
     if(step === 1){
       if(!channel){ holder.innerHTML = '<p class="note info">Choose a channel above to begin.</p>'; return; }
-      if(channel === 'Not on any channel'){ holder.innerHTML = '<p class="note info">No listing to take screenshots of. If the property has a rate sheet or fact sheet, add it below and tap <b>Read</b>; otherwise fill in each step yourself.</p>' + docsZoneHtml(true) + (readResults ? readResultsHtml() : ''); return; }
-      holder.innerHTML = shotZoneHtml(1) + docsZoneHtml(false) + (readResults ? readResultsHtml() : '');
+      // Not on a channel: screenshots of its own website or another booking
+      // site work just as well (Jean, 2026-10-26).
+      holder.innerHTML = (channel === 'Not on any channel' ? '<p class="note info">No channel listing? Screenshots of the property\'s own website or another booking site work too. A rate sheet or fact sheet can go below.</p>' : '') +
+        shotZoneHtml(1) + docsZoneHtml(false) + (readResults ? readResultsHtml() : '');
       return;
     }
-    if(!channel || channel === 'Not on any channel'){ holder.innerHTML = ''; return; }
+    // Every step can be filled from screenshots, whichever site they come from
+    // (Jean, 2026-10-26: an existing property may have no channel at all).
     holder.innerHTML = '<details class="card more" style="margin-top:0"' + ((SHOTS[step] || []).length ? ' open' : '') + '><summary>Fill this step from screenshots</summary><div style="margin-top:10px">' + shotZoneHtml(step) + '</div></details>';
   }
   // Word / Excel / PDF documents the property already has (rate sheets,
@@ -1128,7 +1131,7 @@
     var files = e.clipboardData && e.clipboardData.files;
     if(!files || !files.length) return;
     var zone = current === 1 ? 1 : (SHOT_HINTS[current] ? current : activeZone);
-    if(!SHOT_HINTS[zone] || !channel || channel === 'Not on any channel') return;
+    if(!SHOT_HINTS[zone] || (zone === 1 && !channel)) return;
     e.preventDefault();
     addShotFiles(zone, files);
   });
