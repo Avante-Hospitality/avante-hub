@@ -48,6 +48,16 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
 .text{ white-space:pre-line; }
 .book{ position:sticky; top:76px; box-shadow:0 18px 50px rgba(14,47,68,.10); }
 #calsec{ scroll-margin-top:90px; }
+/* The calendar on the right, in the Book your stay frame's place (computer) */
+.side{ position:sticky; top:76px; align-self:start; max-height:calc(100vh - 92px); overflow-y:auto; overscroll-behavior:contain; }
+.side .calside{ box-shadow:0 18px 50px rgba(14,47,68,.10); padding:18px; }
+.side .calside h2{ font-size:20px; margin-bottom:2px; }
+.side .calside .lead{ margin:0 0 10px; font-size:14px; }
+.side .calpick{ padding:12px 0 0; margin-top:10px; border-top:1px solid var(--line); }
+.side .day{ min-height:44px; font-size:13px; }
+.side .day small{ font-size:9.5px; }
+.side .book{ position:static; margin-top:12px; }
+.side .book.idle{ display:none; }
 /* Choose your unit (from a Book link): one line per unit, ticked to book (Jean, 2026-10-23) */
 .u1{ display:flex; align-items:center; gap:10px; padding:12px 14px; border:1.5px solid var(--line); border-radius:12px; margin-top:8px; cursor:pointer; background:#fff; }
 .u1 input{ width:20px; height:20px; margin:0; flex:0 0 auto; accent-color:#0aa89f; }
@@ -353,13 +363,16 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
     if (d.showOffers) h += offersHtml();
     if (d.showActivities) h += nearbyHtml();
     // Availability comes after Things to do, so the page doesn't seem to end before the activities (Jean, 2026-10-14).
-    if (d.showCalendar) h += '<section class="sec" id="calsec"><h2>Availability</h2><p class="lead">Tap your arrival day, then your last night. Or type your dates under the calendar.</p><div class="card" id="cal"></div><div class="card calpick" id="calpick"></div></section>';
+    // On a computer the calendar takes the Book your stay frame's place on the right (Jean, 2026-10-26).
+    var calSide = d.showCalendar && WIDE.matches;
+    if (d.showCalendar && !calSide) h += '<section class="sec" id="calsec"><h2>Availability</h2><p class="lead">Tap your arrival day, then your last night. Or type your dates under the calendar.</p><div class="card" id="cal"></div><div class="card calpick" id="calpick"></div></section>';
     h += '<section class="sec"><h2>Contact ' + esc(d.name) + '</h2><div class="contact">' +
       (waLink(d) ? '<a class="btn" style="background:#25D366" href="' + esc(waLink(d, 'Hi, I have a question about ' + d.name + '.')) + '" target="_blank" rel="noopener">💬 WhatsApp</a>' : '') +
       (telLink(d) ? '<a class="btn g" href="' + esc(telLink(d)) + '">📞 ' + esc(d.contact.phone) + '</a>' : '') +
       (d.contact.email ? '<a class="btn g" href="mailto:' + esc(d.contact.email) + '">✉️ Email</a>' : '') +
       '<a class="btn g" href="' + esc(mapsLink(d)) + '" target="_blank" rel="noopener">🧭 Directions</a></div></section>';
-    h += '</main><aside class="' + bookCls() + '" id="book" aria-label="Book your stay">' + bookHtml() + '</aside></div></div>';
+    var aside = '<aside class="' + bookCls() + '" id="book" aria-label="Book your stay">' + bookHtml() + '</aside>';
+    h += '</main>' + (calSide ? '<div class="side"><section class="card calside" id="calsec"><h2>Availability</h2><p class="lead">Tap your arrival day, then your last night.</p><div id="cal"></div><div class="calpick" id="calpick"></div></section>' + aside + '</div>' : aside) + '</div></div>';
     h += '<p class="foot">Book direct with ' + esc(d.name) + ' · secure booking through Avante Travel</p>';
     h += '<div class="bar"><div class="t"><b>' + (S.quote ? 'Pick a unit' : 'Book direct') + '</b>' + esc(nice(S.ci) + ' – ' + nice(S.co)) + '</div><button type="button" class="btn t" data-act="toBook">Check availability</button></div>';
     app.innerHTML = h;
@@ -367,6 +380,9 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
   }
   // From a Book link (Jean, 2026-10-23): the free units open over the page, like the guest's
   // details form; picking one opens Your booking, whose Change comes back to this list.
+  // A computer-sized screen: the calendar sits on the right (drawn again when the size crosses over).
+  var WIDE = window.matchMedia ? window.matchMedia('(min-width:901px)') : { matches: false };
+  if (WIDE.addEventListener) WIDE.addEventListener('change', function () { if (S.d && !S.pick && !linkOpen()) render(); });
   // The units chosen in the list, as one booking: { unit: "A, B", units: [...], total }.
   var MAX_UNITS = 4;
   function chosen(u) { return (S.sel || []).indexOf(u) > -1; }
@@ -661,6 +677,7 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
     if (CFG.preview && (a === 'quote' || a === 'calCheck' || a === 'book' || a === 'km')) { S.err = a === 'km' ? '' : 'This is a preview: booking works on the real page.'; return a === 'km' ? null : drawBook(); }
     if (a === 'calCheck') {
       var ci3 = val('cpi'), co3 = val('cpo'); if (ci3 && co3 && co3 > ci3) { S.ci = ci3; S.co = co3; }
+      if (document.querySelector('.side #calsec')) { S.linkModal = true; S.autoPick = true; } // the free units open over the page
       S.err = ''; S.pick = null; S.picking = false; drawBook(); drawCal();
       var bk = document.getElementById('book'); if (bk) bk.scrollIntoView({ behavior: 'smooth', block: 'start' });
       var qb = bk && bk.querySelector('[data-act="quote"]'); if (qb) qb.click(); return;
