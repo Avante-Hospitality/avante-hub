@@ -20,6 +20,7 @@ import { parseIcs, buildIcs, nightsToRanges } from "./ical.js";
 import { encryptJSON, decryptJSON, randomToken, sha256Hex } from "./pa-crypto.js";
 import { emailList as listOf, badEmails, recipients } from "./emails.js";
 import { allListings, readAllEntries } from "./blob-records.js";
+import { listingMatchesProperty, mergeContact, applyContact } from "./property-contact.js";
 import "../../../commission.js"; // globalThis.AvanteCommission: Avante's commission rates
 
 export const CHANNELS = { bcom: "Booking.com", airbnb: "Airbnb", lekke: "LekkeSlaap" };
@@ -260,6 +261,38 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     if (body.notifyWho !== undefined) s.notifyWho = NOTIFY_WHO.includes(body.notifyWho) ? body.notifyWho : "both";
   }
 
+  // The contact details live on the property's Avante listing (lib/property-contact.js):
+  // a change here is written there too, with a line in the listing's history.
+  async function linkedListing(prop) {
+    if (!listingStore) return null;
+    return (await allListings(listingStore)).find((l) => listingMatchesProperty(l, prop)) || null;
+  }
+  async function writeListingContact(l, c, what) {
+    if (!applyContact(l, c, "listing")) return;
+    const at = now().toISOString();
+    l.history = (Array.isArray(l.history) ? l.history : []).concat([{ at, by: "property", action: what }]).slice(-200);
+    l.dateUpdated = at;
+    await listingStore.setJSON(l.listingId, l);
+  }
+  async function pushContactToListing(prop) {
+    const l = await linkedListing(prop);
+    if (l) await writeListingContact(l, prop.settings || {}, "Contact details changed in the hub");
+  }
+  // Once per property, the first time it opens after this came in: the listing's
+  // details fill the hub, and the hub's fill whatever the listing is missing.
+  async function syncContact(prop) {
+    if (prop.contactSyncedAt) return;
+    const l = await linkedListing(prop).catch(() => null);
+    if (l) {
+      const c = mergeContact(prop.settings, l);
+      prop.settings = prop.settings || {};
+      applyContact(prop.settings, c, "settings");
+      await writeListingContact(l, c, "Contact details taken over from the hub");
+    }
+    prop.contactSyncedAt = now().toISOString();
+    await setJSON("site:" + prop.siteId, prop);
+  }
+
   async function disconnect(token) {
     const prop = await auth(token);
     await store.delete("sess:" + cleanStr(token, 120));
@@ -323,6 +356,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     const stored = rec && rec.passwordHash ? rec.passwordHash : await sha256Hex(DEFAULT_AFFILIATE_PASSWORD);
     if ((await sha256Hex(String(password || ""))) !== stored) { await setJSON(fk, fails + 1); throw new PAError("Incorrect hub password.", 403); }
     await syncChannelFlag(p);
+    await syncContact(p);
     return { token: await newSession(p), property: publicProperty(p) };
   }
 
@@ -902,6 +936,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
       saveContactFields(s0, body);
       prop.settings = s0;
       await setJSON("site:" + prop.siteId, prop);
+      await pushContactToListing(prop);
       return { ok: true, settings: { email: s0.email || "", phone: s0.phone || "", contactName: s0.contactName || "", contactPhone: s0.contactPhone || "", contactEmail: s0.contactEmail || "", notifyWho: s0.notifyWho || "both" } };
     }
     const s = prop.settings || {};
@@ -947,6 +982,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     }
     if ((s.payMode || "both") === "eft" && !prop.bankEnc) throw new PAError("Add your bank details before choosing EFT only.");
     await setJSON("site:" + prop.siteId, prop);
+    await pushContactToListing(prop);
     return channelsView(prop);
   }
 
@@ -1894,5 +1930,5 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
   }
   function notDemo(b) { if (b && b.demo) throw new PAError("This is a demo booking: it isn't in Avante's booking system, so it can't be changed, paid or cancelled.", 409); }
 
-  return { propertyTo, requestChannelHelp, prefetch, siteOfToken, newSession, decide, refreshStatuses, clientFor, connect, auth, disconnect, publicProperty, availability, search, book, cancel, cancelUnit, edit, find, saveSettings, channelsView, payInfo, markPaidEft, affStatus, resume, seedDemo, clearDemo, isDemoSite, saveContact, checkIn, guests, messagesView, saveMessages, prepareMessage, markMessage, emailNow, inHouse, emailInHouse, firstBookable, fsSettings, saveFrontStore, frontStoreView, uploadFrontPhoto, removeFrontPhoto, frontPhoto, propertyBySlug, publicFrontStore, publicGuestInfo, guestKeyOk, publicOffers, publicAvailability, publicQuote, publicBook, fsStat, propertyReviewLink, remindMessages, icalFeed, runSync, syncProperty, channelEvents, addChannelEvent, snapshot, ensureWindow, resolveUnitNotice, findResortsForSite, findResort };
+  return { propertyTo, syncContact, requestChannelHelp, prefetch, siteOfToken, newSession, decide, refreshStatuses, clientFor, connect, auth, disconnect, publicProperty, availability, search, book, cancel, cancelUnit, edit, find, saveSettings, channelsView, payInfo, markPaidEft, affStatus, resume, seedDemo, clearDemo, isDemoSite, saveContact, checkIn, guests, messagesView, saveMessages, prepareMessage, markMessage, emailNow, inHouse, emailInHouse, firstBookable, fsSettings, saveFrontStore, frontStoreView, uploadFrontPhoto, removeFrontPhoto, frontPhoto, propertyBySlug, publicFrontStore, publicGuestInfo, guestKeyOk, publicOffers, publicAvailability, publicQuote, publicBook, fsStat, propertyReviewLink, remindMessages, icalFeed, runSync, syncProperty, channelEvents, addChannelEvent, snapshot, ensureWindow, resolveUnitNotice, findResortsForSite, findResort };
 }

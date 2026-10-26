@@ -127,10 +127,11 @@ export default async (request) => {
       }
     }
     switch (a) {
-      case "status": return json({ ok: true, property: core.publicProperty(prop) });
+      case "status": await core.syncContact(prop); return json({ ok: true, property: core.publicProperty(prop) });
       // Opening the property: who it is plus the last saved grid in one call (no Stock Network call).
       case "open": {
         const timing = { _t0: t0 };
+        await core.syncContact(prop);   // once per property: the listing's contact details
         const av = await core.availability(prop, body.from || core.firstBookable(prop), body.to, { cached: true, timing, pre });
         // Older logins get a new token in the faster format (the old one keeps working).
         const newToken = preSite ? undefined : await core.newSession(prop);
@@ -140,6 +141,7 @@ export default async (request) => {
       case "disconnect": return json(await core.disconnect(body.token));
       case "availability": {
         const timing = { _t0: t0 };
+        await core.syncContact(prop);   // once per property: the listing's contact details
         const av = await core.availability(prop, body.from, body.to, { timing });
         delete timing._t0; timing.login = authMs; timing.total = Date.now() - t0;
         return json(Object.assign({ ok: true, timing }, av));

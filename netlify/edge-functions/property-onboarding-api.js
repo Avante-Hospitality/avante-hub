@@ -19,6 +19,7 @@ import { createPropertyAffiliate } from "./lib/affiliates.js";
 import { fetchRatingLink, applyRatingLink, GOOGLE_MATCH } from "./lib/review-app.js";
 import { CHANNELS as PA_CHANNELS, CHANNEL_HELP_KEY, CHANNEL_HELP_DEFAULT } from "./lib/pa-core.js";
 import { onboardingSteps, pathOf, listedChannels, districtNeedsCheck } from "./lib/onboarding.js";
+import { listingMatchesProperty, contactFromListing, applyContact } from "./lib/property-contact.js";
 import { nightsbridgeProperty } from "./lib/nightsbridge.js";
 import { SNClient } from "./lib/sn-client.js";
 import { readResortInfo, copySnPhotos } from "./lib/sn-resort-info.js";
@@ -609,6 +610,21 @@ async function onboardingContext(record, shared = {}) {
   return { listing: record, entry, snRow, aff, hasPassword: !!(auth && auth.passwordHash), pa: paInfo, readyTodo };
 }
 
+// The contact details live on the listing; the property's own hub keeps a copy
+// (lib/property-contact.js). After a listing save, the hub's copy follows.
+async function pushContactToPa(record) {
+  const paStore = getStore({ name: "property-affiliate", consistency: "strong" });
+  const key = String(record.paSiteId || record.affId || record.siteId || "").trim();
+  let prop = key ? await paStore.get("site:" + key, { type: "json" }).catch(() => null) : null;
+  if (!prop && key) {
+    const link = await paStore.get("aff:" + key, { type: "json" }).catch(() => null);
+    prop = link && link.siteId ? await paStore.get("site:" + link.siteId, { type: "json" }).catch(() => null) : null;
+  }
+  if (!prop || !(prop.siteId === key || prop.aff === key || listingMatchesProperty(record, prop))) return;
+  prop.settings = prop.settings || {};
+  if (applyContact(prop.settings, contactFromListing(record), "settings")) await paStore.setJSON("site:" + prop.siteId, prop);
+}
+
 async function getSnSetupEmails() {
   return (await getSettings()).snSetupEmails || DEFAULT_SN_SETUP_EMAILS;
 }
@@ -1173,6 +1189,7 @@ export default async (request, context) => {
       }
       await store.setJSON(listingId, record);
       await forgetEstates(context);
+      await pushContactToPa(record);
 
       // Admin hears about an owner's changes, not about every step of a listing still being completed.
       if (!isAdmin && !(draft && before.hostedSetup === "completing")) {
@@ -1930,7 +1947,7 @@ export default async (request, context) => {
           aff, units: [], settings: { email: a.email || "", phone: a.phone || "" }, channel: true, siteIdForListing: aff });
       }
       const all = await allListings(store, { strict: true });
-      const listingFor = (pr) => all.find((r) => (r.paSiteId && r.paSiteId === pr.siteId) || (r.resortId && pr.resortId && r.resortId === pr.resortId) || (pr.channel && r.channelProperty === "Y" && r.affId === pr.aff));
+      const listingFor = (pr) => all.find((r) => listingMatchesProperty(r, pr));
 
       if (action === "existingProperties") {
         return json({ ok: true, properties: props.map((pr) => {
@@ -2337,6 +2354,7 @@ export default async (request, context) => {
       if (record.inEstate === "N") record.complexName = "";
       await store.setJSON(listingId, record);
       await forgetEstates(context);
+      await pushContactToPa(record);
       // Its library photos filed under its property and unit types (ResortID or unit names may have changed).
       context.waitUntil(retagListingPhotos(record).catch(() => null));
 
