@@ -1335,6 +1335,8 @@ export default async (request, context) => {
           status: r.status || "Requested",
           siteNr: r.siteNr || "",
           siteId: r.siteId || "",
+          // For the list's search box (Jean, 2026-10-26).
+          suburb: r.suburb || "", ownerEmail: r.ownerEmail || "", contactName: r.contactName || "", contactEmail: r.contactEmail || "",
           coordsVerified: r.coordsVerified || "N",
           existingOnSN: r.existingOnSN || "",
           dateSubmitted: r.dateSubmitted,

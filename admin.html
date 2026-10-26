@@ -346,6 +346,11 @@
   .table-scroll-hint{
     font-size:12px; color:var(--muted); margin:0 0 6px; display:none;
   }
+  /* Search box (and filter) above a long table */
+  .table-filter{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:14px; }
+  .table-filter input[type="search"]{ flex:1 1 260px; margin:0; }
+  .table-filter select{ flex:0 0 auto; width:auto; margin:0; }
+  .table-filter .table-filter-count{ font-size:12.5px; color:var(--muted); }
   @media (max-width: 900px){
     .table-scroll-hint{ display:block; }
   }
@@ -879,6 +884,16 @@
           <input type="checkbox" id="missingSiteNrFilterToggle" style="width:auto; margin:0;">
           Show only affiliates missing a Site Nr
         </label>
+        <div class="table-filter">
+          <input type="search" id="affSearch" placeholder="Search name, ID, Site Nr or email" autocomplete="off" aria-label="Search affiliates">
+          <select id="affTypeFilter" aria-label="Kind of affiliate">
+            <option value="">All affiliates</option>
+            <option value="agent">Agent affiliates</option>
+            <option value="property">Property affiliates</option>
+            <option value="channel">Channel properties</option>
+          </select>
+          <span class="table-filter-count" id="affFilterCount"></span>
+        </div>
         <div style="margin-top:18px;" id="affiliatesTable">
           <p class="table-scroll-hint">&larr; Scroll sideways to see Type, Share, Status and Outstanding &mdash; Actions stays visible on the right</p>
           <div class="table-wrap">
@@ -1382,6 +1397,16 @@
           <button class="btn-outline" id="refreshPropertyListingsBtn">Refresh</button>
           <button class="primary" id="outstandingAllBtn" type="button" style="margin-top:0;">What's outstanding? (all properties)</button>
           <button class="btn-outline" id="libAllBtn" type="button" title="Puts every listing's photos in the photo library, filed under the property and its unit types">Put all listing photos in the photo library</button>
+        </div>
+        <div class="table-filter">
+          <input type="search" id="plSearch" placeholder="Search property, owner, place, Site Nr or email" autocomplete="off" aria-label="Search property listings">
+          <select id="plStatusFilter" aria-label="Status">
+            <option value="">All statuses</option>
+            <option value="Requested">Requested</option>
+            <option value="Listed">Listed</option>
+            <option value="Rejected">Rejected</option>
+          </select>
+          <span class="table-filter-count" id="plFilterCount"></span>
         </div>
         <div class="status" id="propertyListingsStatus"></div>
         <div style="margin-top:18px;">
@@ -2844,6 +2869,18 @@
         .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
 
+    // Search boxes above admin tables (Jean, 2026-10-26): every word typed has
+    // to appear somewhere in the row's values, in any order, any case.
+    function searchMatches(values, q){
+      var hay = values.map(function(v){ return v == null ? '' : String(v); }).join(' ').toLowerCase();
+      return String(q || '').toLowerCase().split(/\s+/).filter(Boolean).every(function(w){ return hay.indexOf(w) > -1; });
+    }
+    // "Showing 3 of 15" next to a table's search box ('' when nothing is filtered out).
+    function setFilterCount(id, shown, total){
+      var el = document.getElementById(id);
+      if(el) el.textContent = shown < total ? 'Showing ' + shown + ' of ' + total : '';
+    }
+
     // ---------- Per-channel revenue share helpers ----------
     // Each channel's share is either a percentage of revenue, or a flat
     // Rand amount (paid regardless of how much revenue was logged).
@@ -3096,13 +3133,23 @@
         return;
       }
 
-      var rows = (filterToggle && filterToggle.checked)
-        ? affiliatesCache.filter(function(a){ return !a.siteNr; })
-        : affiliatesCache;
+      var q = (document.getElementById('affSearch') || {}).value || '';
+      var kind = (document.getElementById('affTypeFilter') || {}).value || '';
+      var kindOf = function(a){
+        var t = Array.isArray(a.types) ? a.types : [];
+        return t.indexOf('channel') > -1 ? 'channel' : t.indexOf('property') > -1 ? 'property' : 'agent';
+      };
+      var rows = affiliatesCache.filter(function(a){
+        if(filterToggle && filterToggle.checked && a.siteNr) return false;
+        if(kind && kindOf(a) !== kind) return false;
+        return searchMatches([a.name, a.affId, a.siteNr, a.siteNr ? 'Affiliate ' + a.siteNr : '', a.email, a.phone], q);
+      });
+      setFilterCount('affFilterCount', rows.length, affiliatesCache.length);
 
       if(!rows.length){
         empty.style.display = 'block';
-        empty.textContent = filterToggle && filterToggle.checked
+        empty.textContent = (q || kind) ? 'No affiliates match.'
+          : filterToggle && filterToggle.checked
           ? 'No affiliates are missing a Site Nr.'
           : 'No affiliates added yet — click "+ Add Affiliate" to add your first one.';
         return;
@@ -3241,6 +3288,8 @@
 
     document.getElementById('refreshAffiliatesBtn').addEventListener('click', loadAffiliates);
     document.getElementById('missingSiteNrFilterToggle').addEventListener('change', renderAffiliatesTable);
+    document.getElementById('affSearch').addEventListener('input', renderAffiliatesTable);
+    document.getElementById('affTypeFilter').addEventListener('change', renderAffiliatesTable);
 
     // ---------- Generate short codes for every affiliate (Stage 4) ----------
     // See generateShortCodes in admin-api.js for the full story: one
@@ -6797,9 +6846,20 @@
         });
       });
 
-      function renderPropertyListingsTable(listings){
+      // The last loaded list; the search box and Status filter narrow it.
+      var listingsAll = [];
+      function renderPropertyListingsTable(all){
+        if(all) listingsAll = all;
+        var q = document.getElementById('plSearch').value;
+        var st = document.getElementById('plStatusFilter').value;
+        var listings = listingsAll.filter(function(l){
+          if(st && (l.status || 'Requested') !== st) return false;
+          return searchMatches([l.propertyName, l.ownerFullName, l.city, l.suburb, l.country, l.siteNr, l.siteId, l.ownerEmail, l.contactName, l.contactEmail, l.listingId], q);
+        });
+        setFilterCount('plFilterCount', listings.length, listingsAll.length);
         tableBody.innerHTML = '';
         if(!listings.length){
+          emptyEl.textContent = listingsAll.length ? 'No listings match.' : 'No property listings submitted yet.';
           emptyEl.style.display = 'block';
           return;
         }
@@ -6888,6 +6948,9 @@
         }).catch(function(){ btn.disabled = false; st.textContent = 'Stopped: no connection. Run it again; nothing is doubled.'; });
       });
       window.refreshPropertyListings = function(){ return loadPropertyListings(); };
+      document.getElementById('plSearch').addEventListener('input', function(){ renderPropertyListingsTable(); });
+      document.getElementById('plStatusFilter').addEventListener('change', function(){ renderPropertyListingsTable(); });
+
       function loadPropertyListings(){
         statusEl.textContent = 'Loading\u2026';
         statusEl.className = 'status show';
