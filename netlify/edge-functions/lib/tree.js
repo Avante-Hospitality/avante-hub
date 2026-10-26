@@ -117,8 +117,26 @@ export function snFieldsFromPlace(pl) {
     area: (pl.r && pl.r[0] && !/^\(/.test(pl.r[0])) ? pl.r[0] : "",
     city: t,
     suburb: pl.s && pl.s !== t ? pl.s : t,
-    district: String(pl.d || "").replace(/ (Local )?Municipality$/, ""),
+    district: municipalityName(pl.d),
   };
+}
+
+// SN District is the LOCAL municipality, short (Jean, 2026-10-07): "Bitou",
+// "City of Mbombela", "City of Cape Town". Never a district municipality
+// ("Garden Route District", "Ehlanzeni District"): those give "".
+export function municipalityName(raw) {
+  const v = String(raw || "").trim();
+  if (isDistrictLevel(v)) return "";
+  return v.replace(/\s+(Local|Metropolitan)?\s*Municipality$/i, "").trim();
+}
+export function isDistrictLevel(name) {
+  return /\bdistrict\b|distriksmunisipaliteit/i.test(String(name || ""));
+}
+// Google sometimes answers in Afrikaans: same names in English.
+function englishMunicipality(v) {
+  return String(v || "").replace(/\s*Plaaslike Munisipaliteit$/i, " Local Municipality")
+    .replace(/\s*Metropolitaanse Munisipaliteit$/i, " Metropolitan Municipality")
+    .replace(/\s*Munisipaliteit$/i, " Municipality").trim();
 }
 
 function isNotTown(t) {
@@ -171,13 +189,16 @@ export function placeFromGoogle(g, lat, lng) {
   if (c === "South Africa" && !p) p = provinceAt(lat, lng);
   let t = spell[g.town] || g.town || "";
   let s = spell[g.suburb] || g.suburb || "";
-  let d = afr[g.district] || g.district || "";
-  if (/distriksmunisipaliteit/i.test(d)) d = d.replace(/\s*distriksmunisipaliteit/i, "") + " District Municipality";
+  // d = the local municipality (Google level 3). Metros have no level 3, so
+  // their level 2 (the metro itself) stands; a district municipality never does.
+  const level2 = afr[g.district] || englishMunicipality(g.district);
+  let d = afr[g.municipality] || englishMunicipality(g.municipality);
+  if (isDistrictLevel(d)) d = "";
   if (c === "South Africa" && isNotTown(t)) t = nearestTown(lat, lng, 25) || nearestTown(lat, lng, 80, 2) || t || "(no town)";
   if (!t) t = "(no town)";
   if (parent[t]) { s = t; t = parent[t]; }
   if (s && (s.toLowerCase() === t.toLowerCase() || /[0-9&@]/.test(s) || /^(central|resort|bed ?& ?breakfast)$/i.test(s))) s = "";
-  const m = metro[d];
+  const m = metro[d] || metro[level2];
   const a = m && m !== t && c === "South Africa" ? [[m, t]] : [];
   let r;
   if (c === "South Africa") { r = regionsAt(lat, lng); if (!r.length) r = ["(no region)"]; }
@@ -222,7 +243,8 @@ export async function placeResortBacklog(store, resorts, apiKey, budgetMs = 9000
     if (!isFinite(lat) || !isFinite(lng) || (lat === 0 && lng === 0)) return;
     seen.add(rec.resortId);
     const have = map[rec.resortId];
-    if (have && sameSpot(have.k, keyOf(lat, lng))) return;
+    // Placed before District meant the local municipality: look it up again.
+    if (have && sameSpot(have.k, keyOf(lat, lng)) && !isDistrictLevel(have.d)) return;
     todo.push({ id: rec.resortId, lat, lng });
   });
   let placed = 0, failed = 0, skipped = 0, denied = "";

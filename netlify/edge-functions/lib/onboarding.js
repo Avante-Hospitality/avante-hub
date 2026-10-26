@@ -52,6 +52,12 @@ export function listedChannels(listing) {
   return ICAL_CHANNELS.filter((c) => text.toLowerCase().includes(c.toLowerCase()));
 }
 
+// Placed before the hub used the local municipality for District (it has a
+// district municipality's name, e.g. "Ehlanzeni District"): re-check the pin.
+export function districtNeedsCheck(listing) {
+  return /\bdistrict\b/i.test(String((listing && listing.district) || ""));
+}
+
 // The fields where Stock Network's location differs from the hub's (the hub's tree is master).
 export function locationDiffs(listing, snRow) {
   if (!listing || !snRow) return [];
@@ -95,6 +101,7 @@ export function onboardingSteps(c) {
   const pinned = l.coordsVerified === "Y" && (has(l.treePlace) || has(l.suburb));
   const diffs = locationDiffs(l, row);
   if (!pinned) set("location", "you", "Check the pin with Google so the hub can place it");
+  else if (districtNeedsCheck(l)) set("location", "you", "Check the pin with Google again: the District must be the local municipality");
   else if (diffs.length && !l.locationSentAt) set("location", "you", "Stock Network's " + diffs.map((d) => d.label).join(", ") + " differ from the hub's");
   else set("location", "done");
 

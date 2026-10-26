@@ -132,24 +132,39 @@ export function requestRow(e) {
 }
 
 // "Upload_15.10.26_site6023_Kloof_Lane.xlsx" (dd.mm.yy, like Jean's sheets).
-export function sheetFileName(e, when = new Date()) {
+// prefix "Location" names the location-update sheet the same way.
+export function sheetFileName(e, when = new Date(), prefix = "Upload") {
   const p = (n) => String(n).padStart(2, "0");
   const d = p(when.getUTCDate()) + "." + p(when.getUTCMonth() + 1) + "." + String(when.getUTCFullYear()).slice(2);
   const name = String(e.propertyName || "property").normalize("NFKD").replace(/[^A-Za-z0-9]+/g, "_").replace(/^_|_$/g, "").slice(0, 60) || "property";
-  return "Upload_" + d + "_site" + e.siteNr + "_" + name + ".xlsx";
+  return prefix + "_" + d + "_site" + e.siteNr + "_" + name + ".xlsx";
 }
 
-// The sheet as base64 (for an email attachment). Phone No is text, as in SN's sheet.
-export function requestSheetBase64(XLSX, entries) {
-  const ws = XLSX.utils.aoa_to_sheet([REQUEST_COLS].concat(entries.map(requestRow)));
-  for (let r = 1; r <= entries.length; r++) {
-    const ref = XLSX.utils.encode_cell({ r, c: 4 });
+// One-sheet workbook as base64 (for an email attachment); textCols stay text.
+function sheetBase64(XLSX, cols, rows, sheetName, textCols = []) {
+  const ws = XLSX.utils.aoa_to_sheet([cols].concat(rows));
+  for (let r = 1; r <= rows.length; r++) textCols.forEach((c) => {
+    const ref = XLSX.utils.encode_cell({ r, c });
     if (ws[ref]) { ws[ref].t = "s"; ws[ref].z = "@"; }
-  }
-  ws["!cols"] = REQUEST_COLS.map((h) => ({ wch: Math.max(10, Math.min(40, h.length + 4)) }));
+  });
+  ws["!cols"] = cols.map((h) => ({ wch: Math.max(10, Math.min(40, h.length + 4)) }));
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Request_pull_area");
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
   return XLSX.write(wb, { type: "base64", bookType: "xlsx" });
+}
+
+// The set-up sheet. Phone No is text, as in SN's sheet.
+export function requestSheetBase64(XLSX, entries) {
+  return sheetBase64(XLSX, REQUEST_COLS, entries.map(requestRow), "Request_pull_area", [4]);
+}
+
+// A location update for a site Stock Network already has (Jean, 2026-10-26):
+// only the location columns, so nothing else on the site (rate, franchise
+// split, contact) is touched. City2 is never sent. Site Nr is text so it
+// matches SN's SiteID exactly.
+export const LOCATION_COLS = ["SiteID", "Name", "Area", "District", "Suburb"];
+export function locationSheetBase64(XLSX, entries) {
+  return sheetBase64(XLSX, LOCATION_COLS, entries.map((e) => [String(e.siteNr), e.propertyName, e.area, e.district, e.suburb]), "Location_update", [0]);
 }
 
 const esc = (v) => String(v == null ? "" : v).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -170,6 +185,21 @@ export function setupEmail(e) {
     (e.note ? "<p>" + esc(e.note).replace(/\n/g, "<br>") + "</p>" : "") +
     "<p>Avante Travel</p>";
   return { subject, html };
+}
+
+// The email that goes with the location sheet. e.was: { area, district, suburb }
+// as Stock Network has them now (optional).
+export function locationUpdateEmail(e) {
+  const w = e.was || {};
+  const row = (label, now, was) => "<tr><td>" + label + "</td><td>" + esc(was || "—") + "</td><td><b>" + esc(now || "—") + "</b></td></tr>";
+  return {
+    subject: "Location update: " + e.propertyName + " (Site Nr " + e.siteNr + ")",
+    html: "<p>Hello,</p><p>Please update the location fields of <b>" + esc(e.propertyName) + "</b> (Site Nr <b>" + esc(e.siteNr) + "</b>" +
+      (e.bbid ? ", BBID " + esc(e.bbid) : "") + ") to match Avante's location tree. Only these fields change; please leave City2 and everything else as it is. The sheet is attached.</p>" +
+      "<table border=\"1\" cellpadding=\"4\" cellspacing=\"0\"><tr><th>Field</th><th>Now</th><th>Should be</th></tr>" +
+      row("Area", e.area, w.area) + row("District", e.district, w.district) + row("Suburb", e.suburb, w.suburb) + "</table>" +
+      "<p>Avante Travel</p>",
+  };
 }
 
 // The confirmation to the property.

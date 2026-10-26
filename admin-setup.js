@@ -152,17 +152,21 @@
         }
         break;
       case 'location':
+        var staleDistrict = /\bdistrict\b/i.test(L.district || '');
+        var diffs = D.locationDiffs || [];
         h = head(s, 'The pin is checked with Google and the place names come from the hub’s location tree, which is the master. Stock Network gets the hub’s names.') + '<div class="obw-box">' +
           row('Pin', esc([L.latitude, L.longitude].filter(Boolean).join(', ') || '—')) + row('Checked with Google', yes(L.coordsVerified === 'Y')) +
           row('Hub tree', esc(L.treePlaceText || [L.suburb, L.city, L.area, L.stateProvince].filter(Boolean).join(' · ') || '—')) + '</div>';
-        if(D.locationDiffs && D.locationDiffs.length){
-          h += '<table class="obw-tbl"><tr><th>Field</th><th>Stock Network now</th><th>Hub tree</th></tr>' + D.locationDiffs.map(function(x){
+        if(diffs.length){
+          h += '<table class="obw-tbl"><tr><th>Field</th><th>Stock Network now</th><th>Hub tree</th></tr>' + diffs.map(function(x){
             return '<tr><td>' + esc(x.label) + '</td><td class="obw-warn">' + esc(x.sn || '—') + '</td><td><b>' + esc(x.hub) + '</b></td></tr>'; }).join('') + '</table>' +
-            (L.locationSentAt ? '<p class="acw-ok">✔ Sent to Stock Network on ' + esc(fmt(L.locationSentAt)) + '</p>' : '');
+            (L.locationSentAt ? '<p class="acw-ok">✔ Sent to Stock Network on ' + esc(fmt(L.locationSentAt)) + '</p>'
+              : staleDistrict ? '' : '<p class="obw-note">Is the pin on the property? Then tap <b>Send the hub’s names to Stock Network</b>. You don’t type anything: the hub’s names are the right ones.</p>');
         }
-        h += '<div class="obw-btns">' + (L.coordsVerified !== 'Y' ? btn('checkPin', 'Check the pin with Google', 'primary') : '') +
-          (D.locationDiffs && D.locationDiffs.length && E ? btn('sendLocation', 'Send the hub’s names to Stock Network', L.locationSentAt ? '' : 'primary') : '') +
-          btn('openListing', 'Move the pin (open the listing)') + '</div>';
+        h += '<div class="obw-btns">' +
+          (L.coordsVerified !== 'Y' || staleDistrict ? btn('checkPin', staleDistrict ? 'Check the pin with Google again' : 'Check the pin with Google', 'primary') : '') +
+          (diffs.length && !staleDistrict ? btn('sendLocation', L.locationSentAt ? 'Send again' : 'Send the hub’s names to Stock Network', L.locationSentAt ? '' : 'primary') : '') +
+          btn('openListing', 'Pin in the wrong spot? Move it') + '</div>';
         break;
       case 'rates':
         h = head(s, 'The property gives rack rates; the hub works out Avante’s rate. Nights booked on other channels stay open: their calendar links close them.') + '<div class="obw-box">' +

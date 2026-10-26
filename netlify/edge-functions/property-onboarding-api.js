@@ -7,7 +7,7 @@ import { sendEmail } from "./lib/send-email.js";
 // SheetJS from its own CDN (the build SheetJS recommends for Deno).
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 import { SITE_REGISTER_STORE, SITE_STATUSES, DEFAULT_SN_SETUP_EMAILS, commissionSheetBase64, commissionEmail, newEntry, reserveNextSiteNr, reserveSiteNr, getSiteNr, saveSiteNr,
-  listSiteNrs, nextFreeSiteNr, findOpenRequest, requestSheetBase64, sheetFileName, setupEmail, confirmationEmail, welcomeEmail, READY_TO_SEND, CHANNEL_WELCOME_DEFAULT, PROPERTY_WELCOME_DEFAULT, fillWelcome, welcomeHtml } from "./lib/sn-site-register.js";
+  listSiteNrs, nextFreeSiteNr, findOpenRequest, requestSheetBase64, sheetFileName, setupEmail, locationSheetBase64, locationUpdateEmail, confirmationEmail, welcomeEmail, READY_TO_SEND, CHANNEL_WELCOME_DEFAULT, PROPERTY_WELCOME_DEFAULT, fillWelcome, welcomeHtml } from "./lib/sn-site-register.js";
 import { readListingScreenshots } from "./lib/listing-reader.js";
 import { HOOKS_URL, makeHooksTicket } from "./lib/hooks-ticket.js";
 import { propertyTags, unitTag, libPost, libIndex, libImage } from "./lib/photo-library.js";
@@ -18,7 +18,7 @@ import { isAffiliateSession } from "./lib/affiliate-session.js";
 import { createPropertyAffiliate } from "./lib/affiliates.js";
 import { fetchRatingLink, applyRatingLink, GOOGLE_MATCH } from "./lib/review-app.js";
 import { CHANNELS as PA_CHANNELS, CHANNEL_HELP_KEY, CHANNEL_HELP_DEFAULT } from "./lib/pa-core.js";
-import { onboardingSteps, pathOf, listedChannels } from "./lib/onboarding.js";
+import { onboardingSteps, pathOf, listedChannels, districtNeedsCheck } from "./lib/onboarding.js";
 import { nightsbridgeProperty } from "./lib/nightsbridge.js";
 import { SNClient } from "./lib/sn-client.js";
 import { readResortInfo, copySnPhotos } from "./lib/sn-resort-info.js";
@@ -733,6 +733,35 @@ async function sendSnSetupSheet(entry, by, to) {
   entry.updatedAt = at;
   await saveSiteNr(siteRegister(), entry);
   return entry;
+}
+// Sends Stock Network the hub's Area / District / Suburb for a site it already
+// has (Jean, 2026-10-26): a location-only sheet, so the rate and everything
+// else on the site stay as they are. Works with or without a Site Nrs entry
+// (sites from before the register have none); with one, the send is logged
+// there too. nb@ only handles channel properties, so a hosted one leaves it out.
+// Returns { ok, error }.
+async function sendLocationUpdate(record, ctx) {
+  const e = ctx.entry, row = ctx.snRow;
+  const siteNr = record.siteNr || (e && e.siteNr) || "";
+  if (!siteNr) return { ok: false, error: "This property has no Site Nr yet." };
+  const update = { siteNr, propertyName: record.propertyName || (e && e.propertyName) || "", bbid: record.bbid || (e && e.bbid) || "",
+    area: record.area || "", district: record.district || "", suburb: record.suburb || "",
+    was: row ? { area: row.area || "", district: row.district || "", suburb: row.suburb || "" } : null };
+  let to = emailText(await getSnSetupEmails(), 20);
+  if (pathOf(record) === "hosted") to = emailList(to).filter((x) => !/@stocknetwork\./i.test(x)).join(", ");
+  const file = sheetFileName(update, new Date(), "Location");
+  const { subject, html } = locationUpdateEmail(update);
+  let sent;
+  try {
+    sent = await sendEmail({ to, subject, html, attachments: [{ filename: file, content: locationSheetBase64(XLSX, [update]) }], replyTo: "admin@avantehospitality.co.za" });
+  } catch (err) {
+    sent = { ok: false, error: "Could not make the sheet: " + String((err && err.message) || err) };
+  }
+  if (e) {
+    e.sendLog = (Array.isArray(e.sendLog) ? e.sendLog : []).concat([{ at: new Date().toISOString(), by: "Admin: location update", to, file, ok: sent.ok, error: sent.ok ? undefined : sent.error }]).slice(-50);
+    await saveSiteNr(siteRegister(), e);
+  }
+  return sent;
 }
 // Area / District / Suburb for the sheet from the hub location tree, when
 // Google finds the property by its name (best effort: empty when the top
@@ -2150,12 +2179,10 @@ export default async (request, context) => {
         addHistory(record, "admin", "Asked Stock Network to check the site: " + what + (sent.ok ? "" : " (email NOT sent: " + sent.error + ")"));
         if (!sent.ok) { record.dateUpdated = now; await store.setJSON(listingId, record); return json({ error: "Not sent: " + sent.error }, 502); }
       } else if (op === "sendLocation") {
-        // The hub's place names (its tree is master) go to Stock Network on the set-up sheet.
-        const entry = record.siteNr ? await getSiteNr(siteRegister(), record.siteNr).catch(() => null) : null;
-        if (!entry) return json({ error: "This property has no Site Nrs entry, so the sheet can't go. Send the property file from the listing instead (View > Send the files by email)." }, 400);
-        const sent = await sendSnSetupSheet(entry, "Admin: location from the hub's tree");
-        const last = sent.sendLog[sent.sendLog.length - 1];
-        if (!last.ok) return json({ error: "Not sent: " + last.error }, 502);
+        // The hub's place names (its tree is master) go to Stock Network as a location update.
+        if (districtNeedsCheck(record)) return json({ error: "The District is still the district name, not the local municipality. Tap Check the pin with Google first." }, 400);
+        const sent = await sendLocationUpdate(record, await onboardingContext(record));
+        if (!sent.ok) return json({ error: "Not sent: " + sent.error }, 502);
         addHistory(record, "admin", "Location (Area, District, Suburb from the hub's tree) sent to Stock Network", { locationSentAt: record.locationSentAt || "" });
         record.locationSentAt = now;
       } else if (op === "checkPin") {

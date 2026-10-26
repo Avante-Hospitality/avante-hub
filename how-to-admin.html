@@ -34,11 +34,12 @@
   <main class="ht-main">
     <h1>Hub admin, step by step</h1>
     <p class="ht-lead">For Avante Travel staff. Every admin tab, one small step at a time.</p>
-    <p class="ht-updated">Last updated: 25 October 2026</p>
+    <p class="ht-updated">Last updated: 26 October 2026</p>
 
     <div class="ht-card ht-new" aria-label="What's new">
       <h2>What's new</h2>
       <ul>
+        <li><time>26 Oct 2026</time> <span class="btn">Set up</span> &rsaquo; <b>Location</b>: when Stock Network's names differ, tap <span class="btn">Send the hub's names to Stock Network</span>. It now works for every property, also older sites with no Site Nrs entry, and sends Stock Network only the location (Area, District, Suburb), never the rate. <b>District</b> is now always the local municipality (e.g. <i>Bitou</i>, <i>City of Mbombela</i>), never the district (e.g. <i>Ehlanzeni District</i>). A property that still has a district name shows <span class="btn">Check the pin with Google again</span>.</li>
         <li><time>25 Oct 2026</time> New <span class="btn">Set up</span> on every listing in <span class="tab">Property Listings</span>: the property's steps in one pop-up, each showing <b>Done</b>, <b>Your turn</b>, <b>Owner's turn</b> or <b>Waiting on Stock Network</b>. <span class="btn">What's outstanding?</span> lists what is left, with <span class="btn g">Go there</span>. Channels (iCal) are linked right there, without logging in as the property. See <a href="#setUp">Set up a property</a>.</li>
         <li><time>22 Oct 2026</time> The Stock Network <b>property file</b> also has <b>Amenities</b>, <b>Activities</b> and <b>Experiences</b> (each in one column, separated by commas) and the linked affiliate's <b>bank details</b> from its hub Account Details (Account Name, Bank, Account Type, Account Nr, Branch Number). A listing has two new boxes: <span class="field">Activities (separate with commas)</span> and <span class="field">Experiences (separate with commas)</span>.</li>
         <li><time>22 Oct 2026</time> The Stock Network property file also has <b>Resort Name 2</b>, <b>Resort Booking Link</b> and <b>Rating Link</b> (from the listing), and the Franchisor / Franchise split is named as Stock Network's <b>MANUAL</b> row on the site's Rates tab. Type, Status, bank details, unit codes, amenities and activities are still set up by hand in Stock Network.</li>
@@ -301,7 +302,14 @@
       <h3>What each step's buttons do</h3>
       <ol class="steps">
         <li><b>Check the site on Stock Network:</b> compares what was sent (BBID, name, Site Nr) with what Stock Network made. Right? Tap <span class="btn">Yes, this is the right site</span>. Wrong? Tap <span class="btn g">Wrong site: ask Stock Network</span> and say what's wrong.</li>
-        <li><b>Location:</b> <span class="btn">Check the pin with Google</span> places it in the hub tree. Stock Network's names different? Tap <span class="btn">Send the hub's names to Stock Network</span>.</li>
+        <li><b>Location:</b> <span class="btn">Check the pin with Google</span> places it in the hub tree.
+          <ol class="steps">
+            <li>Look at the <b>Pin</b>. Is it on the property? Then leave it.</li>
+            <li>Stock Network's names in orange? You don't type anything: the hub's names are the right ones.</li>
+            <li>Tap <span class="btn">Send the hub's names to Stock Network</span>. The step turns <b>Done</b>.</li>
+          </ol>
+          <div class="tip">See <span class="btn">Check the pin with Google again</span>? The District still has the district's name. Tap it first; the hub then finds the local municipality.</div>
+          <div class="tip">Only if the pin is in the wrong place: tap <span class="btn g">Pin in the wrong spot? Move it</span>.</div></li>
         <li><b>Connect it:</b> <span class="btn">Paste the Avante login</span> opens the Activate pop-up on the login step.</li>
         <li><b>Reviews:</b> tap the stars for the star rating. <span class="btn g">Get the rating link</span> fetches it from the review app.</li>
         <li><b>Channels (iCal):</b> tap <span class="btn g">Copy</span> next to each <b>Avante link</b> and paste it into that channel's calendar import. Paste the channel's own calendar link (ends in .ics) in the box under it. Tap <span class="btn">Save the links</span>, then <span class="btn g">Check channels now</span>. Channel bookings not on Avante yet show below: tap <span class="btn">Add to Avante</span> on each.</li>
