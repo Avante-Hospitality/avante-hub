@@ -2204,7 +2204,7 @@ export default async (request, context) => {
         record.checkInTime = t;
       } else if (op === "goLive") {
         const st = onboardingSteps(await onboardingContext(record));
-        const open = st.steps.filter((s) => s.id !== "golive" && s.status !== "done");
+        const open = st.steps.filter((s) => s.blocksGoLive);
         if (open.length) return json({ error: "Not ready yet: " + open.map((s) => s.title).join(", ") + "." }, 400);
         addHistory(record, "admin", "Went live", { status: record.status || "", liveAt: "" });
         record.liveAt = now; record.status = "Listed";

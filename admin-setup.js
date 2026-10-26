@@ -204,15 +204,17 @@
         else h += '<p class="hint">Connect it first (step ' + (stepOf('connect') || {}).n + ').</p>';
         break;
       case 'owner':
-        h = head(s, 'What the owner does in their own hub. Each takes a minute or two.') + '<div class="obw-box">' +
+        h = head(s, 'What the owner does in their own hub. Each takes a minute or two. The password doesn’t hold up Go live: the owner chooses it with Forgot your password? when they first log in.') + '<div class="obw-box">' +
           row('Chose a password', yes(D.hasPassword)) +
           (D.path === 'hosted' ? row('Saved how they take bookings and how guests pay (Channels)', yes(D.pa && D.pa.setupBookings)) : '') + '</div>' +
           '<div class="obw-btns">' + btn('ownerReminder', 'Send a reminder') + '</div>';
         break;
       case 'golive':
-        var open = D.steps.filter(function(x){ return x.id !== 'golive' && x.status !== 'done'; });
-        h = head(s, 'Once every step above is done, Go live lists the property.') + '<div class="obw-box">' +
+        var open = D.steps.filter(function(x){ return x.blocksGoLive; });
+        var pwLater = !D.hasPassword && D.steps.some(function(x){ return x.id === 'owner' && x.status === 'owner' && !x.blocksGoLive; });
+        h = head(s, 'Once every step above is done, Go live lists the property. The owner’s password doesn’t hold it up.') + '<div class="obw-box">' +
           (open.length ? open.map(function(x){ return row(x.n + '. ' + esc(x.title), chip(x.status)); }).join('') : row('Every step above', '<b class="obw-yes">Done</b>')) +
+          (pwLater ? row('The owner’s password', 'They choose it with <b>Forgot your password?</b> when they first log in') : '') +
           (D.pa && D.pa.slug && D.path === 'hosted' ? row('Its booking page', '<a href="/stay/' + esc(D.pa.slug) + '" target="_blank" rel="noopener">open it to test a midweek and a weekend night</a>') : '') + '</div>' +
           (L.liveAt ? '<p class="acw-ok">✔ Live since ' + esc(fmt(L.liveAt)) + '</p>' : '<div class="obw-btns">' + btn('goLive', 'Go live', 'primary', s.status === 'you' ? '' : ' disabled') + '</div>');
         break;

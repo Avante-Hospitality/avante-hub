@@ -159,6 +159,9 @@ export function onboardingSteps(c) {
   }
 
   // The owner's part: a password, and (hosted) how they take bookings and get paid.
+  // The password never holds up Go live (Jean, 2026-10-26): the owner chooses
+  // one with "Forgot your password?" whenever they first log in.
+  let ownerBlocks = true;
   if (!pa || !pa.connected) set("owner", "later", "Once it is connected");
   else {
     const left = [];
@@ -168,16 +171,18 @@ export function onboardingSteps(c) {
       if (!s.setupBookings) left.push("save how they take bookings and how guests pay (Channels)");
     }
     set("owner", left.length ? "owner" : "done", left.length ? "To do: " + left.join(", ") : "");
+    ownerBlocks = left.some((x) => x !== "choose a password");
   }
+  const blocksGoLive = (id) => status[id] !== "done" && !(id === "owner" && !ownerBlocks);
 
   // Go live: everything before it done, then admin taps Go live.
   const steps = PATHS[path];
   const before = steps.filter((id) => id !== "golive");
   if (has(l.liveAt)) set("golive", "done");
-  else if (before.every((id) => status[id] === "done")) set("golive", "you", "Everything is ready: tap Go live");
+  else if (!before.some(blocksGoLive)) set("golive", "you", "Everything is ready: tap Go live");
   else set("golive", "later", "Once the steps above are done");
 
-  const list = steps.map((id, i) => ({ id, n: i + 1, title: STEP_TITLES[id], status: status[id], note: note[id] }));
+  const list = steps.map((id, i) => ({ id, n: i + 1, title: STEP_TITLES[id], status: status[id], note: note[id], blocksGoLive: id !== "golive" && blocksGoLive(id) }));
   const WHO = { you: "Your turn", owner: "Owner's turn", wait: "Waiting on Stock Network" };
   const outstanding = list.filter((s) => s.status === "you" || s.status === "owner" || s.status === "wait")
     .map((s) => ({ id: s.id, n: s.n, title: s.title, what: s.note || s.title, who: WHO[s.status], status: s.status }));
