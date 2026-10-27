@@ -630,6 +630,19 @@ async function pushContactToPa(record) {
   if (applyContact(prop.settings, contactFromListing(record), "settings")) await paStore.setJSON("site:" + prop.siteId, prop);
 }
 
+// How Stock Network itself names the property now (its row in the hub's
+// Stock Network list), for the stock file (Jean, 2026-10-27): Stock Network
+// matches stock rows on its own resort name, so a file using the hub's names
+// (e.g. "The Dunes Resort" for "The Dunes Hotel & Resort!") loaded nothing.
+// The hub's location tree names go to Stock Network separately (Location step).
+async function snNamesFor(record) {
+  const rid = String((record && record.resortId) || "").trim().toLowerCase();
+  if (!rid) return null;
+  const list = await getStore({ name: "resort-list", consistency: "strong" }).get("current", { type: "json" }).catch(() => null);
+  const row = ((list && list.resorts) || []).find((r) => r && String(r.resortId || "").toLowerCase() === rid);
+  return row && row.name ? { resort: row.name, country: row.country || "", area: row.area || "", district: row.district || "" } : null;
+}
+
 async function getSnSetupEmails() {
   return (await getSettings()).snSetupEmails || DEFAULT_SN_SETUP_EMAILS;
 }
@@ -936,6 +949,8 @@ export default async (request, context) => {
         delete out.agreementToken;
         delete out.editToken;
         if (!isAdmin) { delete out.history; delete out.photosToken; }
+        // Only admin downloads the Stock Network files (properties never see Stock Network).
+        if (isAdmin) out.snNames = await snNamesFor(record);
         return json({ ok: true, listing: out, asAdmin: isAdmin, waitingForSetUp: record.hostedSetup === "completing" });
       }
 
@@ -1322,7 +1337,7 @@ export default async (request, context) => {
       if (!listingId) return json({ error: "missing listingId" }, 400);
       const record = await store.get(listingId, { type: "json" });
       if (!record) return json({ error: "not found" }, 404);
-      return json({ ok: true, listing: record });
+      return json({ ok: true, listing: Object.assign({}, record, { snNames: await snNamesFor(record) }) });
     }
 
     if (action === "list") {

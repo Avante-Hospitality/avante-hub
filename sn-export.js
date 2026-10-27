@@ -196,12 +196,16 @@
   // night, so the file gives the day after.
   function snToDate(lastNight){ return nextDay(lastNight); }
   // One row per rate season (and unit type), in SN's stock upload layout.
+  // Country, Area, District and Resort are how Stock Network names the
+  // property now (listing.snNames, from the hub's Stock Network list), since
+  // it matches the rows on them; the hub's own names until it has a row.
   function stockRows(listing, onlyChanged){
+    var sn = listing.snNames || {};
     return seasonsToSend(listing, onlyChanged).map(function(r){
       var u = unitFor(listing, r.unitTypeName);
       var row = []; for(var i = 0; i < 28; i++) row.push('');
-      row[0] = s(listing.country); row[1] = s(listing.area); row[2] = s(listing.district) || s(listing.suburb);
-      row[3] = s(listing.propertyName); row[4] = s(r.unitTypeName); row[5] = +s(u.numUnits) || 1; row[6] = s(r.unitTypeName);
+      row[0] = s(sn.country) || s(listing.country); row[1] = s(sn.area) || s(listing.area); row[2] = s(sn.district) || s(listing.district) || s(listing.suburb);
+      row[3] = s(sn.resort) || s(listing.propertyName); row[4] = s(r.unitTypeName); row[5] = +s(u.numUnits) || 1; row[6] = s(r.unitTypeName);
       row[7] = r.from; row[8] = snToDate(r.to); row[9] = +s(u.maxOccupancy) || '';
       row[25] = +r.minStay || 1; row[26] = +r.snRate || ''; row[27] = +r.rackRate || '';
       return row;
@@ -240,8 +244,10 @@
     var XLSX = window.XLSX;
     var data = [header].concat(rows.map(function(r){ return r.map(function(v, i){ return dateCols.indexOf(i) > -1 ? toSerial(v) : v; }); }));
     var ws = XLSX.utils.aoa_to_sheet(data);
-    // Same look as SN's template: dates shown mm-dd-yy.
-    for(var r = 1; r < data.length; r++) dateCols.forEach(function(c){ var ref = XLSX.utils.encode_cell({ r: r, c: c }); if(ws[ref]) ws[ref].z = 'mm-dd-yy'; });
+    // Excel's own built-in date format (format 14), exactly as in the stock
+    // files Stock Network has accepted (Jean, 2026-10-27).
+    var builtInDate = XLSX.SSF.get_table()[14];
+    for(var r = 1; r < data.length; r++) dateCols.forEach(function(c){ var ref = XLSX.utils.encode_cell({ r: r, c: c }); if(ws[ref]) ws[ref].z = builtInDate; });
     ws['!cols'] = header.map(function(h){ return { wch: Math.max(10, Math.min(40, h.length + 2)) }; });
     return ws;
   }
