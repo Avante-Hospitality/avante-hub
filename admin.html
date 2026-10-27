@@ -7082,6 +7082,7 @@
             AvanteSNExport.whenReady(function(){
               var only = b[0] === 'newx' || b[0] === 'newc';
               if(!AvanteSNExport.countToSend(l, only)) { window.alert(only ? 'No new or changed future rates since they were last marked as sent.' : 'This listing has no future rates set.'); return; }
+              var nw = AvanteSNExport.namesWarning(l); if(nw && !window.confirm(nw + '\n\nDownload anyway?')) return;
               if(b[0] === 'stockx' || b[0] === 'newx') AvanteSNExport.downloadStockXlsx(l, nr, only);
               else AvanteSNExport.downloadStockCsv(l, nr, only);
             }).catch(function(err){ window.alert(err.message); });
@@ -7280,6 +7281,7 @@
           st.textContent = '';
           if(!to){ st.textContent = 'Type the email address first.'; return; }
           var opts = { property: em.querySelector('#snEmailProp').checked, rates: em.querySelector('#snEmailRates').value, format: em.querySelector('#snEmailFmt').value };
+          var nw = opts.rates && window.AvanteSNExport ? AvanteSNExport.namesWarning(lx) : ''; if(nw && !window.confirm(nw + '\n\nSend anyway?')) return;
           (opts.property ? withBank(lx) : Promise.resolve(lx)).then(function(lb){ return AvanteSNExport.whenReady(function(){ return AvanteSNExport.filesForEmail(lb, nr, opts); }); })
             .then(function(files){ sendFiles(files); }, function(err){ st.textContent = err.message; });
           function sendFiles(files){

@@ -199,6 +199,14 @@
   // Country, Area, District and Resort are how Stock Network names the
   // property now (listing.snNames, from the hub's Stock Network list), since
   // it matches the rows on them; the hub's own names until it has a row.
+  // A location update that went to Stock Network after the hub last read
+  // Stock Network's names: Stock Network may already use the new names, so a
+  // stock file with the old ones may not match (Jean, 2026-10-27). '' if fine.
+  function namesWarning(listing){
+    var sent = s(listing.locationSentAt), seen = s(listing.snNames && listing.snNames.syncedAt);
+    if(!sent || (seen && seen >= sent)) return '';
+    return 'A location update went to Stock Network on ' + sent.slice(0, 10) + ', after the hub last read Stock Network\'s names. Once Stock Network applies it, this file\'s names may not match. Best to send the stock file after tonight\'s update.';
+  }
   function stockRows(listing, onlyChanged){
     var sn = listing.snNames || {};
     return seasonsToSend(listing, onlyChanged).map(function(r){
@@ -345,6 +353,7 @@
     seasonOut: seasonOut,
     openSeasons: openSeasons,
     stockRows: stockRows,
+    namesWarning: namesWarning,
     needSite: needSite,
     downloadPropertyFile: function(listing, siteNr){
       needSite(listing, siteNr);

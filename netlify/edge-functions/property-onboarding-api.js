@@ -640,7 +640,8 @@ async function snNamesFor(record) {
   if (!rid) return null;
   const list = await getStore({ name: "resort-list", consistency: "strong" }).get("current", { type: "json" }).catch(() => null);
   const row = ((list && list.resorts) || []).find((r) => r && String(r.resortId || "").toLowerCase() === rid);
-  return row && row.name ? { resort: row.name, country: row.country || "", area: row.area || "", district: row.district || "" } : null;
+  // syncedAt: when the hub last read Stock Network's names (its nightly sync).
+  return row && row.name ? { resort: row.name, country: row.country || "", area: row.area || "", district: row.district || "", syncedAt: (list && list.apiSyncedAt) || "" } : null;
 }
 
 async function getSnSetupEmails() {

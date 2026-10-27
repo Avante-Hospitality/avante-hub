@@ -1650,7 +1650,8 @@
   // The listing as the Stock Network files need it: with Stock Network's own
   // names for the property (admin only; sent by the server with the listing).
   var SN_NAMES = null;
-  function stockListing(){ return Object.assign(buildPayload(), { snNames: SN_NAMES }); }
+  var LOCATION_SENT_AT = '';
+  function stockListing(){ return Object.assign(buildPayload(), { snNames: SN_NAMES, locationSentAt: LOCATION_SENT_AT }); }
   function anyDoc(type){ return uploadedDocs.some(function(d){ return d.type === type; }); }
   function renderReview(){
     // The same rules the server checks before giving a Site Nr (listing-ready.js).
@@ -1668,6 +1669,7 @@
   document.addEventListener('click', function(e){
     var b = e.target.closest && e.target.closest('[data-dl]'); if(!b) return;
     var listing = stockListing(), kind = b.getAttribute('data-dl');
+    var nw = kind !== 'property' && editAsAdmin ? SNX.namesWarning(listing) : '';   // admin only: properties never see Stock Network if(nw && !window.confirm(nw + '\n\nDownload anyway?')) return;
     if(!listing.rateSeasons.length && kind !== 'property'){ $('dlStatus').textContent = RATES_FROM_CHANNEL ? 'Rates come from the channel manager.' : 'Set rates in step 7 first.'; return; }
     AvanteSNExport.whenReady(function(){
       if(kind === 'property') AvanteSNExport.downloadPropertyFile(listing, listing.siteNr);
@@ -1926,7 +1928,7 @@
     if(left.length && $('pMoreInfo') && !$('pMoreInfo').value.trim()) $('pMoreInfo').value = 'Also offers: ' + left.join(', ') + '.';
   }
   function fillFromListing(L){
-    SN_NAMES = L.snNames || null;
+    SN_NAMES = L.snNames || null; LOCATION_SENT_AT = L.locationSentAt || '';
     Object.keys(KEY_MAP).forEach(function(id){ if($(id)) $(id).value = L[KEY_MAP[id]] == null ? '' : L[KEY_MAP[id]]; });
     if(!$('pInEstate').value && String(L.complexName || '').trim()) $('pInEstate').value = 'Y';
     showEstate();
