@@ -780,7 +780,7 @@
       '<div class="row"><div><label>Children allowed</label><select class="pu-childOk"><option value="Y">Yes</option><option value="N">No</option></select></div><div><label># of units of this type</label><input class="pu-numUnits" inputmode="numeric" value="1"></div></div>' +
       '<div class="row"><div><label>Rate scheme</label><select class="pu-rateScheme"><option>Per Unit</option><option>Per Person</option></select></div><div><label>Rate basis</label><select class="pu-rateBasis"><option>Self Catering</option><option>B&amp;B</option><option>Room Only</option><option>Half Board</option><option>Full Board</option></select></div></div>' +
       '<label>Unit description (beds, bathroom, layout)</label><textarea class="pu-desc" rows="2"></textarea>' +
-      '<details class="more"><summary>Per-person rates (only for rate scheme "Per Person")</summary>' +
+      '<details class="more pu-perPerson"><summary>Per-person rates</summary>' +
         '<div class="row"><div><label>Season start</label><input class="pu-seasonStart" type="date"></div><div><label>Season end</label><input class="pu-seasonEnd" type="date"></div></div>' +
         '<label>Rates per pax (1 / 2 / 3 / 4 / 5)</label><div class="row"><input class="pu-rate1" inputmode="numeric"><input class="pu-rate2" inputmode="numeric"><input class="pu-rate3" inputmode="numeric"><input class="pu-rate4" inputmode="numeric"><input class="pu-rate5" inputmode="numeric"></div>' +
         '<div class="row"><div><label>Child rate (0-6)</label><input class="pu-childRate06" inputmode="numeric"></div><div><label>Child rate (7-12)</label><input class="pu-childRate712" inputmode="numeric"></div></div>' +
@@ -794,7 +794,14 @@
       wrap.remove(); delete RATES[uid]; renderPhotos();
     });
     wrap.querySelector('.pu-photos-btn').addEventListener('click', function(){ choosePhotos(uid); });
+    wrap.querySelector('.pu-rateScheme').addEventListener('change', function(){ showPerPerson(wrap); });
+    showPerPerson(wrap);
     return wrap;
+  }
+  // Per-person rates show only for rate scheme "Per Person" (Jean, 2026-10-27):
+  // a Per Unit property sets its rates (weekend rates too) on the calendar in step 7.
+  function showPerPerson(row){
+    row.querySelector('.pu-perPerson').style.display = row.querySelector('.pu-rateScheme').value === 'Per Person' ? '' : 'none';
   }
   $('addUnitBtn').addEventListener('click', addUnitRow);
   addUnitRow();
@@ -1909,6 +1916,7 @@
       put('.pu-rateScheme', u.rateScheme); put('.pu-rateBasis', u.rateBasis); put('.pu-seasonStart', u.seasonStart); put('.pu-seasonEnd', u.seasonEnd);
       put('.pu-rate1', u.ratePax1); put('.pu-rate2', u.ratePax2); put('.pu-rate3', u.ratePax3); put('.pu-rate4', u.ratePax4); put('.pu-rate5', u.ratePax5);
       put('.pu-childRate06', u.childRate06); put('.pu-childRate712', u.childRate712); put('.pu-desc', u.description);
+      showPerPerson(r);
     });
     // Amenities
     var on = {}; (L.amenities || []).forEach(function(a){ if(a.available === 'Y') on[a.category + '|' + a.item] = true; });
