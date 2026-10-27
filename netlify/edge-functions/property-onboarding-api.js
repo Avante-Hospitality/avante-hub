@@ -2046,9 +2046,13 @@ export default async (request, context) => {
           const from = new Date().toISOString().slice(0, 10), to = new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10);
           name = (await client.openStretches(resortId, from, to).catch(() => ({}))).resortName || "";
         }
+        // Nothing in the hub yet (Jean, 2026-10-27: step 3 came up empty): what
+        // Stock Network itself has for the property fills the gaps.
+        const fromSn = {};
+        if (resortId) fillFromFeed(fromSn, await feedRowByResort(resortId).catch(() => null), {});
         return json({ ok: true, siteNr: String(tok.site || ""), siteId: String(tok.siteId || ""), resortId, name, listingId: l ? l.listingId : "", listingSiteId: l ? l.siteId || "" : "", hosted: hostedOf(entry, l),
-          affExists: !!a, affTypes: a ? a.types || [] : [], email: (l && (l.email || l.contactEmail || l.ownerEmail)) || (entry && entry.email) || (a && a.email) || "",
-          phone: (l && l.telephone) || (entry && entry.phone) || (a && a.phone) || "", contactName: (l && l.contactName) || (entry && entry.contactName) || "" });
+          affExists: !!a, affTypes: a ? a.types || [] : [], email: (l && (l.email || l.contactEmail || l.ownerEmail)) || (entry && entry.email) || (a && a.email) || fromSn.email || "",
+          phone: (l && l.telephone) || (entry && entry.phone) || (a && a.phone) || fromSn.telephone || "", contactName: (l && l.contactName) || (entry && entry.contactName) || "" });
       }
 
       if (action === "channelActivate") {
