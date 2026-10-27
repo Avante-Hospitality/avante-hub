@@ -138,7 +138,7 @@
   @media (max-width:700px){ .selbar{ position:static; } }
   .cal .d.x{ background:transparent; color:#c3ccd0; cursor:default; }
   .cal .d.sel{ border:2px solid var(--orange); background:var(--orange-soft); }
-  .selbar{ position:sticky; top:62px; z-index:10; background:#fff; border:1.5px solid var(--orange); border-radius:10px; padding:10px 12px; margin-top:12px; display:flex; flex-wrap:wrap; gap:8px 16px; align-items:center; font-size:13px; }
+  .selbar{ position:sticky; top:calc(var(--stepbar-h, 62px) + 4px); z-index:10; background:#fff; border:1.5px solid var(--orange); border-radius:10px; padding:10px 12px; margin-top:12px; display:flex; flex-wrap:wrap; gap:8px 16px; align-items:center; font-size:13px; }
   .selbar label{ display:inline-flex; align-items:center; gap:6px; margin:0; }
   .selbar input{ width:110px; padding:5px 8px; }
   .legend{ display:flex; flex-wrap:wrap; gap:14px; font-size:12px; color:var(--muted); margin-top:8px; }
@@ -1512,6 +1512,15 @@
     $('months').innerHTML = html;
     renderSeasons();
   }
+  // The rate bar sticks just under the step tabs, whose height changes when
+  // they wrap onto two rows (Jean, 2026-10-27: the bar's top line, with
+  // "Sold as", was hidden under them).
+  (function(){
+    var bar = document.querySelector('.stepbar'); if(!bar) return;
+    var set = function(){ document.documentElement.style.setProperty('--stepbar-h', bar.offsetHeight + 'px'); };
+    set(); window.addEventListener('resize', set);
+    if(window.ResizeObserver) new ResizeObserver(set).observe(bar);
+  })();
   $('calUnit').addEventListener('change', function(){ selA = selB = null; SEL_WEEK = null; renderCalendar(); });
   $('calPrev').addEventListener('click', function(){ monthOffset = Math.max(MIN_OFFSET, monthOffset - 3); renderCalendar(); });
   $('calNext').addEventListener('click', function(){ monthOffset = Math.min(MAX_OFFSET, monthOffset + 3); renderCalendar(); });
