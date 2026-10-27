@@ -990,7 +990,7 @@
   var SHOT_HINTS = {
     1: 'the listing: top of the page, description, rooms, amenities, reviews, host and price',
     3: 'the map or address part of the listing',
-    4: 'the description, house rules, check-in times and cancellation policy',
+    4: 'the description, house rules, check-in times, cancellation policy, and any facilities, attractions or activities lists',
     5: 'every page of the full amenities list, the rooms / beds section, or the unit details page',
     6: 'the host calendar showing prices (one screenshot per month), or a rates table'
   };
@@ -1207,6 +1207,19 @@
     }
     if((f.notIncluded || []).length) set('pNotIncluded', f.notIncluded.join(', '), 'Not included');
     if((f.otherAmenities || []).length) set('pMoreInfo', 'Also offers: ' + f.otherAmenities.join(', ') + '.', 'Other amenities');
+    // Lists separated by commas: new items are added to what is already
+    // there (no doubles), since every read may find a few more.
+    function addList(id, items, label){
+      var el = $(id); if(!el || !(items || []).length) return;
+      var have = el.value.split(',').map(function(x){ return x.trim(); }).filter(Boolean);
+      var lc = have.map(function(x){ return x.toLowerCase(); });
+      var add = items.map(function(x){ return String(x).trim(); }).filter(function(x){ return x && lc.indexOf(x.toLowerCase()) === -1; });
+      if(!add.length) return;
+      el.value = have.concat(add).join(', '); el.classList.add('filled'); done.push(label);
+    }
+    addList('pActivities', f.activities, 'Activities');
+    addList('pExperiences', f.experiences, 'Experiences');
+    if((f.areaAttractions || []).length) set('pAreaInfo', 'Nearby: ' + f.areaAttractions.join(', ') + '.', 'Area info & attractions');
     if(f.channelPlaceName || f.suburb || f.city) channelPlaceName = f.channelPlaceName || f.suburb || f.city;
 
     // Unit: first unit row.

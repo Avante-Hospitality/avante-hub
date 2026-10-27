@@ -69,6 +69,23 @@ function buildTool(amenityOptions) {
           items: { type: "string" },
           description: "Included amenities shown on screen that have no close match in the allowed list, in the channel's own words.",
         },
+        // Area, activities and experiences (Jean, 2026-10-26: a resort page's
+        // "Attractions" list wasn't read at all).
+        areaAttractions: {
+          type: "array",
+          items: { type: "string" },
+          description: "Nearby attractions and places of interest the material lists (e.g. an 'Attractions' or 'What's nearby' section), each in its own words, e.g. 'Robberg Nature Reserve', 'Knysna Elephant Park'. Include distances if shown, e.g. 'Robberg Nature Reserve (17 km)'.",
+        },
+        activities: {
+          type: "array",
+          items: { type: "string" },
+          description: "Activities guests can do at or near the property that the material names, as short labels, e.g. 'Golf', 'Hiking', 'Stand-up paddle boarding', 'Bungee jumping', 'Swimming with seals', 'Fishing'. Take them from activity lists, attractions that are activities, and facilities used for an activity.",
+        },
+        experiences: {
+          type: "array",
+          items: { type: "string" },
+          description: "Guided or bookable experiences the material names, e.g. 'Wine tasting', 'Sunset cruise', 'Dolphin and marine tour', 'Horse and carriage ride'.",
+        },
         notIncluded: {
           type: "array",
           items: { type: "string" },
