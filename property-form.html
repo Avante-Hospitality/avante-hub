@@ -1471,7 +1471,7 @@
         price('selTsMidP', 'Midweek price (R)', TS.mid) + price('selTsWeP', 'Weekend price (R)', TS.we);
     $('selBar').innerHTML = sel && TS.kind
       ? '<span><b>' + fmtL(sel[0]) + ' – ' + fmtL(sel[1]) + '</b> · ' + sel[2] + ' night' + (sel[2] === 1 ? '' : 's') + '</span>' + soldAs + tsFields +
-        '<p class="hint" style="flex-basis:100%;margin:0">Each ' + (TS.kind === 'week' ? 'week' : 'midweek and each weekend') + ' becomes its own line for Stock Network, and its minimum stay is the whole ' + (TS.kind === 'week' ? 'week' : 'slot') + '. The price is for the whole ' + (TS.kind === 'week' ? 'week' : 'slot') + '.</p>' +
+        '<p class="hint" style="flex-basis:100%;margin:0">Each ' + (TS.kind === 'week' ? 'week' : 'midweek and each weekend') + ' is sold on its own in Avante\'s booking system, and its minimum stay is the whole ' + (TS.kind === 'week' ? 'week' : 'slot') + '. The price is for the whole ' + (TS.kind === 'week' ? 'week' : 'slot') + '.</p>' +
         '<span class="btns" style="margin:0"><button type="button" class="btn-navy btn-sm" data-cal="apply">Apply rate</button><button type="button" class="btn-secondary btn-sm" data-cal="clear">Clear rate</button><button type="button" class="btn-secondary btn-sm" data-cal="cancel">Cancel</button></span>' +
         '<div id="selMsg" style="flex-basis:100%"></div>'
       : sel
