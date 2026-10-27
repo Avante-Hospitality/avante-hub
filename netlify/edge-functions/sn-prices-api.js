@@ -3,7 +3,7 @@
 // hook builder's flyers: a property flyer's own unit types, and the Where to stay
 // pages. Only the property asked about is read — never all of Stock Network.
 //   GET ?resortId=<ResortID>&from=YYYY-MM-DD[&days=14]   (days 1–31)
-//   -> { ok, result: { resortId, month, start, days, checkedAt, minNights, unitNames,
+//   -> { ok, result: { resortId, month, start, days, checkedAt, minNights, unitNames, units: [{ name, size, sleeps }],
 //        nights: { "YYYY-MM-DD": { open, perNight, units: { <unit>: { perNight, avail } } } } } }
 // The same shape the hook builder's old GitHub price job gave, so its flyers read it as
 // before. An answer is kept an hour (the "sn-prices" store), so a property asked about
@@ -55,7 +55,7 @@ export default async (request) => {
   const days = Math.max(1, Math.min(31, parseInt(u.searchParams.get("days") || "14", 10) || 14));
   if (!GUID.test(rid)) return json({ ok: false, error: "That isn't a valid ResortID." }, 400);
   if (!DAY.test(from) || from < todaySA()) from = todaySA();
-  const to = addDays(from, days), key = rid + "|" + from + "|" + days;
+  const to = addDays(from, days), key = "u|" + rid + "|" + from + "|" + days; // "u|": answers kept before units were added are not reused
   const store = getStore({ name: "sn-prices", consistency: "strong" });
   const kept = await store.get(key, { type: "json" }).catch(() => null);
   if (kept && Date.now() - Date.parse(kept.checkedAt) < KEEP_MS) return json({ ok: true, result: kept, kept: true });
@@ -63,7 +63,10 @@ export default async (request) => {
   try { read = await agentClient().openStretches(rid, from, to); }
   catch (e) { console.error("sn-prices: " + rid, e); return json({ ok: false, error: "Avante's booking system didn't give the prices: " + String((e && e.message) || e).slice(0, 160) }, 502); }
   const { nights, unitNames } = nightsFrom(read, from, to);
-  const result = { resortId: rid, resortName: read.resortName || "", month: from, start: from, days, checkedAt: new Date().toISOString(), minNights: 1, unitNames, nights };
+  // Every unit Stock Network's stock lists, with its size and how many it sleeps (Jean, 2026-10-27:
+  // the property's info page can show fewer units than it really has, e.g. Chicuanga shows 1 of many).
+  const units = Object.values(read.units || {}).filter((x) => x.name).map((x) => ({ name: x.name, size: x.size || "", sleeps: +x.maxOccupancy || +((x.size || "").match(/^\s*(\d+)\s*sleeper/i) || [])[1] || 0 }));
+  const result = { resortId: rid, resortName: read.resortName || "", month: from, start: from, days, checkedAt: new Date().toISOString(), minNights: 1, unitNames, units, nights };
   await store.setJSON(key, result).catch((e) => console.error("sn-prices: couldn't keep " + key, e));
   return json({ ok: true, result });
 };
