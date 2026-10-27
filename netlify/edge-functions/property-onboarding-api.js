@@ -327,7 +327,9 @@ async function overDailyLimit(kind, request, context) {
 
 function sanitizeRateSeasons(input) {
   if (!Array.isArray(input)) return [];
-  return input.slice(0, 200).map((r) => ({
+  // Timeshare weeks are one row each (Jean, 2026-10-27), so a year of them
+  // for several unit types runs to hundreds of rows.
+  return input.slice(0, 1500).map((r) => ({
     unitTypeName: clean(r && r.unitTypeName, 200),
     from: clean(r && r.from, 10),
     to: clean(r && r.to, 10),
@@ -338,7 +340,10 @@ function sanitizeRateSeasons(input) {
     // Midweek / weekend periods (Jean, 2026-10-22): slot is "Midweek", "Weekend"
     // or empty; the weekly pattern it came from is kept so the form can show it
     // again. Days 0 = Monday ... 6 = Sunday.
-    slot: ["Midweek", "Weekend"].includes(r && r.slot) ? r.slot : "",
+    slot: ["Midweek", "Weekend", "Week"].includes(r && r.slot) ? r.slot : "",
+    // Timeshare slots: "week" or "split", and the price for the whole slot.
+    timeshare: ["week", "split"].includes(r && r.timeshare) ? r.timeshare : "",
+    slotPrice: clean(String((r && r.slotPrice) || ""), 12),
     midweekRackRate: clean(String((r && r.midweekRackRate) || ""), 12),
     midweekMinStay: clean(String((r && r.midweekMinStay) || ""), 4),
     weekendRackRate: clean(String((r && r.weekendRackRate) || ""), 12),

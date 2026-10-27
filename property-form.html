@@ -145,6 +145,8 @@
   .legend span::before{ content:""; display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:5px; vertical-align:-1px; background:#e8ebf6; }
   .legend span.u::before{ background:#fff; border:1px dashed #9aa; } .legend span.b::before{ background:var(--red-soft); } .legend span.s::before{ background:var(--orange-soft); border:1.5px solid var(--orange); } .legend span.p::before{ background:#eef1f3; } .cal .d.past{ background:#eef1f3; color:#9aa6ad; cursor:default; } .cal .d.past small.rk{ color:#8a97a0; } tr.past td{ color:#9aa6ad; }
   .legend span.w::before{ background:#dff7f5; } .legend span.cl::before{ background:#eef1f3; }
+  /* Timeshare slots (Jean, 2026-10-27): a dotted frame round each night. */
+  .cal .d.ts{ box-shadow:inset 0 0 0 1.5px #7b5ea7; } .legend span.t::before{ background:#e8ebf6; box-shadow:inset 0 0 0 1.5px #7b5ea7; }
   .legend span.c::before{ background:none; content:"R"; color:var(--red); font-weight:700; width:auto; height:auto; }
   .scroll{ overflow-x:auto; border:1px solid var(--line); border-radius:10px; margin-top:10px; }
   table{ border-collapse:collapse; width:100%; font-size:13px; }
@@ -495,7 +497,7 @@
       <div class="selbar" id="selBar"></div>
       <div class="btns" style="justify-content:space-between"><button type="button" class="btn-secondary btn-sm" id="calPrev">◀ Earlier</button><b id="calRange" style="font-size:14px"></b><button type="button" class="btn-secondary btn-sm" id="calNext">Later ▶</button></div>
       <div class="months" id="months"></div>
-      <div class="legend"><span>Rate set</span><span class="w">Weekend rate</span><span class="cl">Closed</span><span class="u">Open, no rate</span><span class="b">Booked on another channel (stays open)</span><span class="s">Selected</span><span class="c">= price seen on the other channel</span><span class="p">Past (kept on record)</span></div>
+      <div class="legend"><span>Rate set</span><span class="w">Weekend rate</span><span class="t">Timeshare</span><span class="cl">Closed</span><span class="u">Open, no rate</span><span class="b">Booked on another channel (stays open)</span><span class="s">Selected</span><span class="c">= price seen on the other channel</span><span class="p">Past (kept on record)</span></div>
       <h3 class="section-heading" style="margin-top:18px; font-size:15px;">Seasons</h3>
       <div class="scroll"><table><thead><tr><th>Unit</th><th>From</th><th>To</th><th class="num">Nights</th><th class="num">Min stay</th><th class="num">Rack (R)</th><th class="num">Avante rate (R)</th><th>Slot</th><th>Closed</th></tr></thead><tbody id="seasonRows"></tbody></table></div>
       <div id="seasonNote"></div>
@@ -1390,6 +1392,9 @@
   var RATES = {};     // unit uid -> { 'YYYY-MM-DD': { rack, min } }
   var BLOCKED = {};   // 'YYYY-MM-DD' -> true (booked on another channel / blocked)
   var selA = null, selB = null, lastRack = '', lastMin = 2, lastWRack = '', lastWMin = 2;
+  // Timeshare (Jean, 2026-10-27): how the selected dates are sold. '' = by the
+  // night; 'week' = whole weeks; 'split' = midweek and weekend slots sold separately.
+  var TS = { kind: '', change: 4, midweek: 0, weekend: 4, week: '', mid: '', we: '' };
   var MONTHS_SHOWN = 6, monthOffset = 0, MIN_OFFSET = -12, MAX_OFFSET = 24 - MONTHS_SHOWN; // 12 months back (record) to 24 months ahead
   $('commNote').innerHTML = '<b>Rack rate in, Avante rate out.</b> Avante\'s commission is ' + COMMISSION + '% plus VAT on it (' + COMM_TOTAL + '% in total), so the Avante rate is the rack rate less ' + COMM_TOTAL + '%, rounded to the rand.';
   function calUnit(){ return $('calUnit').value; }
@@ -1457,8 +1462,20 @@
     var sel = selRange(), W = SEL_WEEK || WEEK;
     var chIn = 0; if(sel) eachDay(sel[0], sel[1], function(k){ if(CHANNEL_PRICES[k]) chIn++; });
     var netTxt = function(v){ return +v ? 'Avante rate R' + netRate(+v).toLocaleString('en-ZA') : ''; };
-    $('selBar').innerHTML = sel
-      ? '<span><b>' + fmtL(sel[0]) + ' – ' + fmtL(sel[1]) + '</b> · ' + sel[2] + ' night' + (sel[2] === 1 ? '' : 's') + '</span>' +
+    var dayOpts = function(v){ return SNX.DAY_NAMES.map(function(n, i){ return '<option value="' + i + '"' + (i === +v ? ' selected' : '') + '>' + n + '</option>'; }).join(''); };
+    var price = function(id, label, v){ return '<label>' + label + ' <input id="' + id + '" type="number" inputmode="numeric" value="' + esc(v) + '"></label>'; };
+    var soldAs = '<label>Sold as <select id="selTs"><option value="">By the night</option><option value="week"' + (TS.kind === 'week' ? ' selected' : '') + '>Timeshare: whole weeks</option><option value="split"' + (TS.kind === 'split' ? ' selected' : '') + '>Timeshare: midweek + weekend</option></select></label>';
+    var tsFields = TS.kind === 'week'
+      ? '<label>Changeover day <select id="selTsChange">' + dayOpts(TS.change) + '</select></label>' + price('selTsWeek', 'Price for the week (R)', TS.week)
+      : '<label>Midweek starts <select id="selTsMid">' + dayOpts(TS.midweek) + '</select></label><label>Weekend starts <select id="selTsWe">' + dayOpts(TS.weekend) + '</select></label>' +
+        price('selTsMidP', 'Midweek price (R)', TS.mid) + price('selTsWeP', 'Weekend price (R)', TS.we);
+    $('selBar').innerHTML = sel && TS.kind
+      ? '<span><b>' + fmtL(sel[0]) + ' – ' + fmtL(sel[1]) + '</b> · ' + sel[2] + ' night' + (sel[2] === 1 ? '' : 's') + '</span>' + soldAs + tsFields +
+        '<p class="hint" style="flex-basis:100%;margin:0">Each ' + (TS.kind === 'week' ? 'week' : 'midweek and each weekend') + ' becomes its own line for Stock Network, and its minimum stay is the whole ' + (TS.kind === 'week' ? 'week' : 'slot') + '. The price is for the whole ' + (TS.kind === 'week' ? 'week' : 'slot') + '.</p>' +
+        '<span class="btns" style="margin:0"><button type="button" class="btn-navy btn-sm" data-cal="apply">Apply rate</button><button type="button" class="btn-secondary btn-sm" data-cal="clear">Clear rate</button><button type="button" class="btn-secondary btn-sm" data-cal="cancel">Cancel</button></span>' +
+        '<div id="selMsg" style="flex-basis:100%"></div>'
+      : sel
+      ? '<span><b>' + fmtL(sel[0]) + ' – ' + fmtL(sel[1]) + '</b> · ' + sel[2] + ' night' + (sel[2] === 1 ? '' : 's') + '</span>' + soldAs +
         '<label>' + (W.on ? 'Midweek rate (R)' : 'Rack rate (R)') + ' <input id="selRack" type="number" inputmode="numeric" value="' + esc(lastRack) + '"></label>' +
         '<label>Min stay <input id="selMin" type="number" inputmode="numeric" style="width:70px" value="' + esc(lastMin) + '"></label>' +
         '<span id="selNet" style="font-weight:700;color:var(--indigo)">' + netTxt(lastRack) + '</span>' +
@@ -1486,7 +1503,8 @@
         var insel = sel ? (k >= sel[0] && k <= sel[1]) : k === selA;
         var cls = past ? (r ? 'past' : 'x') : b ? 'b' : ni && ni.closed ? 'cl' : ni && ni.weekend ? 'r w' : r ? 'r' : 'u';
         var label = ni && ni.closed ? 'closed' : r ? ni.price : (b && !past ? '—' : '');
-        var tip = past && r ? 'Past: R' + ni.price + ' (kept on record)' : (b && !past ? 'Booked on another channel. Stays open on Avante: the channel calendar link closes it. ' : '') + (ni ? (ni.closed ? 'Closed' : (ni.weekend ? 'Weekend: ' : '') + 'R' + ni.price + ', min ' + ni.min) : (b && !past ? 'No rate yet: give it the same rate as the nights around it.' : ''));
+        if(r && r.ts) cls += ' ts';
+        var tip = past && r ? 'Past: R' + ni.price + ' (kept on record)' : (b && !past ? 'Booked on another channel. Stays open on Avante: the channel calendar link closes it. ' : '') + (ni ? (ni.closed ? 'Closed' : r.ts ? 'Timeshare ' + r.tsl.toLowerCase() + ' from ' + fmtL(r.blk) + ': R' + (r.tsp || ni.price * ni.min) + ' for ' + ni.min + ' nights (R' + ni.price + ' a night)' : (ni.weekend ? 'Weekend: ' : '') + 'R' + ni.price + ', min ' + ni.min) : (b && !past ? 'No rate yet: give it the same rate as the nights around it.' : ''));
         html += '<button type="button" class="d ' + cls + (insel ? ' sel' : '') + '"' + (past ? ' disabled' : ' data-day="' + k + '"') + ' title="' + esc(tip) + '"><span>' + d + '</span><small class="rk">' + label + '</small>' + (CHANNEL_PRICES[k] && !b && !past ? '<small class="ch">' + CHANNEL_PRICES[k] + '</small>' : '') + '</button>';
       }
       html += '</div></div>';
@@ -1508,6 +1526,14 @@
     if(e.target.id === 'selMin') lastMin = e.target.value;
     if(e.target.id === 'selWRack'){ lastWRack = e.target.value; $('selWNet').textContent = +lastWRack ? 'Avante rate R' + netRate(+lastWRack).toLocaleString('en-ZA') : ''; }
     if(e.target.id === 'selWMin') lastWMin = e.target.value;
+    var tsBox = { selTsWeek: 'week', selTsMidP: 'mid', selTsWeP: 'we' }[e.target.id];
+    if(tsBox) TS[tsBox] = e.target.value;
+  });
+  $('selBar').addEventListener('change', function(e){
+    var k = { selTs: 'kind', selTsChange: 'change', selTsMid: 'midweek', selTsWe: 'weekend' }[e.target.id];
+    if(!k) return;
+    TS[k] = k === 'kind' ? e.target.value : +e.target.value;
+    renderCalendar();
   });
   $('selBar').addEventListener('click', function(e){
     var chip = e.target.closest('[data-swd],[data-scd]');
@@ -1518,7 +1544,18 @@
     }
     var b = e.target.closest('[data-cal]'); if(!b) return;
     var act = b.getAttribute('data-cal'), sel = selRange(), uid = calUnit(), R = RATES[uid], W = SEL_WEEK || WEEK;
-    if(act === 'apply'){
+    if(act === 'apply' && TS.kind){
+      var res = SNX.timeshareSlots(sel[0], sel[1], TS.kind, TS);
+      if(res.error){ $('selMsg').innerHTML = '<p class="note warn" style="margin:0">' + esc(res.error) + '</p>'; return; }
+      var priceOf = { Week: +TS.week, Midweek: +TS.mid, Weekend: +TS.we };
+      var missing = res.slots.filter(function(x){ return !priceOf[x.label]; })[0];
+      if(missing){ $('selMsg').innerHTML = '<p class="note warn" style="margin:0">Type the ' + missing.label.toLowerCase() + ' price.</p>'; return; }
+      res.slots.forEach(function(x){
+        var night = SNX.tsNight(TS.kind, x.from, x.label, Math.round(priceOf[x.label] / x.nights), x.nights, priceOf[x.label]);
+        eachDay(x.from, x.to, function(k){ R[k] = Object.assign({}, night); });
+      });
+    }
+    else if(act === 'apply'){
       var rack = +$('selRack').value, min = +$('selMin').value || 1;
       if(!rack){ $('selRack').focus(); return; }
       var wr = W.on && W.wd.length ? +($('selWRack') || {}).value : 0, wm = W.on ? (+($('selWMin') || {}).value || min) : 0;
@@ -1553,7 +1590,7 @@
   function renderSeasons(){
     var s = seasons();
     $('seasonRows').innerHTML = s.length ? s.map(function(x){ return '<tr' + (x.to < TODAY ? ' class="past" title="Past — kept on record"' : '') + '><td>' + esc(x.unitTypeName) + (x.to < TODAY ? ' (past)' : '') + '</td><td>' + fmtL(x.from) + '</td><td>' + fmtL(x.to) + '</td><td class="num">' + x.nights + '</td><td class="num">' + x.min + '</td><td class="num">' + x.rack.toLocaleString('en-ZA') + '</td><td class="num"><b>' + netRate(x.rack).toLocaleString('en-ZA') + '</b></td>' +
-      '<td>' + esc(x.slot) + '</td><td>' + esc(dayNames(SNX.dayList(x.r.cd))) + '</td></tr>'; }).join('')
+      '<td>' + esc(x.r.ts ? 'Timeshare ' + x.slot.toLowerCase() + ': R' + (x.r.tsp || x.rack * x.nights).toLocaleString('en-ZA') : x.slot) + '</td><td>' + esc(dayNames(SNX.dayList(x.r.cd))) + '</td></tr>'; }).join('')
       : '<tr><td colspan="9" class="hint">No rates set yet.</td></tr>';
     var nCh = Object.keys(CHANNEL_PRICES).length;
     $('seasonNote').innerHTML = nCh ? '<p class="note warn">' + nCh + ' night' + (nCh === 1 ? '' : 's') + ' show the price seen on ' + esc(channel || 'the other channel') + ' in red. That price may include the channel\'s own fees — set the rack rate the property actually wants.</p>' : '';

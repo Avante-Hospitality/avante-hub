@@ -77,11 +77,43 @@
   function eachNight(from, to, fn){ for(var k = from; k <= to; k = nextDay(k)) fn(k); }
   // The night a saved period stands for (the form's calendar shape).
   function nightOf(rs){
+    if(TIMESHARE_SLOTS.indexOf(s(rs.slot)) > -1 && s(rs.timeshare)) return tsNight(rs.timeshare, s(rs.from), s(rs.slot), +rs.rackRate, +rs.minStay || 1, +rs.slotPrice || 0);
     var wr = +rs.weekendRackRate || 0;
     return { rack: +(wr ? rs.midweekRackRate || rs.rackRate : rs.rackRate), min: +(wr ? rs.midweekMinStay || rs.minStay : rs.minStay) || 1, wr: wr,
       wm: wr ? (+rs.weekendMinStay || +rs.minStay || 1) : 0, wd: wr ? dayList(rs.weekendDays).join(',') : '', cd: dayList(rs.closedDays).join(',') };
   }
-  function nightKey(n){ return [n.rack, n.min, n.wr, n.wm, n.wd, n.cd].join('|'); }
+  function nightKey(n){ return [n.rack, n.min, n.wr, n.wm, n.wd, n.cd, n.blk || ''].join('|'); }
+
+  // Timeshare (Jean, 2026-10-27): dates sold only in fixed slots. "week" =
+  // whole weeks from a changeover day; "split" = a midweek slot and a weekend
+  // slot that can be sold separately (to the same guest or different guests).
+  // Every slot is its own Stock Network row, even next to a slot with the same
+  // price, and its minimum stay is the whole slot, so nobody buys part of one.
+  // The price typed is for the whole slot; Stock Network gets it per night.
+  var TIMESHARE_SLOTS = ['Week', 'Midweek', 'Weekend'];
+  function tsNight(kind, slotStart, label, rack, nights, slotPrice){
+    return { rack: rack, min: nights, wr: 0, wm: 0, wd: '', cd: '', ts: kind, blk: slotStart, tsl: label, tsp: slotPrice };
+  }
+  // The slots in first..last night, or { error }. kind "week": opts.change =
+  // changeover day; "split": opts.midweek and opts.weekend = the days each
+  // slot starts (0 = Monday ... 6 = Sunday). The dates must be whole slots.
+  function timeshareSlots(first, last, kind, opts){
+    var starts = kind === 'week' ? [{ day: +opts.change, label: 'Week' }]
+      : [{ day: +opts.midweek, label: 'Midweek' }, { day: +opts.weekend, label: 'Weekend' }];
+    if(kind === 'split' && starts[0].day === starts[1].day) return { error: 'Midweek and weekend can\'t start on the same day.' };
+    var startOf = function(k){ var d = dayOf(k); for(var i = 0; i < starts.length; i++) if(starts[i].day === d) return starts[i]; return null; };
+    var names = starts.map(function(x){ return DAY_NAMES[x.day]; }).join(' or ');
+    if(!startOf(first)) return { error: 'Start on a ' + names + ': that is when a ' + (kind === 'week' ? 'week' : 'slot') + ' begins.' };
+    if(!startOf(nextDay(last))) return { error: 'End on the night before a ' + names + ', so the last ' + (kind === 'week' ? 'week' : 'slot') + ' is whole.' };
+    var out = [], cur = null;
+    eachNight(first, last, function(k){
+      var st = startOf(k);
+      if(st){ if(cur) out.push(cur); cur = { from: k, to: k, nights: 1, label: st.label }; }
+      else { cur.to = k; cur.nights++; }
+    });
+    if(cur) out.push(cur);
+    return { slots: out };
+  }
 
   // Saved periods -> { unit type: { 'YYYY-MM-DD': night } }.
   // Nights booked on another channel (listing.blockedNights) stay OPEN on
@@ -123,8 +155,8 @@
     if(!keys.length) return out;
     eachNight(keys[0], keys[keys.length - 1], function(k){
       var r = R[k], ni = nightInfo(r, k), ok = r && !ni.closed;
-      var slot = ok && r.wr && dayList(r.wd).length ? (ni.weekend ? 'Weekend' : 'Midweek') : '';
-      var key = ok ? [ni.price, ni.min, slot, r.rack, r.min, r.wr || 0, r.wm || 0, r.wd || '', r.cd || ''].join('|') : '';
+      var slot = ok && r.ts ? r.tsl : ok && r.wr && dayList(r.wd).length ? (ni.weekend ? 'Weekend' : 'Midweek') : '';
+      var key = ok ? [ni.price, ni.min, slot, r.rack, r.min, r.wr || 0, r.wm || 0, r.wd || '', r.cd || '', r.blk || ''].join('|') : '';
       if(ok && cur && cur.key === key){ cur.to = k; cur.nights++; }
       else { if(cur) out.push(cur); cur = ok ? { key: key, unitTypeName: unitTypeName, from: k, to: k, nights: 1, rack: ni.price, min: ni.min, slot: slot, r: r } : null; }
     });
@@ -134,7 +166,8 @@
   // A period as it is saved on the listing and sent to Stock Network.
   function seasonOut(p){
     var r = p.r, o = { unitTypeName: p.unitTypeName, from: p.from, to: p.to, nights: p.nights, minStay: p.min, rackRate: p.rack, snRate: window.AvanteCommission.netRate(p.rack), slot: p.slot, closedDays: r.cd || '' };
-    if(p.slot) Object.assign(o, { midweekRackRate: r.rack, midweekMinStay: r.min, weekendRackRate: r.wr, weekendMinStay: r.wm || r.min, weekendDays: r.wd });
+    if(r.ts) Object.assign(o, { timeshare: r.ts, slotPrice: r.tsp || p.rack * p.nights });
+    else if(p.slot) Object.assign(o, { midweekRackRate: r.rack, midweekMinStay: r.min, weekendRackRate: r.wr, weekendMinStay: r.wm || r.min, weekendDays: r.wd });
     return o;
   }
   // The listing's periods with every night open (booked nights included).
@@ -153,7 +186,8 @@
   function seasonsToSend(listing, onlyChanged){
     var today = todayIso();
     var sent = {}; (listing.snSentSeasons || []).forEach(function(r){ sent[seasonKey(r)] = true; });
-    return openSeasons(listing).filter(function(r){ return s(r.to) >= today && !(onlyChanged && sent[seasonKey(r)]); })
+    // A timeshare slot that has already begun can't be sold any more (only whole slots are).
+    return openSeasons(listing).filter(function(r){ return s(r.to) >= today && !(r.timeshare && s(r.from) < today) && !(onlyChanged && sent[seasonKey(r)]); })
       .map(function(r){ return s(r.from) < today ? Object.assign({}, r, { from: today }) : r; });
   }
   // Stock Network's To Date is the day the guest LEAVES, not the last night
@@ -298,6 +332,8 @@
     dayRun: dayRun,
     weekText: weekText,
     nightInfo: nightInfo,
+    tsNight: tsNight,
+    timeshareSlots: timeshareSlots,
     ratesFromSeasons: ratesFromSeasons,
     periodsOf: periodsOf,
     seasonOut: seasonOut,
