@@ -63,10 +63,19 @@
   function staleAll() { if (S.av) S.av.loaded = {}; }
   function staleRange(a, b) { if (S.av) each(a, b).forEach(function (n) { delete S.av.loaded[n]; }); }
   var inFlight = null;
-  function loadWindow(a, b) {
+  // live: read the days from Avante (only when the owner taps Check availability or searches, Jean 2026-10-29);
+  // otherwise the last saved view of those days is shown, with no call to Avante.
+  function loadWindow(a, b, live) {
     if (b <= today()) return render();
     if (a < today()) a = today();
     if (isLoaded(a, b)) return render();
+    if (!live) {
+      if (S.av && each(a, b).every(function (n) { return n in S.av.loaded; })) return render();
+      var ck = 'saved|' + a + '|' + b; if (inFlight === ck) return; inFlight = ck;
+      return api('availability', { from: a, to: b, cached: true }).then(function (d) {
+        inFlight = null; mergeAv(d, a, b, 0); render(); afterFirstGrid();
+      }).catch(function (e) { inFlight = null; fail(e); afterFirstGrid(); });
+    }
     var key = a + '|' + b; if (inFlight === key) return; inFlight = key;
     busy(true); render();
     return api('availability', { from: a, to: b }).then(function (d) {
@@ -91,11 +100,13 @@
   // Communication loads only after the grid, so it doesn't slow the grid down.
   var msgsStarted = false;
   function afterFirstGrid() { if (msgsStarted) return; msgsStarted = true; loadMessages(); }
-  function loadAvailability(from) {
+  function loadAvailability(from, live) {
     S.from = from || S.from || startDate();
     if (S.from < today()) S.from = today();
-    return loadWindow(S.from, add(S.from, WINDOW));
+    return loadWindow(S.from, add(S.from, WINDOW), live);
   }
+  // Were the days on screen checked with Avante in the last few minutes?
+  function checkedNow() { return isLoaded(S.from < today() ? today() : S.from, add(S.from, WINDOW)); }
   function stateOf(unit, n) { var r = S.av && S.av.nights[unit]; return (r && r[n]) || { s: 'na' }; }
   function inCart(unit, n) { return S.cart.some(function (c) { return c.unit === unit && n >= c.start && n < c.end; }); }
   function openNight(unit, n) { return stateOf(unit, n).s === 'open' && !inCart(unit, n); }
@@ -285,9 +296,10 @@
       '<div class="pa-row" style="gap:6px;align-items:center"><button type="button" class="pa-btn small ghost" data-act="shift" data-n="-' + WINDOW + '" aria-label="Previous ' + WINDOW + ' days"' + (S.from <= today() ? ' disabled' : '') + '>‹</button>' +
       '<b class="pa-calrange">' + short(days[0]) + ' – ' + short(last) + ' ' + dObj(last).getUTCFullYear() + '</b>' +
       '<button type="button" class="pa-btn small ghost" data-act="shift" data-n="' + WINDOW + '" aria-label="Next ' + WINDOW + ' days">›</button>' +
-      (S.from !== startDate() ? '<button type="button" class="pa-btn small ghost" data-act="goStart">' + (startDate() === today() ? 'Today' : 'Start date') + '</button>' : '') + '</div>' +
+      (S.from !== startDate() ? '<button type="button" class="pa-btn small ghost" data-act="goStart">' + (startDate() === today() ? 'Today' : 'Start date') + '</button>' : '') +
+      (!S.busy && !checkedNow() ? '<button type="button" class="pa-btn small" data-act="checkAv">Check availability</button>' : '') + '</div>' +
       '<span class="pa-hint">' + (S.sel ? 'Check-in ' + nice(S.sel.start) + ' on ' + esc(S.sel.unit) + ': now tap the last night.' : 'Tap an open night for check-in, then the last night. Tap a booking to open it.') +
-      (S.busy ? ' · <b style="color:#08776f">Updating from Avante…</b>' : S.av.snapshotAt ? ' · Updated ' + new Date(S.av.snapshotAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '') + '</span></div>';
+      (S.busy ? ' · <b style="color:#08776f">Checking with Avante…</b>' : !checkedNow() ? ' · <b>Last saved view</b>: tap Check availability for the latest' + (S.av.snapshotAt ? ' (saved ' + new Date(S.av.snapshotAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ')' : '') : S.av.snapshotAt ? ' · Checked ' + new Date(S.av.snapshotAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '') + '</span></div>';
     h += '<div class="pa-legend"><span><i class="lg-open"></i>Open</span><span><i class="lg-hub"></i>Hub booking</span><span><i class="lg-sn"></i>Booked elsewhere</span><span><i class="lg-airbnb"></i>Airbnb</span><span><i class="lg-bcom"></i>Booking.com</span><span><i class="lg-lekke"></i>LekkeSlaap</span><span><i class="lg-warn"></i>Channel booking not yet with Avante</span><span><i class="lg-na"></i>Not with Avante</span></div>';
     h += '<div class="pa-grid-wrap"><div class="pa-grid pa-blocks' + (phone ? ' phone' : '') + '" style="grid-template-columns:' + cols + '"><div class="pa-label" style="align-self:end">Unit</div>';
     h += days.map(function (d) { var we = dow(d) === 'Fri' || dow(d) === 'Sat'; return '<div class="hd' + (we ? ' we' : '') + (d === today() ? ' today' : '') + '">' + (phone ? dow(d).slice(0, 2) : dow(d)) + '<b>' + dObj(d).getUTCDate() + '</b>' + (dObj(d).getUTCDate() === 1 || d === days[0] ? MON[dObj(d).getUTCMonth()] : '') + '</div>'; }).join('');
@@ -1616,7 +1628,7 @@
     api('connect', { username: c.username, clientID: c.clientID, clientSecret: c.clientSecret, resortId: resortId || '', aff: aff }).then(function (d) {
       S.busy = false;
       if (d.needResort) { S.connect.needResort = true; S.connect.candidates = d.candidates; render(); return; }
-      setToken(d.token); S.prop = d.property; S.connect = null; if (isCh()) { S.view = 'avail'; setView('book'); } else { S.view = 'avail'; render(); loadAvailability(); }
+      setToken(d.token); S.prop = d.property; S.connect = null; if (isCh()) { S.view = 'avail'; setView('book'); } else { S.view = 'avail'; render(); loadAvailability(null, true); }
     }).catch(fail);
   }
 
@@ -1761,13 +1773,14 @@
       t.textContent = yes ? 'Accepting…' : 'Declining…';
       return api('decide', { ref: t.dataset.ref, accept: yes, reason: why }).then(function (d) { S.msg = t.dataset.ref + (yes ? ' accepted: Booked. The guest was emailed the payment details.' : ' declined and cancelled. The guest was emailed.'); return api('find', { q: S.findQ }).then(function (d2) { S.bookings = d2.bookings; S.payMode = d2.payMode; render(); }); }).catch(fail);
     }
+    if (a === 'checkAv') { staleRange(S.from, add(S.from, WINDOW)); return loadAvailability(S.from, true); }
     if (a === 'shift') { var nf = add(S.from, +t.dataset.n); if (nf < today()) nf = today(); return loadAvailability(nf); }
     if (a === 'search') {
       var ci = val('pa-qin'), co = val('pa-qout'); S.searched = { ci: ci, co: co };
       return api('search', { checkIn: ci, checkOut: co }).then(function (d) {
         S.results = d;
         // The search read the stay and the next 2 weeks, so showing them costs no extra call to SN.
-        if (ci < S.from || ci >= add(S.from, WINDOW)) { staleRange(ci, co > add(ci, WINDOW) ? co : add(ci, WINDOW)); return loadAvailability(ci); }
+        if (ci < S.from || ci >= add(S.from, WINDOW)) { staleRange(ci, co > add(ci, WINDOW) ? co : add(ci, WINDOW)); return loadAvailability(ci, true); }
         staleRange(ci, co); loadWindow(ci, co);
       }).catch(fail);
     }
@@ -2067,7 +2080,7 @@
       if (av && av.units && av.units.length) { S.from = av.from; mergeAv(av, av.from, av.to, av.fresh ? Date.now() : 0); }
       if (isCh()) { S.view = 'avail'; setView('book'); return; }
       render();
-      if (av && av.fresh) afterFirstGrid(); else loadAvailability(S.from || startDate());
+      afterFirstGrid(); // the saved view only: Avante is asked when the owner taps Check availability
     }).catch(function (e) { S.opening = false; if (S.token) fail(e); else { render(); checkAffiliate(); } });
   } else checkAffiliate();
 })();

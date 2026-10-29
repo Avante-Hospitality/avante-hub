@@ -147,7 +147,7 @@ export default async (request) => {
       case "availability": {
         const timing = { _t0: t0 };
         await core.syncContact(prop);   // once per property: the listing's contact details
-        const av = await core.availability(prop, body.from, body.to, { timing, calendar: true });
+        const av = await core.availability(prop, body.from, body.to, { timing, calendar: true, cached: body.cached === true }); // cached: the saved view, no call to Avante
         delete timing._t0; timing.login = authMs; timing.total = Date.now() - t0;
         return json(Object.assign({ ok: true, timing }, av));
       }
