@@ -162,7 +162,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     const units = channel ? await listingUnits(rid) : Object.values(snap.units).map((u) => ({ name: u.name, size: u.size, roomId: u.roomId }));
     const prop = Object.assign({
       siteId: tok.siteId, site: tok.site, feedToken: randomToken(18), createdAt: now().toISOString(),
-      settings: { email: "", phone: "", prices: {}, minStay: 2, autoBook: false, payMode: "both" }, channels: {},
+      settings: { email: "", phone: "", prices: {}, minStay: 2, payMode: "both" }, channels: {},
     }, existing || {}, {
       resortId: rid, resortName: snap.resortName || (existing && existing.resortName) || await nameOf(rid),
       units: mergeUnits(existing && existing.units, units), aff: cleanStr(aff, 40) || (existing && existing.aff) || "",
@@ -942,7 +942,6 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     const s = prop.settings || {};
     saveContactFields(s, body);
     if (body.minStay !== undefined) s.minStay = Math.max(1, Math.min(30, Number(body.minStay) || 1));
-    if (body.autoBook !== undefined) s.autoBook = !!body.autoBook;
     if (body.calendarStart && typeof body.calendarStart === "object") {
       const mode = body.calendarStart.mode === "date" ? "date" : "today";
       const date = /^\d{4}-\d{2}-\d{2}$/.test(String(body.calendarStart.date || "")) ? String(body.calendarStart.date) : "";
@@ -1165,16 +1164,16 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
         const id = u.name + "|" + key + "|" + e.uid;
         seen.add(id);
         const cur = events[id];
-        const autoBook = !!(prop.settings && prop.settings.autoBook);
-        // Unchanged and nothing left to do. A booking still waiting ("detected") is
-        // picked up once automatic booking is switched on (Jean, 2026-10-29).
-        if (cur && cur.start === e.start && cur.end === e.end && cur.status !== "error" && cur.status !== "needs-settings" && !(autoBook && cur.status === "detected")) continue;
+        // Channel bookings always go onto Avante by themselves (Jean, 2026-10-29).
+        // Unchanged and nothing left to do: skip. One still waiting ("detected",
+        // from before this rule) is booked now; "dismissed" (Not a booking) stays so.
+        if (cur && cur.start === e.start && cur.end === e.end && cur.status !== "error" && cur.status !== "needs-settings" && cur.status !== "detected") continue;
         if (cur && cur.status === "booked" && cur.ref) {
           const b = list.find((x) => x.ref === cur.ref);
           if (b && b.status !== "Cancelled") { try { await client.cancelReservation(b.reservationId); b.status = "Cancelled"; b.cancelledAt = now().toISOString(); summary.cancelled++; } catch (_) {} }
         }
         const ev = { unit: u.name, channel: key, uid: e.uid, start: e.start, end: e.end, summary: e.summary || "", firstSeen: (cur && cur.firstSeen) || now().toISOString(), status: "detected" };
-        if (autoBook) { await bookChannelEvent(prop, client, ev, list); if (ev.status === "booked") summary.added++; if (ev.status === "clash") summary.clashes++; }
+        await bookChannelEvent(prop, client, ev, list); if (ev.status === "booked") summary.added++; if (ev.status === "clash") summary.clashes++;
         events[id] = ev;
       }
       for (const [id, ev] of Object.entries(events)) {

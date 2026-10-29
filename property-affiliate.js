@@ -401,8 +401,7 @@
           '<span style="display:block;margin-top:8px;max-width:220px"><input id="pa-cs-date" type="date" aria-label="Calendar start date" value="' + esc(cs.date || '') + '" min="' + today() + '"></span></span></label></fieldset>';
       })() +
       priceBlock(st) +
-      '<label class="pa-check" style="display:flex;align-items:center;gap:10px;margin-top:14px"><input id="pa-auto" type="checkbox"' + (st.autoBook ? ' checked' : '') + ' style="width:18px;height:18px">Book other channels\' reservations onto Avante automatically</label>' +
-      '<p class="pa-hint">Leave this off at first: new channel bookings then wait below for you to add them with one click, so you can check everything is right.</p>' +
+      '<p class="pa-hint" style="margin-top:14px">Bookings from Airbnb, Booking.com and LekkeSlaap go onto Avante by themselves within 15 minutes, so those nights can\'t be sold twice.</p>' +
       '<div class="pa-row" style="margin-top:12px"><button type="button" class="pa-btn" data-act="saveChannels">Save reservation settings</button></div></section>';
     var bk = S.channels.bank || {}, pm = st.payMode || 'both';
     var pmOpt = function (v, label, hint) { return '<label class="pa-check pa-radio"><input type="radio" name="pa-pm" value="' + v + '"' + (pm === v ? ' checked' : '') + '><span><b>' + label + '</b><br><span class="pa-hint">' + hint + '</span></span></label>'; };
@@ -440,7 +439,7 @@
       return '<div class="pa-result"><div class="grow"><b>' + esc(CH[e.channel]) + ' · ' + esc(e.unit) + '</b><div class="pa-hint">' + nice(e.start) + ' – ' + nice(e.end) + ' · ' + nw(nightsBetween(e.start, e.end)) + (e.summary ? ' · ' + esc(e.summary) : '') + '</div>' + (e.error ? '<div class="pa-err" style="margin-top:6px">' + esc(e.error) + '</div>' : '') + '</div>' +
         (e.status === 'clash' ? '<span class="pa-pill" style="background:#ffe2bf;color:#6b3a00">Clash · already sold</span>' : '<button type="button" class="pa-btn small" data-act="addEvent" data-u="' + esc(e.unit) + '" data-c="' + esc(e.channel) + '" data-uid="' + esc(e.uid) + '">Add to Avante</button>') +
         '<button type="button" class="pa-btn small ghost" data-act="dismissEvent" data-u="' + esc(e.unit) + '" data-c="' + esc(e.channel) + '" data-uid="' + esc(e.uid) + '">Not a booking</button></div>';
-    }).join('') : '<p class="pa-hint">None. New bookings from Airbnb, Booking.com and LekkeSlaap appear here within 15 minutes.</p>') + '</section>';
+    }).join('') : '<p class="pa-hint">None. Channel bookings go onto Avante by themselves. Only one that couldn\'t be added (for example nights not open on Avante) waits here.</p>') + '</section>';
     return h;
   }
 
@@ -1836,7 +1835,7 @@
       var channels = {}; root.querySelectorAll('[data-imp]').forEach(function (el) { var p = el.dataset.imp.split('|'); (channels[p[0]] = channels[p[0]] || {})[p[1]] = el.value.trim(); });
       var pmEl = root.querySelector('input[name="pa-pm"]:checked');
       var csMode = root.querySelector('input[name="pa-cs-mode"]:checked');
-      return api('saveSettings', { calendarStart: { mode: csMode ? csMode.value : 'today', date: val('pa-cs-date') }, email: val('pa-se'), phone: val('pa-sp'), contactName: contactVals().contactName, contactPhone: contactVals().contactPhone, contactEmail: contactVals().contactEmail, notifyWho: contactVals().notifyWho, minStay: val('pa-sm'), autoBook: document.getElementById('pa-auto').checked, prices: prices, weekendPrices: pv.weekendPrices, weekendRates: pv.weekendRates, weekendDays: pv.weekendDays, channels: channels,
+      return api('saveSettings', { calendarStart: { mode: csMode ? csMode.value : 'today', date: val('pa-cs-date') }, email: val('pa-se'), phone: val('pa-sp'), contactName: contactVals().contactName, contactPhone: contactVals().contactPhone, contactEmail: contactVals().contactEmail, notifyWho: contactVals().notifyWho, minStay: val('pa-sm'), prices: prices, weekendPrices: pv.weekendPrices, weekendRates: pv.weekendRates, weekendDays: pv.weekendDays, channels: channels,
         payMode: pmEl ? pmEl.value : 'both', approveGuests: !!(document.getElementById('pa-appr') || {}).checked, bank: { bankName: val('pa-bn'), accountHolder: val('pa-bh'), accountNumber: val('pa-ba'), branchCode: val('pa-bb'), accountType: val('pa-bt'), note: val('pa-bx') } })
         .then(function (d) { S.channels = d; S.prop.settings = d.settings; if (d.firstBookable) S.prop.firstBookable = d.firstBookable; S.from = startDate(); S.searched = null; S.msg = 'Saved. The hub reads your channel links every 15 minutes.'; render(); window.scrollTo(0, 0); }).catch(function (e) { fail(e); window.scrollTo(0, 0); });
     }
