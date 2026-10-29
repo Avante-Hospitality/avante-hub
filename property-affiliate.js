@@ -13,8 +13,7 @@
   var MONTH_FULL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
   var FRESH_MS = 5 * 60 * 1000; // a loaded window is reused for 5 minutes
   function isPhone() { return window.innerWidth < 700; }
-  var WINDOW = isPhone() ? 7 : 14;
-  window.addEventListener('resize', function () { var w = isPhone() ? 7 : 14; if (w !== WINDOW) { WINDOW = w; if (S.view === 'avail' && S.av) loadAvailability(S.from); } });
+  var WINDOW = 10; // the grid shows, and reads from Stock Network, 10 days at a time (Jean, 2026-10-29)
   var aff = new URLSearchParams(location.search).get('aff') || '';
 
   var S = { token: null, prop: null, view: 'avail', av: null, from: null, sel: null, cart: [], searched: null, results: null,
@@ -57,8 +56,8 @@
   function fail(e) { S.err = e.message || String(e); S.busy = false; render(); }
 
   // ---------- data ----------
-  // Only the days on screen are read from Stock Network: the grid's 7 or 14
-  // days, or the calendar's month. Everything read is kept here (merged), so
+  // Only the days on screen are read from Stock Network: the grid's 10
+  // days. Everything read is kept here (merged), so
   // units picked in one window stay selected while moving Earlier / Later.
   function isLoaded(a, b) { if (!S.av) return false; var lim = Date.now() - FRESH_MS; return each(a, b).every(function (n) { return (S.av.loaded[n] || 0) >= lim; }); }
   function staleAll() { if (S.av) S.av.loaded = {}; }
@@ -1768,7 +1767,7 @@
       return api('search', { checkIn: ci, checkOut: co }).then(function (d) {
         S.results = d;
         // The search read the stay and the next 2 weeks, so showing them costs no extra call to SN.
-        if (ci < S.from || ci >= add(S.from, WINDOW)) { staleRange(ci, co > add(ci, 14) ? co : add(ci, 14)); return loadAvailability(ci); }
+        if (ci < S.from || ci >= add(S.from, WINDOW)) { staleRange(ci, co > add(ci, WINDOW) ? co : add(ci, WINDOW)); return loadAvailability(ci); }
         staleRange(ci, co); loadWindow(ci, co);
       }).catch(fail);
     }

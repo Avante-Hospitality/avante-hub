@@ -19,6 +19,9 @@
 import { snFetch } from "./sn-log.js";
 
 const BASE = "https://api.stocknetwork.co.za";
+// Every availability calendar shows, and reads from Stock Network, 10 days at a time (Jean, 2026-10-29:
+// keep the calls to NightsBridge to a minimum). Stays and bookings can still be longer.
+export const CAL_DAYS = 10;
 const ZERO = "00000000-0000-0000-0000-000000000000";
 
 export class SNError extends Error {

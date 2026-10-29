@@ -137,7 +137,7 @@ export default async (request) => {
       case "open": {
         const timing = { _t0: t0 };
         await core.syncContact(prop);   // once per property: the listing's contact details
-        const av = await core.availability(prop, body.from || core.firstBookable(prop), body.to, { cached: true, timing, pre });
+        const av = await core.availability(prop, body.from || core.firstBookable(prop), body.to, { cached: true, timing, pre, calendar: true });
         // Older logins get a new token in the faster format (the old one keeps working).
         const newToken = preSite ? undefined : await core.newSession(prop);
         delete timing._t0; timing.login = authMs; timing.total = Date.now() - t0;
@@ -147,7 +147,7 @@ export default async (request) => {
       case "availability": {
         const timing = { _t0: t0 };
         await core.syncContact(prop);   // once per property: the listing's contact details
-        const av = await core.availability(prop, body.from, body.to, { timing });
+        const av = await core.availability(prop, body.from, body.to, { timing, calendar: true });
         delete timing._t0; timing.login = authMs; timing.total = Date.now() - t0;
         return json(Object.assign({ ok: true, timing }, av));
       }

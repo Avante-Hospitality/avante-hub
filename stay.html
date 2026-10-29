@@ -237,7 +237,7 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
   if (!CFG.slug) { var parts = location.pathname.split('/').filter(Boolean); CFG = { slug: parts[1] || new URLSearchParams(location.search).get('slug') || '', mode: parts[2] || new URLSearchParams(location.search).get('mode') || 'store', key: parts[3] || '' }; }
   var app = document.getElementById('app');
   var MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'], MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-  var S = { d: null, ci: '', co: '', adults: 2, children: 0, quote: null, pick: null, booked: null, err: '', busy: false, month: null, monthData: {}, calUnit: '', km: null, offers: null, lb: -1 };
+  var S = { d: null, ci: '', co: '', adults: 2, children: 0, quote: null, pick: null, booked: null, err: '', busy: false, calFrom: null, calData: {}, calUnit: '', km: null, offers: null, lb: -1 };
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function today() { var d = new Date(); return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())).toISOString().slice(0, 10); }
   function add(iso, n) { var d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
@@ -286,11 +286,11 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
       // A Book link from a hook or flyer (?checkin=&checkout=, Jean 2026-10-15): open on those dates.
       var qp = new URLSearchParams(location.search), qi = qp.get('checkin') || '', qo = qp.get('checkout') || '';
       S.linkUnit = qp.get('unit') || '';
-      if (!S.ci && /^\d{4}-\d{2}-\d{2}$/.test(qi) && /^\d{4}-\d{2}-\d{2}$/.test(qo) && qo > qi && qi >= d.firstBookable) { S.ci = qi; S.co = qo; S.month = qi.slice(0, 7); }
+      if (!S.ci && /^\d{4}-\d{2}-\d{2}$/.test(qi) && /^\d{4}-\d{2}-\d{2}$/.test(qo) && qo > qi && qi >= d.firstBookable) { S.ci = qi; S.co = qo; S.calFrom = qi; }
       if (!S.ci) { S.ci = d.firstBookable; S.co = add(d.firstBookable, Math.max(1, d.minStay || 1)); }
-      if (!S.month) S.month = d.firstBookable.slice(0, 7);
+      if (!S.calFrom) S.calFrom = d.firstBookable;
       render();
-      if (CFG.mode === 'store') { S.offers = (d.offers || []).filter(function (o) { return o.booking || o.landing; }); loadMonth(); dropBadPhotos(); }
+      if (CFG.mode === 'store') { S.offers = (d.offers || []).filter(function (o) { return o.booking || o.landing; }); loadCal(); dropBadPhotos(); }
       // A Book link (#book) goes straight to the booking (Jean, 2026-10-22): its dates, else the first
       // dates free to book, are checked at once, so the free units show with the dates already in;
       // with one unit (or the link's unit) the guest's details open straight away.
@@ -317,13 +317,13 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
       S.sl = 0; if (!S.quote && !S.pick && !S.busy) render();
     }
   }
-  function loadMonth() {
-    var m = S.month; if (S.monthData[m] || !S.d.showCalendar) return;
-    var first = m + '-01', y = +m.slice(0, 4), mo = +m.slice(5, 7), next = new Date(Date.UTC(y, mo, 1)).toISOString().slice(0, 10);
-    var from = first < today() ? today() : first;
-    if (next <= from) return;
-    S.monthData[m] = 'loading';
-    api('slug=' + encodeURIComponent(CFG.slug) + '&from=' + from + '&to=' + next).then(function (r) { S.monthData[m] = r.ok ? r : null; drawCal(); }).catch(function () { S.monthData[m] = null; drawCal(); });
+  // The calendar shows, and asks Avante for, 10 days at a time (Jean, 2026-10-29: keep the calls to a minimum).
+  var CAL_DAYS = 10;
+  function calStart(x) { var t = today(); return x < t ? t : x; }
+  function loadCal() {
+    var f = calStart(S.calFrom); if (S.calData[f] || !S.d.showCalendar) return;
+    S.calData[f] = 'loading';
+    api('slug=' + encodeURIComponent(CFG.slug) + '&from=' + f + '&to=' + add(f, CAL_DAYS)).then(function (r) { S.calData[f] = r.ok ? r : null; drawCal(); }).catch(function () { S.calData[f] = null; drawCal(); });
   }
 
   // ---------- front store ----------
@@ -499,15 +499,16 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
   function drawBook() { var el = document.getElementById('book'); if (el) { el.className = bookCls(); el.innerHTML = bookHtml(); } document.body.style.overflow = S.pick || linkOpen() ? 'hidden' : ''; drawCalPick(); }
   function drawCal() {
     var el = document.getElementById('cal'); if (!el) return;
-    var d = S.d, m = S.month, y = +m.slice(0, 4), mo = +m.slice(5, 7) - 1, data = S.monthData[m];
-    var first = m + '-01', days = new Date(Date.UTC(y, mo + 1, 0)).getUTCDate(), lead = (new Date(first + 'T00:00:00Z').getUTCDay() + 6) % 7;
-    var canPrev = m > today().slice(0, 7);
-    var h = '<div class="cal-h"><button type="button" class="btn g sm" data-act="mon" data-n="-1"' + (canPrev ? '' : ' disabled') + ' aria-label="Previous month">‹</button><b>' + MONTHS[mo] + ' ' + y + '</b><button type="button" class="btn g sm" data-act="mon" data-n="1" aria-label="Next month">›</button></div>';
+    var d = S.d, f = calStart(S.calFrom), data = S.calData[f], last = add(f, CAL_DAYS - 1);
+    var lead = (new Date(f + 'T00:00:00Z').getUTCDay() + 6) % 7, canPrev = f > today();
+    var dm = function (x) { return (+x.slice(8, 10)) + ' ' + MON[+x.slice(5, 7) - 1]; };
+    var h = '<div class="cal-h"><button type="button" class="btn g sm" data-act="calMove" data-n="-1"' + (canPrev ? '' : ' disabled') + ' aria-label="Previous ' + CAL_DAYS + ' days">‹</button><b>' + dm(f) + ' – ' + dm(last) + ' ' + last.slice(0, 4) + '</b><button type="button" class="btn g sm" data-act="calMove" data-n="1" aria-label="Next ' + CAL_DAYS + ' days">›</button></div>';
     if (d.units.length > 1) h += '<div class="chips" role="group" aria-label="Unit">' + [''].concat(d.units.map(function (u) { return u.name; })).map(function (n) { return '<button type="button" class="chip" data-act="calUnit" data-u="' + esc(n) + '" aria-pressed="' + (S.calUnit === n) + '">' + esc(n || 'Any unit') + '</button>'; }).join('') + '</div>';
     h += '<div class="cal">' + ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(function (x) { return '<div class="dw">' + x + '</div>'; }).join('');
     for (var i = 0; i < lead; i++) h += '<div></div>';
-    for (var dd = 1; dd <= days; dd++) {
-      var iso = m + '-' + (dd < 10 ? '0' + dd : dd), open = false, price = null;
+    for (var k = 0; k < CAL_DAYS; k++) {
+      var iso = add(f, k), dd = +iso.slice(8, 10), open = false, price = null;
+      if (k === 0 || dd === 1) dd = dd + ' ' + MON[+iso.slice(5, 7) - 1]; // the month shows on the first day and on the 1st
       if (data && data !== 'loading') {
         var us = S.calUnit ? [S.calUnit] : Object.keys(data.open || {});
         us.forEach(function (u) { if ((data.open[u] || []).indexOf(iso) >= 0) { open = true; var r = data.rates && data.rates[u] && data.rates[u][iso]; if (r && (price == null || r < price)) price = r; } });
@@ -663,10 +664,10 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
     if (a === 'calGo') {
       var ci2 = val('cpi'), co2 = val('cpo');
       if (!ci2 || !co2 || co2 <= ci2) { S.err = 'Choose a departure after the arrival.'; drawBook(); var cp = document.getElementById('cpo'); if (cp) cp.focus(); return; }
-      S.ci = ci2; S.co = co2; S.picking = false; S.quote = null; S.pick = null; S.err = ''; S.month = ci2.slice(0, 7);
-      drawCal(); drawBook(); loadMonth(); var cs = document.getElementById('cal'); if (cs) cs.scrollIntoView({ behavior: 'smooth', block: 'start' }); return;
+      S.ci = ci2; S.co = co2; S.picking = false; S.quote = null; S.pick = null; S.err = ''; S.calFrom = ci2;
+      drawCal(); drawBook(); loadCal(); var cs = document.getElementById('cal'); if (cs) cs.scrollIntoView({ behavior: 'smooth', block: 'start' }); return;
     }
-    if (a === 'mon') { var y = +S.month.slice(0, 4), mo = +S.month.slice(5, 7) - 1 + (+t.getAttribute('data-n')); S.month = new Date(Date.UTC(y, mo, 1)).toISOString().slice(0, 7); drawCal(); loadMonth(); return; }
+    if (a === 'calMove') { S.calFrom = calStart(add(calStart(S.calFrom), CAL_DAYS * (+t.getAttribute('data-n')))); drawCal(); loadCal(); return; }
     if (a === 'calUnit') { S.calUnit = t.getAttribute('data-u'); return drawCal(); }
     if (a === 'day') {
       var dsel = t.getAttribute('data-d'); syncForm();
@@ -734,7 +735,7 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
       return post({ action: 'book', checkIn: S.quote.checkIn, checkOut: S.quote.checkOut, units: chosenUnits, guest: g, adults: S.adults, children: S.children, notes: val('gn'), website: val('website'), payBy: (document.querySelector('input[name="payby"]:checked') || {}).value }).then(function (r) {
         S.busy = false;
         if (!r.ok) { S.err = r.error || 'The booking didn\'t go through.'; t.disabled = false; t.textContent = 'Confirm booking'; var er = document.querySelector('#book .err'); if (er) er.remove(); t.insertAdjacentHTML('afterend', '<div class="err" role="alert">' + esc(S.err) + '</div>'); return; }
-        S.booked = r; S.quote = null; S.pick = null; S.sel = []; S.monthData = {}; drawBook(); loadMonth(); document.getElementById('book').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        S.booked = r; S.quote = null; S.pick = null; S.sel = []; S.calData = {}; drawBook(); loadCal(); document.getElementById('book').scrollIntoView({ behavior: 'smooth', block: 'start' });
       }).catch(function () { S.busy = false; t.disabled = false; t.textContent = 'Confirm booking'; });
     }
     if (a === 'again') { S.booked = null; return drawBook(); }
@@ -752,8 +753,8 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
       var d = e.data.data, y = window.scrollY; CFG.slug = d.slug || CFG.slug;
       S.d = d; S.km = d.nearbyKm; S.offers = (d.offers || []).filter(function (o) { return o.booking || o.landing; });
       if (!S.ci) { S.ci = d.firstBookable; S.co = add(d.firstBookable, Math.max(1, d.minStay || 1)); }
-      if (!S.month) S.month = d.firstBookable.slice(0, 7);
-      render(); window.scrollTo(0, y); loadMonth();
+      if (!S.calFrom) S.calFrom = d.firstBookable;
+      render(); window.scrollTo(0, y); loadCal();
       if (e.data.scrollTo) { var el = document.getElementById(e.data.scrollTo); if (el && !el.offsetParent) el = document.getElementById(e.data.scrollTo + '-ph') || el; if (el) el.scrollIntoView({ block: 'start' }); }
     });
     if (window.parent !== window) window.parent.postMessage({ type: 'fs-preview-ready' }, location.origin);

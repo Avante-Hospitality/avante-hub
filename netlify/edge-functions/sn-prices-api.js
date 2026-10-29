@@ -2,14 +2,14 @@
 // Avante's own agent login (Jean, 2026-10-23: Stock Network gave permission). For the
 // hook builder's flyers: a property flyer's own unit types, and the Where to stay
 // pages. Only the property asked about is read — never all of Stock Network.
-//   GET ?resortId=<ResortID>&from=YYYY-MM-DD[&days=14]   (days 1–31)
+//   GET ?resortId=<ResortID>&from=YYYY-MM-DD[&days=10]   (days 1–10)
 //   -> { ok, result: { resortId, month, start, days, checkedAt, minNights, unitNames, units: [{ name, size, sleeps }],
 //        nights: { "YYYY-MM-DD": { open, perNight, units: { <unit>: { perNight, avail } } } } } }
 // The same shape the hook builder's old GitHub price job gave, so its flyers read it as
 // before. An answer is kept an hour (the "sn-prices" store), so a property asked about
 // again soon isn't read again.
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
-import { SNClient, addDays } from "./lib/sn-client.js";
+import { SNClient, addDays, CAL_DAYS } from "./lib/sn-client.js";
 
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -52,7 +52,7 @@ export default async (request) => {
   const u = new URL(request.url);
   const rid = String(u.searchParams.get("resortId") || "").trim().toLowerCase();
   let from = String(u.searchParams.get("from") || "").trim();
-  const days = Math.max(1, Math.min(31, parseInt(u.searchParams.get("days") || "14", 10) || 14));
+  const days = Math.max(1, Math.min(CAL_DAYS, parseInt(u.searchParams.get("days") || String(CAL_DAYS), 10) || CAL_DAYS)); // 10 days at a time (Jean, 2026-10-29)
   if (!GUID.test(rid)) return json({ ok: false, error: "That isn't a valid ResortID." }, 400);
   if (!DAY.test(from) || from < todaySA()) from = todaySA();
   const to = addDays(from, days), key = "u|" + rid + "|" + from + "|" + days; // "u|": answers kept before units were added are not reused

@@ -15,7 +15,7 @@
 //
 // Storage is injected (Netlify Blobs in production, a Map in tests).
 
-import { SNClient, SNError, addDays, nightsBetween } from "./sn-client.js";
+import { SNClient, SNError, addDays, nightsBetween, CAL_DAYS } from "./sn-client.js";
 import { parseIcs, buildIcs, nightsToRanges } from "./ical.js";
 import { encryptJSON, decryptJSON, randomToken, sha256Hex } from "./pa-crypto.js";
 import { emailList as listOf, badEmails, recipients } from "./emails.js";
@@ -28,12 +28,12 @@ export const CHANNELS = { bcom: "Booking.com", airbnb: "Airbnb", lekke: "LekkeSl
 // Listings > Channel setup help (kept in the property-affiliate store).
 export const CHANNEL_HELP_KEY = "admincfg:channelHelp";
 export const CHANNEL_HELP_DEFAULT = "admin@avantehospitality.co.za";
-const CONNECT_DAYS = [14];               // connect reads only the first 14 days; later days load as the calendar moves (Jean: keep SN calls light)
+const CONNECT_DAYS = [CAL_DAYS];         // connect reads only the first 10 days; later days load as the calendar moves
 const HORIZON_DAYS = 365;               // full read: at connect, and every SYNC_FULL_MS for channel-linked properties
 const SYNC_NEAR_DAYS = 60;              // every 15-minute sync reads only this far ahead
 const SYNC_FULL_MS = 2 * 3600 * 1000;   // ... and the full year this often
 const WINDOW_MAX_AGE_MS = 5 * 60 * 1000; // a screen window is re-read from SN when older than this
-const MAX_WINDOW_DAYS = 62;             // the screen never asks SN for more than this at once
+const MAX_WINDOW_DAYS = 62;             // the longest stay checked at once (a calendar asks for CAL_DAYS)
 const TOKEN_REUSE_MS = 50 * 60 * 1000;
 const FEED_ACTIVE_MS = 48 * 3600 * 1000; // a calendar link fetched by a channel within this time counts as linked
 const PAY_MODES = ["both", "gateway", "eft"];
@@ -495,8 +495,9 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
   // grid shows at once; the screen then asks again without cached to refresh from SN.
   // Reads that only need the site id, started before the login check finishes (see pa-api "open").
   function prefetch(siteId) { const p = { siteId }; return { siteId, snap: loadSnap(p), bookings: bookingsOf(p), events: getJSON("chan:" + siteId) }; }
-  async function availability(prop, from, to, { cached = false, timing = null, pre = null } = {}) {
-    from = from || today(); to = to || addDays(from, 14);
+  async function availability(prop, from, to, { cached = false, timing = null, pre = null, calendar = false } = {}) {
+    from = from || today(); to = to || addDays(from, CAL_DAYS);
+    if (calendar && isoDate(from) && isoDate(to) && to > addDays(from, CAL_DAYS)) to = addDays(from, CAL_DAYS); // a calendar: 10 days at most
     if (!isoDate(from) || !isoDate(to) || !(nightsBetween(from, to) >= 1 && nightsBetween(from, to) <= MAX_WINDOW_DAYS)) throw new PAError("Choose a shorter date range.");
     const mark = (k) => { if (timing) timing[k] = Date.now() - timing._t0; };
     // Only the days on screen are read from SN (past days never are).
@@ -533,8 +534,8 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     if (!isoDate(checkIn) || !isoDate(checkOut) || checkOut <= checkIn) throw new PAError("Choose a check-out after the check-in.");
     checkBookable(prop, checkIn);
     if (!(nightsBetween(checkIn, checkOut) <= MAX_WINDOW_DAYS - 2)) throw new PAError("Choose a shorter stay.");
-    // Read the stay, and at least the 2 weeks the grid will show next, in one call.
-    const wEnd = checkOut > addDays(checkIn, 14) ? checkOut : addDays(checkIn, 14);
+    // Read the stay, and at least the 10 days the calendar will show next, in one call.
+    const wEnd = checkOut > addDays(checkIn, CAL_DAYS) ? checkOut : addDays(checkIn, CAL_DAYS);
     const snap = await ensureWindow(prop, checkIn, wEnd);
     const ours = activeNightsByUnit(await bookingsOf(prop));
     const want = eachNight(checkIn, checkOut);
@@ -1826,7 +1827,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     from = isoDate(from); to = isoDate(to);
     if (!from || !to || !(nightsBetween(from, to) >= 1 && nightsBetween(from, to) <= 62)) throw new PAError("Choose a shorter date range.");
     if (from > addDays(today(), 548)) throw new PAError("That's too far ahead.");
-    const av = await availability(prop, from, to);
+    const av = await availability(prop, from, to, { calendar: true });
     const units = fsUnits(prop), open = {}, rates = {};
     for (const u of units) {
       open[u.name] = Object.keys(av.nights[u.name] || {}).filter((n) => av.nights[u.name][n].s === "open" && n >= first).sort();
