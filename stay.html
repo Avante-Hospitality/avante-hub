@@ -99,6 +99,7 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
 .cal{ display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:5px; }
 .cal .dw{ font:700 11px 'Montserrat',sans-serif; color:var(--muted); text-align:center; text-transform:uppercase; padding-bottom:2px; }
 .day{ min-height:52px; border-radius:10px; border:1.5px solid transparent; background:#f1eee8; color:#9aa0a0; font:700 14px 'Montserrat',sans-serif; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:0; }
+.day.nc{ background:#fff; color:var(--ink); cursor:pointer; border-color:#e6e1d8; }
 .day.op{ background:#e3f8f6; color:var(--ink); cursor:pointer; border-color:#bfece7; }
 .day.op small{ font:600 10px 'Noto Sans',sans-serif; color:var(--teal-d); }
 .day.sel{ background:var(--ink); color:#fff; border-color:var(--ink); }
@@ -290,7 +291,10 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
       if (!S.ci) { S.ci = d.firstBookable; S.co = add(d.firstBookable, Math.max(1, d.minStay || 1)); }
       if (!S.calFrom) S.calFrom = d.firstBookable;
       render();
-      if (CFG.mode === 'store') { S.offers = (d.offers || []).filter(function (o) { return o.booking || o.landing; }); loadCal(); dropBadPhotos(); }
+      // Availability is only asked for when the guest taps Check availability, or arrives from a Book
+      // link (Jean, 2026-10-29: keep the calls to NightsBridge to a minimum).
+      S.fromLink = location.hash === '#book' || !!(qi && qo);
+      if (CFG.mode === 'store') { S.offers = (d.offers || []).filter(function (o) { return o.booking || o.landing; }); if (S.fromLink && location.hash !== '#book') loadCal(); dropBadPhotos(); } // #book: read once, by the check below
       // A Book link (#book) goes straight to the booking (Jean, 2026-10-22): its dates, else the first
       // dates free to book, are checked at once, so the free units show with the dates already in;
       // with one unit (or the link's unit) the guest's details open straight away.
@@ -514,11 +518,14 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
         us.forEach(function (u) { if ((data.open[u] || []).indexOf(iso) >= 0) { open = true; var r = data.rates && data.rates[u] && data.rates[u][iso]; if (r && (price == null || r < price)) price = r; } });
       }
       var sel = iso === S.ci || iso === add(S.co, -1), rng = iso > S.ci && iso < add(S.co, -1);
+      // Not checked yet: every day can be tapped to choose dates; nothing is shown as open or taken.
+      if (!data || data === 'loading') { h += '<button type="button" class="day nc' + (sel ? ' sel' : rng ? ' rng' : '') + '" data-act="day" data-d="' + iso + '" aria-label="' + nice(iso) + '">' + dd + '</button>'; continue; }
       h += open ? '<button type="button" class="day op' + (sel ? ' sel' : rng ? ' rng' : '') + '" data-act="day" data-d="' + iso + '" aria-label="' + nice(iso) + ', open' + (price ? ', from ' + money(price) : '') + '">' + dd + (price ? '<small>' + money(price) + '</small>' : '') + '</button>'
         : '<div class="day' + (sel ? ' sel' : '') + '" aria-label="' + nice(iso) + ', not available">' + dd + '</div>';
     }
     h += '</div><div class="legend"><span><i style="background:#e3f8f6;border:1.5px solid #bfece7"></i>Open</span><span><i style="background:#f1eee8"></i>Not available</span><span><i style="background:#0e2f44"></i>Your dates</span></div>';
-    if (data === 'loading' || !data && data !== null) h += '<p class="muted" style="margin:8px 0 0">Loading availability…</p>';
+    if (data === 'loading') h += '<p class="muted" style="margin:8px 0 0">Checking availability…</p>';
+    else if (!data) h += '<p class="muted" style="margin:8px 0 6px">' + (data === null ? 'Availability couldn\'t be checked just now.' : 'Tap your arrival day, then your last night, and check. Or see which nights are free:') + '</p><button type="button" class="btn g" style="width:100%" data-act="calLoad">Check availability for these 10 days</button>';
     el.innerHTML = h;
     drawCalPick();
   }
@@ -665,9 +672,10 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
       var ci2 = val('cpi'), co2 = val('cpo');
       if (!ci2 || !co2 || co2 <= ci2) { S.err = 'Choose a departure after the arrival.'; drawBook(); var cp = document.getElementById('cpo'); if (cp) cp.focus(); return; }
       S.ci = ci2; S.co = co2; S.picking = false; S.quote = null; S.pick = null; S.err = ''; S.calFrom = ci2;
-      drawCal(); drawBook(); loadCal(); var cs = document.getElementById('cal'); if (cs) cs.scrollIntoView({ behavior: 'smooth', block: 'start' }); return;
+      drawCal(); drawBook(); var cs = document.getElementById('cal'); if (cs) cs.scrollIntoView({ behavior: 'smooth', block: 'start' }); return;
     }
-    if (a === 'calMove') { S.calFrom = calStart(add(calStart(S.calFrom), CAL_DAYS * (+t.getAttribute('data-n')))); drawCal(); loadCal(); return; }
+    if (a === 'calMove') { S.calFrom = calStart(add(calStart(S.calFrom), CAL_DAYS * (+t.getAttribute('data-n')))); drawCal(); return; }
+    if (a === 'calLoad') { loadCal(); return drawCal(); }
     if (a === 'calUnit') { S.calUnit = t.getAttribute('data-u'); return drawCal(); }
     if (a === 'day') {
       var dsel = t.getAttribute('data-d'); syncForm();
@@ -679,7 +687,7 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
     if (a === 'calCheck') {
       var ci3 = val('cpi'), co3 = val('cpo'); if (ci3 && co3 && co3 > ci3) { S.ci = ci3; S.co = co3; }
       if (document.querySelector('.side #calsec')) { S.linkModal = true; S.autoPick = true; } // the free units open over the page
-      S.err = ''; S.pick = null; S.picking = false; drawBook(); drawCal();
+      S.err = ''; S.pick = null; S.picking = false; S.calFrom = S.ci; drawBook(); drawCal();
       var bk = document.getElementById('book'); if (bk) bk.scrollIntoView({ behavior: 'smooth', block: 'start' });
       var qb = bk && bk.querySelector('[data-act="quote"]'); if (qb) qb.click(); return;
     }
@@ -689,6 +697,8 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
       S.busy = 'quote'; drawBook();
       return post({ action: 'quote', checkIn: S.ci, checkOut: S.co }).then(function (r) {
         S.busy = false; if (!r.ok) { S.err = r.error; S.quote = null; } else S.quote = r;
+        // The check has just read these days, so the calendar shows them without asking again.
+        if (r.ok && S.d.showCalendar) { S.calFrom = S.ci; loadCal(); }
         var fromLink = S.autoPick;
         // From a link whose stay is shorter than the minimum: lengthen it to the minimum and check again.
         if (fromLink && S.quote && S.quote.tooShort && S.quote.minStay) {
@@ -735,7 +745,7 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
       return post({ action: 'book', checkIn: S.quote.checkIn, checkOut: S.quote.checkOut, units: chosenUnits, guest: g, adults: S.adults, children: S.children, notes: val('gn'), website: val('website'), payBy: (document.querySelector('input[name="payby"]:checked') || {}).value }).then(function (r) {
         S.busy = false;
         if (!r.ok) { S.err = r.error || 'The booking didn\'t go through.'; t.disabled = false; t.textContent = 'Confirm booking'; var er = document.querySelector('#book .err'); if (er) er.remove(); t.insertAdjacentHTML('afterend', '<div class="err" role="alert">' + esc(S.err) + '</div>'); return; }
-        S.booked = r; S.quote = null; S.pick = null; S.sel = []; S.calData = {}; drawBook(); loadCal(); document.getElementById('book').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        S.booked = r; S.quote = null; S.pick = null; S.sel = []; S.calData = {}; drawBook(); drawCal(); document.getElementById('book').scrollIntoView({ behavior: 'smooth', block: 'start' });
       }).catch(function () { S.busy = false; t.disabled = false; t.textContent = 'Confirm booking'; });
     }
     if (a === 'again') { S.booked = null; return drawBook(); }
@@ -754,7 +764,7 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
       S.d = d; S.km = d.nearbyKm; S.offers = (d.offers || []).filter(function (o) { return o.booking || o.landing; });
       if (!S.ci) { S.ci = d.firstBookable; S.co = add(d.firstBookable, Math.max(1, d.minStay || 1)); }
       if (!S.calFrom) S.calFrom = d.firstBookable;
-      render(); window.scrollTo(0, y); loadCal();
+      render(); window.scrollTo(0, y);
       if (e.data.scrollTo) { var el = document.getElementById(e.data.scrollTo); if (el && !el.offsetParent) el = document.getElementById(e.data.scrollTo + '-ph') || el; if (el) el.scrollIntoView({ block: 'start' }); }
     });
     if (window.parent !== window) window.parent.postMessage({ type: 'fs-preview-ready' }, location.origin);
