@@ -2,6 +2,7 @@
 //   POST { action: "summary", token, days }          admin: the page's numbers
 //   POST { action: "saveLimits", token, perMinute, perHour }   admin: warning levels
 //   POST { action: "record", records }  + x-pa-sync-secret     calls a Netlify function made
+//                                        or x-hooks-secret     calls the hook builder made (HOOKS_SSO_SECRET)
 //   POST { action: "rollUp" }           + x-pa-sync-secret     hourly (sn-log-rollup.mjs)
 import { isAdminToken } from "./lib/admin-session.js";
 import { summary, saveLimits, recordCalls, rollUp } from "./lib/sn-log.js";
@@ -15,8 +16,10 @@ export default async (request) => {
   const a = String(body.action || "");
   try {
     if (a === "record" || a === "rollUp") {
-      const secret = env("PA_SYNC_SECRET");
-      if (!secret || request.headers.get("x-pa-sync-secret") !== secret) return json({ ok: false, error: "forbidden" }, 403);
+      const secret = env("PA_SYNC_SECRET"), hooks = env("HOOKS_SSO_SECRET");
+      const hub = !!secret && request.headers.get("x-pa-sync-secret") === secret;
+      const builder = a === "record" && !!hooks && request.headers.get("x-hooks-secret") === hooks;
+      if (!hub && !builder) return json({ ok: false, error: "forbidden" }, 403);
       if (a === "record") return json({ ok: true, logged: await recordCalls(body.records) });
       return json({ ok: true, result: await rollUp() });
     }

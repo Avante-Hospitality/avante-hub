@@ -28,7 +28,8 @@ const GUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
 // "api /api/1/search", "old site /ResortInfo.aspx", "photos /data/resort/:n/…": no query, no IDs.
 export function callPath(url) {
   let u; try { u = new URL(String(url)); } catch (_) { return "?"; }
-  const host = u.hostname.startsWith("api.") ? "api" : u.hostname.startsWith("old.") ? (/\.(jpe?g|png|gif|webp)$/i.test(u.pathname) ? "photos" : "old site") : u.hostname.split(".")[0];
+  const photo = /\.(jpe?g|png|gif|webp)$/i.test(u.pathname) || /\/image\/\d+\//.test(u.pathname);
+  const host = u.hostname.startsWith("api.") ? "api" : u.hostname.startsWith("old.") ? (photo ? "photos" : "old site") : u.hostname.split(".")[0];
   const path = u.pathname.replace(GUID, ":id").replace(/\/\d{3,}(?=\/|$)/g, "/:n").replace(/\/[^/]+\.(jpe?g|png|gif|webp)$/i, "/…");
   return host + " " + path;
 }
