@@ -241,10 +241,11 @@
     h += '<div class="obw-btns">' + btn('saveLinks', 'Save the links', 'primary') + btn('syncNow', 'Check channels now') + '</div>';
     h += ev.length ? '<div class="obw-box obw-warnbox"><b>' + ev.length + ' channel booking' + (ev.length === 1 ? '' : 's') + ' not on Avante yet</b>' + ev.map(function(e){
       return '<div class="obw-row"><span>' + esc((names[e.channel] || e.channel || '') + ' · ' + e.start + ' → ' + e.end + ' · ' + (e.unit || '')) + (e.error ? '<br><small class="acw-err">' + esc(e.error) + '</small>' : '') + '</span>' +
-        btn('addEvent', 'Add to Avante', 'primary', ' data-unit="' + esc(e.unit) + '" data-channel="' + esc(e.channel) + '" data-uid="' + esc(e.uid) + '"') + '</div>';
+        '<span>' + btn('addEvent', 'Add to Avante', 'primary', evAttrs(e)) + ' ' + btn('dismissEvent', 'Not a booking', '', evAttrs(e)) + '</span></div>';
     }).join('') + '</div>' : '<p class="hint">No channel bookings waiting.</p>';
     return h;
   }
+  function evAttrs(e){ return ' data-unit="' + esc(e.unit) + '" data-channel="' + esc(e.channel) + '" data-uid="' + esc(e.uid) + '"'; }
   function loadChannels(){
     Promise.all([paPost('channels'), paPost('channelEvents')]).then(function(r){
       S.ch = r[0].ok ? { view: r[0], events: (r[1].events || []).filter(function(e){ return e.status !== 'booked'; }) } : { error: r[0].error || 'Could not read the channel links.' };
@@ -309,7 +310,10 @@
       S.ch = null; return run(paPost('saveChannelLinks', { channels: channels }), 'Links saved. The hub reads them every 15 minutes.');
     }
     if(a === 'syncNow'){ S.ch = null; return run(paPost('syncNow'), 'Channels read just now.'); }
-    if(a === 'addEvent'){ S.ch = null; return run(paPost('addChannelEvent', { unit: t.getAttribute('data-unit'), channel: t.getAttribute('data-channel'), uid: t.getAttribute('data-uid') }), 'Added to Avante.'); }
+    if(a === 'addEvent' || a === 'dismissEvent'){
+      var ev = { unit: t.getAttribute('data-unit'), channel: t.getAttribute('data-channel'), uid: t.getAttribute('data-uid') };
+      S.ch = null; return a === 'addEvent' ? run(paPost('addChannelEvent', ev), 'Added to Avante.') : run(paPost('dismissChannelEvent', ev), 'Removed: it was not a booking.');
+    }
   });
   railEl.addEventListener('click', function(e){ var t = e.target.closest('[data-go]'); if(!t) return; S.step = t.getAttribute('data-go'); S.audit = false; S.msg = ''; S.err = ''; render(); mainEl.scrollTop = 0; });
   document.getElementById('obwOutstanding').addEventListener('click', function(){ if(S.id){ S.audit = true; S.msg = ''; render(); } else openAll(); });

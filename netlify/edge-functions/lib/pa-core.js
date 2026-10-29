@@ -1221,7 +1221,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
 
   async function channelEvents(prop) {
     const events = (await getJSON("chan:" + prop.siteId)) || {};
-    return { events: Object.values(events).filter((e) => e.status !== "removed" && e.end > today()).sort((a, b) => a.start.localeCompare(b.start)) };
+    return { events: Object.values(events).filter((e) => e.status !== "removed" && e.status !== "dismissed" && e.end > today()).sort((a, b) => a.start.localeCompare(b.start)) };
   }
 
   async function addChannelEvent(prop, unit, channel, uid) {
@@ -1236,6 +1236,20 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     await setJSON("chan:" + prop.siteId, events);
     await invalidate(prop, [ev]);
     if (ev.status !== "booked") throw new PAError(ev.error || "Could not add it to Avante.", 409);
+    return { event: ev };
+  }
+
+  // "Not a booking" (Jean, 2026-10-29): dates the owner closed on a channel
+  // (e.g. blocked before all channels were linked) aren't a guest. The event
+  // stays dismissed while the channel shows the same dates; new dates come back.
+  async function dismissChannelEvent(prop, unit, channel, uid) {
+    const events = (await getJSON("chan:" + prop.siteId)) || {};
+    const ev = events[cleanStr(unit, 60) + "|" + cleanStr(channel, 10) + "|" + cleanStr(uid, 300)];
+    if (!ev) throw new PAError("That channel booking was not found.", 404);
+    if (ev.status === "booked") throw new PAError("It is already on Avante as " + ev.ref + ": cancel it in Bookings instead.", 409);
+    ev.status = "dismissed"; ev.dismissedAt = now().toISOString(); ev.error = null;
+    await setJSON("chan:" + prop.siteId, events);
+    await invalidate(prop, [ev]);
     return { event: ev };
   }
 
@@ -1933,5 +1947,5 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
   }
   function notDemo(b) { if (b && b.demo) throw new PAError("This is a demo booking: it isn't in Avante's booking system, so it can't be changed, paid or cancelled.", 409); }
 
-  return { propertyTo, syncContact, requestChannelHelp, prefetch, siteOfToken, newSession, decide, refreshStatuses, clientFor, connect, auth, disconnect, publicProperty, availability, search, book, cancel, cancelUnit, edit, find, saveSettings, channelsView, payInfo, markPaidEft, affStatus, resume, seedDemo, clearDemo, isDemoSite, saveContact, checkIn, guests, messagesView, saveMessages, prepareMessage, markMessage, emailNow, inHouse, emailInHouse, firstBookable, fsSettings, saveFrontStore, frontStoreView, uploadFrontPhoto, removeFrontPhoto, frontPhoto, propertyBySlug, publicFrontStore, publicGuestInfo, guestKeyOk, publicOffers, publicAvailability, publicQuote, publicBook, fsStat, propertyReviewLink, remindMessages, icalFeed, runSync, syncProperty, channelEvents, addChannelEvent, snapshot, ensureWindow, resolveUnitNotice, findResortsForSite, findResort };
+  return { propertyTo, syncContact, requestChannelHelp, prefetch, siteOfToken, newSession, decide, refreshStatuses, clientFor, connect, auth, disconnect, publicProperty, availability, search, book, cancel, cancelUnit, edit, find, saveSettings, channelsView, payInfo, markPaidEft, affStatus, resume, seedDemo, clearDemo, isDemoSite, saveContact, checkIn, guests, messagesView, saveMessages, prepareMessage, markMessage, emailNow, inHouse, emailInHouse, firstBookable, fsSettings, saveFrontStore, frontStoreView, uploadFrontPhoto, removeFrontPhoto, frontPhoto, propertyBySlug, publicFrontStore, publicGuestInfo, guestKeyOk, publicOffers, publicAvailability, publicQuote, publicBook, fsStat, propertyReviewLink, remindMessages, icalFeed, runSync, syncProperty, channelEvents, addChannelEvent, dismissChannelEvent, snapshot, ensureWindow, resolveUnitNotice, findResortsForSite, findResort };
 }

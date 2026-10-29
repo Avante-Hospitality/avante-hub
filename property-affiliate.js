@@ -438,7 +438,8 @@
     var ev = (S.events || []).filter(function (e) { return e.status !== 'booked'; });
     h += '<section class="pa-card" aria-label="Channel bookings"><p class="pa-h2">Channel bookings not yet with Avante</p>' + (ev.length ? ev.map(function (e) {
       return '<div class="pa-result"><div class="grow"><b>' + esc(CH[e.channel]) + ' · ' + esc(e.unit) + '</b><div class="pa-hint">' + nice(e.start) + ' – ' + nice(e.end) + ' · ' + nw(nightsBetween(e.start, e.end)) + (e.summary ? ' · ' + esc(e.summary) : '') + '</div>' + (e.error ? '<div class="pa-err" style="margin-top:6px">' + esc(e.error) + '</div>' : '') + '</div>' +
-        (e.status === 'clash' ? '<span class="pa-pill" style="background:#ffe2bf;color:#6b3a00">Clash · already sold</span>' : '<button type="button" class="pa-btn small" data-act="addEvent" data-u="' + esc(e.unit) + '" data-c="' + esc(e.channel) + '" data-uid="' + esc(e.uid) + '">Add to Avante</button>') + '</div>';
+        (e.status === 'clash' ? '<span class="pa-pill" style="background:#ffe2bf;color:#6b3a00">Clash · already sold</span>' : '<button type="button" class="pa-btn small" data-act="addEvent" data-u="' + esc(e.unit) + '" data-c="' + esc(e.channel) + '" data-uid="' + esc(e.uid) + '">Add to Avante</button>') +
+        '<button type="button" class="pa-btn small ghost" data-act="dismissEvent" data-u="' + esc(e.unit) + '" data-c="' + esc(e.channel) + '" data-uid="' + esc(e.uid) + '">Not a booking</button></div>';
     }).join('') : '<p class="pa-hint">None. New bookings from Airbnb, Booking.com and LekkeSlaap appear here within 15 minutes.</p>') + '</section>';
     return h;
   }
@@ -2036,6 +2037,10 @@
     if (a === 'syncNow') {
       t.textContent = 'Checking…';
       return api('syncNow').then(function (d) { return Promise.all([api('channels'), api('channelEvents')]).then(function (r) { S.channels = r[0]; S.events = r[1].events; S.msg = 'Checked: ' + d.result.read + ' links read, ' + d.result.added + ' added, ' + d.result.cancelled + ' cancelled' + (d.result.clashes ? ', ' + d.result.clashes + ' clashes' : '') + '.'; staleAll(); render(); }); }).catch(fail);
+    }
+    if (a === 'dismissEvent') {
+      t.textContent = 'Removing…';
+      return api('dismissChannelEvent', { unit: t.dataset.u, channel: t.dataset.c, uid: t.dataset.uid }).then(function () { return api('channelEvents').then(function (r) { S.events = r.events; staleAll(); S.msg = 'Removed: it was not a booking.'; render(); }); }).catch(fail);
     }
     if (a === 'addEvent') {
       t.textContent = 'Adding…';

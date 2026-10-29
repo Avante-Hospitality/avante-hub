@@ -602,7 +602,7 @@ async function onboardingContext(record, shared = {}) {
   if (pa) {
     const events = (await paStore.get("chan:" + pa.siteId, { type: "json" }).catch(() => null)) || {};
     const today = new Date().toISOString().slice(0, 10);
-    const pending = Object.values(events).filter((ev) => ev && ev.status !== "booked" && ev.status !== "removed" && String(ev.end || "") > today);
+    const pending = Object.values(events).filter((ev) => ev && ev.status !== "booked" && ev.status !== "removed" && ev.status !== "dismissed" && String(ev.end || "") > today);
     const links = {};
     for (const u of Object.values(pa.channels || {})) for (const [key, c] of Object.entries(u || {})) {
       const label = PA_CHANNELS[key];

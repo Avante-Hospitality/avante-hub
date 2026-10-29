@@ -73,7 +73,7 @@ export default async (request) => {
     // property. An admin login, and only the channel actions.
     if (body.adminSite) {
       if (!(await isAdminToken(body.adminToken))) return json({ ok: false, error: "Not authenticated." }, 401);
-      const ADMIN_ACTIONS = ["channels", "saveChannelLinks", "channelEvents", "addChannelEvent", "syncNow"];
+      const ADMIN_ACTIONS = ["channels", "saveChannelLinks", "channelEvents", "addChannelEvent", "dismissChannelEvent", "syncNow"];
       if (ADMIN_ACTIONS.indexOf(a) < 0) return json({ ok: false, error: "Admin can't do that here." }, 403);
       const siteId = String(body.adminSite).trim().slice(0, 64);
       const prop = await getStore({ name: "property-affiliate", consistency: "strong" }).get("site:" + siteId, { type: "json" }).catch(() => null);
@@ -84,6 +84,7 @@ export default async (request) => {
         case "saveChannelLinks": return json(Object.assign({ ok: true }, await core.saveSettings(prop, { channels: body.channels || {} })));
         case "channelEvents": return json(Object.assign({ ok: true }, await core.channelEvents(prop)));
         case "addChannelEvent": return json(Object.assign({ ok: true }, await core.addChannelEvent(prop, body.unit, body.channel, body.uid)));
+        case "dismissChannelEvent": return json(Object.assign({ ok: true }, await core.dismissChannelEvent(prop, body.unit, body.channel, body.uid)));
         case "syncNow": return json({ ok: true, result: await core.syncProperty(prop) });
       }
     }
@@ -95,7 +96,7 @@ export default async (request) => {
     const authMs = Date.now() - t0;
     // A Channel Property Affiliate never gets what its channel manager
     // (NightsBridge etc.) already does (Jean, 2026-10-13; see pa-core.js syncChannelFlag).
-    const CHANNEL_BLOCKED = ["book", "markPaid", "channels", "channelHelp", "channelEvents", "addChannelEvent", "unitNotice", "syncNow",
+    const CHANNEL_BLOCKED = ["book", "markPaid", "channels", "channelHelp", "channelEvents", "addChannelEvent", "dismissChannelEvent", "unitNotice", "syncNow",
       "guests", "messages", "saveMessages", "prepareMessage", "markMessage", "emailNow", "inHouse", "emailInHouse", "checkIn", "saveContact"];
     if (prop.channel && CHANNEL_BLOCKED.indexOf(a) > -1) return json({ ok: false, error: "Your channel manager (e.g. NightsBridge) already does this, so it isn't part of the hub for channel properties." }, 403);
     // No front store (its Promotions embed link instead), and Activities only when
@@ -160,6 +161,7 @@ export default async (request) => {
       case "saveSettings": return json(Object.assign({ ok: true }, await core.saveSettings(prop, body)));
       case "channelEvents": return json(Object.assign({ ok: true }, await core.channelEvents(prop)));
       case "addChannelEvent": return json(Object.assign({ ok: true }, await core.addChannelEvent(prop, body.unit, body.channel, body.uid)));
+      case "dismissChannelEvent": return json(Object.assign({ ok: true }, await core.dismissChannelEvent(prop, body.unit, body.channel, body.uid)));
       case "unitNotice": return json(Object.assign({ ok: true }, await core.resolveUnitNotice(prop, body.name, body.from)));
       case "saveContact": return json(Object.assign({ ok: true }, await core.saveContact(prop, body.ref, body.contact || {})));
       case "checkIn": return json(Object.assign({ ok: true }, await core.checkIn(prop, body.ref, !!body.on)));
