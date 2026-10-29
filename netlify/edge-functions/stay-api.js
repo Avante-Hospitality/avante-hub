@@ -26,6 +26,7 @@ export default async (request, context) => {
   const url = new URL(request.url);
   const store = getStore({ name: "property-affiliate", consistency: "strong" });
   const core = createCore({
+    snSource: "Front store",
     store, resortStore: getStore({ name: "resort-list", consistency: "strong" }), encKey: env("PA_ENC_KEY"), baseUrl: url.origin,
     sendEmail: async (to, subject, html, opts = {}) => {
       const key = env("RESEND_API_KEY");

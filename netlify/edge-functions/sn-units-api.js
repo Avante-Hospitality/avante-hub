@@ -6,11 +6,13 @@
 //                          new properties first, then any not read for 6 months, 35 a time.
 //                          Nothing due: no Stock Network page is opened and nothing is saved.
 //   POST {action:"refreshOne", resortId, token} (admin, Refresh units on the Master map): read one now
+import { snFetch } from "./lib/sn-log.js";
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
 import { parseUnits, unitLines } from "./lib/sn-units.js";
 import { isAdminToken } from "./lib/admin-session.js";
 
 const RESORT_INFO = "https://old.stocknetwork.co.za/ResortInfo.aspx?ResortID=";
+const unitsFetch = snFetch({ source: "Unit types" });
 const BATCH = 35, PARALLEL = 4, BUDGET_MS = 25000, EVERY_MS = 182 * 864e5; // about 6 months
 const CORS = { "access-control-allow-origin": "*", "access-control-allow-methods": "GET" }; // the hook builder reads it too
 const json = (o, status = 200, extra = {}) => new Response(JSON.stringify(o), { status, headers: { "content-type": "application/json", ...extra } });
@@ -33,7 +35,7 @@ function readSeed(origin) {
 async function readOne(id) {
   const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 9000);
   try {
-    const r = await fetch(RESORT_INFO + encodeURIComponent(id), { headers: { "user-agent": "AvanteHub/1.0" }, signal: ctl.signal });
+    const r = await unitsFetch(RESORT_INFO + encodeURIComponent(id), { headers: { "user-agent": "AvanteHub/1.0" }, signal: ctl.signal });
     if (!r.ok) return null;
     return unitLines(parseUnits(await r.text()));
   } catch (_) { return null; } finally { clearTimeout(t); }

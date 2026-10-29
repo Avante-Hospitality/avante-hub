@@ -39,6 +39,7 @@
     <div class="ht-card ht-new" aria-label="What's new">
       <h2>What's new</h2>
       <ul>
+        <li><time>29 Oct 2026</time> New tab <span class="tab">SN Calls</span>: how often the hub calls Stock Network, the busiest hour and minute, and warnings when it calls too hard or Stock Network says "too many". See <a href="#snCalls">SN Calls</a>.</li>
         <li><time>29 Oct 2026</time> <b>Set up a property</b> › <b>Channels (iCal)</b>: new <span class="btn g">Not a booking</span> next to <span class="btn">Add to Avante</span>, for dates the owner closed on a channel themselves. It takes them off the list for good. See <a href="#setUp">Set up a property</a>.</li>
         <li><time>27 Oct 2026</time> <span class="btn">Activate a channel property</span>, step 3: when the hub has no email or phone for the property yet, it takes them from Stock Network.</li>
         <li><time>27 Oct 2026</time> Stock files (rates files) now use <b>Stock Network's own names</b> for the property in Country, Area, District and Resort (e.g. <i>The Dunes Hotel &amp; Resort!</i>), taken from the hub's Stock Network list, because Stock Network matches the rows on them. The hub's location tree names still go to Stock Network through <b>Set up</b> &rsaquo; <b>Location</b>. Dates use Excel's own date format, as in files Stock Network has accepted. Unit names are still the listing's. If a location update went to Stock Network after the hub last read Stock Network's names (it does every night), downloading or emailing a rates file asks first: send it after that night's update so the names match.</li>
@@ -674,6 +675,21 @@
         <li>All good? Do it again with <b>Everything in the file</b>.</li>
       </ol>
       <div class="warn">Google lookups cost money; the screen shows the cost before you start. Any ✗ in the checks means: do NOT load that file into Stock Network.</div>
+    </section>
+
+    <section id="snCalls">
+      <h2>📈 SN Calls (how hard the hub calls Stock Network)</h2>
+      <p class="what"><b>What it does:</b> counts every call the hub makes to Stock Network, so you can see how often it calls and spot when it calls too hard. Times are SA time.</p>
+      <ol class="steps">
+        <li>Tap the <span class="tab">SN Calls</span> tab.</li>
+        <li>Pick <span class="btn">Last 24 hours</span>, <span class="btn g">Last 7 days</span> or <span class="btn g">Last 30 days</span>.</li>
+        <li>Read the boxes at the top: <b>Calls to Stock Network</b>, <b>Busiest hour</b>, <b>Busiest minute</b>, <b>"Too many" answers</b>, <b>Calls that failed</b> and <b>Average answer time</b>.</li>
+        <li>Look at <b>Calls per hour</b>. Each bar is one hour. Point at a bar to see its numbers. Amber bars are over your limit or had a "too many" answer.</li>
+        <li>Scroll down to see <b>Which part of the hub calls</b>, <b>Which property (Site Nr)</b> and <b>Which Stock Network address</b>.</li>
+        <li>To change when it warns you: under <b>Warn me</b>, type <span class="field">Calls a minute</span> and <span class="field">Calls an hour</span>, then tap <span class="btn">Save</span>.</li>
+      </ol>
+      <div class="tip">"Too many" means Stock Network itself told the hub to slow down. That is the surest sign. Your own limits are only warnings until Stock Network tells us its real limit (they start at 60 a minute and 1,000 an hour).</div>
+      <div class="tip">The busiest minutes usually come from the availability check (up to 60 properties at once) and the channel sync every 15 minutes.</div>
     </section>
 
     <section id="tutorial">

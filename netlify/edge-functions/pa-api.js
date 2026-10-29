@@ -37,7 +37,11 @@ export default async (request) => {
       return r.ok;
     } catch (_) { return false; }
   };
+  // How this request's Stock Network calls show in Admin > SN Calls.
+  const act = String(body.action || "");
+  const snSource = act === "runSync" ? "Channel sync (every 15 min)" : body.adminSite ? "Admin · " + act : "Property affiliate · " + act;
   const core = createCore({
+    snSource,
     store: getStore({ name: "property-affiliate", consistency: "strong" }),
     resortStore: getStore({ name: "resort-list", consistency: "strong" }),
     encKey: env("PA_ENC_KEY"),

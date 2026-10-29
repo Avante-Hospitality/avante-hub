@@ -69,7 +69,7 @@ export function waNumber(phone) { let d = String(phone || "").replace(/\D/g, "")
 // affiliates: { getAuth(aff) -> {passwordHash}|null, getProfile(aff) -> {name,email,phone}|null }
 // sendEmail(to, subject, html, { fromName, replyTo }?) -> Promise<boolean>
 // reviews: { baseUrl, secret, tenant } for the Avante Reviews app (review links in after-stay messages)
-export function createCore({ store, resortStore, encKey, now = () => new Date(), clientFactory = (c) => new SNClient(c), fetchImpl = (...a) => fetch(...a), baseUrl = "", affiliates = null, sendEmail = async () => false, reviews = null, snFeed = null, listingStore = null, adminEmail = async () => "" }) {
+export function createCore({ store, resortStore, encKey, now = () => new Date(), clientFactory = (c, logInfo) => new SNClient(c, null, logInfo), snSource = "Property affiliate", fetchImpl = (...a) => fetch(...a), baseUrl = "", affiliates = null, sendEmail = async () => false, reviews = null, snFeed = null, listingStore = null, adminEmail = async () => "" }) {
   const today = () => now().toISOString().slice(0, 10);
   const getJSON = (k) => store.get(k, { type: "json" });
   // Set once every connected property has its "aff:<number>" link (see propertyOfAff).
@@ -385,7 +385,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
   // login triggers one fresh login inside SNClient.call.
   async function clientFor(prop) {
     const [creds, cached] = await Promise.all([decryptJSON(prop.credsEnc, encKey), getJSON("tok:" + prop.siteId).catch(() => null)]);
-    const c = clientFactory(creds);
+    const c = clientFactory(creds, { source: snSource, site: prop.site });
     try { if (cached && cached.enc && cached.until > now().getTime() + 60000) c.tok = await decryptJSON(cached.enc, encKey); } catch (_) {}
     c.onLogin = async (tok) => {
       const until = Math.min(tok.expires || Infinity, now().getTime() + TOKEN_REUSE_MS);

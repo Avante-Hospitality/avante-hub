@@ -12,6 +12,9 @@
 import { getStore } from "https://esm.sh/@netlify/blobs@8?bundle";
 import { normName } from "./photo-library.js";
 import { haversineKm } from "./geo-distance.js";
+import { snFetch } from "./sn-log.js";
+
+const feedFetch = snFetch({ source: "Live property list" });
 
 const BASE = "https://api.stocknetwork.co.za";
 const CACHE_MS = 6 * 3600e3;
@@ -86,7 +89,7 @@ const feedName = (row) => String(row.name || row.resortName || row.ResortName ||
 const feedPlace = (row) => String(row.district || row.city || row.suburb || "").trim();
 
 // The property's full row from the feed, or null.
-export async function feedRowByResort(resortId, fetchImpl = fetch) {
+export async function feedRowByResort(resortId, fetchImpl = feedFetch) {
   const id = String(resortId || "").trim().toLowerCase(); if (!id) return null;
   return (await resortIndex(fetchImpl)).byResort[id] || null;
 }
@@ -95,7 +98,7 @@ export async function feedRowByResort(resortId, fetchImpl = fetch) {
 // (what a property's own login returns). Lets a property created on Stock
 // Network after the hub's resort list was loaded still connect (Jean, 2026-10-16).
 // -> [{ resortId, name, district }]
-export async function feedBySite(siteNr, siteId, fetchImpl = fetch) {
+export async function feedBySite(siteNr, siteId, fetchImpl = feedFetch) {
   const nr = String(siteNr || "").trim(), id = String(siteId || "").trim().toLowerCase();
   if (!nr && !id) return [];
   const out = [];
@@ -114,7 +117,7 @@ export async function feedBySite(siteNr, siteId, fetchImpl = fetch) {
 // Reads Stock Network's list fresh (once per call, for all of them).
 // wanted: [{ siteNr, bbid, name, latitude, longitude }]
 // -> same order: { resortId, name, siteNr, siteId, latitude, longitude, by } or null
-export async function findSetUps(wanted, fetchImpl = fetch) {
+export async function findSetUps(wanted, fetchImpl = feedFetch) {
   const idx = await resortIndex(fetchImpl, true), rows = Object.entries(idx.byResort);
   // .feed: how the fresh read went ({ at, count, saveError }).
   return Object.assign(wanted.map(({ siteNr, bbid, name, latitude, longitude }) => {
@@ -135,7 +138,7 @@ export async function findSetUps(wanted, fetchImpl = fetch) {
 }
 
 // Properties whose name or place contains q (lower case). -> [{ resortId, name, district }]
-export async function feedSearch(q, max = 12, fetchImpl = fetch) {
+export async function feedSearch(q, max = 12, fetchImpl = feedFetch) {
   const out = [];
   for (const [rid, row] of Object.entries((await resortIndex(fetchImpl)).byResort)) {
     if ((feedName(row) + " " + feedPlace(row)).toLowerCase().indexOf(q) < 0) continue;

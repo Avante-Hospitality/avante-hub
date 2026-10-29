@@ -11,6 +11,7 @@
 //   the API calls       sn-availability.mjs op "fields" (v2search, v1paged,
 //                       resortinfo), called from the admin action.
 import { RESORT_INFO, decode } from "./sn-resort-info.js";
+import { snFetch } from "./sn-log.js";
 
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const short = (v, n) => { const s = String(v).replace(/\s+/g, " ").trim(); return s.length > n ? s.slice(0, n) + "…" : s; };
@@ -35,7 +36,7 @@ export function feedSurvey(idx) {
 
 // Every element on the public page with an id and some text (labels like
 // lblAboutUs, sections like dvAmentities), as { id, sample }.
-export async function pageSurvey(resortId, fetchImpl = fetch) {
+export async function pageSurvey(resortId, fetchImpl = snFetch({ source: "Field check" })) {
   if (!GUID.test(String(resortId || ""))) return { ok: false, error: "No valid Resort ID." };
   try {
     const res = await fetchImpl(RESORT_INFO + "?ResortID=" + encodeURIComponent(resortId), { headers: { "user-agent": "AvanteHub/1.0" }, signal: AbortSignal.timeout(15000) });

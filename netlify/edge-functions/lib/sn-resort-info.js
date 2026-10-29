@@ -5,6 +5,8 @@
 // NightsBridge feeds Stock Network, so this is how the hub gets its details
 // without asking the property to type them again.
 //   readResortInfo(resortId) -> { ok, name, about, attractions, facilities[], units[{name, roomType, maxGuests, description}], photos[] }
+import { snFetch } from "./sn-log.js";
+
 export const RESORT_INFO = "https://old.stocknetwork.co.za/ResortInfo.aspx";
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -61,7 +63,7 @@ export function parseResortInfo(html, page) {
   return { name, about, attractions, facilities, units: units.filter((u) => u.name), photos };
 }
 
-export async function readResortInfo(resortId, fetchImpl = fetch) {
+export async function readResortInfo(resortId, fetchImpl = snFetch({ source: "Property page" })) {
   if (!GUID.test(String(resortId || ""))) return { ok: false, error: "No valid Resort ID." };
   const page = RESORT_INFO + "?ResortID=" + encodeURIComponent(resortId);
   try {
@@ -79,7 +81,7 @@ export async function readResortInfo(resortId, fetchImpl = fetch) {
 
 // Copies up to `max` of the property's Stock Network photos into the hub's
 // listing files, so they show on the listing and its photo link.
-export async function copySnPhotos(urls, listingId, filesStore, max = 12, fetchImpl = fetch) {
+export async function copySnPhotos(urls, listingId, filesStore, max = 12, fetchImpl = snFetch({ source: "Property photos" })) {
   const out = [];
   await Promise.all((urls || []).slice(0, max).map(async (u, i) => {
     try {

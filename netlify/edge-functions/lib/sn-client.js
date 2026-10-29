@@ -16,6 +16,8 @@
 //  - PUT  /api/1/request/canceldetail/{detailId}  cancel one unit
 // Plain ESM + fetch only, so it runs in edge functions (Deno) and in tests.
 
+import { snFetch } from "./sn-log.js";
+
 const BASE = "https://api.stocknetwork.co.za";
 const ZERO = "00000000-0000-0000-0000-000000000000";
 
@@ -48,9 +50,10 @@ function snErrorText(data) {
 }
 
 export class SNClient {
-  constructor(creds, fetchImpl) {
+  // logInfo { source, site }: how the call shows in Admin > SN Calls (lib/sn-log.js).
+  constructor(creds, fetchImpl, logInfo) {
     this.creds = creds;
-    this.fetch = fetchImpl || ((...a) => fetch(...a));
+    this.fetch = fetchImpl || snFetch(logInfo || { source: "Hub" });
     this.tok = null;
     this.onLogin = null; // optional: (tok) => save it so the next request can reuse the login
     this.logins = 0;

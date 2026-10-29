@@ -12,7 +12,11 @@
 // firstOpen: the first date with any free unit in the period asked (Jean,
 // 2026-10-17: a property is "Ready to go live" once Avante has stock for it).
 // Read-only: it only reads availability, never books or changes anything.
+import { callLog } from "./lib/sn-call-log.mjs";
+
 const BASE = "https://api.stocknetwork.co.za";
+// Every Stock Network call here shows in Admin > SN Calls (sent once per request).
+const log = callLog("Availability check");
 let TOKEN = null; // { accessToken, siteId, expires }
 
 const json = (b, status) => new Response(JSON.stringify(b), { status: status || 200, headers: { "content-type": "application/json", "cache-control": "no-store" } });
@@ -22,7 +26,7 @@ const ISO = /^\d{4}-\d{2}-\d{2}$/, GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-
 async function login() {
   const body = JSON.stringify({ clientID: process.env.STOCKNETWORK_CLIENT_ID, clientSecret: process.env.STOCKNETWORK_CLIENT_SECRET, username: process.env.STOCKNETWORK_USERNAME });
   for (const path of ["/api/1/token", "/api/1.0/token"]) {
-    const r = await fetch(BASE + path, { method: "POST", headers: { "content-type": "application/json", accept: "application/json" }, body, signal: AbortSignal.timeout(15000) });
+    const r = await log.fetch(BASE + path, { method: "POST", headers: { "content-type": "application/json", accept: "application/json" }, body, signal: AbortSignal.timeout(15000) });
     if (!r.ok) continue;
     const d = await r.json();
     const exp = Number(d.expiresDT) || Date.parse(d.expiresDT) || Date.now() + 20 * 60e3;
@@ -38,7 +42,7 @@ async function search(id, checkIn, checkOut, retried, debug) {
   const body = { checkInDate: checkIn, checkOutDate: checkOut, resortID: id,
     geocoordinates: { latitude: 0, longitude: 0, withInKmRadius: 0 }, pricing: { minPrice: 0, maxPrice: 100000000 },
     region: { name: "" }, ignoreLocationData: true, groupStockToMatchDates: false, extendDatesIfNoMatchFound: false };
-  const r = await fetch(BASE + "/api/1/search?Offset=1&Limit=50&CallerDetails.SiteID=" + encodeURIComponent(t.siteId), {
+  const r = await log.fetch(BASE + "/api/1/search?Offset=1&Limit=50&CallerDetails.SiteID=" + encodeURIComponent(t.siteId), {
     method: "POST", headers: { authorization: "Bearer " + t.accessToken, "content-type": "application/json", accept: "application/json" },
     body: JSON.stringify(body), signal: AbortSignal.timeout(20000) });
   if ((r.status === 401 || r.status === 403) && !retried) { TOKEN = null; return search(id, checkIn, checkOut, true, debug); }
@@ -83,7 +87,7 @@ async function probe(id, checkIn, checkOut, lat, lng) {
   const out = {};
   for (const [k, body] of Object.entries(variants)) {
     try {
-      const r = await fetch(BASE + "/api/1/search?Offset=1&Limit=50&CallerDetails.SiteID=" + encodeURIComponent(t.siteId), {
+      const r = await log.fetch(BASE + "/api/1/search?Offset=1&Limit=50&CallerDetails.SiteID=" + encodeURIComponent(t.siteId), {
         method: "POST", headers: { authorization: "Bearer " + t.accessToken, "content-type": "application/json", accept: "application/json" },
         body: JSON.stringify(body), signal: AbortSignal.timeout(20000) });
       const d = await r.json().catch(() => ({}));
@@ -108,7 +112,7 @@ function fieldMap(v, path, out) {
 }
 async function snCall(path, body, ms) {
   const t = await token();
-  const r = await fetch(BASE + path.replace("{site}", encodeURIComponent(t.siteId)), {
+  const r = await log.fetch(BASE + path.replace("{site}", encodeURIComponent(t.siteId)), {
     method: body ? "POST" : "GET", headers: { authorization: "Bearer " + t.accessToken, "content-type": "application/json", accept: "application/json" },
     body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(ms || 25000) });
   const text = await r.text();
@@ -133,6 +137,10 @@ async function fieldCheck(call, id, area, checkIn, checkOut, extra) {
 }
 
 export default async (req) => {
+  try { return await handle(req); } finally { await log.flush(); }
+};
+
+async function handle(req) {
   if (req.method !== "POST") return json({ ok: false, error: "Use POST." }, 405);
   const secret = process.env.PA_SYNC_SECRET || "";
   if (!secret || req.headers.get("x-pa-sync-secret") !== secret) return json({ ok: false, error: "forbidden" }, 403);
@@ -150,6 +158,6 @@ export default async (req) => {
   try { await Promise.all(Array.from({ length: 6 }, worker)); }
   catch (e) { return json({ ok: false, configured, error: e.message || "Stock Network didn't answer." }, 502); }
   return json({ ok: true, configured, results });
-};
+}
 
 export const config = { path: "/api/sn-availability" };

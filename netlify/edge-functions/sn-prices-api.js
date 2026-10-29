@@ -24,7 +24,7 @@ let client = null;
 function agentClient() {
   const creds = { username: env("STOCKNETWORK_USERNAME"), clientID: env("STOCKNETWORK_CLIENT_ID"), clientSecret: env("STOCKNETWORK_CLIENT_SECRET") };
   if (!creds.username || !creds.clientID || !creds.clientSecret) throw new Error("Avante's Stock Network login isn't set on the hub.");
-  if (!client) client = new SNClient(creds);
+  if (!client) client = new SNClient(creds, null, { source: "Prices" });
   return client;
 }
 

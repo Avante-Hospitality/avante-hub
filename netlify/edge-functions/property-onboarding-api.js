@@ -2028,7 +2028,7 @@ export default async (request, context) => {
       if (action === "channelLogin") {
         if (!creds.username || !creds.clientID || !creds.clientSecret) return json({ error: "Paste all three: username, client ID and client secret." }, 400);
         if (rid && !GUID_RE.test(rid)) return json({ error: "A ResortID looks like ba923af0-e99c-4dbf-ae4a-ebe766afa777 (36 letters, numbers and dashes)." }, 400);
-        const client = new SNClient(creds);
+        const client = new SNClient(creds, null, { source: "Property set-up · channel login" });
         let tok;
         try { tok = await client.login(); } catch (e) { return json({ error: String((e && e.message) || "The login wasn't accepted.") }, 400); }
         const entry = await regEntryOf(tok.site);

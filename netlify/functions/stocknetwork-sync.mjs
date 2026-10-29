@@ -20,7 +20,14 @@
 // ?secret=<STOCKNETWORK_DIAG_SECRET> to run it on demand instead of
 // waiting for the schedule.
 
+import { callLog } from "./lib/sn-call-log.mjs";
+
 export default async (request) => {
+  const log = callLog("Nightly property list");
+  try { return await run(request, log); } finally { await log.flush(); }
+};
+
+async function run(request, log) {
   const isScheduledInvocation = request.headers.get("x-netlify-event") === "schedule";
   if (!isScheduledInvocation) {
     const url = new URL(request.url);
@@ -43,7 +50,7 @@ export default async (request) => {
   // Step 1: authenticate.
   let tokenResp;
   try {
-    tokenResp = await fetch(`${base}/api/1.0/token`, {
+    tokenResp = await log.fetch(`${base}/api/1.0/token`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({ username, clientID, clientSecret }),
@@ -64,7 +71,7 @@ export default async (request) => {
   // Step 2: fetch the full resort master list.
   let resortResp;
   try {
-    resortResp = await fetch(`${base}/api/1.0/resort`, {
+    resortResp = await log.fetch(`${base}/api/1.0/resort`, {
       headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
     });
   } catch (err) {

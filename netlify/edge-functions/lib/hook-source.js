@@ -20,6 +20,7 @@
 //   unlike the rest of the page — the regex below matches either quote
 //   style so it doesn't silently return zero photos if that ever changes.
 
+import { snFetch } from "./sn-log.js";
 const RESORT_INFO_BASE = "https://old.stocknetwork.co.za/ResortInfo.aspx";
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_MODEL = "claude-haiku-4-5-20251001";
@@ -85,7 +86,7 @@ export async function fetchResortInfo(resortId, siteId) {
       "?ResortID=" +
       encodeURIComponent(resortId) +
       (siteId ? "&SiteID=" + encodeURIComponent(siteId) : "");
-    const res = await fetch(url);
+    const res = await snFetch({ source: "Property page (hooks)", site: siteId })(url);
     if (!res.ok) return null;
     const html = await res.text();
 

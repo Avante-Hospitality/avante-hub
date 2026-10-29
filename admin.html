@@ -343,6 +343,7 @@
     box-shadow:-6px 0 6px -6px rgba(0,0,0,0.15);
   }
   table.data-table tr:nth-child(even) td:last-child{ background:var(--mint); }
+  table.data-table th:last-child{ background:var(--navy); } /* the pinned column keeps its header colour */
   .table-scroll-hint{
     font-size:12px; color:var(--muted); margin:0 0 6px; display:none;
   }
@@ -861,6 +862,7 @@
       <button class="tab" data-panel="siteNrs">Site Nrs</button>
       <button class="tab" data-panel="mapActivities">Map &amp; Activities</button>
       <button class="tab" data-panel="snCleanup">SN Cleanup</button>
+      <button class="tab" data-panel="snCalls">SN Calls</button>
       <button class="tab" data-panel="tutorial">How Payouts Work</button>
     </nav>
   </header>
@@ -2535,6 +2537,38 @@
     </section>
 
     <!-- ===================== TUTORIAL ===================== -->
+    <section class="panel" id="panel-snCalls">
+      <div class="hero">
+        <h1>SN Calls</h1>
+        <p>How often the hub calls Stock Network, and when it might be calling it too hard. Every call is counted: availability checks, the channel sync every 15 minutes, bookings, the nightly property list, property pages and photos. Times are SA time.</p>
+        <p>The surest sign of calling too hard is Stock Network answering <b>"too many requests"</b>. Until Stock Network tells us its real limit, set your own warning levels at the bottom.</p>
+      </div>
+      <div class="card">
+        <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
+          <button class="primary" type="button" data-snc-days="1" style="margin-top:0;">Last 24 hours</button>
+          <button class="btn-outline" type="button" data-snc-days="7" style="margin-top:0;">Last 7 days</button>
+          <button class="btn-outline" type="button" data-snc-days="30" style="margin-top:0;">Last 30 days</button>
+          <button class="btn-outline" type="button" id="sncRefresh" style="margin-top:0; margin-left:auto;">Refresh</button>
+        </div>
+        <div class="status" id="sncStatus"></div>
+        <div class="stat-grid" id="sncTiles" style="margin-top:14px;"></div>
+        <div id="sncWarn" style="margin-top:12px;"></div>
+        <h2 class="section-heading">Calls per hour</h2>
+        <div id="sncChart"><p class="hint">Open this tab to read the log.</p></div>
+        <div id="sncTables"></div>
+      </div>
+      <div class="card">
+        <h2 class="section-heading" style="margin-top:0;">Warn me</h2>
+        <p class="hint">The page warns when the hub goes over these. They are your own levels, not Stock Network's.</p>
+        <div style="display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end;">
+          <div><label for="sncPerMinute">Calls a minute</label><input id="sncPerMinute" type="number" min="1" inputmode="numeric" style="width:120px;"></div>
+          <div><label for="sncPerHour">Calls an hour</label><input id="sncPerHour" type="number" min="1" inputmode="numeric" style="width:120px;"></div>
+          <button class="primary" type="button" id="sncSaveLimits" style="margin-top:0;">Save</button>
+        </div>
+        <div class="status" id="sncLimitsStatus"></div>
+      </div>
+    </section>
+
     <section class="panel" id="panel-tutorial">
       <div class="hero">
         <h1>How Payouts Work</h1>
@@ -11161,6 +11195,7 @@
   })();
 </script>
   <script src="admin-setup.js"></script>
+  <script src="admin-sn-calls.js"></script>
   <script>document.getElementById('outstandingAllBtn').addEventListener('click', function(){ window.openOutstandingAll(); });</script>
   <script src="how-to-links.js" data-guide="how-to-admin.html" defer></script>
   <script src="site-search.js" data-guides="how-to-admin.html" defer></script>
