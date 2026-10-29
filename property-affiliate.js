@@ -161,7 +161,7 @@
     // "How to" opens this screen's part of the property affiliate guide (how-to-property.html).
     var howTo = !connected ? 'how-to-property.html#connect' : S.view === 'onb' ? 'how-to.html#property' : isCh() ? 'how-to-property.html#channel' : 'how-to-property.html#' + ({ avail: 'avail', book: 'book', guests: 'guests', acts: 'acts', msgs: 'msgs', front: 'frontstore', chan: 'chan', rev: 'rev' }[S.view] || 'tabs');
     if (connected && isCh() && chTabs().indexOf(S.view) === -1 && S.view !== 'onb') S.view = 'book';
-    h += '<header class="pa-top"><span class="pa-kicker">' + (connected && isCh() ? 'Channel Property' : 'Property Affiliate') + '</span>' + (connected ? '<b class="pa-propname">' + esc(S.prop.resortName || 'Your property') + '</b><span class="pa-hint pa-top-meta">' + (S.prop.units.length ? S.prop.units.length + ' units · ' : '') + 'Site Nr ' + esc(S.prop.site) +
+    h += '<header class="pa-top"><span class="pa-kicker">' + (connected && isCh() ? 'Channel Property' : 'Property Affiliate') + '</span>' + (connected ? '<b class="pa-propname">' + esc(S.prop.resortName || 'Your property') + '</b><span class="pa-hint pa-top-meta">' + (S.prop.units.length ? S.prop.units.length + (S.prop.units.length === 1 ? ' unit · ' : ' units · ') : '') + 'Site Nr ' + esc(S.prop.site) +
       (S.prop.commissionPct ? ' · Bookings through the Avante marketing tool: ' + esc(S.prop.commissionPct) + '% + VAT, all fees included' : '') + '</span>' : '') +
       '<a class="pa-howto" href="' + howTo + '" target="_blank" rel="noopener" aria-label="How to use this screen (opens the guide in a new tab)">❓ How to</a></header>';
     var inMore = S.view === 'onb';

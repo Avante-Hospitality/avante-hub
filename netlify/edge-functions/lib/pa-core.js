@@ -1165,13 +1165,16 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
         const id = u.name + "|" + key + "|" + e.uid;
         seen.add(id);
         const cur = events[id];
-        if (cur && cur.start === e.start && cur.end === e.end && cur.status !== "error" && cur.status !== "needs-settings") continue;
+        const autoBook = !!(prop.settings && prop.settings.autoBook);
+        // Unchanged and nothing left to do. A booking still waiting ("detected") is
+        // picked up once automatic booking is switched on (Jean, 2026-10-29).
+        if (cur && cur.start === e.start && cur.end === e.end && cur.status !== "error" && cur.status !== "needs-settings" && !(autoBook && cur.status === "detected")) continue;
         if (cur && cur.status === "booked" && cur.ref) {
           const b = list.find((x) => x.ref === cur.ref);
           if (b && b.status !== "Cancelled") { try { await client.cancelReservation(b.reservationId); b.status = "Cancelled"; b.cancelledAt = now().toISOString(); summary.cancelled++; } catch (_) {} }
         }
         const ev = { unit: u.name, channel: key, uid: e.uid, start: e.start, end: e.end, summary: e.summary || "", firstSeen: (cur && cur.firstSeen) || now().toISOString(), status: "detected" };
-        if (prop.settings && prop.settings.autoBook) { await bookChannelEvent(prop, client, ev, list); if (ev.status === "booked") summary.added++; if (ev.status === "clash") summary.clashes++; }
+        if (autoBook) { await bookChannelEvent(prop, client, ev, list); if (ev.status === "booked") summary.added++; if (ev.status === "clash") summary.clashes++; }
         events[id] = ev;
       }
       for (const [id, ev] of Object.entries(events)) {
