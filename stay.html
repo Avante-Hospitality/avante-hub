@@ -383,7 +383,7 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
       (place ? '<div class="kick">📍 ' + esc(place) + '</div>' : '') + '<h1>' + esc(head) + '</h1>' +
       '<div class="sub">' + esc([d.headline ? d.name : '', d.welcome].filter(Boolean).join(' — ')) + '</div>' +
       ((d.priceFrom || d.rating) ? '<div class="badges">' + (d.priceFrom ? '<span class="badge price">' + esc(d.priceFrom) + '</span>' : '') +
-        (d.rating ? (safeLink(d.rating.link) ? '<a class="badge rate" href="' + esc(safeLink(d.rating.link)) + '" target="_blank" rel="noopener">' : '<span class="badge rate">') + '<span class="st">★</span> ' + esc(d.rating.value) + (d.rating.count ? ' <small style="font-weight:600">· ' + esc(d.rating.count) + ' reviews on Google</small>' : ' on Google') + (safeLink(d.rating.link) ? '</a>' : '</span>') : '') + '</div>' : '') +
+        (d.rating ? (safeLink(d.rating.link) ? '<a class="badge rate" href="' + esc(safeLink(d.rating.link)) + '" target="_blank" rel="noopener">' : '<span class="badge rate">') + '<span class="st">★</span> ' + (d.rating.value ? esc(d.rating.value) + (d.rating.count ? ' <small style="font-weight:600">· ' + esc(d.rating.count) + ' reviews on Google</small>' : ' on Google') : 'Guest reviews') + (safeLink(d.rating.link) ? '</a>' : '</span>') : '') + '</div>' : '') +
       '<div class="ctas">' + (waLink(d) ? '<a class="btn w" href="' + esc(waLink(d, 'Hi, I have a question about ' + d.name + '.')) + '" target="_blank" rel="noopener">💬 Ask on WhatsApp</a>' : '') + '</div></div></section>';
     h += '<div class="wrap">';
     // Photos: one big and four small; tap for all of them.

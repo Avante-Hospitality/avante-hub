@@ -124,10 +124,12 @@ export async function stayPayload(core, prop, opts) {
   }
   // Unit photos and amenities from the Avante listing (amenities.js frontUnits, shared with the builder's preview).
   Object.assign(page, globalThis.AvanteAmenities.frontUnits(page, listing));
+  // No link of its own: the rating link from the Avante Reviews app, on the listing.
+  if (!(page.rating && page.rating.link) && listing && listing.ratingLink) page.rating = globalThis.AvanteAmenities.frontRating(page.rating && page.rating.value, page.rating && page.rating.count, "", listing.ratingLink);
   return Object.assign({ ok: true }, page, {
     photos, description: page.description || info.description || "", attractions: info.attractions || "", moreInfo: info.moreInfo || "",
     place: { country: place.country || "", province: place.province || "", region: place.region || "", city: place.city || "", suburb: place.suburb || "" },
     latitude: isFinite(lat) && lat !== 0 ? lat : null, longitude: isFinite(lng) && lng !== 0 ? lng : null, nearby, mapActs, nearbyKm: outKm,
     actPhotos: undefined, actHidden: undefined, actPinned: undefined, actPlace: opts.all ? page.actPlace || null : undefined, area: opts.all ? area || null : undefined,
-  }, opts.all ? { avantePhotos: auto, snDescription: info.description || "", uploaded, listingUnits: (listing && listing.units) || {}, listingInUnit: (listing && listing.inUnit) || [], listingResort: (listing && listing.resort) || [] } : {});
+  }, opts.all ? { listingRatingLink: (listing && listing.ratingLink) || "", avantePhotos: auto, snDescription: info.description || "", uploaded, listingUnits: (listing && listing.units) || {}, listingInUnit: (listing && listing.inUnit) || [], listingResort: (listing && listing.resort) || [] } : {});
 }

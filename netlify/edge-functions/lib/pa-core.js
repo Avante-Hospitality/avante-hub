@@ -1804,7 +1804,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     if (!resort.length && (l.snFacilities || []).length) resort = [{ title: "Facilities", items: A.unique(l.snFacilities.map((x) => String(x || "").trim()).filter(Boolean)).slice(0, 60) }];
     // The property's own photos on the listing (not tied to a unit), cover first.
     const photos = images.filter((im) => im.type !== "Unit").sort((a, b) => (b.cover === "Y") - (a.cover === "Y")).map((im) => fileUrl(im.key)).slice(0, 24);
-    return { units, inUnit: A.tickedIn(l.amenities, A.UNIT_CATS), resort, photos };
+    return { units, inUnit: A.tickedIn(l.amenities, A.UNIT_CATS), resort, photos, ratingLink: String(l.ratingLink || "") };
   }
   function fsUnits(prop) { const hide = fsSettings(prop).hiddenUnits || []; return prop.units.filter((u) => !hide.includes(u.name)); }
   // Public page facts (no guest names, no prices when switched off).
@@ -1819,7 +1819,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
         return { name: u.name, size: u.size || "", photos: unitPhotos(x), fallbackPhoto: x.photo || "", beds: x.beds || "", blurb: x.blurb || "", price: pr, weekendPrice: wp, weekendDays: wp ? (st.weekendDays || [4, 5]) : undefined }; }),
       payMode: payMode(prop), approveGuests: !prop.channel && !!(prop.settings && prop.settings.approveGuests),
       headline: s.headline || "", highlights: s.highlights || [], priceFrom: fsPriceFrom(prop, s),
-      rating: s.ratingValue ? { value: s.ratingValue, count: s.ratingCount || "", link: s.ratingLink || "" } : null,
+      rating: globalThis.AvanteAmenities.frontRating(s.ratingValue, s.ratingCount, s.ratingLink, ""),
       actPhotos: s.actPhotos || {}, actHidden: s.actHidden || [], actPinned: s.actPinned || [], actPlace: s.actPlace || null, photoPos: s.photoPos || {} };
   }
   // The price badge: what the property typed, else its lowest price a night

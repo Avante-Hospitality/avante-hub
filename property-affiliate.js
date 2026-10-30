@@ -161,6 +161,30 @@
   function chTabs() { return ['book', 'rev'].concat(S.prop.activities ? ['acts'] : []); }
   function tabsFor() { return isCh() ? TABS.filter(function (v) { return chTabs().indexOf(v[0]) > -1; }) : TABS; }
   function homeView() { return isCh() ? 'book' : 'avail'; }
+  // Phones (Jean, 2026-10-30): a bar at the bottom with the four sections used most,
+  // and More for the rest, instead of a row of tabs to scroll sideways.
+  var TAB_ICONS = { avail: '📅', book: '📋', guests: '👥', acts: '🎟️', msgs: '💬', front: '🛍️', chan: '🔗', rev: '⭐' };
+  var PHONE_MAIN = ['avail', 'book', 'guests', 'front'];
+  function phoneNav(connected) {
+    if (!connected) return '';
+    var tabs = tabsFor(), main = tabs.filter(function (v) { return PHONE_MAIN.indexOf(v[0]) > -1; });
+    if (main.length < 4) main = tabs.slice(0, 4);
+    var rest = tabs.filter(function (v) { return main.indexOf(v) < 0; });
+    var dueInRest = S.msgsDue && rest.some(function (v) { return v[0] === 'msgs'; });
+    var restOn = S.view === 'onb' || rest.some(function (v) { return v[0] === S.view; });
+    var btn = function (v, cls) {
+      var badge = v[0] === 'msgs' && S.msgsDue ? '<span class="pa-badge" aria-label="' + S.msgsDue + ' to send">' + S.msgsDue + '</span>' : '';
+      return '<button type="button" class="' + cls + '" data-act="view" data-v="' + v[0] + '"' + (S.view === v[0] ? ' aria-current="page"' : '') + '><span class="ic" aria-hidden="true">' + (TAB_ICONS[v[0]] || '•') + '</span><span class="lb">' + v[1] + '</span>' + badge + '</button>';
+    };
+    var h = '<nav class="pa-bnav" aria-label="Property Affiliate sections">' + main.map(function (v) { return btn(v, 'pa-bn'); }).join('') +
+      '<button type="button" class="pa-bn" data-act="sheet" aria-haspopup="true" aria-expanded="' + (!!S.sheet) + '"' + (restOn ? ' aria-current="page"' : '') + '><span class="ic" aria-hidden="true">☰</span><span class="lb">More</span>' + (dueInRest ? '<span class="pa-badge pa-dot" aria-label="Messages to send"></span>' : '') + '</button></nav>';
+    if (S.sheet) h += '<div class="pa-sheet-back" data-act="sheet"></div><div class="pa-sheet" role="menu" aria-label="More sections">' +
+      rest.map(function (v) { return btn(v, 'pa-si'); }).join('') +
+      '<button type="button" class="pa-si" data-act="hookbuilder" role="menuitem"><span class="ic" aria-hidden="true">🪝</span><span class="lb">Hook Builder ↗</span></button>' +
+      '<button type="button" class="pa-si" data-act="view" data-v="onb" role="menuitem"' + (S.view === 'onb' ? ' aria-current="page"' : '') + '><span class="ic" aria-hidden="true">📝</span><span class="lb">Onboarding Form</span></button>' +
+      '<button type="button" class="pa-si pa-menu-danger" data-act="disconnect" role="menuitem"><span class="ic" aria-hidden="true">⏏</span><span class="lb">Disconnect property</span></button></div>';
+    return h;
+  }
   var TABS = [['avail', 'Calendar'], ['book', 'Bookings'], ['guests', 'Guests'], ['acts', 'Activities'], ['msgs', 'Communication'], ['front', 'Front store'], ['chan', 'Channels'], ['rev', 'Reviews']];
   function render() {
     if (S.view === 'msgs') collectMsgEdit(); // keep what was typed in the scheduled messages
@@ -199,6 +223,7 @@
     else if (S.view === 'rev') h += viewReviews();
     else if (S.view === 'front') h += viewFront();
     h += '</div>';
+    h += '<div class="pa pa-navwrap">' + phoneNav(connected) + '</div>';
     if (S.modal) h += '<div class="pa">' + viewModal() + '</div>';
     root.innerHTML = h;
     if (onboarding) onboarding.style.display = S.view === 'onb' ? '' : 'none';
@@ -300,7 +325,6 @@
       (!S.busy && !checkedNow() ? '<button type="button" class="pa-btn small" data-act="checkAv">Check availability</button>' : '') + '</div>' +
       '<span class="pa-hint">' + (S.sel ? 'Check-in ' + nice(S.sel.start) + ' on ' + esc(S.sel.unit) + ': now tap the last night.' : 'Tap an open night for check-in, then the last night. Tap a booking to open it.') +
       (S.busy ? ' · <b style="color:#08776f">Checking with Avante…</b>' : !checkedNow() ? ' · <b>Last saved view</b>: tap Check availability for the latest' + (S.av.snapshotAt ? ' (saved ' + new Date(S.av.snapshotAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ')' : '') : S.av.snapshotAt ? ' · Checked ' + new Date(S.av.snapshotAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '') + '</span></div>';
-    h += '<div class="pa-legend"><span><i class="lg-open"></i>Open</span><span><i class="lg-hub"></i>Hub booking</span><span><i class="lg-sn"></i>Booked elsewhere</span><span><i class="lg-airbnb"></i>Airbnb</span><span><i class="lg-bcom"></i>Booking.com</span><span><i class="lg-lekke"></i>LekkeSlaap</span><span><i class="lg-warn"></i>Channel booking not yet with Avante</span><span><i class="lg-na"></i>Not with Avante</span></div>';
     h += '<div class="pa-grid-wrap"><div class="pa-grid pa-blocks' + (phone ? ' phone' : '') + '" style="grid-template-columns:' + cols + '"><div class="pa-label" style="align-self:end">Unit</div>';
     h += days.map(function (d) { var we = dow(d) === 'Fri' || dow(d) === 'Sat'; return '<div class="hd' + (we ? ' we' : '') + (d === today() ? ' today' : '') + '">' + (phone ? dow(d).slice(0, 2) : dow(d)) + '<b>' + dObj(d).getUTCDate() + '</b>' + (dObj(d).getUTCDate() === 1 || d === days[0] ? MON[dObj(d).getUTCMonth()] : '') + '</div>'; }).join('');
     var perNight = {}, totalOpen = 0, weekend = 0, weekendAll = 0;
@@ -334,7 +358,10 @@
     });
     days.forEach(function (d) { if (dow(d) === 'Fri' || dow(d) === 'Sat') weekendAll += units.length; });
     h += '<div class="pa-label" style="align-self:center;color:#0e2f44">Units open</div>' + days.map(function (d) { var n = perNight[d] || 0; return '<div style="text-align:center;font:700 13px Montserrat,sans-serif;color:' + (n ? '#0e2f44' : '#8a3a00') + '">' + n + '/' + units.length + '</div>'; }).join('');
-    h += '</div></div>' + (totalOpen ? '' : '<p class="pa-hint" style="margin-top:10px">Nothing open in these days. Use ›, or search your dates above.</p>') + '</section>';
+    h += '</div></div>';
+    // The legend sits under the calendar (Jean, 2026-10-30).
+    h += '<div class="pa-legend"><span><i class="lg-open"></i>Open</span><span><i class="lg-hub"></i>Hub booking</span><span><i class="lg-sn"></i>Booked elsewhere</span><span><i class="lg-airbnb"></i>Airbnb</span><span><i class="lg-bcom"></i>Booking.com</span><span><i class="lg-lekke"></i>LekkeSlaap</span><span><i class="lg-warn"></i>Channel booking not yet with Avante</span><span><i class="lg-na"></i>Not with Avante</span></div>';
+    h += (totalOpen ? '' : '<p class="pa-hint" style="margin-top:10px">Nothing open in these days. Use ›, or search your dates above.</p>') + '</section>';
     // cart
     if (S.cart.length) {
       var tot = S.cart.reduce(function (t, c) { return t + (priceOf(c.unit, c.start, c.end) || 0); }, 0);
@@ -802,6 +829,17 @@
     (F.uploadedPhotos || []).concat(F.avantePhotos || [], chosen || []).forEach(function (u) { if (all.indexOf(u) < 0) all.push(u); });
     return { all: all, chosen: chosen };
   }
+  // Copy or send a link (Jean, 2026-10-30: share the front store by WhatsApp or email).
+  // "Share…" opens the phone's own share sheet, where the browser has one.
+  function shareRow(url, message, subject) {
+    var text = message + ' ' + url;
+    return '<div class="pa-actions pa-share" role="group" aria-label="Share the link">' +
+      '<button type="button" class="pa-btn small" data-act="copy" data-text="' + esc(url) + '">📋 Copy link</button>' +
+      '<a class="pa-btn small ghost pa-linkbtn" href="https://wa.me/?text=' + encodeURIComponent(text) + '" target="_blank" rel="noopener">💬 WhatsApp</a>' +
+      '<a class="pa-btn small ghost pa-linkbtn" href="mailto:?subject=' + encodeURIComponent(subject) + '&amp;body=' + encodeURIComponent(text) + '">✉️ Email</a>' +
+      (navigator.share ? '<button type="button" class="pa-btn small ghost" data-act="shareNative" data-url="' + esc(url) + '" data-text="' + esc(message) + '" data-title="' + esc(subject) + '">↗ Share…</button>' : '') + '</div>';
+  }
+  function frontShareRow(url) { var nm = S.prop.resortName || 'our place'; return shareRow(url, 'Book ' + nm + ' direct:', nm + ': book direct'); }
   function linkRow(label, url, act) {
     return '<div class="pa-field" style="margin-top:10px"><span class="pa-label">' + label + '</span><div class="pa-copy"><input type="text" readonly value="' + esc(url) + '" aria-label="' + esc(label) + '">' +
       '<button type="button" class="pa-btn small" data-act="copy" data-text="' + esc(url) + '">Copy</button><a class="pa-btn small ghost pa-linkbtn" href="' + esc(url) + '" target="_blank" rel="noopener">Open</a></div></div>';
@@ -913,6 +951,7 @@
       '<p class="pa-hint" style="margin:2px 0 0">Your own page that sells only ' + esc(S.prop.resortName || 'your property') + '. Work through the steps; the preview shows what guests see as you type. Nothing changes for guests until you tap <b>Save front store</b>.</p></div>' +
       '<div class="pa-actions"><button type="button" class="pa-btn teal" data-act="fsFill">✨ Fill in my store</button><button type="button" class="pa-btn" data-act="saveFront">Save front store</button>' +
       (on ? '<a class="pa-btn ghost pa-linkbtn" href="' + esc(F.url) + '" target="_blank" rel="noopener">View my front store</a>' : '') + '</div></div>' +
+      (on ? '<div class="fs-sharebar"><span class="pa-label">Your link</span><a class="fs-url" href="' + esc(F.url) + '" target="_blank" rel="noopener">' + esc(F.url.replace(/^https?:\/\//, '')) + '</a>' + frontShareRow(F.url) + '</div>' : '') +
       '<p class="fs-dirty" id="fs-dirty" role="status"' + (S.fsDirty ? '' : ' hidden') + '>⚠ Changes not saved yet</p>' + (S.fsFillMsg ? '<p class="pa-hint" role="status" style="margin:6px 0 0">' + esc(S.fsFillMsg) + '</p>' : '') + '</section>';
     h += '<div class="fs-wrap"><div class="fs-steps">';
     // 1 link
@@ -927,11 +966,11 @@
       '<div class="pa-field" style="margin-top:10px"><label class="pa-label" for="fs-welcome">Line under the headline</label><input id="fs-welcome" type="text" maxlength="160" value="' + esc(st.welcome) + '" placeholder="e.g. Self-catering cottages 10 minutes from the dam"></div>' +
       '<div class="pa-field" style="margin-top:10px"><label class="pa-label" for="fs-pricefrom">Price badge</label><input id="fs-pricefrom" type="text" maxlength="40" value="' + esc(st.priceFrom) + '" placeholder="' + esc(auto || 'Switch on prices in step 7') + '"></div>' +
       '<p class="pa-hint">Empty = your lowest price a night from ' + (isCh() ? 'Avante' : 'Reservation settings') + (auto ? ' (' + esc(auto) + ')' : '') + '. Only shows when prices are switched on.</p>' +
-      '<fieldset class="pa-fieldset" style="margin-top:10px"><legend class="pa-label">Google rating badge (optional)</legend><div class="pa-form">' +
+      '<fieldset class="pa-fieldset" style="margin-top:10px"><legend class="pa-label">Rating badge (optional)</legend><div class="pa-form">' +
       '<div class="pa-field"><label class="pa-label" for="fs-rv">Stars (0 to 5)</label><input id="fs-rv" type="text" inputmode="decimal" maxlength="3" value="' + esc(st.ratingValue) + '" placeholder="e.g. 4.6"></div>' +
       '<div class="pa-field"><label class="pa-label" for="fs-rc">Number of reviews</label><input id="fs-rc" type="text" inputmode="numeric" maxlength="12" value="' + esc(st.ratingCount) + '" placeholder="e.g. 212"></div></div>' +
-      '<div class="pa-field" style="margin-top:8px"><label class="pa-label" for="fs-rl">Link to your Google reviews</label><input id="fs-rl" type="url" maxlength="400" value="' + esc(st.ratingLink) + '" placeholder="https://…"></div>' +
-      '<p class="pa-hint">Copy the stars and number from your Google listing. Empty stars = no badge.</p></fieldset>');
+      '<div class="pa-field" style="margin-top:8px"><label class="pa-label" for="fs-rl">Link to your Google reviews</label><input id="fs-rl" type="url" maxlength="400" value="' + esc(st.ratingLink) + '" placeholder="' + esc((S.fpv && S.fpv.listingRatingLink) ? 'Empty = your Avante reviews page' : 'https://…') + '"></div>' +
+      '<p class="pa-hint">Copy the stars and number from your Google listing. No stars = a <b>Guest reviews</b> badge that opens your reviews page' + ((S.fpv && S.fpv.listingRatingLink) ? ' (your Avante reviews page when the link box is empty)' : '') + '.</p></fieldset>');
     // 3 photos
     var ph3 = ph.all.length ? '<div class="pa-photos">' + ph.all.slice().sort(function (a, b) { var ia = shown.indexOf(a), ib = shown.indexOf(b); return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib); }).map(function (u) {
       var i = shown.indexOf(u), mine = (F.uploadedPhotos || []).indexOf(u) >= 0;
@@ -1028,7 +1067,7 @@
     if (on) {
       h += '<section class="pa-card" aria-label="Links and QR codes"><p class="pa-h2">Links and QR codes</p><div class="pa-qrgrid">' +
         '<div class="pa-qr"><div class="pa-qrbox">' + qrSvg(F.url, 150) + '</div><b>Front store</b><span class="pa-hint">For your website, Instagram bio, WhatsApp status, flyers and guests.</span>' + linkRow('Link', F.url) +
-        '<div class="pa-actions" style="margin-top:8px"><button type="button" class="pa-btn small ghost" data-act="dlQr" data-url="' + esc(F.url) + '" data-name="front-store">Download QR</button><a class="pa-btn small ghost pa-linkbtn" href="https://wa.me/?text=' + encodeURIComponent('Book ' + (S.prop.resortName || 'with us') + ' direct: ' + F.url) + '" target="_blank" rel="noopener">Share on WhatsApp</a></div></div>' +
+        '<div class="pa-actions" style="margin-top:8px"><button type="button" class="pa-btn small ghost" data-act="dlQr" data-url="' + esc(F.url) + '" data-name="front-store">Download QR</button></div>' + frontShareRow(F.url) + '</div>' +
         '<div class="pa-qr"><div class="pa-qrbox">' + qrSvg(F.guestUrl, 150) + '</div><b>Guest page (in-house guests)</b><span class="pa-hint">Contact details, Wi-Fi, house info and things to do. For guests who are staying.</span>' + linkRow('Link', F.guestUrl) +
         '<div class="pa-actions" style="margin-top:8px"><button type="button" class="pa-btn small ghost" data-act="dlQr" data-url="' + esc(F.guestUrl) + '" data-name="guest-page">Download QR</button><a class="pa-btn small teal pa-linkbtn" href="' + esc(F.cardUrl) + '" target="_blank" rel="noopener">🖨️ Print room card</a><button type="button" class="pa-btn small ghost" data-act="fsNewKey">New guest link</button></div></div></div>' +
         '<p class="pa-hint" style="margin:10px 0 0">The room card has the guest page QR, your contact details and Wi-Fi, and a small QR to book the next stay. Print one for every room. The guest page link is secret (Wi-Fi is on it): only give it to guests. <b>New guest link</b> makes a new one; old cards and links then stop showing Wi-Fi and house info.</p></section>';
@@ -1086,7 +1125,7 @@
     // Unit photos and amenities from the Avante listing, as the page builds them (amenities.js).
     var fu = AvanteAmenities.frontUnits(d, fsListing()); d.units = fu.units; d.amenities = fu.amenities;
     d.priceFrom = st.showPrices ? (st.priceFrom || fsAutoPrice(st)) : '';
-    d.rating = /^[0-5](\.\d)?$/.test(st.ratingValue || '') ? { value: st.ratingValue, count: st.ratingCount || '', link: /^https:\/\//.test(st.ratingLink || '') ? st.ratingLink : '' } : null;
+    d.rating = AvanteAmenities.frontRating(st.ratingValue, st.ratingCount, st.ratingLink, S.fpv.listingRatingLink);
     var wa = String(st.whatsapp || st.phone || F.propertyPhone || '').replace(/\D/g, ''); if (wa.indexOf('00') === 0) wa = wa.slice(2); if (wa.charAt(0) === '0') wa = '27' + wa.slice(1);
     d.contact = { phone: st.phone || F.propertyPhone || '', whatsapp: wa.length >= 9 ? wa : '', email: st.email || F.propertyEmail || '' };
     var hidA = st.actHidden || [], ap = st.actPhotos || {};
@@ -1581,7 +1620,9 @@
     if (S.view === 'front' && v !== 'front' && S.fsDirty && !confirm('Your front store changes aren\'t saved yet. Leave without saving?')) return;
     if (v !== 'front') { S.fsDirty = false; S.fsG = null; S.fsFillMsg = null; }
     if (v === 'front' && S.view !== 'front') S.front = null;
-    S.view = v; S.more = false; S.err = null; S.msg = null; render();
+    var moved = S.view !== v;
+    S.view = v; S.more = false; S.sheet = false; S.err = null; S.msg = null; render();
+    if (moved && isPhone()) window.scrollTo(0, (root.getBoundingClientRect().top + window.scrollY) - 8);
     if (!S.prop) return;
     if (v === 'avail') loadAvailability(S.from);
     if (v === 'chan') Promise.all([api('channels'), api('channelEvents')]).then(function (r) { S.channels = r[0]; S.events = r[1].events; render(); }).catch(fail);
@@ -1749,12 +1790,13 @@
     if (a === 'view') return setView(t.dataset.v);
     if (a.indexOf('act') === 0 && ACT_ACTIONS[a]) return ACT_ACTIONS[a](t);
     if (a === 'more') { S.more = !S.more; return render(); }
+    if (a === 'sheet') { S.sheet = !S.sheet; return render(); }
     if (a === 'weToggle') { var pb = t.closest('.pa-prices'); if (pb) pb.classList.toggle('pa-we-off', !t.checked); return; }
     if (a === 'weDay') { t.setAttribute('aria-pressed', String(t.getAttribute('aria-pressed') !== 'true')); return; }
     if (S.more && a !== 'more' && a !== 'hookbuilder') S.more = false;
     if (a === 'goStart') { S.searched = null; return loadAvailability(startDate()); }
     // Hook Builder (2026-10-08): opens the hook builder signed in with this hub login (hub.html's openHookBuilder).
-    if (a === 'hookbuilder') { if (typeof window.openHookBuilder === 'function') window.openHookBuilder(t); return; }
+    if (a === 'hookbuilder') { if (S.sheet) { S.sheet = false; render(); } if (typeof window.openHookBuilder === 'function') window.openHookBuilder(t); return; }
     if (a === 'dismiss') { S.err = null; return render(); }
     if (a === 'connect') return doConnect();
     if (a === 'resume') {
@@ -1822,6 +1864,7 @@
     if (a === 'clearCart') { S.cart = []; S.sel = null; return render(); }
     if (a === 'openBook') { S.modal = { type: 'book' }; return render(); }
     if (a === 'filter') { S.unitFilter = t.dataset.u; return render(); }
+    if (a === 'shareNative') { navigator.share({ title: t.dataset.title, text: t.dataset.text, url: t.dataset.url }).catch(function () {}); return; }
     if (a === 'copy' || a === 'copyShare') {
       var text = a === 'copy' ? t.dataset.text : val('pa-share');
       (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(function () { t.textContent = 'Copied'; }, function () { prompt('Copy this:', text); });

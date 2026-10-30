@@ -80,5 +80,15 @@
     });
     return { units: units, amenities: on ? { inUnit: perUnit ? [] : inUnit, resort: L.resort || [] } : { inUnit: [], resort: [] } };
   }
-  root.AvanteAmenities = { frontUnits: frontUnits, UNIT_PHOTOS: UNIT_PHOTOS, DATA: DATA, UNIT_CATS: UNIT_CATS, RESORT_GROUPS: RESORT_GROUPS, UNIT_ITEMS: itemsOf(UNIT_CATS), unique: unique, tickedIn: tickedIn, resortGroups: resortGroups, icon: icon };
+  // The front store's rating badge (Jean, 2026-10-30: the review link didn't show):
+  // stars typed in the builder, and the link typed there, else the property's
+  // rating link from the Avante Reviews app (on its listing). A link alone still
+  // shows a "Guest reviews" badge. Used by the page data and the builder's preview.
+  function frontRating(value, count, link, listingLink) {
+    value = /^[0-5](\.\d)?$/.test(String(value || "")) ? String(value) : "";
+    var https = function (u) { return /^https:\/\//.test(String(u || "")) ? String(u) : ""; };
+    var href = https(link) || https(listingLink);
+    return value || href ? { value: value, count: value ? String(count || "") : "", link: href } : null;
+  }
+  root.AvanteAmenities = { frontUnits: frontUnits, frontRating: frontRating, UNIT_PHOTOS: UNIT_PHOTOS, DATA: DATA, UNIT_CATS: UNIT_CATS, RESORT_GROUPS: RESORT_GROUPS, UNIT_ITEMS: itemsOf(UNIT_CATS), unique: unique, tickedIn: tickedIn, resortGroups: resortGroups, icon: icon };
 })(typeof window !== "undefined" ? window : globalThis);
