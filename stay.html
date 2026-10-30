@@ -288,7 +288,9 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
       var qp = new URLSearchParams(location.search), qi = qp.get('checkin') || '', qo = qp.get('checkout') || '';
       S.linkUnit = qp.get('unit') || '';
       if (!S.ci && /^\d{4}-\d{2}-\d{2}$/.test(qi) && /^\d{4}-\d{2}-\d{2}$/.test(qo) && qo > qi && qi >= d.firstBookable) { S.ci = qi; S.co = qo; S.calFrom = qi; }
-      if (!S.ci) { S.ci = d.firstBookable; S.co = add(d.firstBookable, Math.max(1, d.minStay || 1)); }
+      // No dates are chosen for the guest (Jean, 2026-10-30: pre-picked days looked booked); only a
+      // #book link, which checks the first dates free to book at once, starts with a stay filled in.
+      if (!S.ci && location.hash === '#book') { S.ci = d.firstBookable; S.co = add(d.firstBookable, Math.max(1, d.minStay || 1)); }
       if (!S.calFrom) S.calFrom = d.firstBookable;
       render();
       // Availability is only asked for when the guest taps Check availability, or arrives from a Book
@@ -378,7 +380,7 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
     var aside = '<aside class="' + bookCls() + '" id="book" aria-label="Book your stay">' + bookHtml() + '</aside>';
     h += '</main>' + (calSide ? '<div class="side"><section class="card calside" id="calsec"><h2>Availability</h2><p class="lead">Tap your arrival day, then your last night.</p><div id="cal"></div><div class="calpick" id="calpick"></div></section>' + aside + '</div>' : aside) + '</div></div>';
     h += '<p class="foot">Book direct with ' + esc(d.name) + ' · secure booking through Avante Travel</p>';
-    h += '<div class="bar"><div class="t"><b>' + (S.quote ? 'Pick a unit' : 'Book direct') + '</b>' + esc(nice(S.ci) + ' – ' + nice(S.co)) + '</div><button type="button" class="btn t" data-act="toBook">Check availability</button></div>';
+    h += '<div class="bar"><div class="t">' + barText() + '</div><button type="button" class="btn t" data-act="toBook">Check availability</button></div>';
     app.innerHTML = h;
     drawCal(); drawMap();
   }
@@ -500,6 +502,8 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
   // Phones: when the calendar is on the page, its date picker and the bottom bar do the booking,
   // so the Book your stay form is hidden; the card only shows for results, errors and the guest form.
   function bookCls() { return 'card book' + (S.d && S.d.showCalendar ? ' oncal' : '') + (S.busy || S.err || S.quote || S.pick || S.booked ? '' : ' idle') + (S.pick || linkOpen() ? ' asmodal' : ''); }
+  function hasDates() { return !!(S.ci && S.co); }
+  function barText() { return '<b>' + (S.quote ? 'Pick a unit' : 'Book direct') + '</b>' + (hasDates() ? esc(nice(S.ci) + ' – ' + nice(S.co)) : 'Choose your dates'); }
   function drawBook() { var el = document.getElementById('book'); if (el) { el.className = bookCls(); el.innerHTML = bookHtml(); } document.body.style.overflow = S.pick || linkOpen() ? 'hidden' : ''; drawCalPick(); }
   function drawCal() {
     var el = document.getElementById('cal'); if (!el) return;
@@ -517,7 +521,7 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
         var us = S.calUnit ? [S.calUnit] : Object.keys(data.open || {});
         us.forEach(function (u) { if ((data.open[u] || []).indexOf(iso) >= 0) { open = true; var r = data.rates && data.rates[u] && data.rates[u][iso]; if (r && (price == null || r < price)) price = r; } });
       }
-      var sel = iso === S.ci || iso === add(S.co, -1), rng = iso > S.ci && iso < add(S.co, -1);
+      var sel = hasDates() && (iso === S.ci || iso === add(S.co, -1)), rng = hasDates() && iso > S.ci && iso < add(S.co, -1);
       // Not checked yet: every day can be tapped to choose dates; nothing is shown as open or taken.
       if (!data || data === 'loading') { h += '<button type="button" class="day nc' + (sel ? ' sel' : rng ? ' rng' : '') + '" data-act="day" data-d="' + iso + '" aria-label="' + nice(iso) + '">' + dd + '</button>'; continue; }
       h += open ? '<button type="button" class="day op' + (sel ? ' sel' : rng ? ' rng' : '') + '" data-act="day" data-d="' + iso + '" aria-label="' + nice(iso) + ', open' + (price ? ', from ' + money(price) : '') + '">' + dd + (price ? '<small>' + money(price) + '</small>' : '') + '</button>'
@@ -532,13 +536,13 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
   // Under the calendar (Jean, 2026-10-13): your dates, typed or tapped; "Show on calendar"
   // jumps the calendar there; "Check availability" checks them and shows the free units.
   function drawCalPick() {
-    var bt = document.querySelector('.bar div.t'); if (bt && S.ci && S.co) bt.innerHTML = '<b>' + (S.quote ? 'Pick a unit' : 'Book direct') + '</b>' + esc(nice(S.ci) + ' – ' + nice(S.co));
+    var bt = document.querySelector('.bar div.t'); if (bt) bt.innerHTML = barText();
     var el = document.getElementById('calpick'); if (!el) return;
-    var d = S.d, n = nights(S.ci, S.co);
+    var d = S.d, n = hasDates() ? nights(S.ci, S.co) : 0;
     el.innerHTML = '<b class="cp-t">Know your dates?</b><div class="f2"><div class="fld"><label for="cpi">Arrival</label><input id="cpi" type="date" value="' + S.ci + '" min="' + d.firstBookable + '"></div>' +
       '<div class="fld"><label for="cpo">Departure</label><input id="cpo" type="date" value="' + S.co + '" min="' + add(d.firstBookable, 1) + '"></div></div>' +
       '<button type="button" class="btn g" style="width:100%;margin-top:10px" data-act="calGo">Show on calendar</button>' +
-      '<p class="cp-sum"><b>Your dates:</b> ' + esc(nice(S.ci)) + ' → ' + esc(nice(S.co)) + ' · ' + n + (n === 1 ? ' night' : ' nights') + (S.picking ? '<br><span class="muted">Now tap your last night on the calendar.</span>' : '') + '</p>' +
+      (hasDates() ? '<p class="cp-sum"><b>Your dates:</b> ' + esc(nice(S.ci)) + ' → ' + esc(nice(S.co)) + ' · ' + n + (n === 1 ? ' night' : ' nights') + (S.picking ? '<br><span class="muted">Now tap your last night on the calendar.</span>' : '') + '</p>' : '<div style="height:10px"></div>') +
       '<button type="button" class="btn t" style="width:100%" data-act="calCheck"' + (S.busy ? ' disabled' : '') + '>' + (S.busy === 'quote' ? 'Checking…' : 'Check availability for these dates') + '</button>';
   }
   function offersHtml() {
@@ -687,13 +691,14 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
     if (a === 'calCheck') {
       var ci3 = val('cpi'), co3 = val('cpo'); if (ci3 && co3 && co3 > ci3) { S.ci = ci3; S.co = co3; }
       if (document.querySelector('.side #calsec')) { S.linkModal = true; S.autoPick = true; } // the free units open over the page
-      S.err = ''; S.pick = null; S.picking = false; S.calFrom = S.ci; drawBook(); drawCal();
+      S.err = ''; S.pick = null; S.picking = false; if (S.ci) S.calFrom = S.ci; drawBook(); drawCal();
       var bk = document.getElementById('book'); if (bk) bk.scrollIntoView({ behavior: 'smooth', block: 'start' });
       var qb = bk && bk.querySelector('[data-act="quote"]'); if (qb) qb.click(); return;
     }
     if (a === 'quote') {
       syncForm(); S.err = ''; S.pick = null; S.sel = []; S.showAll = false;
-      if (!S.ci || !S.co || S.co <= S.ci) { S.err = 'Choose a check-out after the check-in.'; return drawBook(); }
+      if (!hasDates()) { S.err = 'Choose your arrival and departure dates.'; return drawBook(); }
+      if (S.co <= S.ci) { S.err = 'Choose a check-out after the check-in.'; return drawBook(); }
       S.busy = 'quote'; drawBook();
       return post({ action: 'quote', checkIn: S.ci, checkOut: S.co }).then(function (r) {
         S.busy = false; if (!r.ok) { S.err = r.error; S.quote = null; } else S.quote = r;
@@ -762,7 +767,6 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
       if (e.origin !== location.origin || !e.data || e.data.type !== 'fs-preview' || !e.data.data) return;
       var d = e.data.data, y = window.scrollY; CFG.slug = d.slug || CFG.slug;
       S.d = d; S.km = d.nearbyKm; S.offers = (d.offers || []).filter(function (o) { return o.booking || o.landing; });
-      if (!S.ci) { S.ci = d.firstBookable; S.co = add(d.firstBookable, Math.max(1, d.minStay || 1)); }
       if (!S.calFrom) S.calFrom = d.firstBookable;
       render(); window.scrollTo(0, y);
       if (e.data.scrollTo) { var el = document.getElementById(e.data.scrollTo); if (el && !el.offsetParent) el = document.getElementById(e.data.scrollTo + '-ph') || el; if (el) el.scrollIntoView({ block: 'start' }); }
