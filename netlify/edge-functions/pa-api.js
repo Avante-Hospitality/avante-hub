@@ -6,7 +6,7 @@ import { emailList } from "./lib/emails.js";
 import { createCore, PAError } from "./lib/pa-core.js";
 import { feedBySite, feedSearch, feedRowByResort } from "./lib/sn-feed.js";
 import { createActivities } from "./lib/pa-activities.js";
-import { stayPayload, resortInfo } from "./lib/stay-payload.js";
+import { stayPayload, resortInfo, avantePhotos } from "./lib/stay-payload.js";
 import { treeAreaList } from "./lib/tree-place.js";
 import { libraryPhotos, googlePhotos } from "./lib/act-photos.js";
 import { searchPlacePhotos } from "./lib/places-images.js";
@@ -176,9 +176,10 @@ export default async (request) => {
       case "markMessage": return json(Object.assign({ ok: true }, await core.markMessage(prop, body.ref, body.kind, body.state, body.text)));
       // Front store (/stay/<slug>): settings, photos, link, stats.
       case "frontStore": {
-        // Stock Network's photos for the photo picker (same cache the front store uses).
+        // Avante's photos for the photo picker, as the front store picks them (stay-payload.js).
         const info = await resortInfo(getStore({ name: "property-affiliate", consistency: "strong" }), prop);
-        return json(Object.assign({ ok: true, snPhotos: (info && info.images) || [], snDescription: (info && info.description) || "" }, await core.frontStoreView(prop)));
+        const listing = await core.frontStoreListing(prop).catch(() => null);
+        return json(Object.assign({ ok: true, avantePhotos: avantePhotos(listing, info), snDescription: (info && info.description) || "" }, await core.frontStoreView(prop)));
       }
       case "saveFrontStore": return json(Object.assign({ ok: true }, await core.saveFrontStore(prop, body.frontStore || {})));
       // Front store builder (Jean, 2026-10-13): the page exactly as guests see

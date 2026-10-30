@@ -1780,7 +1780,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
   // A unit's own photos as the builder saved them (older saves kept just one, as photo).
   function unitPhotos(x) { return x ? (Array.isArray(x.photos) ? x.photos : x.photo ? [x.photo] : []) : []; }
   // What the property's Avante listing says about its units and its complex or
-  // resort (Jean, 2026-10-30): each unit type's photos, description and
+  // resort (Jean, 2026-10-30): its property photos, each unit type's photos, description and
   // amenities, the In-Unit amenities ticked for the whole property, and the
   // "On the resort" groups. The listing is the master; nothing is copied.
   async function frontStoreListing(prop) {
@@ -1798,7 +1798,9 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     let resort = A.resortGroups(l.amenities);
     // Nothing ticked on the listing yet: what Stock Network's page lists.
     if (!resort.length && (l.snFacilities || []).length) resort = [{ title: "Facilities", items: A.unique(l.snFacilities.map((x) => String(x || "").trim()).filter(Boolean)).slice(0, 60) }];
-    return { units, inUnit: A.tickedIn(l.amenities, A.UNIT_CATS), resort };
+    // The property's own photos on the listing (not tied to a unit), cover first.
+    const photos = images.filter((im) => im.type !== "Unit").sort((a, b) => (b.cover === "Y") - (a.cover === "Y")).map((im) => fileUrl(im.key)).slice(0, 24);
+    return { units, inUnit: A.tickedIn(l.amenities, A.UNIT_CATS), resort, photos };
   }
   function fsUnits(prop) { const hide = fsSettings(prop).hiddenUnits || []; return prop.units.filter((u) => !hide.includes(u.name)); }
   // Public page facts (no guest names, no prices when switched off).

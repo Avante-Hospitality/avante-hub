@@ -797,8 +797,9 @@
   function frontPhotos() {
     var F = S.front, all = [];
     var chosen = Array.isArray(F.settings.photos) ? F.settings.photos.slice() : null;
-    // Photos added by link (e.g. Stock Network photos) are only in the chosen list.
-    (F.uploadedPhotos || []).concat(F.snPhotos || [], chosen || []).forEach(function (u) { if (all.indexOf(u) < 0) all.push(u); });
+    // Avante's photos: the listing's property photos, else Stock Network's (stay-payload.js avantePhotos).
+    // Photos added by link are only in the chosen list.
+    (F.uploadedPhotos || []).concat(F.avantePhotos || [], chosen || []).forEach(function (u) { if (all.indexOf(u) < 0) all.push(u); });
     return { all: all, chosen: chosen };
   }
   function linkRow(label, url, act) {
@@ -1174,7 +1175,7 @@
       S.fpv = d; S.fsActsBusy = false; S.fsActOpen = null; S.fsAP = null; S.fsSwap = null;
       // The preview shows 10 picked at random, like the real page (same pick until the list reloads).
       var ord = (d.nearby || []).map(function (a, i) { return i; }); for (var k = ord.length - 1; k > 0; k--) { var j = Math.floor(Math.random() * (k + 1)), x = ord[k]; ord[k] = ord[j]; ord[j] = x; } S.fpvOrder = ord;
-      if (S.front) { S.front.snPhotos = d.snPhotos || []; S.front.snDescription = d.snDescription || ''; }
+      if (S.front) { S.front.avantePhotos = d.avantePhotos || []; S.front.snDescription = d.snDescription || ''; }
       render();
     }).catch(function (e) { S.fsActsBusy = false; fail(e); });
   }
@@ -1190,7 +1191,7 @@
   // or (kind "act") as the photo of one of the things to do.
   function fsAddPhoto(dataUrl, kind) {
     return api('uploadFrontPhoto', { dataUrl: dataUrl, kind: kind || '' }).then(function (d) {
-      var keep = S.front.settings, sn = S.front.snPhotos, sd = S.front.snDescription; S.front = d.view; S.front.snPhotos = sn; S.front.snDescription = sd;
+      var keep = S.front.settings, sn = S.front.avantePhotos, sd = S.front.snDescription; S.front = d.view; S.front.avantePhotos = sn; S.front.snDescription = sd;
       S.front.settings = Object.assign({}, S.front.settings, keep);
       return d.url;
     });
@@ -1588,7 +1589,7 @@
     if (v === 'acts') loadActivities();
     if (v === 'guests') api('guests').then(function (d) { S.guests = d.guests; render(); }).catch(fail);
     if (v === 'msgs') loadMessages();
-    if (v === 'front') api('frontStore').then(function (d) { if (S.fpv) { d.snPhotos = S.fpv.snPhotos || []; d.snDescription = S.fpv.snDescription || ''; } S.front = d; S.fsDirty = false; render(); if (!S.fsAreas) api('frontAreas').then(function (r) { S.fsAreas = r.areas || []; render(); }).catch(function () {}); return fsLoadPreview(d.settings.nearbyKm); }).catch(fail);
+    if (v === 'front') api('frontStore').then(function (d) { if (S.fpv) { d.avantePhotos = S.fpv.avantePhotos || []; d.snDescription = S.fpv.snDescription || ''; } S.front = d; S.fsDirty = false; render(); if (!S.fsAreas) api('frontAreas').then(function (r) { S.fsAreas = r.areas || []; render(); }).catch(function () {}); return fsLoadPreview(d.settings.nearbyKm); }).catch(fail);
   }
   function openBooking(bk, tab) { S.edit = bk; S.bTab = isCh() ? 'stay' : (tab || 'guest'); S.modalNote = null; S.modal = { type: 'edit' }; if (!S.av) loadAvailability(S.from); if (!S.messages && !isCh()) loadMessages(); render(); }
   function updateBooking(bk) {
@@ -1663,7 +1664,7 @@
   // Changing when a scheduled message goes out shows the matching fields (days or date).
   // Front store helpers: keep what was typed when the photo list re-renders; QR as a PNG.
   function keepFront() { var b = collectFront(); if (b) Object.assign(S.front.settings, b); }
-  function mergeFront(d) { d.snPhotos = S.front && S.front.snPhotos || d.snPhotos || []; d.snDescription = S.front && S.front.snDescription || ''; d._fresh = true; S.front = d; }
+  function mergeFront(d) { d.avantePhotos = S.front && S.front.avantePhotos || d.avantePhotos || []; d.snDescription = S.front && S.front.snDescription || ''; d._fresh = true; S.front = d; }
   function qrPng(text) {
     var q = qrcode(0, 'M'); q.addData(text); q.make();
     var n = q.getModuleCount(), cell = 20, m = 4, c = document.createElement('canvas'); c.width = c.height = (n + m * 2) * cell;

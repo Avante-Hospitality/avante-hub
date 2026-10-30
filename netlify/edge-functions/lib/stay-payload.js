@@ -47,15 +47,24 @@ export async function resortInfo(store, prop, later = (p) => p) {
   return info || { description: "", attractions: "", moreInfo: "", images: [] };
 }
 
+// Avante's photos of the property for the automatic gallery (Jean, 2026-10-30):
+// the property photos on its Avante listing (kept in the hub, the master);
+// Stock Network's public page only when the listing has none.
+export function avantePhotos(listing, info) {
+  return listing && (listing.photos || []).length ? listing.photos : (info && info.images) || [];
+}
+
 export async function stayPayload(core, prop, opts) {
   const { store, origin } = opts, later = opts.later || ((p) => p);
   const page = core.publicFrontStore(prop);
   // The builder can try another place before saving it.
   if (opts.actPlace !== undefined) page.actPlace = opts.actPlace && opts.actPlace.t ? { p: String(opts.actPlace.p || "").slice(0, 80), t: String(opts.actPlace.t).slice(0, 80), s: String(opts.actPlace.s || "").slice(0, 80) } : null;
   const info = await resortInfo(store, prop, later);
+  const listing = await core.frontStoreListing(prop).catch(() => null);
   const own = "fsphoto:" + prop.siteId + ":";
   const uploaded = (await store.list({ prefix: own })).blobs.filter((b) => !b.key.slice(own.length).startsWith("x-")).map((b) => "/api/stay?photo=" + encodeURIComponent(b.key.slice(8)));
-  const photos = Array.isArray(page.photos) && page.photos.length ? page.photos : uploaded.concat(info.images || []).slice(0, 24);
+  const auto = avantePhotos(listing, info);
+  const photos = Array.isArray(page.photos) && page.photos.length ? page.photos : uploaded.concat(auto).slice(0, 24);
   // Where it is: the hub's location tree, and the pin from the resort list.
   const place = await propertyTreeOpts(prop.resortId, origin, prop.resortName).catch(() => ({}));
   const rl = await getStore({ name: "resort-list", consistency: "strong" }).get("current", { type: "json" }).catch(() => null);
@@ -113,7 +122,6 @@ export async function stayPayload(core, prop, opts) {
     nearby = list.map((a) => Object.assign(a, { km: undefined }));
     mapActs = mapActs.map((a) => ({ name: a.name, latitude: a.latitude, longitude: a.longitude, distance: a.distance, photo: a.photo || "", description: String(a.description || "").slice(0, 140), price: a.price || "", link: a.link || "" }));
   }
-  const listing = await core.frontStoreListing(prop).catch(() => null);
   // Unit photos and amenities from the Avante listing (amenities.js frontUnits, shared with the builder's preview).
   Object.assign(page, globalThis.AvanteAmenities.frontUnits(page, listing));
   return Object.assign({ ok: true }, page, {
@@ -121,5 +129,5 @@ export async function stayPayload(core, prop, opts) {
     place: { country: place.country || "", province: place.province || "", region: place.region || "", city: place.city || "", suburb: place.suburb || "" },
     latitude: isFinite(lat) && lat !== 0 ? lat : null, longitude: isFinite(lng) && lng !== 0 ? lng : null, nearby, mapActs, nearbyKm: outKm,
     actPhotos: undefined, actHidden: undefined, actPinned: undefined, actPlace: opts.all ? page.actPlace || null : undefined, area: opts.all ? area || null : undefined,
-  }, opts.all ? { snPhotos: info.images || [], snDescription: info.description || "", uploaded, listingUnits: (listing && listing.units) || {}, listingInUnit: (listing && listing.inUnit) || [], listingResort: (listing && listing.resort) || [] } : {});
+  }, opts.all ? { avantePhotos: auto, snDescription: info.description || "", uploaded, listingUnits: (listing && listing.units) || {}, listingInUnit: (listing && listing.inUnit) || [], listingResort: (listing && listing.resort) || [] } : {});
 }
