@@ -168,7 +168,18 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
 .ucard .bd{ padding:14px 16px 16px; display:flex; flex-direction:column; gap:6px; flex:1; }
 .ucard b{ font:800 17px 'Montserrat',sans-serif; color:var(--ink); }
 .ucard .meta{ font-size:14px; color:var(--teal-d); font-weight:700; }
-.ucard .btn{ margin-top:auto; align-self:flex-start; }
+.ucard .ub{ margin-top:auto; display:flex; flex-wrap:wrap; gap:8px; padding-top:6px; }
+.ucard .imbtn{ display:block; width:100%; padding:0; border:0; background:none; cursor:pointer; }
+.ucard .im .cnt{ position:absolute; right:12px; bottom:12px; background:rgba(14,47,68,.82); color:#fff; border-radius:999px; padding:4px 10px; font:700 13px 'Noto Sans',sans-serif; }
+.ucard .det{ font-size:14px; color:var(--muted); }
+.am{ list-style:none; margin:4px 0 0; padding:0; display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:6px 14px; font-size:14.5px; }
+.ucard .am{ grid-template-columns:1fr 1fr; font-size:13.5px; gap:4px 10px; }
+.am li{ display:flex; gap:8px; align-items:flex-start; line-height:1.35; }
+.am li span{ width:20px; flex:none; text-align:center; }
+.amx summary{ cursor:pointer; color:var(--teal-d); font-weight:700; font-size:14px; margin-top:6px; }
+.rgrid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:14px; }
+.rg{ padding:16px 18px; }
+.rg h3{ font-size:16px; margin-bottom:8px; }
 .tiles{ display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:14px; }
 .tile{ display:flex; flex-direction:column; background:#fff; border:1px solid var(--line); border-radius:18px; overflow:hidden; color:var(--ink); text-decoration:none; box-shadow:0 8px 24px rgba(14,47,68,.07); }
 .tile .im{ position:relative; aspect-ratio:16/10; background:#dfe7ea center/cover; }
@@ -231,6 +242,7 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
 </head>
 <body>
 <div id="app"><div class="center muted">Loading…</div></div>
+<script src="/amenities.js"></script>
 <script>
 (function () {
   'use strict';
@@ -268,12 +280,13 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
   function waLink(d, text) { return d.contact.whatsapp ? 'https://wa.me/' + d.contact.whatsapp + (text ? '?text=' + encodeURIComponent(text) : '') : ''; }
   function telLink(d) { return d.contact.phone ? 'tel:' + String(d.contact.phone).replace(/[^\d+]/g, '') : ''; }
   function mapsLink(d) { return d.latitude != null ? 'https://www.google.com/maps/dir/?api=1&destination=' + d.latitude + ',' + d.longitude : 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(d.name + ' ' + placeLine(d.place)); }
-  // A small picture for each highlight, from its words.
-  function hlIcon(t) {
-    var m = [[/pool|swim/i, '🏊'], [/beach|sand|sea\b|ocean/i, '🏖️'], [/view/i, '🌅'], [/wi-?fi|internet/i, '📶'], [/braai|bbq|barbecue/i, '🔥'], [/fire ?place/i, '🪵'], [/sleep|bed/i, '🛏️'],
-      [/park/i, '🚗'], [/pet|dog/i, '🐾'], [/garden|green|forest|nature/i, '🌿'], [/golf/i, '⛳'], [/kid|child|play/i, '🧸'], [/air ?con|aircon/i, '❄️'], [/kitchen|self.?cater/i, '🍳'], [/river|lagoon|lake/i, '🛶'], [/secur/i, '🔒'], [/dstv|tv/i, '📺']];
-    for (var i = 0; i < m.length; i++) if (m[i][0].test(t)) return m[i][1];
-    return '✓';
+  // A small picture for each highlight or amenity, from its words (amenities.js).
+  function hlIcon(t) { return window.AvanteAmenities ? window.AvanteAmenities.icon(t) : '✓'; }
+  function amenList(list, max) {
+    list = list || []; if (!list.length) return '';
+    var li = function (x) { return '<li><span aria-hidden="true">' + hlIcon(x) + '</span>' + esc(x) + '</li>'; };
+    if (!max || list.length <= max + 1) return '<ul class="am">' + list.map(li).join('') + '</ul>';
+    return '<ul class="am">' + list.slice(0, max).map(li).join('') + '</ul><details class="amx"><summary>' + (list.length - max) + ' more</summary><ul class="am">' + list.slice(max).map(li).join('') + '</ul></details>';
   }
   function storeUrl() { return location.origin + '/stay/' + CFG.slug; }
   function guestUrl() { return location.origin + '/stay/' + CFG.slug + '/guest' + (CFG.key ? '/' + CFG.key : ''); }
@@ -362,10 +375,18 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
       (d.attractions ? '<h3 style="margin:18px 0 6px;font-size:17px">In the area</h3><div class="text">' + esc(d.attractions) + '</div>' : '') +
       (d.moreInfo ? '<h3 style="margin:18px 0 6px;font-size:17px">Good to know</h3><div class="text">' + esc(d.moreInfo) + '</div>' : '') + '</section>';
     if (d.units.length) h += '<section class="sec" id="units"><h2>Where you\'ll stay</h2><div class="units">' + d.units.map(function (u, i) {
-      var img = safeUrl(u.photo) || ph[(i + 1) % Math.max(1, ph.length)] || '';
-      return '<article class="ucard"><div class="im" style="' + (img ? 'background-image:url(\'' + esc(img) + '\')' + bgPos(img) : '') + '">' + (u.price ? '<span class="pr">From ' + money(u.price) + ' a night' + (u.weekendPrice ? '<br><small>Weekends ' + money(u.weekendPrice) + '</small>' : '') + '</span>' : '') + '</div>' +
+      // The unit's own photos (builder, then its Avante listing); none: a gallery photo.
+      var up = (u.photos || []).map(safeUrl).filter(Boolean), img = up[0] || ph[(i + 1) % Math.max(1, ph.length)] || '';
+      var im = '<div class="im" style="' + (img ? 'background-image:url(\'' + esc(img) + '\')' + bgPos(img) : '') + '">' + (u.price ? '<span class="pr">From ' + money(u.price) + ' a night' + (u.weekendPrice ? '<br><small>Weekends ' + money(u.weekendPrice) + '</small>' : '') + '</span>' : '') +
+        (up.length > 1 ? '<span class="cnt">📷 ' + up.length + '</span>' : '') + '</div>';
+      return '<article class="ucard">' + (up.length ? '<button type="button" class="imbtn" data-act="lb" data-unit="' + esc(u.name) + '" data-i="0" aria-label="See ' + up.length + ' photos of ' + esc(u.name) + '">' + im + '</button>' : im) +
         '<div class="bd"><b>' + esc(u.name) + '</b>' + ((u.size || u.beds) ? '<span class="meta">' + esc([u.size, u.beds].filter(Boolean).join(' · ')) + '</span>' : '') +
-        (u.blurb ? '<span style="font-size:14.5px">' + esc(u.blurb) + '</span>' : '') + '<button type="button" class="btn t sm" data-act="toBook">Check dates</button></div></article>'; }).join('') + '</div></section>';
+        (u.blurb ? '<span style="font-size:14.5px">' + esc(u.blurb) + '</span>' : '') + (u.details && u.details !== u.size ? '<span class="det">' + esc(u.details) + '</span>' : '') + amenList(u.amenities, 6) +
+        '<div class="ub">' + (up.length > 1 ? '<button type="button" class="btn g sm" data-act="lb" data-unit="' + esc(u.name) + '" data-i="0">See ' + up.length + ' photos</button>' : '') + '<button type="button" class="btn t sm" data-act="toBook">Check dates</button></div></div></article>'; }).join('') + '</div></section>';
+    // What is in every unit, and what the complex or resort has (Jean, 2026-10-30).
+    var am = d.amenities || {};
+    if ((am.inUnit || []).length) h += '<section class="sec" id="inunit"><h2>In your unit</h2>' + amenList(am.inUnit, 0) + '</section>';
+    if ((am.resort || []).length) h += '<section class="sec" id="resort"><h2>On the resort</h2><div class="rgrid">' + am.resort.map(function (g) { return '<div class="card rg"><h3>' + esc(g.title) + '</h3>' + amenList(g.items, 0) + '</div>'; }).join('') + '</div></section>';
     if (d.showOffers) h += offersHtml();
     if (d.showActivities) h += nearbyHtml();
     // Availability comes after Things to do, so the page doesn't seem to end before the activities (Jean, 2026-10-14).
@@ -659,17 +680,19 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
   });
   var lbEl = null, lbBack = null;
   function showLb(i) {
-    var ph = S.d.photos || []; if (!ph.length) return; S.lb = (i + ph.length) % ph.length;
+    var ph = lbPhotos(); if (!ph.length) return; S.lb = (i + ph.length) % ph.length;
     if (!lbEl) { lbBack = document.activeElement; lbEl = document.createElement('div'); lbEl.className = 'lb'; lbEl.setAttribute('role', 'dialog'); lbEl.setAttribute('aria-modal', 'true'); lbEl.setAttribute('aria-label', 'Photos'); document.body.appendChild(lbEl);
       lbEl.addEventListener('click', function (e) { var a = e.target.closest('[data-lb]'); if (a) { var k = a.getAttribute('data-lb'); if (k === 'x') closeLb(); else showLb(S.lb + (k === 'n' ? 1 : -1)); } else if (e.target === lbEl) closeLb(); }); }
-    lbEl.innerHTML = '<img src="' + esc(ph[S.lb]) + '" alt="' + esc(S.d.name) + ' photo ' + (S.lb + 1) + '"><button type="button" class="x" data-lb="x" aria-label="Close">✕</button>' + (ph.length > 1 ? '<button type="button" class="pv" data-lb="p" aria-label="Previous photo">‹</button><button type="button" class="nx" data-lb="n" aria-label="Next photo">›</button>' : '') + '<div class="n">' + (S.lb + 1) + ' / ' + ph.length + '</div>';
+    lbEl.innerHTML = '<img src="' + esc(ph[S.lb]) + '" alt="' + esc(S.lbList ? S.lbName : S.d.name) + ' photo ' + (S.lb + 1) + '"><button type="button" class="x" data-lb="x" aria-label="Close">✕</button>' + (ph.length > 1 ? '<button type="button" class="pv" data-lb="p" aria-label="Previous photo">‹</button><button type="button" class="nx" data-lb="n" aria-label="Next photo">›</button>' : '') + '<div class="n">' + (S.lb + 1) + ' / ' + ph.length + '</div>';
     lbEl.querySelector('.x').focus();
   }
+  function lbPhotos() { return S.lbList || S.d.photos || []; }
+  function unitByName(n) { return (S.d.units || []).filter(function (u) { return u.name === n; })[0] || { photos: [] }; }
   function closeLb() { if (lbEl) { lbEl.remove(); lbEl = null; } S.lb = -1; if (lbBack) lbBack.focus(); }
   app.addEventListener('click', function (e) {
     var t = e.target.closest('[data-act]'); if (!t) return;
     var a = t.getAttribute('data-act');
-    if (a === 'lb') return showLb(+t.getAttribute('data-i'));
+    if (a === 'lb') { S.lbName = t.getAttribute('data-unit') || ''; S.lbList = S.lbName ? (unitByName(S.lbName).photos || []).map(safeUrl).filter(Boolean) : null; return showLb(+t.getAttribute('data-i')); }
     if (a === 'sl') { var n = (S.d.photos || []).length; S.sl = ((S.sl || 0) + +t.getAttribute('data-d') + n) % n; var sw = document.getElementById('photos-ph'); if (sw) { var pic = sw.querySelector('.pic'); pic.style.backgroundImage = 'url(\'' + S.d.photos[S.sl].replace(/'/g, '%27') + '\')'; pic.style.backgroundPosition = (bgPos(S.d.photos[S.sl]).split(':')[1] || ''); pic.setAttribute('data-i', S.sl); pic.setAttribute('aria-label', 'Open photo ' + (S.sl + 1) + ' of ' + n); sw.querySelector('.cnt').textContent = (S.sl + 1) + ' / ' + n; } return; }
     if (a === 'toBook') { var b = document.getElementById(S.d.showCalendar ? 'calsec' : 'book') || document.getElementById('book'); if (b) { b.scrollIntoView({ behavior: 'smooth', block: 'start' }); } return; }
     if (a === 'calGo') {

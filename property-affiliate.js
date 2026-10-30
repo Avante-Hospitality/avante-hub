@@ -864,11 +864,34 @@
   }
   function fsAreaLabel(a) { return [a.s, a.t, a.p].filter(function (x, i, l) { return x && l.indexOf(x) === i; }).join(', '); }
   function fsPlace() { var p = (S.fpv && S.fpv.place) || {}; return p.suburb || p.city || p.region || ''; }
+  // A unit's own photos (older saves kept just one, as photo).
+  function fsUnitPhotos(x) { return x ? (Array.isArray(x.photos) ? x.photos.slice() : x.photo ? [x.photo] : []) : []; }
+  // What the property's Avante listing has for the front store (units' photos, descriptions, amenities).
+  function fsListing() { var p = S.fpv || {}; return { units: p.listingUnits || {}, inUnit: p.listingInUnit || [], resort: p.listingResort || [] }; }
+  // Several photos, numbered in the order chosen (Jean, 2026-10-30: more photos of each unit).
+  function fsThumbsMany(sel, data, list) {
+    return '<div class="fs-thumbs" role="group">' + list.map(function (u, i) {
+      var at = sel.indexOf(u), on = at > -1;
+      return '<button type="button" class="fs-thumb' + (on ? ' on' : '') + '" ' + data + ' data-u="' + esc(u) + '" aria-pressed="' + on + '" aria-label="Photo ' + (i + 1) + (on ? ' (number ' + (at + 1) + ')' : '') + '"><img src="' + esc(u) + '" alt="" loading="lazy">' + (on ? '<span class="fs-tick" aria-hidden="true">' + (at + 1) + '</span>' : '') + '</button>';
+    }).join('') + '</div>';
+  }
   function fsThumbs(sel, data, list) {
     return '<div class="fs-thumbs" role="group">' + list.map(function (u, i) {
       var on = u === sel;
       return '<button type="button" class="fs-thumb' + (on ? ' on' : '') + '" ' + data + ' data-u="' + esc(u) + '" aria-pressed="' + on + '" aria-label="Photo ' + (i + 1) + (on ? ' (chosen)' : '') + '"><img src="' + esc(u) + '" alt="" loading="lazy">' + (on ? '<span class="fs-tick" aria-hidden="true">✓</span>' : '') + '</button>';
     }).join('') + '</div>';
+  }
+  // A unit in the builder: its photos (tap to add, in order) and what its Avante listing adds.
+  function fsUnitListingInfo(name, mine, shown) {
+    var li = fsListing().units[name] || {}, lp = li.photos || [], am = li.amenities || [], pool = [];
+    lp.concat(shown.slice(0, 24)).forEach(function (u) { if (pool.indexOf(u) < 0) pool.push(u); });
+    var extra = lp.filter(function (u) { return mine.indexOf(u) < 0; }).length;
+    return '<p class="pa-label" style="margin:8px 0 2px">Photos of this unit' + (mine.length ? ' (' + mine.length + ' chosen)' : '') + '</p>' +
+      '<p class="pa-hint" style="margin:0 0 6px">Tap photos in the order you want them; tap again to take one off. The first is the card photo; guests tap the card to see them all.' +
+      (extra ? ' Your Avante listing adds ' + extra + ' more photo' + (extra === 1 ? '' : 's') + ' of this unit after yours.' : lp.length ? '' : ' Tip: photos you add to this unit in your Avante listing show here too.') +
+      (!mine.length && !lp.length ? ' <b>None yet: a gallery photo is used.</b>' : '') + '</p>' +
+      (pool.length ? fsThumbsMany(mine, 'data-act="fsUnitPhoto" data-unit="' + esc(name) + '"', pool) : '<p class="pa-hint">Add photos in step 3 first.</p>') +
+      '<p class="pa-hint" style="margin:8px 0 0">Amenities: ' + (am.length ? am.length + ' ticked for this unit in your Avante listing.' : 'none ticked for this unit in your Avante listing (Units &amp; amenities); the property\'s In-Unit amenities are used.') + '</p>';
   }
   function fsGoogleBox(target, q) {
     var g = S.fsG && S.fsG.target === target ? S.fsG : null;
@@ -937,8 +960,7 @@
           '<p class="pa-hint" style="margin:2px 0 6px">' + (u.price > 0 ? 'Price: ' + money(u.price) + ' a night' + (u.weekendPrice > 0 ? ', weekends ' + money(u.weekendPrice) : '') + (st.showPrices ? '' : ' (prices are switched off in step 7)') : (isCh() ? 'Price: the Avante price, shown when guests choose dates.' : 'No price yet: add it in Channels → Reservation settings.')) + '</p>' +
           '<div class="pa-form"><div class="pa-field"><label class="pa-label" for="fs-ub-' + ix + '">Beds</label><input id="fs-ub-' + ix + '" type="text" maxlength="80" data-fsui="' + esc(u.name) + '|beds" value="' + esc(x.beds) + '" placeholder="e.g. 1 queen, 2 singles"></div>' +
           '<div class="pa-field"><label class="pa-label" for="fs-ux-' + ix + '">One line about it</label><input id="fs-ux-' + ix + '" type="text" maxlength="300" data-fsui="' + esc(u.name) + '|blurb" value="' + esc(x.blurb) + '" placeholder="e.g. Private braai and dam views"></div></div>' +
-          '<p class="pa-label" style="margin:8px 0 4px">Photo for this unit' + (x.photo ? '' : ' <span class="pa-hint" style="text-transform:none;letter-spacing:0">(none chosen: a gallery photo is used)</span>') + '</p>' +
-          (shown.length ? fsThumbs(x.photo, 'data-act="fsUnitPhoto" data-unit="' + esc(u.name) + '"', shown.slice(0, 24)) : '<p class="pa-hint">Add photos in step 3 first.</p>') + '</div>';
+          fsUnitListingInfo(u.name, fsUnitPhotos(x), shown) + '</div>';
       }).join(''));
     // 6 things to do
     var acts = (S.fpv && S.fpv.nearby) || [], hidA = st.actHidden || [], ap = st.actPhotos || {};
@@ -984,7 +1006,7 @@
     h += fsStep('acts', ++n, 'Things to do nearby', st.showActivities ? (S.fpv ? acts.filter(function (a) { return hidA.indexOf(a.name) < 0; }).length + ' within ' + esc(st.nearbyKm) + ' km · 10 shown at random' : esc(st.nearbyKm) + ' km') : 'Switched off', actsBody);
     // 7 what shows
     h += fsStep('shows', ++n, 'What shows on the page', '', '<div class="pa-form">' +
-      [['fs-prices', 'showPrices', 'Prices'], ['fs-cal', 'showCalendar', 'Availability calendar'], ['fs-offers', 'showOffers', 'Your special offers (hooks you manage yourself)']].map(function (x) {
+      [['fs-prices', 'showPrices', 'Prices'], ['fs-cal', 'showCalendar', 'Availability calendar'], ['fs-offers', 'showOffers', 'Your special offers (hooks you manage yourself)'], ['fs-amen', 'showAmenities', 'Amenities: In your unit and On the resort (from your Avante listing)']].map(function (x) {
         return '<label class="pa-check"><input type="checkbox" id="' + x[0] + '"' + (st[x[1]] ? ' checked' : '') + '> ' + x[2] + '</label>'; }).join('') + '</div>' +
       '<div class="pa-field" style="margin-top:10px;max-width:240px"><label class="pa-label" for="fs-notice">Book at least … days ahead</label><input id="fs-notice" type="number" min="0" max="30" value="' + esc(st.minNoticeDays || 0) + '"></div>' +
       '<p class="pa-hint">0 days ahead means guests can book for tonight. ' + (isCh() ? 'Your minimum stay and other rules come from your channel manager through Avante.' : 'Your minimum stay and calendar start date (Channels) also apply.') + '</p>');
@@ -1031,7 +1053,7 @@
     if (!g('fs-slug')) return null;
     var all = function (sel) { return [].slice.call(root.querySelectorAll(sel)); };
     b.slug = g('fs-slug').value; b.on = g('fs-on').checked;
-    b.showPrices = g('fs-prices').checked; b.showCalendar = g('fs-cal').checked; b.showActivities = g('fs-acts').checked; b.showOffers = g('fs-offers').checked;
+    b.showPrices = g('fs-prices').checked; b.showCalendar = g('fs-cal').checked; b.showActivities = g('fs-acts').checked; b.showOffers = g('fs-offers').checked; b.showAmenities = g('fs-amen').checked;
     b.nearbyKm = +g('fs-km').value; b.minNoticeDays = g('fs-notice').value;
     b.hiddenUnits = all('[data-fsunit]').filter(function (x) { return !x.checked; }).map(function (x) { return x.dataset.fsunit; });
     b.welcome = g('fs-welcome').value; b.description = g('fs-desc').value; b.phone = g('fs-phone').value; b.whatsapp = g('fs-wa').value; b.email = g('fs-email').value;
@@ -1039,7 +1061,7 @@
     b.headline = g('fs-headline').value; b.priceFrom = g('fs-pricefrom').value; b.ratingValue = g('fs-rv').value.replace(',', '.').trim(); b.ratingCount = g('fs-rc').value; b.ratingLink = g('fs-rl').value.trim();
     b.highlights = all('[data-fshl]').map(function (x) { return x.value.trim(); }).filter(Boolean);
     var ui = {}, old = F.settings.unitInfo || {};
-    F.units.forEach(function (u) { ui[u.name] = { photo: (old[u.name] || {}).photo || '', beds: '', blurb: '' }; });
+    F.units.forEach(function (u) { ui[u.name] = { photos: fsUnitPhotos(old[u.name]), beds: '', blurb: '' }; });
     all('[data-fsui]').forEach(function (x) { var p = x.dataset.fsui.split('|'), k = p.pop(), n = p.join('|'); if (ui[n]) ui[n][k] = x.value; });
     b.unitInfo = ui;
     if (S.fpv) { var shownA = all('[data-fsact]'); var hid = (F.settings.actHidden || []).filter(function (n) { return !shownA.some(function (x) { return x.dataset.fsact === n; }); }); shownA.forEach(function (x) { if (!x.checked) hid.push(x.dataset.fsact); }); b.actHidden = hid; }
@@ -1055,11 +1077,13 @@
   function fsDraft() {
     var F = S.front, st = F.settings, d = Object.assign({}, S.fpv), ph = frontPhotos(), hid = st.hiddenUnits || [], ui = st.unitInfo || {};
     d.name = S.prop.resortName || d.name; d.slug = st.slug || d.slug;
-    ['welcome', 'headline', 'showPrices', 'showCalendar', 'showActivities', 'showOffers'].forEach(function (k) { d[k] = st[k]; });
+    ['welcome', 'headline', 'showPrices', 'showCalendar', 'showActivities', 'showOffers', 'showAmenities'].forEach(function (k) { d[k] = st[k]; });
     d.description = st.description || F.snDescription || S.fpv.description || '';
     d.photos = (ph.chosen && ph.chosen.length ? ph.chosen : ph.all).slice(0, 24);
     d.highlights = (st.highlights || []).filter(Boolean);
-    d.units = F.units.filter(function (u) { return hid.indexOf(u.name) < 0; }).map(function (u) { var x = ui[u.name] || {}; return { name: u.name, size: u.size || '', photo: x.photo || '', beds: x.beds || '', blurb: x.blurb || '', price: st.showPrices && u.price > 0 ? u.price : 0 }; });
+    d.units = F.units.filter(function (u) { return hid.indexOf(u.name) < 0; }).map(function (u) { var x = ui[u.name] || {}; return { name: u.name, size: u.size || '', photos: fsUnitPhotos(x), beds: x.beds || '', blurb: x.blurb || '', price: st.showPrices && u.price > 0 ? u.price : 0 }; });
+    // Unit photos and amenities from the Avante listing, as the page builds them (amenities.js).
+    var fu = AvanteAmenities.frontUnits(d, fsListing()); d.units = fu.units; d.amenities = fu.amenities;
     d.priceFrom = st.showPrices ? (st.priceFrom || fsAutoPrice(st)) : '';
     d.rating = /^[0-5](\.\d)?$/.test(st.ratingValue || '') ? { value: st.ratingValue, count: st.ratingCount || '', link: /^https:\/\//.test(st.ratingLink || '') ? st.ratingLink : '' } : null;
     var wa = String(st.whatsapp || st.phone || F.propertyPhone || '').replace(/\D/g, ''); if (wa.indexOf('00') === 0) wa = wa.slice(2); if (wa.charAt(0) === '0') wa = '27' + wa.slice(1);
@@ -1198,7 +1222,8 @@
       st.highlights = hl.slice(0, 6); if (hl.length) done.push(hl.length + ' highlights');
     }
     var ph = frontPhotos(), gal = (ph.chosen || ph.all), ui = Object.assign({}, st.unitInfo || {}), nu = 0;
-    if (gal.length) F.units.forEach(function (u, i) { var x = Object.assign({}, ui[u.name] || {}); if (!x.photo) { x.photo = gal[(i + 1) % gal.length]; ui[u.name] = x; nu++; } });
+    var lu = fsListing().units;
+    if (gal.length) F.units.forEach(function (u, i) { var x = Object.assign({}, ui[u.name] || {}); if (!fsUnitPhotos(x).length && !((lu[u.name] || {}).photos || []).length) { x.photos = [gal[(i + 1) % gal.length]]; delete x.photo; ui[u.name] = x; nu++; } });
     st.unitInfo = ui; if (nu) done.push('photos for ' + nu + ' unit' + (nu === 1 ? '' : 's'));
     // Photos for things to do are found by themselves (library first, then Google) when the list loads.
     var before = (S.fpv.nearby || []).filter(function (a) { return a.autoPhoto; }).length;
@@ -1935,7 +1960,9 @@
     }
     if (a === 'fsUnitPhoto') {
       keepFront(); var ui2 = S.front.settings.unitInfo = Object.assign({}, S.front.settings.unitInfo || {}), ux = ui2[t.dataset.unit] = Object.assign({}, ui2[t.dataset.unit] || {});
-      ux.photo = ux.photo === t.dataset.u ? '' : t.dataset.u; fsMarkDirty(); S.front._fresh = true; render(); pvSend('units'); return;
+      var upl = fsUnitPhotos(ux), at = upl.indexOf(t.dataset.u);
+      if (at > -1) upl.splice(at, 1); else if (upl.length < AvanteAmenities.UNIT_PHOTOS) upl.push(t.dataset.u);
+      ux.photos = upl; delete ux.photo; fsMarkDirty(); S.front._fresh = true; render(); pvSend('units'); return;
     }
     if (a === 'fsActReset') { keepFront(); var ap2 = S.front.settings.actPhotos = Object.assign({}, S.front.settings.actPhotos || {}); delete ap2[t.dataset.name]; fsMarkDirty(); S.front._fresh = true; render(); return; }
     if (a === 'fsFill') return fsFill(t);

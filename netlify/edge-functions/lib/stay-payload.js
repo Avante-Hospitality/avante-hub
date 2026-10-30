@@ -8,6 +8,7 @@ import { fetchResortInfo } from "./hook-source.js";
 import { propertyTreeOpts, propertyTreePlace, treePlaceCentre } from "./tree-place.js";
 import { nearestByDistance } from "./geo-distance.js";
 import { liveRemembered, fillActPhotos, mainActPhotos } from "./act-photos.js";
+import "../../../amenities.js"; // globalThis.AvanteAmenities
 
 const INFO_TTL_MS = 24 * 3600 * 1000;
 
@@ -112,10 +113,13 @@ export async function stayPayload(core, prop, opts) {
     nearby = list.map((a) => Object.assign(a, { km: undefined }));
     mapActs = mapActs.map((a) => ({ name: a.name, latitude: a.latitude, longitude: a.longitude, distance: a.distance, photo: a.photo || "", description: String(a.description || "").slice(0, 140), price: a.price || "", link: a.link || "" }));
   }
+  const listing = await core.frontStoreListing(prop).catch(() => null);
+  // Unit photos and amenities from the Avante listing (amenities.js frontUnits, shared with the builder's preview).
+  Object.assign(page, globalThis.AvanteAmenities.frontUnits(page, listing));
   return Object.assign({ ok: true }, page, {
     photos, description: page.description || info.description || "", attractions: info.attractions || "", moreInfo: info.moreInfo || "",
     place: { country: place.country || "", province: place.province || "", region: place.region || "", city: place.city || "", suburb: place.suburb || "" },
     latitude: isFinite(lat) && lat !== 0 ? lat : null, longitude: isFinite(lng) && lng !== 0 ? lng : null, nearby, mapActs, nearbyKm: outKm,
     actPhotos: undefined, actHidden: undefined, actPinned: undefined, actPlace: opts.all ? page.actPlace || null : undefined, area: opts.all ? area || null : undefined,
-  }, opts.all ? { snPhotos: info.images || [], snDescription: info.description || "", uploaded } : {});
+  }, opts.all ? { snPhotos: info.images || [], snDescription: info.description || "", uploaded, listingUnits: (listing && listing.units) || {}, listingInUnit: (listing && listing.inUnit) || [], listingResort: (listing && listing.resort) || [] } : {});
 }

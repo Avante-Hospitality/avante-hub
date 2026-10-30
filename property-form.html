@@ -194,6 +194,7 @@
      SheetJS and mammoth load the first time a file needs them (load-script.js). -->
 <script src="load-script.js"></script>
 <script src="commission.js"></script>
+<script src="amenities.js"></script>
 <script src="sn-export.js"></script>
 <script src="listing-ready.js"></script>
 <script src="listing-photo-library.js"></script>
@@ -742,16 +743,7 @@
   else { $('siteIdHint').textContent = 'Leave empty for a new property. Avante gives the Site ID only after the Site Nr is allocated; Avante adds it when the property goes live on the hub.'; }
 
   // ---------- Amenities ----------
-  var AMENITY_DATA = {
-    "In-Unit / Room Amenities": ["Air-conditioning","Heating","Ceiling fans","TV","DSTV/Satellite TV","Smart TV / Streaming (Netflix etc.)","Wi-Fi","Coffee/tea station","Bar fridge","Kitchenette","Full kitchen in unit","Dishwasher","Microwave","Hairdryer","Iron & ironing board","Study/work desk","Mosquito nets","Blackout curtains","Private balcony/patio","Sea view","Mountain view","En-suite bathroom","Bath","Shower","Toiletries provided","Bathrobes","Extra-length/queen/king bed","Cot/crib available","Safe in room"],
-    "Establishment / Property Facilities": ["Free Wi-Fi","Free parking","Paid parking","Secure/gated parking","Backup power (generator/inverter)","Backup water supply","Borehole water","Swimming pool","Private pool","Shared/communal pool","Jacuzzi/hot tub","Braai/BBQ facilities","Garden","Patio/veranda","Fireplace/boma","Elevator/lift","Laundry facilities/service","Housekeeping/cleaning service","Reception/24hr check-in","Concierge service","Room service","Restaurant on-site","Bar on-site","Conference/meeting facilities","Wedding/function venue"],
-    "Kitchen & Dining": ["Full kitchen","Fridge/freezer","Stove & oven","Microwave","Dishwasher","Kettle","Toaster","Coffee machine","Wine cooler","Braai/outdoor cooking area","Outdoor dining area","Complimentary welcome pack","Breakfast included","Private chef available on request"],
-    "Outdoor & Recreation": ["Swimming pool","Private plunge pool","Beach access","Direct beach frontage","Sea view","Mountain view","Hiking trails on property","Fishing access","Boat launch/jetty","Bicycles available","Tennis court","Golf course access","Games room","Kids' play area","Trampoline"],
-    "Safety & Security": ["Smoke detectors","Fire extinguisher","First aid kit","CCTV cameras","Alarm system","Electric fencing","24-hour security/patrol","Guarded/gated estate","Safe/lockbox","Pool safety fence/net","Child safety gates","Carbon monoxide detector"],
-    "Accessibility": ["Wheelchair-accessible entrance","Step-free access throughout","Accessible bathroom/roll-in shower","Wide doorways","Elevator/lift","Ground-floor unit available","Accessible parking bay"],
-    "Family & Pets": ["Cot/crib available","High chair","Kid-friendly furnishings","Baby-proofed","Babysitting service on request","Pets allowed","Pet-free property","Pet amenities provided (bowls/bed)"],
-    "Activities & Experiences": ["Whale watching","Scuba diving/snorkeling","Surfing lessons","Hiking/nature trails","Golf","Fishing charters","Wine tasting tours","Game drives/safari","Horse riding","Canopy tours/zipline","Kayaking/canoeing","Boat cruises/sunset cruises","Spa & wellness treatments","Cultural/heritage tours","Local craft markets","Cooking classes","Cycling routes","Bird watching","4x4/off-road trails","Stargazing"]
-  };
+  var AMENITY_DATA = AvanteAmenities.DATA;   // amenities.js (also used by the front store)
   var AMENITY_OPTIONS = [];
   (function(){
     var html = '';
@@ -782,6 +774,11 @@
       '<div class="row"><div><label>Children allowed</label><select class="pu-childOk"><option value="Y">Yes</option><option value="N">No</option></select></div><div><label># of units of this type</label><input class="pu-numUnits" inputmode="numeric" value="1"></div></div>' +
       '<div class="row"><div><label>Rate scheme</label><select class="pu-rateScheme"><option>Per Unit</option><option>Per Person</option></select></div><div><label>Rate basis</label><select class="pu-rateBasis"><option>Self Catering</option><option>B&amp;B</option><option>Room Only</option><option>Half Board</option><option>Full Board</option></select></div></div>' +
       '<label>Unit description (beds, bathroom, layout)</label><textarea class="pu-desc" rows="2"></textarea>' +
+      // Each unit type ticks what is inside it (Jean, 2026-10-30): the front store shows it on the unit's card.
+      '<details class="more pu-amen"><summary>Amenities in this unit type <span class="pu-amen-n"></span></summary>' +
+        '<p class="hint" style="margin:6px 0">Tick what guests find inside this unit. None ticked: the In-Unit and Kitchen amenities below are used for it.</p>' +
+        '<div class="amenity-grid">' + AvanteAmenities.UNIT_ITEMS.map(function(item){ return '<label><input type="checkbox" class="pu-amen-check" data-item="' + esc(item) + '"> ' + esc(item) + '</label>'; }).join('') + '</div>' +
+      '</details>' +
       '<details class="more pu-perPerson"><summary>Per-person rates</summary>' +
         '<div class="row"><div><label>Season start</label><input class="pu-seasonStart" type="date"></div><div><label>Season end</label><input class="pu-seasonEnd" type="date"></div></div>' +
         '<label>Rates per pax (1 / 2 / 3 / 4 / 5)</label><div class="row"><input class="pu-rate1" inputmode="numeric"><input class="pu-rate2" inputmode="numeric"><input class="pu-rate3" inputmode="numeric"><input class="pu-rate4" inputmode="numeric"><input class="pu-rate5" inputmode="numeric"></div>' +
@@ -796,12 +793,15 @@
       wrap.remove(); delete RATES[uid]; renderPhotos();
     });
     wrap.querySelector('.pu-photos-btn').addEventListener('click', function(){ choosePhotos(uid); });
+    wrap.querySelector('.pu-amen').addEventListener('change', function(){ countUnitAmenities(wrap); });
     wrap.querySelector('.pu-rateScheme').addEventListener('change', function(){ showPerPerson(wrap); });
     showPerPerson(wrap);
     return wrap;
   }
   // Per-person rates show only for rate scheme "Per Person" (Jean, 2026-10-27):
   // a Per Unit property sets its rates (weekend rates too) on the calendar in step 7.
+  function unitAmenities(row){ return Array.prototype.filter.call(row.querySelectorAll('.pu-amen-check'), function(cb){ return cb.checked; }).map(function(cb){ return cb.getAttribute('data-item'); }); }
+  function countUnitAmenities(row){ var n = unitAmenities(row).length; row.querySelector('.pu-amen-n').textContent = n ? '(' + n + ' ticked)' : ''; }
   function showPerPerson(row){
     row.querySelector('.pu-perPerson').style.display = row.querySelector('.pu-rateScheme').value === 'Per Person' ? '' : 'none';
   }
@@ -1718,7 +1718,8 @@
         ratePax5: row.querySelector('.pu-rate5').value.trim(),
         childRate06: row.querySelector('.pu-childRate06').value.trim(),
         childRate712: row.querySelector('.pu-childRate712').value.trim(),
-        description: row.querySelector('.pu-desc').value.trim()
+        description: row.querySelector('.pu-desc').value.trim(),
+        amenities: unitAmenities(row)
       };
     });
 
@@ -1962,7 +1963,8 @@
       put('.pu-rateScheme', u.rateScheme); put('.pu-rateBasis', u.rateBasis); put('.pu-seasonStart', u.seasonStart); put('.pu-seasonEnd', u.seasonEnd);
       put('.pu-rate1', u.ratePax1); put('.pu-rate2', u.ratePax2); put('.pu-rate3', u.ratePax3); put('.pu-rate4', u.ratePax4); put('.pu-rate5', u.ratePax5);
       put('.pu-childRate06', u.childRate06); put('.pu-childRate712', u.childRate712); put('.pu-desc', u.description);
-      showPerPerson(r);
+      Array.prototype.forEach.call(r.querySelectorAll('.pu-amen-check'), function(cb){ cb.checked = (u.amenities || []).indexOf(cb.getAttribute('data-item')) > -1; });
+      countUnitAmenities(r); showPerPerson(r);
     });
     // Amenities
     var on = {}; (L.amenities || []).forEach(function(a){ if(a.available === 'Y') on[a.category + '|' + a.item] = true; });

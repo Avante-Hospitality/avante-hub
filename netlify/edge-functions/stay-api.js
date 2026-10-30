@@ -28,6 +28,7 @@ export default async (request, context) => {
   const core = createCore({
     snSource: "Front store",
     store, resortStore: getStore({ name: "resort-list", consistency: "strong" }), encKey: env("PA_ENC_KEY"), baseUrl: url.origin,
+    listingStore: getStore({ name: "property-listings", consistency: "strong" }), // the front store reads unit photos and amenities from the listing
     sendEmail: async (to, subject, html, opts = {}) => {
       const key = env("RESEND_API_KEY");
       if (!key || !to) return false;

@@ -22,6 +22,7 @@ import { emailList as listOf, badEmails, recipients } from "./emails.js";
 import { allListings, readAllEntries } from "./blob-records.js";
 import { listingMatchesProperty, mergeContact, applyContact } from "./property-contact.js";
 import "../../../commission.js"; // globalThis.AvanteCommission: Avante's commission rates
+import "../../../amenities.js"; // globalThis.AvanteAmenities: the amenity list and its front store groups
 
 export const CHANNELS = { bcom: "Booking.com", airbnb: "Airbnb", lekke: "LekkeSlaap" };
 // The address properties invite on their channels, set in Admin > Property
@@ -1635,7 +1636,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
   // to the property), plus an in-house guest page (/stay/<slug>/guest) and a
   // printable room card with QR codes. prop.frontStore holds the settings;
   // "fslug:<slug>" -> { siteId } finds the property from the link.
-  const FS_DEFAULTS = { on: false, slug: "", showPrices: true, showCalendar: true, showActivities: true, showOffers: true,
+  const FS_DEFAULTS = { on: false, slug: "", showPrices: true, showCalendar: true, showActivities: true, showOffers: true, showAmenities: true,
     hiddenUnits: [], minNoticeDays: 0, nearbyKm: 30, welcome: "", description: "", phone: "", whatsapp: "", email: "",
     wifiName: "", wifiPassword: "", guestNotes: "", photos: null, guestKey: "",
     // Front store builder (Jean, 2026-10-13): the big headline, a price badge,
@@ -1663,7 +1664,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     if (prop.channel) throw new PAError("Channel properties don't have a front store. Put your Promotions embed link (Affiliate Marketing) on your website.");
     const cur = fsSettings(prop), s = Object.assign({}, cur);
     const bool = (k) => { if (body[k] !== undefined) s[k] = !!body[k]; };
-    ["on", "showPrices", "showCalendar", "showActivities", "showOffers"].forEach(bool);
+    ["on", "showPrices", "showCalendar", "showActivities", "showOffers", "showAmenities"].forEach(bool);
     if (body.slug !== undefined) s.slug = slug(body.slug).slice(0, 60);
     // Always check the link name, also the automatic one, before claiming it.
     if (s.slug.length < 3) throw new PAError("The link name needs at least 3 letters or numbers.");
@@ -1681,8 +1682,10 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     if (body.unitInfo && typeof body.unitInfo === "object") {
       s.unitInfo = {};
       for (const u of prop.units) { const x = body.unitInfo[u.name]; if (!x || typeof x !== "object") continue;
-        const photo = cleanStr(String(x.photo || ""), 600), o = { photo: okPhoto(photo) ? photo : "", beds: cleanStr(String(x.beds || ""), 80), blurb: cleanStr(String(x.blurb || ""), 300) };
-        if (o.photo || o.beds || o.blurb) s.unitInfo[u.name] = o; }
+        // Several photos per unit, in order (Jean, 2026-10-30); the first is the card's photo.
+        const photos = [...new Set((Array.isArray(x.photos) ? x.photos : [x.photo]).map((v) => cleanStr(String(v || ""), 600)).filter(okPhoto))].slice(0, FS_UNIT_PHOTOS);
+        const o = { photos, beds: cleanStr(String(x.beds || ""), 80), blurb: cleanStr(String(x.blurb || ""), 300) };
+        if (o.photos.length || o.beds || o.blurb) s.unitInfo[u.name] = o; }
     }
     if (body.actPhotos && typeof body.actPhotos === "object") { s.actPhotos = {}; for (const [k, v] of Object.entries(body.actPhotos).slice(0, 60)) { const u = cleanStr(String(v || ""), 600); if (okPhoto(u)) s.actPhotos[cleanStr(k, 120)] = u; } }
     if (body.photoPos && typeof body.photoPos === "object") { s.photoPos = {}; for (const [k, v] of Object.entries(body.photoPos).slice(0, 150)) { const u = cleanStr(String(k || ""), 600), pos = String(v || ""); if (okPhoto(u) && /^\d{1,3}% \d{1,3}%$/.test(pos) && pos !== "50% 50%") s.photoPos[u] = pos; } }
@@ -1773,17 +1776,41 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     const s = fsSettings(prop), fb = firstBookable(prop), notice = addDays(today(), s.minNoticeDays || 0);
     return notice > fb ? notice : fb;
   }
+  const FS_UNIT_PHOTOS = globalThis.AvanteAmenities.UNIT_PHOTOS;
+  // A unit's own photos as the builder saved them (older saves kept just one, as photo).
+  function unitPhotos(x) { return x ? (Array.isArray(x.photos) ? x.photos : x.photo ? [x.photo] : []) : []; }
+  // What the property's Avante listing says about its units and its complex or
+  // resort (Jean, 2026-10-30): each unit type's photos, description and
+  // amenities, the In-Unit amenities ticked for the whole property, and the
+  // "On the resort" groups. The listing is the master; nothing is copied.
+  async function frontStoreListing(prop) {
+    const l = await linkedListing(prop).catch(() => null);
+    if (!l) return null;
+    const A = globalThis.AvanteAmenities, key = (v) => String(v || "").trim().toLowerCase();
+    const fileUrl = (k) => "/api/property-file?key=" + encodeURIComponent(k);
+    const images = (l.images || []).filter((im) => im && im.key);
+    const units = {};
+    for (const u of prop.units) {
+      const t = (l.unitTypes || []).find((x) => x && key(x.name) === key(u.name));
+      const mine = images.filter((im) => im.type === "Unit" && key(im.unitTypeName) === key(u.name)).sort((a, b) => (b.cover === "Y") - (a.cover === "Y"));
+      units[u.name] = { photos: mine.map((im) => fileUrl(im.key)).slice(0, FS_UNIT_PHOTOS), description: t ? String(t.description || "").slice(0, 600) : "", amenities: t && Array.isArray(t.amenities) ? t.amenities.slice(0, 60) : [] };
+    }
+    let resort = A.resortGroups(l.amenities);
+    // Nothing ticked on the listing yet: what Stock Network's page lists.
+    if (!resort.length && (l.snFacilities || []).length) resort = [{ title: "Facilities", items: A.unique(l.snFacilities.map((x) => String(x || "").trim()).filter(Boolean)).slice(0, 60) }];
+    return { units, inUnit: A.tickedIn(l.amenities, A.UNIT_CATS), resort };
+  }
   function fsUnits(prop) { const hide = fsSettings(prop).hiddenUnits || []; return prop.units.filter((u) => !hide.includes(u.name)); }
   // Public page facts (no guest names, no prices when switched off).
   function publicFrontStore(prop) {
     const s = fsSettings(prop), st = prop.settings || {};
     return { name: prop.resortName || "", slug: s.slug, url: fsUrl(prop),
       welcome: s.welcome, description: s.description, photos: s.photos, showPrices: s.showPrices, showCalendar: s.showCalendar,
-      showActivities: s.showActivities, showOffers: s.showOffers, nearbyKm: s.nearbyKm || 30, minStay: minStayOf(prop), firstBookable: fsFirstNight(prop),
+      showActivities: s.showActivities, showOffers: s.showOffers, showAmenities: s.showAmenities, nearbyKm: s.nearbyKm || 30, minStay: minStayOf(prop), firstBookable: fsFirstNight(prop),
       contact: { phone: s.phone || st.phone || "", whatsapp: waNumber(s.whatsapp || s.phone || st.phone || ""), email: s.email || st.email || "" },
       units: fsUnits(prop).map((u) => { const x = (s.unitInfo || {})[u.name] || {}, pr = s.showPrices && st.prices && st.prices[u.name] > 0 ? st.prices[u.name] : 0;
         const wp = pr && st.weekendRates && st.weekendPrices && st.weekendPrices[u.name] > 0 ? st.weekendPrices[u.name] : 0;
-        return { name: u.name, size: u.size || "", photo: x.photo || "", beds: x.beds || "", blurb: x.blurb || "", price: pr, weekendPrice: wp, weekendDays: wp ? (st.weekendDays || [4, 5]) : undefined }; }),
+        return { name: u.name, size: u.size || "", photos: unitPhotos(x), beds: x.beds || "", blurb: x.blurb || "", price: pr, weekendPrice: wp, weekendDays: wp ? (st.weekendDays || [4, 5]) : undefined }; }),
       payMode: payMode(prop), approveGuests: !prop.channel && !!(prop.settings && prop.settings.approveGuests),
       headline: s.headline || "", highlights: s.highlights || [], priceFrom: fsPriceFrom(prop, s),
       rating: s.ratingValue ? { value: s.ratingValue, count: s.ratingCount || "", link: s.ratingLink || "" } : null,
@@ -1947,5 +1974,5 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
   }
   function notDemo(b) { if (b && b.demo) throw new PAError("This is a demo booking: it isn't in Avante's booking system, so it can't be changed, paid or cancelled.", 409); }
 
-  return { propertyTo, syncContact, requestChannelHelp, prefetch, siteOfToken, newSession, decide, refreshStatuses, clientFor, connect, auth, disconnect, publicProperty, availability, search, book, cancel, cancelUnit, edit, find, saveSettings, channelsView, payInfo, markPaidEft, affStatus, resume, seedDemo, clearDemo, isDemoSite, saveContact, checkIn, guests, messagesView, saveMessages, prepareMessage, markMessage, emailNow, inHouse, emailInHouse, firstBookable, fsSettings, saveFrontStore, frontStoreView, uploadFrontPhoto, removeFrontPhoto, frontPhoto, propertyBySlug, publicFrontStore, publicGuestInfo, guestKeyOk, publicOffers, publicAvailability, publicQuote, publicBook, fsStat, propertyReviewLink, remindMessages, icalFeed, runSync, syncProperty, channelEvents, addChannelEvent, dismissChannelEvent, snapshot, ensureWindow, resolveUnitNotice, findResortsForSite, findResort };
+  return { propertyTo, syncContact, requestChannelHelp, prefetch, siteOfToken, newSession, decide, refreshStatuses, clientFor, connect, auth, disconnect, publicProperty, availability, search, book, cancel, cancelUnit, edit, find, saveSettings, channelsView, payInfo, markPaidEft, affStatus, resume, seedDemo, clearDemo, isDemoSite, saveContact, checkIn, guests, messagesView, saveMessages, prepareMessage, markMessage, emailNow, inHouse, emailInHouse, firstBookable, fsSettings, saveFrontStore, frontStoreView, uploadFrontPhoto, removeFrontPhoto, frontPhoto, propertyBySlug, publicFrontStore, frontStoreListing, publicGuestInfo, guestKeyOk, publicOffers, publicAvailability, publicQuote, publicBook, fsStat, propertyReviewLink, remindMessages, icalFeed, runSync, syncProperty, channelEvents, addChannelEvent, dismissChannelEvent, snapshot, ensureWindow, resolveUnitNotice, findResortsForSite, findResort };
 }

@@ -13,6 +13,7 @@ import { HOOKS_URL, makeHooksTicket } from "./lib/hooks-ticket.js";
 import { propertyTags, unitTag, libPost, libIndex, libImage } from "./lib/photo-library.js";
 import { isAdminToken } from "./lib/admin-session.js";
 import "../../commission.js"; // globalThis.AvanteCommission: Avante's commission rates
+import "../../amenities.js"; // globalThis.AvanteAmenities: the amenity list
 import "../../listing-ready.js"; // globalThis.ListingReady: the Ready check, shared with the listing form
 import { isAffiliateSession } from "./lib/affiliate-session.js";
 import { createPropertyAffiliate } from "./lib/affiliates.js";
@@ -133,6 +134,8 @@ function sanitizeUnitTypes(input) {
     childRate06: clean(u && u.childRate06, 20),
     childRate712: clean(u && u.childRate712, 20),
     description: clean(u && u.description, 2000),
+    // What is inside this unit type (Jean, 2026-10-30), only items from the amenity list.
+    amenities: Array.isArray(u && u.amenities) ? globalThis.AvanteAmenities.unique(u.amenities.map((x) => clean(x, 150)).filter((x) => globalThis.AvanteAmenities.UNIT_ITEMS.includes(x))) : [],
   }));
 }
 
