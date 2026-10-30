@@ -57,7 +57,8 @@
   // the store's own choices (page: units[{name, photos}], showAmenities) and the
   // property's Avante listing (listing: {units: {name: {photos, description,
   // amenities}}, inUnit, resort}), the master for amenities:
-  // - photos: the ones chosen in the builder, then the listing's photos of that unit;
+  // - photos: the ones tapped in the builder, then the listing's photos of that unit;
+  //   only when there are none, the automatic stand-in (fallbackPhoto);
   // - amenities: when any unit type ticks its own, every card shows its list (else
   //   the property's In-Unit list); otherwise "In your unit" shows once for all;
   // - resort: the "On the resort" groups.
@@ -71,6 +72,8 @@
       var li = lu[u.name] || {}, out = {};
       for (var k in u) out[k] = u[k];
       out.photos = unique((u.photos || []).concat(li.photos || [])).slice(0, UNIT_PHOTOS);
+      if (!out.photos.length && u.fallbackPhoto) out.photos = [u.fallbackPhoto];
+      delete out.fallbackPhoto;
       out.details = li.description || "";
       out.amenities = perUnit ? (own(u).length ? own(u) : inUnit) : [];
       return out;

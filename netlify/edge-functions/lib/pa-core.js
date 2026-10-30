@@ -1683,9 +1683,10 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
       s.unitInfo = {};
       for (const u of prop.units) { const x = body.unitInfo[u.name]; if (!x || typeof x !== "object") continue;
         // Several photos per unit, in order (Jean, 2026-10-30); the first is the card's photo.
-        const photos = [...new Set((Array.isArray(x.photos) ? x.photos : [x.photo]).map((v) => cleanStr(String(v || ""), 600)).filter(okPhoto))].slice(0, FS_UNIT_PHOTOS);
-        const o = { photos, beds: cleanStr(String(x.beds || ""), 80), blurb: cleanStr(String(x.blurb || ""), 300) };
-        if (o.photos.length || o.beds || o.blurb) s.unitInfo[u.name] = o; }
+        const photos = [...new Set((Array.isArray(x.photos) ? x.photos : []).map((v) => cleanStr(String(v || ""), 600)).filter(okPhoto))].slice(0, FS_UNIT_PHOTOS);
+        const photo = cleanStr(String(x.photo || ""), 600);
+        const o = { photos, photo: okPhoto(photo) ? photo : "", beds: cleanStr(String(x.beds || ""), 80), blurb: cleanStr(String(x.blurb || ""), 300) };
+        if (o.photos.length || o.photo || o.beds || o.blurb) s.unitInfo[u.name] = o; }
     }
     if (body.actPhotos && typeof body.actPhotos === "object") { s.actPhotos = {}; for (const [k, v] of Object.entries(body.actPhotos).slice(0, 60)) { const u = cleanStr(String(v || ""), 600); if (okPhoto(u)) s.actPhotos[cleanStr(k, 120)] = u; } }
     if (body.photoPos && typeof body.photoPos === "object") { s.photoPos = {}; for (const [k, v] of Object.entries(body.photoPos).slice(0, 150)) { const u = cleanStr(String(k || ""), 600), pos = String(v || ""); if (okPhoto(u) && /^\d{1,3}% \d{1,3}%$/.test(pos) && pos !== "50% 50%") s.photoPos[u] = pos; } }
@@ -1777,8 +1778,9 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
     return notice > fb ? notice : fb;
   }
   const FS_UNIT_PHOTOS = globalThis.AvanteAmenities.UNIT_PHOTOS;
-  // A unit's own photos as the builder saved them (older saves kept just one, as photo).
-  function unitPhotos(x) { return x ? (Array.isArray(x.photos) ? x.photos : x.photo ? [x.photo] : []) : []; }
+  // A unit's photos tapped in the builder; "photo" is only the automatic stand-in that
+  // Fill in my store (and older saves) gave it, used when the unit has no other photo.
+  function unitPhotos(x) { return x && Array.isArray(x.photos) ? x.photos : []; }
   // What the property's Avante listing says about its units and its complex or
   // resort (Jean, 2026-10-30): its property photos, each unit type's photos, description and
   // amenities, the In-Unit amenities ticked for the whole property, and the
@@ -1786,7 +1788,9 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
   async function frontStoreListing(prop) {
     const l = await linkedListing(prop).catch(() => null);
     if (!l) return null;
-    const A = globalThis.AvanteAmenities, key = (v) => String(v || "").trim().toLowerCase();
+    // Unit names are matched without spaces, dots or dashes or case (Jean, 2026-10-30: the
+    // listing has "FV 16", Stock Network FV16).
+    const A = globalThis.AvanteAmenities, key = (v) => String(v || "").toLowerCase().replace(/[^a-z0-9]/g, "");
     const fileUrl = (k) => "/api/property-file?key=" + encodeURIComponent(k);
     const images = (l.images || []).filter((im) => im && im.key);
     const units = {};
@@ -1812,7 +1816,7 @@ export function createCore({ store, resortStore, encKey, now = () => new Date(),
       contact: { phone: s.phone || st.phone || "", whatsapp: waNumber(s.whatsapp || s.phone || st.phone || ""), email: s.email || st.email || "" },
       units: fsUnits(prop).map((u) => { const x = (s.unitInfo || {})[u.name] || {}, pr = s.showPrices && st.prices && st.prices[u.name] > 0 ? st.prices[u.name] : 0;
         const wp = pr && st.weekendRates && st.weekendPrices && st.weekendPrices[u.name] > 0 ? st.weekendPrices[u.name] : 0;
-        return { name: u.name, size: u.size || "", photos: unitPhotos(x), beds: x.beds || "", blurb: x.blurb || "", price: pr, weekendPrice: wp, weekendDays: wp ? (st.weekendDays || [4, 5]) : undefined }; }),
+        return { name: u.name, size: u.size || "", photos: unitPhotos(x), fallbackPhoto: x.photo || "", beds: x.beds || "", blurb: x.blurb || "", price: pr, weekendPrice: wp, weekendDays: wp ? (st.weekendDays || [4, 5]) : undefined }; }),
       payMode: payMode(prop), approveGuests: !prop.channel && !!(prop.settings && prop.settings.approveGuests),
       headline: s.headline || "", highlights: s.highlights || [], priceFrom: fsPriceFrom(prop, s),
       rating: s.ratingValue ? { value: s.ratingValue, count: s.ratingCount || "", link: s.ratingLink || "" } : null,

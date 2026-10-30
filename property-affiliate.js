@@ -865,8 +865,8 @@
   }
   function fsAreaLabel(a) { return [a.s, a.t, a.p].filter(function (x, i, l) { return x && l.indexOf(x) === i; }).join(', '); }
   function fsPlace() { var p = (S.fpv && S.fpv.place) || {}; return p.suburb || p.city || p.region || ''; }
-  // A unit's own photos (older saves kept just one, as photo).
-  function fsUnitPhotos(x) { return x ? (Array.isArray(x.photos) ? x.photos.slice() : x.photo ? [x.photo] : []) : []; }
+  // A unit's photos tapped in the builder (photo = the automatic stand-in, used only when it has none).
+  function fsUnitPhotos(x) { return x && Array.isArray(x.photos) ? x.photos.slice() : []; }
   // What the property's Avante listing has for the front store (units' photos, descriptions, amenities).
   function fsListing() { var p = S.fpv || {}; return { units: p.listingUnits || {}, inUnit: p.listingInUnit || [], resort: p.listingResort || [] }; }
   // Several photos, numbered in the order chosen (Jean, 2026-10-30: more photos of each unit).
@@ -1062,7 +1062,7 @@
     b.headline = g('fs-headline').value; b.priceFrom = g('fs-pricefrom').value; b.ratingValue = g('fs-rv').value.replace(',', '.').trim(); b.ratingCount = g('fs-rc').value; b.ratingLink = g('fs-rl').value.trim();
     b.highlights = all('[data-fshl]').map(function (x) { return x.value.trim(); }).filter(Boolean);
     var ui = {}, old = F.settings.unitInfo || {};
-    F.units.forEach(function (u) { ui[u.name] = { photos: fsUnitPhotos(old[u.name]), beds: '', blurb: '' }; });
+    F.units.forEach(function (u) { ui[u.name] = { photos: fsUnitPhotos(old[u.name]), photo: (old[u.name] || {}).photo || '', beds: '', blurb: '' }; });
     all('[data-fsui]').forEach(function (x) { var p = x.dataset.fsui.split('|'), k = p.pop(), n = p.join('|'); if (ui[n]) ui[n][k] = x.value; });
     b.unitInfo = ui;
     if (S.fpv) { var shownA = all('[data-fsact]'); var hid = (F.settings.actHidden || []).filter(function (n) { return !shownA.some(function (x) { return x.dataset.fsact === n; }); }); shownA.forEach(function (x) { if (!x.checked) hid.push(x.dataset.fsact); }); b.actHidden = hid; }
@@ -1082,7 +1082,7 @@
     d.description = st.description || F.snDescription || S.fpv.description || '';
     d.photos = (ph.chosen && ph.chosen.length ? ph.chosen : ph.all).slice(0, 24);
     d.highlights = (st.highlights || []).filter(Boolean);
-    d.units = F.units.filter(function (u) { return hid.indexOf(u.name) < 0; }).map(function (u) { var x = ui[u.name] || {}; return { name: u.name, size: u.size || '', photos: fsUnitPhotos(x), beds: x.beds || '', blurb: x.blurb || '', price: st.showPrices && u.price > 0 ? u.price : 0 }; });
+    d.units = F.units.filter(function (u) { return hid.indexOf(u.name) < 0; }).map(function (u) { var x = ui[u.name] || {}; return { name: u.name, size: u.size || '', photos: fsUnitPhotos(x), fallbackPhoto: x.photo || '', beds: x.beds || '', blurb: x.blurb || '', price: st.showPrices && u.price > 0 ? u.price : 0 }; });
     // Unit photos and amenities from the Avante listing, as the page builds them (amenities.js).
     var fu = AvanteAmenities.frontUnits(d, fsListing()); d.units = fu.units; d.amenities = fu.amenities;
     d.priceFrom = st.showPrices ? (st.priceFrom || fsAutoPrice(st)) : '';
@@ -1224,7 +1224,7 @@
     }
     var ph = frontPhotos(), gal = (ph.chosen || ph.all), ui = Object.assign({}, st.unitInfo || {}), nu = 0;
     var lu = fsListing().units;
-    if (gal.length) F.units.forEach(function (u, i) { var x = Object.assign({}, ui[u.name] || {}); if (!fsUnitPhotos(x).length && !((lu[u.name] || {}).photos || []).length) { x.photos = [gal[(i + 1) % gal.length]]; delete x.photo; ui[u.name] = x; nu++; } });
+    if (gal.length) F.units.forEach(function (u, i) { var x = Object.assign({}, ui[u.name] || {}); if (!x.photo && !fsUnitPhotos(x).length && !((lu[u.name] || {}).photos || []).length) { x.photo = gal[(i + 1) % gal.length]; ui[u.name] = x; nu++; } });
     st.unitInfo = ui; if (nu) done.push('photos for ' + nu + ' unit' + (nu === 1 ? '' : 's'));
     // Photos for things to do are found by themselves (library first, then Google) when the list loads.
     var before = (S.fpv.nearby || []).filter(function (a) { return a.autoPhoto; }).length;
@@ -1963,7 +1963,7 @@
       keepFront(); var ui2 = S.front.settings.unitInfo = Object.assign({}, S.front.settings.unitInfo || {}), ux = ui2[t.dataset.unit] = Object.assign({}, ui2[t.dataset.unit] || {});
       var upl = fsUnitPhotos(ux), at = upl.indexOf(t.dataset.u);
       if (at > -1) upl.splice(at, 1); else if (upl.length < AvanteAmenities.UNIT_PHOTOS) upl.push(t.dataset.u);
-      ux.photos = upl; delete ux.photo; fsMarkDirty(); S.front._fresh = true; render(); pvSend('units'); return;
+      ux.photos = upl; fsMarkDirty(); S.front._fresh = true; render(); pvSend('units'); return;
     }
     if (a === 'fsActReset') { keepFront(); var ap2 = S.front.settings.actPhotos = Object.assign({}, S.front.settings.actPhotos || {}); delete ap2[t.dataset.name]; fsMarkDirty(); S.front._fresh = true; render(); return; }
     if (a === 'fsFill') return fsFill(t);

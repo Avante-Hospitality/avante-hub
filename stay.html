@@ -169,7 +169,10 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
 .ucard b{ font:800 17px 'Montserrat',sans-serif; color:var(--ink); }
 .ucard .meta{ font-size:14px; color:var(--teal-d); font-weight:700; }
 .ucard .ub{ margin-top:auto; display:flex; flex-wrap:wrap; gap:8px; padding-top:6px; }
-.ucard .imbtn{ display:block; width:100%; padding:0; border:0; background:none; cursor:pointer; }
+.ucard .im .open{ position:absolute; inset:0; width:100%; padding:0; border:0; background:none; cursor:zoom-in; }
+.ucard .im .arr{ position:absolute; top:50%; transform:translateY(-50%); width:38px; height:38px; border-radius:50%; border:0; background:rgba(255,255,255,.88); color:var(--ink); font:700 22px/1 'Montserrat',sans-serif; cursor:pointer; box-shadow:0 2px 8px rgba(0,0,0,.18); }
+.ucard .im .arr.pv{ left:10px; } .ucard .im .arr.nx{ right:10px; }
+@media (hover:hover){ .ucard .im .arr{ opacity:0; transition:opacity .15s; } .ucard:hover .im .arr, .ucard .im .arr:focus-visible{ opacity:1; } }
 .ucard .im .cnt{ position:absolute; right:12px; bottom:12px; background:rgba(14,47,68,.82); color:#fff; border-radius:999px; padding:4px 10px; font:700 13px 'Noto Sans',sans-serif; }
 .ucard .det{ font-size:14px; color:var(--muted); }
 .am{ list-style:none; margin:4px 0 0; padding:0; display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:6px 14px; font-size:14.5px; }
@@ -250,7 +253,7 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
   if (!CFG.slug) { var parts = location.pathname.split('/').filter(Boolean); CFG = { slug: parts[1] || new URLSearchParams(location.search).get('slug') || '', mode: parts[2] || new URLSearchParams(location.search).get('mode') || 'store', key: parts[3] || '' }; }
   var app = document.getElementById('app');
   var MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'], MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-  var S = { d: null, ci: '', co: '', adults: 2, children: 0, quote: null, pick: null, booked: null, err: '', busy: false, calFrom: null, calData: {}, calUnit: '', km: null, offers: null, lb: -1 };
+  var S = { d: null, ci: '', co: '', adults: 2, children: 0, quote: null, pick: null, booked: null, err: '', busy: false, calFrom: null, calData: {}, calUnit: '', km: null, offers: null, lb: -1, us: {} };
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function today() { var d = new Date(); return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())).toISOString().slice(0, 10); }
   function add(iso, n) { var d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
@@ -309,7 +312,7 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
       // Availability is only asked for when the guest taps Check availability, or arrives from a Book
       // link (Jean, 2026-10-29: keep the calls to NightsBridge to a minimum).
       S.fromLink = location.hash === '#book' || !!(qi && qo);
-      if (CFG.mode === 'store') { S.offers = (d.offers || []).filter(function (o) { return o.booking || o.landing; }); if (S.fromLink && location.hash !== '#book') loadCal(); dropBadPhotos(); } // #book: read once, by the check below
+      if (CFG.mode === 'store') { S.offers = (d.offers || []).filter(function (o) { return o.booking || o.landing; }); if (S.fromLink && location.hash !== '#book') loadCal(); dropBadPhotos(); dropSmallUnitPhotos(); } // #book: read once, by the check below
       // A Book link (#book) goes straight to the booking (Jean, 2026-10-22): its dates, else the first
       // dates free to book, are checked at once, so the free units show with the dates already in;
       // with one unit (or the link's unit) the guest's details open straight away.
@@ -320,6 +323,26 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
         setTimeout(go, 300);
       }
     }).catch(function () { app.innerHTML = '<div class="center"><h1>Couldn\'t load this page</h1><p class="muted">Check your connection and try again.</p></div>'; });
+  }
+  // A unit's photos (Jean, 2026-10-30: thumbnails looked blurry): one that doesn't load
+  // goes, and so do small ones (under 600 px wide) when the unit has a bigger one.
+  function dropSmallUnitPhotos() {
+    (S.d.units || []).forEach(function (u) {
+      var list = (u.photos || []).slice(); if (!list.length) return;
+      var size = {}, left = list.length;
+      list.forEach(function (p) {
+        var im = new Image();
+        im.onload = function () { size[p] = im.naturalWidth; if (!--left) done(); };
+        im.onerror = function () { size[p] = 0; if (!--left) done(); };
+        im.src = p;
+      });
+      function done() {
+        var big = list.filter(function (p) { return size[p] >= 600; });
+        var keep = big.length ? big : list.filter(function (p) { return size[p] > 0; });
+        if (keep.length === list.length) return;
+        u.photos = keep; if (!S.quote && !S.pick && !S.busy && S.lb < 0) render();
+      }
+    });
   }
   // A photo that doesn't load (or loads blank and tiny) is taken off the page, never shown empty.
   function dropBadPhotos() {
@@ -376,10 +399,14 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
       (d.moreInfo ? '<h3 style="margin:18px 0 6px;font-size:17px">Good to know</h3><div class="text">' + esc(d.moreInfo) + '</div>' : '') + '</section>';
     if (d.units.length) h += '<section class="sec" id="units"><h2>Where you\'ll stay</h2><div class="units">' + d.units.map(function (u, i) {
       // The unit's own photos (builder, then its Avante listing); none: a gallery photo.
-      var up = (u.photos || []).map(safeUrl).filter(Boolean), img = up[0] || ph[(i + 1) % Math.max(1, ph.length)] || '';
-      var im = '<div class="im" style="' + (img ? 'background-image:url(\'' + esc(img) + '\')' + bgPos(img) : '') + '">' + (u.price ? '<span class="pr">From ' + money(u.price) + ' a night' + (u.weekendPrice ? '<br><small>Weekends ' + money(u.weekendPrice) + '</small>' : '') + '</span>' : '') +
-        (up.length > 1 ? '<span class="cnt">📷 ' + up.length + '</span>' : '') + '</div>';
-      return '<article class="ucard">' + (up.length ? '<button type="button" class="imbtn" data-act="lb" data-unit="' + esc(u.name) + '" data-i="0" aria-label="See ' + up.length + ' photos of ' + esc(u.name) + '">' + im + '</button>' : im) +
+      var up = (u.photos || []).map(safeUrl).filter(Boolean), k = up.length ? (S.us[u.name] || 0) % up.length : 0;
+      var img = up[k] || ph[(i + 1) % Math.max(1, ph.length)] || '', nm = esc(u.name);
+      // The unit's photos slide on the card (Jean, 2026-10-30): arrows, or swipe on a phone; tap opens them big.
+      var im = '<div class="im" data-unit="' + nm + '" style="' + (img ? 'background-image:url(\'' + esc(img) + '\')' + bgPos(img) : '') + '">' +
+        (up.length ? '<button type="button" class="open" data-act="lb" data-unit="' + nm + '" data-i="' + k + '" aria-label="Open photo ' + (k + 1) + ' of ' + up.length + ' of ' + nm + '"></button>' : '') +
+        (u.price ? '<span class="pr">From ' + money(u.price) + ' a night' + (u.weekendPrice ? '<br><small>Weekends ' + money(u.weekendPrice) + '</small>' : '') + '</span>' : '') +
+        (up.length > 1 ? '<button type="button" class="arr pv" data-act="usl" data-unit="' + nm + '" data-d="-1" aria-label="Previous photo of ' + nm + '">‹</button><button type="button" class="arr nx" data-act="usl" data-unit="' + nm + '" data-d="1" aria-label="Next photo of ' + nm + '">›</button><span class="cnt">' + (k + 1) + ' / ' + up.length + '</span>' : '') + '</div>';
+      return '<article class="ucard">' + im +
         '<div class="bd"><b>' + esc(u.name) + '</b>' + ((u.size || u.beds) ? '<span class="meta">' + esc([u.size, u.beds].filter(Boolean).join(' · ')) + '</span>' : '') +
         (u.blurb ? '<span style="font-size:14.5px">' + esc(u.blurb) + '</span>' : '') + (u.details && u.details !== u.size ? '<span class="det">' + esc(u.details) + '</span>' : '') + amenList(u.amenities, 6) +
         '<div class="ub">' + (up.length > 1 ? '<button type="button" class="btn g sm" data-act="lb" data-unit="' + esc(u.name) + '" data-i="0">See ' + up.length + ' photos</button>' : '') + '<button type="button" class="btn t sm" data-act="toBook">Check dates</button></div></div></article>'; }).join('') + '</div></section>';
@@ -686,6 +713,22 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
     lbEl.innerHTML = '<img src="' + esc(ph[S.lb]) + '" alt="' + esc(S.lbList ? S.lbName : S.d.name) + ' photo ' + (S.lb + 1) + '"><button type="button" class="x" data-lb="x" aria-label="Close">✕</button>' + (ph.length > 1 ? '<button type="button" class="pv" data-lb="p" aria-label="Previous photo">‹</button><button type="button" class="nx" data-lb="n" aria-label="Next photo">›</button>' : '') + '<div class="n">' + (S.lb + 1) + ' / ' + ph.length + '</div>';
     lbEl.querySelector('.x').focus();
   }
+  // Next or previous photo on a unit's card, without drawing the page again.
+  function slideUnit(name, step) {
+    var up = (unitByName(name).photos || []).map(safeUrl).filter(Boolean); if (up.length < 2) return;
+    var k = S.us[name] = (((S.us[name] || 0) + step) % up.length + up.length) % up.length;
+    var box = [].filter.call(document.querySelectorAll('#units .im'), function (e) { return e.getAttribute('data-unit') === name; })[0]; if (!box) return;
+    box.style.backgroundImage = 'url(\'' + up[k].replace(/'/g, '%27') + '\')'; box.style.backgroundPosition = (bgPos(up[k]).split(':')[1] || '');
+    var o = box.querySelector('.open'); o.setAttribute('data-i', k); o.setAttribute('aria-label', 'Open photo ' + (k + 1) + ' of ' + up.length + ' of ' + name);
+    box.querySelector('.cnt').textContent = (k + 1) + ' / ' + up.length;
+  }
+  // Swipe a unit's card photo on a phone.
+  var swipe = null;
+  app.addEventListener('touchstart', function (e) { var b = e.target.closest('#units .im'); swipe = b && e.touches.length === 1 ? { name: b.getAttribute('data-unit'), x: e.touches[0].clientX, y: e.touches[0].clientY } : null; }, { passive: true });
+  app.addEventListener('touchend', function (e) {
+    if (!swipe) return; var t = e.changedTouches[0], dx = t.clientX - swipe.x, dy = t.clientY - swipe.y, n = swipe.name; swipe = null;
+    if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.5) { e.preventDefault(); slideUnit(n, dx < 0 ? 1 : -1); }
+  });
   function lbPhotos() { return S.lbList || S.d.photos || []; }
   function unitByName(n) { return (S.d.units || []).filter(function (u) { return u.name === n; })[0] || { photos: [] }; }
   function closeLb() { if (lbEl) { lbEl.remove(); lbEl = null; } S.lb = -1; if (lbBack) lbBack.focus(); }
@@ -693,6 +736,7 @@ h1,h2,h3{ font-family:'Montserrat',sans-serif; color:var(--ink); line-height:1.2
     var t = e.target.closest('[data-act]'); if (!t) return;
     var a = t.getAttribute('data-act');
     if (a === 'lb') { S.lbName = t.getAttribute('data-unit') || ''; S.lbList = S.lbName ? (unitByName(S.lbName).photos || []).map(safeUrl).filter(Boolean) : null; return showLb(+t.getAttribute('data-i')); }
+    if (a === 'usl') return slideUnit(t.getAttribute('data-unit'), +t.getAttribute('data-d'));
     if (a === 'sl') { var n = (S.d.photos || []).length; S.sl = ((S.sl || 0) + +t.getAttribute('data-d') + n) % n; var sw = document.getElementById('photos-ph'); if (sw) { var pic = sw.querySelector('.pic'); pic.style.backgroundImage = 'url(\'' + S.d.photos[S.sl].replace(/'/g, '%27') + '\')'; pic.style.backgroundPosition = (bgPos(S.d.photos[S.sl]).split(':')[1] || ''); pic.setAttribute('data-i', S.sl); pic.setAttribute('aria-label', 'Open photo ' + (S.sl + 1) + ' of ' + n); sw.querySelector('.cnt').textContent = (S.sl + 1) + ' / ' + n; } return; }
     if (a === 'toBook') { var b = document.getElementById(S.d.showCalendar ? 'calsec' : 'book') || document.getElementById('book'); if (b) { b.scrollIntoView({ behavior: 'smooth', block: 'start' }); } return; }
     if (a === 'calGo') {
