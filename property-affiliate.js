@@ -199,7 +199,7 @@
       (S.prop.commissionPct ? ' · Bookings through the Avante marketing tool: ' + esc(S.prop.commissionPct) + '% + VAT, all fees included' : '') + '</span>' : '') +
       '<a class="pa-howto" href="' + howTo + '" target="_blank" rel="noopener" aria-label="How to use this screen (opens the guide in a new tab)">❓ How to</a></header>';
     var inMore = S.view === 'onb';
-    h += '<nav class="pa-tabbar" aria-label="Property Affiliate sections"><div class="pa-tabscroll">' + tabsFor().map(function (v) {
+    h += '<nav class="pa-tabbar' + (connected ? ' has-bnav' : '') + '" aria-label="Property Affiliate sections"><div class="pa-tabscroll">' + tabsFor().map(function (v) {
       var badge = v[0] === 'msgs' && S.msgsDue ? '<span class="pa-badge" aria-label="' + S.msgsDue + ' to send">' + S.msgsDue + '</span>' : '';
       return '<button type="button" data-act="view" data-v="' + v[0] + '"' + (S.view === v[0] ? ' aria-current="page"' : '') + '>' + v[1] + badge + '</button>';
     }).join('') +
